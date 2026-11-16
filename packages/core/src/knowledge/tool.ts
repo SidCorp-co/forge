@@ -46,8 +46,8 @@ const inputSchema = z
     query: z.string().min(1).max(4000).optional(),
     scope: z.enum(['knowledge', 'memory', 'all']).default('knowledge'),
     topK: z.number().int().min(1).max(50).default(10),
-    strategy: z.enum(['semantic', 'keyword', 'hybrid']).default('semantic'),
   })
+  // strict: a `strategy` sent is refused by name, since the find door ranks every search one way
   .strict();
 
 type Input = z.infer<typeof inputSchema>;
@@ -101,9 +101,9 @@ const actions: Record<Input['action'], (input: Input, reader: ProjectReader) => 
       const slug = required(input.slug, 'slug', 'delete');
       return { deleted: (await deleteKnowledgeEntry(input.projectId, slug)) > 0 };
     },
-    search: async ({ projectId, query, scope, topK, strategy }, reader) => {
+    search: async ({ projectId, query, scope, topK }, reader) => {
       const text = required(query, 'query', 'search');
-      return knowledgePort('recall')({ projectId, reader, query: text, scope, topK, strategy });
+      return knowledgePort('recall')({ projectId, reader, query: text, scope, topK });
     },
   };
 
@@ -138,7 +138,7 @@ export const forgeKnowledgeTool: ContextScopedMcpToolFactory = (ctx) => ({
     'A reference, guide, workflow or rule carries `source` (what it rests on: `file.ts:symbol` anchors, an issue or requirement key, a URL), `entryScope` (where it applies; `scope` at the REST door) and `recheckWhen` (the change that means it needs re-checking: name paths, routes, config keys or rule slugs, so a landing touching one flags it), or is refused naming the one left out; and `type` (fact | hypothesis | convention), answered with a warning where left out. ' +
     'A new slug whose text a live entry already holds is refused KNOWLEDGE_SUBJECT_HELD naming it: update that entry, or send `replaces: <its slug>` to retire it as superseded. A rewrite keeps the text it replaced as a revision (`get` answers `revisions`). ' +
     '`delete` — idempotent remove. ' +
-    '`search` — semantic/keyword/hybrid search; `scope` controls which store(s): ' +
+    "`search` — the find door's knowledge or memory filter, in its ranks (keyword and meaning fused; no `strategy`); `scope` controls which store(s): " +
     '"knowledge" (default: the project\'s entries and lessons and its organisation\'s rulings, ranked together, each with `origin` project or org, `type`, `scope`, `recheckWhen` and `recheckDue`), "memory" (curated memory), or "all" (both lists). A retired or superseded entry is never a hit. ' +
     'list/get/search require project membership; upsert/delete require writer access.',
   inputSchema: zodToMcpSchema(inputSchema),

@@ -4,7 +4,7 @@
 // read `runFind`, so a person and an agent get the same ranks. A find that matches nothing is
 // recorded as a gap.
 
-import type { FindQuery, FindResult } from '@forge/contracts/find';
+import type { FindQuery, FindResult, FindType } from '@forge/contracts/find';
 import { inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
@@ -28,22 +28,41 @@ import { expandedPhrases, expandedText, expandThroughGlossary } from './expand.j
 import { glossaryTerms, moduleTree, type PlacedKind, placementsOf } from './model-reads.js';
 import { type Fused, fuseArms, shapeResult } from './rank.js';
 
+/**
+ * Who a find reads for: a person or a token, or `own-project` for a filter read for no one person (an
+ * issue list's text filter), where a memory hit's cite in another project is never read and no room's
+ * transcript can be searched.
+ */
+export type FindReader = ProjectReader | 'own-project';
+
 export interface FindInput {
   /** The project the find runs in: its hits open there, and a miss is its gap. */
   projectId: string;
   /** Every project searched; the memory, item and transcript arms read `projectId` alone. */
   projectIds: readonly string[];
   query: FindQuery;
-  reader: ProjectReader;
+  reader: FindReader;
   askedBy: 'person' | 'agent';
   /** False where the find spans projects none of which it ran for, so a miss is no one project's gap. */
   recordsGap?: boolean;
+  /**
+   * A filter of the door (`recall-filter.ts`, `memory-filter.ts`, `issue-filter.ts`): only the arms that can find a type `query.type` names run, so
+   * the kept hits rank exactly as the whole door ranks them (a hit's fused score is summed from the
+   * lists it is in, and no list of another type holds it), the facets count those arms alone, and a
+   * miss is no gap, since the other types were never asked.
+   */
+  filterOnly?: boolean;
 }
 
 /** What a find answered, and the fused candidates a filter of the door reads its own shape from. */
 export interface FindOutcome {
   result: FindResult;
   fused: Fused[];
+  /**
+   * The fused candidates the query's type, module and status filters keep, best first, cut to its
+   * limit: the hits `result` groups, in the door's order. Every filter of the door answers these.
+   */
+  kept: Fused[];
   memory: { keyword: MemoryArm; semantic: MemoryArm | null } | null;
   /** What the transcript arm could not show, where it ran. */
   limitation: string | null;
@@ -60,6 +79,32 @@ async function vectorOf(projectId: string, q: string): Promise<number[] | null> 
 }
 
 /** Every arm's ranked list, the knowledge and record arms over every project. */
+/** The types each arm can find: a filter runs an arm only where one of them is asked. */
+const ARM_TYPES = {
+  knowledge: ['term', 'rule', 'lesson', 'knowledge'],
+  issue: ['issue'],
+  requirement: ['requirement'],
+  feedback: ['feedback'],
+  decision: ['decision'],
+  reference: ['reference'],
+  capability: ['capability'],
+  memory: ['memory', 'decision', 'issue'],
+  items: ['requirement', 'feedback'],
+  conversation: ['conversation'],
+  alias: ['term'],
+} as const satisfies Record<string, readonly FindType[]>;
+type ArmName = keyof typeof ARM_TYPES;
+
+/** Whether an arm runs: always on the whole door, on a filter only where it can find an asked type. */
+function runsOf(input: FindInput): (arm: ArmName) => boolean {
+  const asked = input.query.type;
+  if (!input.filterOnly || !asked?.length) return () => true;
+  return (arm) => ARM_TYPES[arm].some((t) => asked.includes(t));
+}
+
+/** The arms that read the query's vector: a find running none of them embeds nothing. */
+const DENSE_ARMS: readonly ArmName[] = ['knowledge', 'memory', 'items'];
+
 async function armLists(
   input: FindInput,
   text: string,
@@ -74,22 +119,23 @@ async function armLists(
   const { projectIds, projectId, query } = input;
   const k = armDepth(query.limit);
   const one = projectIds.length === 1;
+  const runs = runsOf(input);
   const [kw, dense, iss, req, fb, dec, ref, mem, items, room] = await Promise.all([
-    keywordKnowledge(projectIds, text, k),
-    vec ? semanticKnowledge(projectIds, vec, k, SEMANTIC_FLOOR) : [],
-    issueArm(projectIds, query.q, phrases, k),
-    requirementArm(projectIds, query.q, phrases, k),
-    feedbackArm(projectIds, query.q, phrases, k),
-    decisionArm(projectIds, phrases, k),
-    referenceArm(projectIds, phrases, k),
-    one
+    runs('knowledge') ? keywordKnowledge(projectIds, text, k) : [],
+    runs('knowledge') && vec ? semanticKnowledge(projectIds, vec, k, SEMANTIC_FLOOR) : [],
+    runs('issue') ? issueArm(projectIds, query.q, phrases, k) : [],
+    runs('requirement') ? requirementArm(projectIds, query.q, phrases, k) : [],
+    runs('feedback') ? feedbackArm(projectIds, query.q, phrases, k) : [],
+    runs('decision') ? decisionArm(projectIds, phrases, k) : [],
+    runs('reference') ? referenceArm(projectIds, phrases, k) : [],
+    one && runs('memory')
       ? memoryArm({ projectId, query: query.q, queryVec: vec, reader: input.reader, limit: k })
       : null,
-    one && vec ? itemArms(projectId, vec, k) : null,
-    query.conversation
+    one && vec && runs('items') ? itemArms(projectId, vec, k) : null,
+    query.conversation && runs('conversation')
       ? conversationArm({
           conversationId: query.conversation,
-          userId: input.reader.userId,
+          userId: readerUserId(input.reader, 'a room transcript'),
           projectId,
           query: query.q,
           limit: k,
@@ -104,7 +150,7 @@ async function armLists(
     { arm: 'keyword', hits: fb },
     { arm: 'keyword', hits: dec },
     { arm: 'keyword', hits: ref },
-    { arm: 'keyword', hits: capabilityArm(text, k) },
+    { arm: 'keyword', hits: runs('capability') ? capabilityArm(text, k) : [] },
     ...(mem
       ? [mem.keyword, mem.semantic].flatMap((m, i): ArmList[] => {
           const arm = i === 0 ? 'keyword' : 'semantic';
@@ -124,7 +170,7 @@ async function armLists(
         ] as ArmList[])
       : []),
     ...(room ? [{ arm: 'keyword' as const, hits: room.hits }] : []),
-    { arm: 'alias', hits: alias },
+    { arm: 'alias', hits: runs('alias') ? alias : [] },
   ];
   return { lists, memory: mem, limitation: room?.limitation ?? null };
 }
@@ -166,13 +212,22 @@ async function slugsOf(projectIds: readonly string[]): Promise<Map<string, strin
 export const openPathOf = (projectId: string, id: string) =>
   `/api/projects/${projectId}/find/open?id=${encodeURIComponent(id)}`;
 
+/** The user a reader is; refused by name where a filter read for no one person asks for one. */
+function readerUserId(reader: FindReader, what: string): string {
+  if (reader === 'own-project') {
+    throw new Error(`find: ${what} is read for a person, and this find reads for no one`);
+  }
+  return reader.userId;
+}
+
 /** One find over the door, answered whole. */
 export async function runFind(input: FindInput): Promise<FindOutcome> {
   const { projectId, projectIds, query } = input;
   const named = expandThroughGlossary(query.q, await glossaryTerms(projectIds));
   const text = expandedText(query.q, named);
   const phrases = expandedPhrases(query.q, named);
-  const vec = await vectorOf(projectId, query.q);
+  const runs = runsOf(input);
+  const vec = DENSE_ARMS.some(runs) ? await vectorOf(projectId, query.q) : null;
   const alias = aliasArm(named.map((n) => ({ term: n.term, alias: n.expansion.alias })));
   const { lists, memory, limitation } = await armLists(input, text, phrases, vec, alias);
   const fused = fuseArms(lists);
@@ -188,23 +243,25 @@ export async function runFind(input: FindInput): Promise<FindOutcome> {
     openPath: (id) => openPathOf(projectId, id),
   });
   const gap = fused.length === 0;
-  if (gap && input.recordsGap !== false) {
+  if (gap && input.recordsGap !== false && !input.filterOnly) {
     recordFindMiss({
       projectId,
       query: query.q,
       askedBy: input.askedBy,
-      userId: input.reader.userId,
+      userId: input.reader === 'own-project' ? null : input.reader.userId,
     });
   }
+  const keptIds = new Set(shaped.groups.flatMap((g) => g.hits.map((h) => h.id)));
   return {
     result: {
       query: query.q,
       expanded: named.map((n) => n.expansion),
       ...shaped,
-      degraded: vec === null,
+      degraded: vec === null && DENSE_ARMS.some(runs),
       gap,
     },
     fused,
+    kept: fused.filter((c) => keptIds.has(c.id)),
     memory,
     limitation,
   };

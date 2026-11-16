@@ -12,10 +12,9 @@ export interface KnowledgeRecallInput {
   query: string;
   scope: 'knowledge' | 'memory' | 'all';
   topK?: number;
-  strategy?: 'semantic' | 'keyword' | 'hybrid';
 }
 
-/** What recall answers: knowledge hits and memory hits, two lists never blended. */
+/** What recall answers: knowledge hits and memory hits, two lists never blended, each in the find door's order. */
 export interface KnowledgeRecall {
   knowledge: { slug: string; kind: string; title: string; body: string }[];
   memory: { id: string; asOf: Date; text: string }[];

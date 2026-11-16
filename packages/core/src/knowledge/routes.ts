@@ -5,6 +5,7 @@ import { issueStatuses } from '../db/schema.js';
 import { masterVerbs } from '../db/schema-master-charter.js';
 import { requestReader } from '../lib/authz.js';
 import { RULES } from '../lib/rate-limits.js';
+import { retiredSearchStrategy } from '../lib/search-fusion.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { gatedRoutes } from '../middleware/gated-routes.js';
 import { rateLimit } from '../middleware/rate-limit.js';
@@ -103,7 +104,7 @@ const searchBodySchema = z.object({
   query: z.string().trim().min(1).max(4000),
   scope: z.enum(['knowledge', 'memory', 'all']).default('knowledge'),
   topK: z.number().int().min(1).max(50).default(10),
-  strategy: z.enum(['semantic', 'keyword', 'hybrid']).default('semantic'),
+  strategy: retiredSearchStrategy,
 });
 
 knowledgeRoutes.post(
@@ -114,13 +115,15 @@ knowledgeRoutes.post(
   zValidator('json', searchBodySchema, invalid('invalid body')),
   async (c) => {
     const { id } = c.req.valid('param');
-    const body = c.req.valid('json');
+    const { query, scope, topK } = c.req.valid('json');
     const userId = c.get('userId');
 
     const found = await knowledgePort('recall')({
       projectId: id,
       reader: requestReader(userId),
-      ...body,
+      query,
+      scope,
+      topK,
     });
     recordReached(c, id, 'search', found);
     return c.json(found);

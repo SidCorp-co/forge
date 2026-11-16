@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 const MIN_TOP_K = 1;
 const MAX_TOP_K = 50;
 
@@ -77,6 +79,18 @@ export function fuseRanked<T extends { id: string; score: number }>(
     .slice(0, limit)
     .map(({ score, hit }) => ({ ...hit, score }));
 }
+
+/**
+ * `strategy`, which no search door takes since each is a filter of the find door (ISS-1256): the door
+ * ranks every search one way, its keyword and dense arms fused by rank, so a strategy sent is refused
+ * by name rather than dropped.
+ */
+export const retiredSearchStrategy = z
+  .never({
+    error:
+      'no search takes a strategy: each is a filter of the find door, which fuses its keyword and dense arms by rank (ISS-1256); send none',
+  })
+  .optional();
 
 /** The weights a keyword and a dense arm take in every hybrid fusion. */
 export const HYBRID_WEIGHTS = { semantic: HYBRID_ALPHA, keyword: 1 - HYBRID_ALPHA } as const;

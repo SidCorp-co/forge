@@ -19,13 +19,13 @@ export const KNOWLEDGE_REST_CARDS = {
         do: 'search for one already holding the subject first, and rewrite that one instead',
       },
       {
-        when: 'you want memory and knowledge hits in one ranked answer',
-        do: 'send `scope: "all"`; `scope: "memory"` reads memory alone',
+        when: 'you want memory hits beside the knowledge hits',
+        do: 'send `scope: "all"` for both lists; `scope: "memory"` reads memory alone',
       },
     ],
     practice: [
-      'Ask as a short question or topic; `semantic` is the default and finds paraphrases.',
-      '`keyword` matches every term at once, so a long question finds almost nothing with it.',
+      'Ask as a short question or topic: it is ranked by its words and its meaning at once.',
+      'The hits are the find door’s knowledge filter in its order; no `strategy` is taken.',
     ],
     example: { query: 'when must an agent ask the owner to approve', topK: 5 },
     // forge: 2 of 889 searches rate-limited, both in loops that searched one topic again and again

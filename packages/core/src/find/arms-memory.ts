@@ -43,7 +43,8 @@ export async function memoryArm(input: {
   projectId: string;
   query: string;
   queryVec: number[] | null;
-  reader: ProjectReader;
+  /** `own-project` for a filter read for no one person: a cite in another project is never read. */
+  reader: ProjectReader | 'own-project';
   limit: number;
 }): Promise<{ keyword: MemoryArm; semantic: MemoryArm | null }> {
   const read = (strategy: 'keyword' | 'semantic') =>
