@@ -8,13 +8,12 @@ import { LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';
-import { sqlTimestamp } from '../db/sql-timestamp.js';
 import { RUNNER_ACTS } from './runs-store.js';
 
 export interface StewardSlotDemand {
   /** Its steward jobs live for a live run: out with this box, or queued for one of its boxes. */
   live: number;
-  /** Its due runs owing a runner act that no job has been started for yet. */
+  /** Its live runs owing a runner act that no job has been started for yet, a run tried again for a slot included. */
   waiting: number;
   /** Whether one of those waiting is a release follow-through: the judge a shipped issue is owed. */
   urgent: boolean;
@@ -26,7 +25,6 @@ type Executor = Pick<Tx, 'execute'>;
 export async function stewardSlotDemand(
   executor: Executor,
   deviceId: string,
-  now: Date,
 ): Promise<Map<string, StewardSlotDemand>> {
   const runner = sql.raw(`ARRAY[${RUNNER_ACTS.map((a) => `'${a}'`).join(', ')}]::text[]`);
   const live = sql.raw(LIVE_JOB_STATUSES.map((s) => `'${s}'`).join(', '));
@@ -45,7 +43,6 @@ export async function stewardSlotDemand(
         LEFT JOIN steward_runs r
           ON r.project_id = b.project_id AND r.state IN ('queued', 'running')
          AND r.job_id IS NULL AND r.acts_to_run && ${runner}
-         AND r.not_before <= ${sqlTimestamp(now)}
        GROUP BY b.project_id`),
   );
   const out = new Map<string, StewardSlotDemand>();

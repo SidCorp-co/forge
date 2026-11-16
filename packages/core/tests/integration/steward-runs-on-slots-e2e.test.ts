@@ -10,6 +10,7 @@
 // @direct-test-of packages/core/src/steward/policy.ts
 // @direct-test-of packages/core/src/steward/slot-demand.ts
 // @direct-test-of packages/core/src/devices/run-slots-read.ts
+// @direct-test-of packages/core/src/devices/ports.ts
 
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -161,7 +162,7 @@ describe("a shipped issue's release follow-through runs at its release, given a 
     const { withKernelMarker } = await import('../../src/db/kernel-marker.js');
     const { enqueueStewardJob } = await import('../../src/steward/job.js');
     const { stewardRuns } = await import('../../src/db/schema-steward-runs.js');
-    const { readBoxSlots } = await import('../../src/devices/run-slots-read.js');
+    const { readBoxSlots, subagentSlotsOf } = await import('../../src/devices/run-slots-read.js');
     const { eq } = await import('drizzle-orm');
     const pid = (await createTestProject(ownerId)).id;
     const device = await createTestDevice(ownerId, { maxSubagents: 1 });
@@ -203,9 +204,12 @@ describe("a shipped issue's release follow-through runs at its release, given a 
     expect(waiting).toMatchObject({ state: 'queued', skip_reason: null, job_id: null });
     // it waits for the slot, a minute, never for the next UTC day
     expect(new Date(waiting?.not_before ?? 0).getTime() - Date.now()).toBeLessThanOrEqual(61_000);
-    const mine = (await readBoxSlots(device)).projects.find((p) => p.projectId === pid);
-    expect(mine).toMatchObject({ slots: 1, inUse: 1, urgent: true });
-    expect(mine?.waiting).toBeGreaterThanOrEqual(1);
+    // the slot read counts it as the project's demand, urgent, and the master's standing reads it as
+    // one run waiting for a slot like any other
+    const box = await readBoxSlots(device);
+    const mine = box.projects.find((p) => p.projectId === pid);
+    expect(mine).toMatchObject({ wants: 2, slots: 1, inUse: 1, waiting: 1, urgent: true });
+    expect(subagentSlotsOf(box, pid)).toEqual({ held: 1, inUse: 1, waiting: 1, capacity: 1 });
 
     // the busy job ends, its run with it: the slot frees and the judge starts on the next tick
     await withKernelMarker(db, (tx) =>

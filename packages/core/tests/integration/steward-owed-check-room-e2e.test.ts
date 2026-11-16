@@ -51,7 +51,6 @@ const tally = () => ({ projects: 0, stuck: 0, changed: 0, settledAsks: 0, checks
 const refusalsOf = (r: Reply) =>
   (r.json.error?.refusals ?? []) as { code: string; path: string; detail: string }[];
 
-/** The UTC midnight after `now`: when the steward's budget resumes. */
 /** An agreed requirement with one live issue, so only its delivery check can hold its delivery. */
 async function agreedWithIssue(title: string): Promise<{ key: string; id: string }> {
   const key = ok(

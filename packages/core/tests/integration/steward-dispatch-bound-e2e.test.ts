@@ -218,7 +218,7 @@ describe('a steward job is not retried by the pool, nor holds a slot once its ru
       1_000,
     );
     const { stewardSlotDemand } = await import('../../src/steward/slot-demand.js');
-    const demand = await stewardSlotDemand(db, deviceId, new Date());
+    const demand = await stewardSlotDemand(db, deviceId);
     expect(demand.get(projectId)).toMatchObject({ live: 0, waiting: 1 });
     const claimed = await claimDueRuns(new Date(), 5);
     expect(claimed.map((r) => r.id)).toContain(filed);
@@ -264,7 +264,7 @@ describe("a filed item's run starts within the bound while its project's slots a
     await rows(
       sql`UPDATE steward_runs SET job_id = ${job.jobId} WHERE id = ${runRow.id} RETURNING id`,
     );
-    expect((await stewardSlotDemand(db, box, new Date())).get(lane)?.live).toBe(1);
+    expect((await stewardSlotDemand(db, box)).get(lane)?.live).toBe(1);
     for (let n = 0; n < 16; n += 1) {
       const waiting = await item(184 + n);
       await rows(sql`

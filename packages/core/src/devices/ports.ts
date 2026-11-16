@@ -93,7 +93,6 @@ interface DevicesPorts {
   stewardSlotDemand(
     executor: Pick<Tx, 'execute'>,
     deviceId: string,
-    now: Date,
   ): Promise<Map<string, { live: number; waiting: number; urgent: boolean }>>;
 }
 

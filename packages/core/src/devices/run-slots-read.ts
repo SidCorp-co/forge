@@ -84,7 +84,7 @@ export async function readBoxSlots(
       .limit(1),
     inUseByProject(executor, deviceId),
     readAdmissibleIssues({ deviceId }),
-    devicesPorts().stewardSlotDemand(executor, deviceId, new Date()),
+    devicesPorts().stewardSlotDemand(executor, deviceId),
   ]);
   const waiting = new Map<string, { n: number; urgent: boolean }>();
   for (const item of admissible.items) {

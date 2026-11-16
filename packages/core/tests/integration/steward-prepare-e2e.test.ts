@@ -5,7 +5,7 @@
 // A prepared draft is asked open, recommending open. Where no agreed requirement fits, the steward
 // asks the master (no person is asked about an issue serving no item, REQ-68 BC-4) link (its
 // candidates), requirement or drop, and the answer acts: link links the draft and has
-// it diagnosed again, which prepares it and asks open, under the same daily budget; requirement
+// it diagnosed again at once, which prepares it and asks open, whatever the day spent; requirement
 // starts a requirement from the draft's feedback; drop drops it.
 //
 // @direct-test-of packages/core/src/steward/door-prepare.ts
@@ -429,14 +429,14 @@ describe('where no agreed requirement fits, the answer acts (REQ-48 BC-5)', () =
     );
   });
 
-  it('the run a link answer starts waits for the next day once the day is spent, before any turn', async () => {
+  it('the run a link answer starts is taken up at once, whatever the steward ran that day (ISS-1255)', async () => {
     const req = await agreedRequirement(912);
     const issue = await draftIssue(107);
     await diagnose(issue, [decide(issue.key, 'link', [{ requirement: req, bc: 'BC-1' }])]);
     const { id } = await openQuestion(issue.id);
     ok(await answer(id, { optionId: stewardLinkOptionId(req, 'BC-1') }));
     await settleOutbox();
-    // the spend is stamped at the dispatch instant, so the two share a UTC day near midnight too
+    // the old cap's whole day of turns, stamped at the dispatch instant so the two share a UTC day
     const at = new Date(Date.now() + STEWARD_DEBOUNCE_MS + 30_000);
     await rows(sql`
       INSERT INTO steward_runs (project_id, subject_kind, subject_id, subject_key, trigger, events, acts_to_run,
@@ -447,8 +447,8 @@ describe('where no agreed requirement fits, the answer acts (REQ-48 BC-5)', () =
     resetScript();
     await dispatch(at);
     const [rerun] = await runsOf(issue.id);
-    expect(rerun).toMatchObject({ state: 'queued', skip_reason: null, turns: 0 });
-    expect(script.sent).toEqual([]);
-    expect((await issueRow(issue.id))?.planned_revision).toBeNull();
+    expect(rerun?.skip_reason ?? null).toBeNull();
+    expect(rerun?.state, 'the run waited for a later day').not.toBe('queued');
+    expect(script.sent.length).toBeGreaterThan(0);
   });
 });
