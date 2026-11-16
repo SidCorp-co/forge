@@ -7,6 +7,7 @@
 
 import { masterTakesWait } from './development/index.js';
 import { provideLessonsPorts } from './lessons/index.js';
+import { doorCatalog } from './lib/door-catalog.js';
 import { masterAccountsOf } from './master-accounts.js';
 import { memoryIssueSide } from './memory-issue-reads.js';
 import { getMockupAs } from './mockups/index.js';
@@ -45,5 +46,9 @@ export function provideStewardDomainPorts(
       (await getMockupAs(viewer, projectId, mockupId)) ?? null,
     roomWriterOf: roomWriterUserId,
     landedChange: memoryIssueSide.landedChange,
+    cardOf: async (cardId) => {
+      const card = doorCatalog().doors.find((d) => d.card?.id === cardId)?.card;
+      return card ? { id: card.id, scenarios: card.scenarios } : null;
+    },
   });
 }

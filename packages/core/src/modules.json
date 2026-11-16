@@ -891,7 +891,15 @@
     "lessons": {
       "kind": "domain",
       "context": "work",
-      "owns": ["corrections", "lessonApplications", "lessonConfusions", "lessons"],
+      "owns": [
+        "cardDeltas",
+        "cardRechecks",
+        "cardScenarioRuns",
+        "corrections",
+        "lessonApplications",
+        "lessonConfusions",
+        "lessons"
+      ],
       "serves": ["REQ-50"]
     },
     "mockups": {

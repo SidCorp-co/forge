@@ -3,7 +3,7 @@
  * capability card, a requirement's behaviour or code. When a landing touches the anchor, the lesson is
  * invalidated in that landing's own consumer: held, kept for its history, out of every map and search,
  * and owed the steward's re-check (`steward/lessons-lifecycle.ts`). A card anchor also marks the card
- * owed a re-check, through the port the card registry provides.
+ * owed a re-check (`card-freshness.ts`).
  *
  * A code anchor is met by a changed path (the file, or one under its directory); a requirement's
  * behaviour by the landing's own words naming it; a card by the paths its door lives in, or by the
@@ -17,6 +17,7 @@ import { db } from '../db/client.js';
 import { lessons } from '../db/schema-lessons.js';
 import { logger } from '../lib/logger.js';
 import { consume } from '../outbox/index.js';
+import { markCardRecheckOwed } from './card-freshness.js';
 import { invalidateLessonIn, lockLessons } from './decide.js';
 import { lessonsPorts } from './ports.js';
 
@@ -88,7 +89,7 @@ export async function invalidateLessonsForChange(
       return invalidateLessonIn(tx, row, by);
     });
     if (done) invalidated += 1;
-    if (isCard) await ports.cardRecheckOwed?.(anchor.slice(5), by);
+    if (isCard) await markCardRecheckOwed(anchor.slice(5), by);
   }
   return invalidated;
 }

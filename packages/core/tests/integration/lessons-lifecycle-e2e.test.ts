@@ -196,69 +196,128 @@ describe('an unanchored lesson is not admitted, and an old one is anchored from 
 });
 
 describe('a lesson that holds is folded into its card and retired (§4)', () => {
-  it('hands the card one delta, replayed first, and retires the lesson naming where it went', async () => {
-    const n = await approvedOn(
-      'Before answering someone, read who they are.',
-      'card:support.member',
-    );
-    await db.execute(
-      sql`UPDATE lessons SET applied_count = 3 WHERE project_id = ${w.projectId} AND number = ${n}`,
-    );
+  const CARD = 'iss1251.test-member';
+  const LINE =
+    'When someone writes whom you have no record of → read the member record, then answer.';
+
+  /** The steward's pass with a card registry that carries `CARD`, and its scenarios. */
+  async function passWithCard(answers: Parameters<typeof pass>[0]) {
     const { lessonsPorts, provideLessonsPorts } = await import('../../src/lessons/index.js');
     const before = lessonsPorts();
-    const folded: { card: string; delta: unknown; by: string }[] = [];
     provideLessonsPorts({
       ...before,
-      foldIntoCard: async (card, delta, by) => {
-        folded.push({ card, delta, by });
-        return { ok: true };
-      },
+      cardOf: async (id) =>
+        id === CARD ? { id, scenarios: ['asks-unknown-member', 'answers-known-member'] } : null,
     });
     try {
-      const tally = await pass({
-        fold: (l) =>
-          (l as { number: number }).number === n
-            ? {
-                field: 'situation',
-                op: 'add',
-                text: 'When someone writes whom you have no record of → read the member record, then answer.',
-                replaces: null,
-                reason: 'Applied three times, never corrected.',
-              }
-            : null,
-      });
-      expect(tally.folded).toBe(1);
+      return await pass(answers);
     } finally {
       provideLessonsPorts(before);
     }
-    expect(folded).toEqual([
-      {
-        card: 'support.member',
-        delta: {
-          field: 'situation',
-          op: 'add',
-          text: 'When someone writes whom you have no record of → read the member record, then answer.',
-        },
-        by: `L-${n}`,
-      },
+  }
+
+  it('proposes one delta to the card, keeps each scenario’s replay, and retires the lesson naming where it went', async () => {
+    const n = await approvedOn('Before answering someone, read who they are.', `card:${CARD}`);
+    await db.execute(
+      sql`UPDATE lessons SET applied_count = 3 WHERE project_id = ${w.projectId} AND number = ${n}`,
+    );
+    const tally = await passWithCard({
+      fold: (l) =>
+        (l as { number: number }).number === n
+          ? {
+              field: 'situation',
+              op: 'add',
+              text: LINE,
+              replaces: null,
+              reason: 'Applied three times, never corrected.',
+            }
+          : null,
+      replay: (input) => ({
+        fixed: (input as { failures: string[] }).failures.length,
+        broken: [],
+        reason: 'Both scenarios hold.',
+      }),
+    });
+    expect(tally.folded).toBe(1);
+    const { cardFreshness } = await import('../../src/lessons/index.js');
+    const [fresh] = await cardFreshness([CARD]);
+    expect(fresh?.proposedDeltas).toEqual([
+      expect.objectContaining({ field: 'situation', op: 'add', text: LINE, fromLesson: `L-${n}` }),
+    ]);
+    const runs = (fresh?.scenarios ?? []).map((x) => [x.name, x.passed, x.change]);
+    expect(runs.sort()).toEqual([
+      ['answers-known-member', true, `L-${n} fold`],
+      ['asks-unknown-member', true, `L-${n} fold`],
     ]);
     const row = await lesson(n);
     expect(row.status).toBe('retired');
-    expect(String(row.decided_reason)).toContain('Folded into card support.member as a situation');
+    expect(String(row.decided_reason)).toContain(`Folded into card ${CARD} as a situation`);
   });
 
-  it('waits, never retiring, while no card registry takes the fold', async () => {
-    const n = await approvedOn('Record what you learn about a member.', 'card:support.member');
+  it('keeps a lesson whose fold breaks a scenario, and records the scenario failed', async () => {
+    const n = await approvedOn('Never greet a member by name.', `card:${CARD}`);
+    await db.execute(
+      sql`UPDATE lessons SET applied_count = 4 WHERE project_id = ${w.projectId} AND number = ${n}`,
+    );
+    const tally = await passWithCard({
+      fold: (l) =>
+        (l as { number: number }).number === n
+          ? {
+              field: 'redFlag',
+              op: 'add',
+              text: 'Greeting a member by name.',
+              replaces: null,
+              reason: 'Held.',
+            }
+          : null,
+      replay: () => ({
+        fixed: 1,
+        broken: ['answers-known-member'],
+        reason: 'A known member is greeted by name.',
+      }),
+    });
+    expect(tally.replayRefused).toBeGreaterThanOrEqual(1);
+    expect((await stateOf(n))?.status).toBe('approved');
+    const { cardFreshness } = await import('../../src/lessons/index.js');
+    const [fresh] = await cardFreshness([CARD]);
+    expect(fresh?.scenarios.find((x) => x.name === 'answers-known-member')).toMatchObject({
+      passed: false,
+      change: `L-${n} fold`,
+    });
+  });
+
+  it('waits, never retiring, while no door carries the card it names', async () => {
+    const n = await approvedOn('Record what you learn about a member.', 'card:no.such-card');
     await db.execute(
       sql`UPDATE lessons SET applied_count = 5 WHERE project_id = ${w.projectId} AND number = ${n}`,
     );
-    const tally = await pass({
-      fold: () => {
-        throw new Error('no fold is asked while no card registry takes one');
+    const tally = await passWithCard({
+      fold: (l) => {
+        if ((l as { number: number }).number === n) {
+          throw new Error('no fold is asked for a card no door carries');
+        }
+        return null;
       },
     });
     expect(tally.foldWaiting).toBeGreaterThanOrEqual(1);
     expect((await stateOf(n))?.status).toBe('approved');
+  });
+});
+
+describe('a landing touching a card-anchored lesson marks the card owed a re-check (§5)', () => {
+  it('holds the lesson and owes the card a re-check, naming the landing', async () => {
+    const n = await approvedOn('Read the member before you answer.', 'card:iss1251.recheck-card');
+    const { invalidateLessonsForChange, cardFreshness } = await import(
+      '../../src/lessons/index.js'
+    );
+    await invalidateLessonsForChange(w.projectId, {
+      by: 'ISS-75',
+      paths: [],
+      text: 'Reworks iss1251.recheck-card: members carry roles.',
+    });
+    expect((await stateOf(n))?.status).toBe('held');
+    const [fresh] = await cardFreshness(['iss1251.recheck-card']);
+    expect(fresh?.recheckOwed).toMatchObject({ by: 'ISS-75 changed card:iss1251.recheck-card' });
   });
 });
 

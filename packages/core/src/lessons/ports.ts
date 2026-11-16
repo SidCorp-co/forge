@@ -24,17 +24,12 @@ interface LessonsPorts {
     issueId: string,
   ): Promise<{ key: string; text: string; paths: string[] | null; why?: string } | null>;
   /**
-   * The capability card registry (ISS-1251 §1), where one is provided: the paths a card's door lives
-   * in, marking a card owed a re-check, and folding a lesson that holds into its card as one delta.
-   * Absent, a card anchor is met by a landing naming it, and a lesson waiting to fold waits.
+   * The capability card registry (ISS-1251 §1): a card by its id, with the names of its scenarios,
+   * or null where no door carries that card; and, where the registry knows them, the paths its door
+   * lives in. Without paths, a card anchor is met by a landing naming the card.
    */
+  cardOf(cardId: string): Promise<{ id: string; scenarios: readonly string[] } | null>;
   cardPaths?(cardId: string): Promise<readonly string[]>;
-  cardRecheckOwed?(cardId: string, by: string): Promise<void>;
-  foldIntoCard?(
-    cardId: string,
-    delta: CardDelta,
-    by: string,
-  ): Promise<{ ok: true } | { ok: false; why: string }>;
 }
 
 /** One delta a lesson that holds adds to or changes in its card (ADD, UPDATE), never a rewrite. */

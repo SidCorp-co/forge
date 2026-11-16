@@ -288,3 +288,65 @@ export const lessonConfusions = pgTable(
     agencyChk: check('lesson_confusions_agency_chk', sql`${t.raisedAgency} IN ('human', 'agent')`),
   }),
 );
+
+// A capability card's freshness (0660, ISS-1251 §5, §7). Cards are Forge's own and live in code beside
+// their doors, so these rows are keyed by the card's id and belong to no project:
+//  - a card owed a re-check since a landing touched what it describes, until the re-check clears it;
+//  - the last replay of each of its scenarios, by name;
+//  - each delta a lesson that held folded into it, proposed until the card's code carries it.
+export const cardRechecks = pgTable('card_rechecks', {
+  cardId: text('card_id').primaryKey(),
+  owedSince: timestamp('owed_since', { withTimezone: true }).notNull().defaultNow(),
+  /** What touched it: `ISS-12 changed <path>`, newest first when touched again. */
+  owedBy: text('owed_by').notNull(),
+});
+
+export const cardScenarioRuns = pgTable(
+  'card_scenario_runs',
+  {
+    cardId: text('card_id').notNull(),
+    scenario: text('scenario').notNull(),
+    passed: integer('passed').notNull(),
+    /** The change it was replayed for: `L-12 fold`, `L-12 edit`. */
+    change: text('change').notNull(),
+    reason: text('reason').notNull(),
+    at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: uniqueIndex('card_scenario_runs_card_scenario_uq').on(t.cardId, t.scenario),
+    passedChk: check('card_scenario_runs_passed_chk', sql`${t.passed} IN (0, 1)`),
+  }),
+);
+
+export const CARD_DELTA_FIELDS = ['situation', 'bestPractice', 'redFlag'] as const;
+export const CARD_DELTA_STATUSES = ['proposed', 'applied', 'dropped'] as const;
+
+export const cardDeltas = pgTable(
+  'card_deltas',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    cardId: text('card_id').notNull(),
+    field: text('field', { enum: CARD_DELTA_FIELDS }).notNull(),
+    op: text('op', { enum: ['add', 'update'] }).notNull(),
+    text: text('text').notNull(),
+    replaces: text('replaces'),
+    projectId: uuid('project_id').references(() => projects.id, { onDelete: 'set null' }),
+    /** The lesson folded: `L-12`. */
+    fromLesson: text('from_lesson').notNull(),
+    status: text('status', { enum: CARD_DELTA_STATUSES }).notNull().default('proposed'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    cardIdx: index('card_deltas_card_idx').on(t.cardId, t.status),
+    fieldChk: check('card_deltas_field_chk', sql`${t.field} IN (${inList(CARD_DELTA_FIELDS)})`),
+    opChk: check('card_deltas_op_chk', sql`${t.op} IN ('add', 'update')`),
+    statusChk: check(
+      'card_deltas_status_chk',
+      sql`${t.status} IN (${inList(CARD_DELTA_STATUSES)})`,
+    ),
+    replacesChk: check(
+      'card_deltas_replaces_chk',
+      sql`(${t.op} = 'update') = (${t.replaces} IS NOT NULL)`,
+    ),
+  }),
+);

@@ -4,7 +4,8 @@
 //  - anchor: a lesson drafted before anchors is given one from its record, or listed as owing one;
 //  - re-check: a lesson a landing invalidated is re-admitted, edited or retired;
 //  - fold: a lesson that holds is folded into its card as one situation, best-practice line or red
-//    flag (ADD or UPDATE through the card registry's port), then retired: the card is its durable home.
+//    flag (an ADD or UPDATE delta, proposed until the card's code carries it, `lessons/card-freshness.ts`),
+//    then retired: the card is its durable home.
 // Replay: the change is read against the failures it claims to fix (its corrections) and the good
 // cases it must not break (the approved lessons in force); one that fixes none of its failures, or
 // breaks a good case, is not adopted. Every model call here is a parameter, so a test gives its own.
@@ -22,7 +23,9 @@ import {
   type LifecycleLesson,
   lessonsPorts,
   lessonsThatHold,
+  proposeCardDelta,
   readmitLesson,
+  recordScenarioRuns,
   retireLesson,
   unanchoredLessons,
 } from '../lessons/index.js';
@@ -168,7 +171,7 @@ export interface LifecycleTally {
   readmitted: number;
   invalidRetired: number;
   folded: number;
-  /** Lessons that hold and wait for their card: no card registry yet, or the card refused the delta. */
+  /** Lessons that hold and wait: their anchor names a card no door carries. */
   foldWaiting: number;
   /** Changes a replay did not adopt. */
   replayRefused: number;
@@ -277,7 +280,9 @@ async function recheckInvalid(
         failures: l.failures,
         goods: await goodCases(projectId, l.number),
       };
-      if (!adopts(await j.replay(projectId, input), input)) {
+      const anchor = edit.anchor ?? l.anchor ?? '';
+      const card = anchor.startsWith('card:') ? await lessonsPorts().cardOf(anchor.slice(5)) : null;
+      if (!(await replayOnCard(projectId, j.replay, card, input, `${ref} edit`))) {
         t.replayRefused += 1;
         continue;
       }
@@ -295,21 +300,52 @@ async function recheckInvalid(
   }
 }
 
+/**
+ * Replay a change to a card's teaching and keep each of the card's scenarios' result: a scenario the
+ * replay names as broken failed, every other passed. Whether the change is adopted.
+ */
+async function replayOnCard(
+  projectId: string,
+  replay: Replayer,
+  card: { id: string; scenarios: readonly string[] } | null,
+  input: ReplayInput,
+  change: string,
+): Promise<boolean> {
+  const withScenarios = card ? { ...input, goods: [...card.scenarios, ...input.goods] } : input;
+  const answer = await replay(projectId, withScenarios);
+  if (answer && card && card.scenarios.length > 0) {
+    await recordScenarioRuns(
+      card.id,
+      change,
+      card.scenarios.map((scenario) => ({
+        scenario,
+        passed: !answer.broken.includes(scenario),
+        reason: answer.reason,
+      })),
+    );
+  }
+  return adopts(answer, withScenarios);
+}
+
 async function foldHolding(
   projectId: string,
   actor: LessonActor,
   j: LifecycleJudges,
   t: LifecycleTally,
 ) {
-  const holding = await lessonsThatHold(projectId);
-  const fold = lessonsPorts().foldIntoCard;
-  if (!fold) {
-    t.foldWaiting += holding.length;
-    return;
-  }
-  for (const l of holding) {
+  for (const l of await lessonsThatHold(projectId)) {
     const ref = lessonKey(l.number);
     const cardId = String(l.anchor).slice('card:'.length);
+    const card = await lessonsPorts().cardOf(cardId);
+    if (!card) {
+      // a lesson anchored to a card no door carries waits; its anchor is the steward's to fix
+      t.foldWaiting += 1;
+      logger.warn(
+        { projectId, lesson: ref, card: cardId },
+        'steward: a lesson that holds names no card a door carries',
+      );
+      continue;
+    }
     const answer = await j.fold(projectId, l);
     if (!answer) continue;
     const input = {
@@ -318,7 +354,7 @@ async function foldHolding(
       failures: l.failures,
       goods: await goodCases(projectId, l.number),
     };
-    if (!adopts(await j.replay(projectId, input), input)) {
+    if (!(await replayOnCard(projectId, j.replay, card, input, `${ref} fold`))) {
       t.replayRefused += 1;
       continue;
     }
@@ -328,16 +364,8 @@ async function foldHolding(
       text: answer.text,
       ...(answer.op === 'update' && answer.replaces ? { replaces: answer.replaces } : {}),
     };
-    const folded = await fold(cardId, delta, ref);
-    if (!folded.ok) {
-      t.foldWaiting += 1;
-      logger.warn(
-        { projectId, lesson: ref, card: cardId, why: folded.why },
-        'steward: the card refused a fold',
-      );
-      continue;
-    }
-    const why = `Folded into card ${cardId} as a ${answer.field} (${answer.op}): ${answer.reason}`;
+    const id = await proposeCardDelta(cardId, delta, { projectId, lesson: ref });
+    const why = `Folded into card ${cardId} as a ${answer.field} (${answer.op}, delta ${id}): ${answer.reason}`;
     if (
       await refusalLogged(projectId, ref, () =>
         retireLesson({ projectId, ref, actor, reason: why }),

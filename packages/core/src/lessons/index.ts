@@ -14,6 +14,14 @@ export {
   lessonsMapText,
   restLessonDoors,
 } from './block.js';
+export {
+  type CardFreshness,
+  cardFreshness,
+  clearCardRecheck,
+  markCardRecheckOwed,
+  proposeCardDelta,
+  recordScenarioRuns,
+} from './card-freshness.js';
 export { type ConfusionSettlement, decideConfusion, raiseConfusion } from './confusions.js';
 export { registerLessonCorrections } from './consumers.js';
 export { type ThreadPost, threadLines } from './correction-thread.js';
