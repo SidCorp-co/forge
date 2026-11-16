@@ -13,4 +13,5 @@ export { runStewardReaskOnce } from './reask-once.js';
 export { releaseTakerOf } from './release-ask.js';
 export { retireStaleDraftQuestionsOnce } from './retire-stale-drafts.js';
 export { stewardRoutes } from './routes.js';
+export { stewardSlotDemand } from './slot-demand.js';
 export { openStewardAsks, sweepStandings } from './sweep.js';

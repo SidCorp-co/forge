@@ -1,56 +1,64 @@
-// The steward's cost guard (REQ-48): a run is priced a gateway turn per gateway act and one runner
-// job for all its runner acts, against the UTC day's budget, and a run that does not fit is refused
-// whole rather than run in part.
+// The steward's runaway guard (ISS-1255): the one bound on what it does once the daily budget went.
+// The same act on the same item runs `STEWARD_ACT_REPEAT_LIMIT` times on a standing that does not
+// move, and the next is refused STEWARD_ACT_REPEATED, naming the item, the act and the count.
+//
+// @direct-test-of packages/core/src/steward/policy.ts
 
-import { STEWARD_DAILY_BUDGET } from '@forge/contracts/steward';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../project-config/index.js', () => ({ readProjectDocument: async () => null }));
+const held = { enabled: true as boolean, repeats: 0, started: [] as string[] };
+vi.mock('../project-config/index.js', () => ({
+  readProjectDocument: async () =>
+    held.enabled ? null : { document: { steward: { enabled: false } } },
+}));
 vi.mock('./runs-store.js', () => ({
-  spentSince: async () => ({ gatewayTurns: 0, runnerJobs: 0 }),
-  markStarted: async () => undefined,
+  REPEATED_CODE: 'STEWARD_ACT_REPEATED',
+  repeatsOnBasis: async () => held.repeats,
+  markStarted: async (id: string) => {
+    held.started.push(id);
+  },
 }));
 
-const { costOf, fits, slotsFor, utcDayStart } = await import('./policy.js');
+const { admitRun, repeatedRefusal, STEWARD_ACT_REPEAT_LIMIT } = await import('./policy.js');
 
-describe('the steward cost guard', () => {
-  it('prices a gateway turn per gateway act and one job for all runner acts', () => {
-    expect(costOf(['intake_check', 'breakdown_check'])).toEqual({ gatewayTurns: 2, runnerJobs: 0 });
-    expect(costOf(['triage_draft', 'release_followthrough'])).toEqual({
-      gatewayTurns: 0,
-      runnerJobs: 1,
+const run = { id: 'r1', projectId: 'p1', subjectKind: 'feedback', subjectId: 'f1' };
+
+beforeEach(() => {
+  held.enabled = true;
+  held.repeats = 0;
+  held.started = [];
+});
+
+describe('the runaway guard', () => {
+  it('admits an act one short of its limit on an unmoved standing, and starts the run', async () => {
+    held.repeats = STEWARD_ACT_REPEAT_LIMIT - 1;
+    expect(await admitRun(run, ['note'], 'b1')).toBeNull();
+    expect(held.started).toEqual(['r1']);
+  });
+
+  it('refuses the act at its limit, naming the act and the count, and starts nothing', async () => {
+    held.repeats = STEWARD_ACT_REPEAT_LIMIT;
+    expect(await admitRun(run, ['note', 'triage_draft'], 'b1')).toEqual({
+      repeated: { act: 'note', count: STEWARD_ACT_REPEAT_LIMIT, basis: 'b1' },
     });
-    expect(costOf(['note', 'triage_draft'])).toEqual({ gatewayTurns: 1, runnerJobs: 1 });
-    expect(costOf([])).toEqual({ gatewayTurns: 0, runnerJobs: 0 });
+    expect(held.started).toEqual([]);
   });
 
-  it('fits a run up to the budget exactly, and not one turn or job past it', () => {
-    const budget = STEWARD_DAILY_BUDGET;
-    const one = { gatewayTurns: 1, runnerJobs: 0 };
-    expect(fits(budget, { gatewayTurns: 199, runnerJobs: 0 }, one)).toBe(true);
-    expect(fits(budget, { gatewayTurns: 200, runnerJobs: 0 }, one)).toBe(false);
-    const job = { gatewayTurns: 0, runnerJobs: 1 };
-    expect(fits(budget, { gatewayTurns: 0, runnerJobs: 9 }, job)).toBe(true);
-    expect(fits(budget, { gatewayTurns: 0, runnerJobs: 10 }, job)).toBe(false);
-    expect(fits({ gatewayTurns: 0, runnerJobs: 0 }, { gatewayTurns: 0, runnerJobs: 0 }, one)).toBe(
-      false,
-    );
+  it('never holds a run with no standing to compare as a repeat', async () => {
+    held.repeats = STEWARD_ACT_REPEAT_LIMIT * 3;
+    expect(await admitRun(run, ['release_followthrough'], null)).toBeNull();
   });
 
-  it('takes up runs at once by the budget: a slot per 25 daily turns, at least 1 and at most 8', () => {
-    expect(slotsFor(STEWARD_DAILY_BUDGET)).toBe(8);
-    expect(slotsFor({ gatewayTurns: 50, runnerJobs: 10 })).toBe(2);
-    expect(slotsFor({ gatewayTurns: 24, runnerJobs: 10 })).toBe(1);
-    expect(slotsFor({ gatewayTurns: 0, runnerJobs: 0 })).toBe(1);
-    expect(slotsFor({ gatewayTurns: 10_000, runnerJobs: 10 })).toBe(8);
+  it('skips every run of a project whose steward is off', async () => {
+    held.enabled = false;
+    expect(await admitRun(run, ['note'], 'b1')).toEqual({ skip: 'steward_off' });
   });
 
-  it("counts the day from UTC midnight, whatever the box's zone", () => {
-    expect(utcDayStart(new Date('2026-10-21T23:59:59.999Z')).toISOString()).toBe(
-      '2026-10-21T00:00:00.000Z',
+  it('words the refusal with its code, the item, the act and the count', () => {
+    const text = repeatedRefusal(
+      { subjectKey: 'FB-7' },
+      { act: 'stuck_diagnosis', count: 6, basis: 'b9' },
     );
-    expect(utcDayStart(new Date('2026-10-22T00:00:00.000Z')).toISOString()).toBe(
-      '2026-10-22T00:00:00.000Z',
-    );
+    expect(text).toMatch(/^STEWARD_ACT_REPEATED: stuck_diagnosis on FB-7 already ran 6 times/);
   });
 });

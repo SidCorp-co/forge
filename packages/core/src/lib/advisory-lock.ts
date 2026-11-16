@@ -49,7 +49,6 @@ const LOCK_NAMESPACES = {
   stewardRun: 36,
   stewardAccount: 37,
   lessons: 38,
-  stewardBudget: 39,
   supportRoom: 40,
   supportDispatch: 41,
   feedbackServerKey: 42,

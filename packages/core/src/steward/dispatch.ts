@@ -3,8 +3,10 @@
 // once, so a trigger is acted on within 2 minutes and 30 seconds however long the backlog, and it
 // ends the runs nothing else will (a cancelled job sends no event; a gateway run whose process died).
 // A run takes its acts in `STEWARD_ACTS` order: the gateway acts as turns, then its runner acts as
-// one job; behind its project's live job, or with the day's runner jobs spent, its turns now and
-// its job in the run its end queues (due the next UTC day where the budget is what held it).
+// one job. That job is a run on its project's box like any other (ISS-1255): it starts when the
+// project has a free slot (`devices/run-slots.ts:slotsFor`, asked through `refuseRunWithoutSlot`)
+// and waits for one, never for a day; a run that took its turns carries the job into the run its
+// end queues. Nothing here counts a slot: the steward's demand is read by the box's slot read.
 
 import { randomUUID } from 'node:crypto';
 import {
@@ -14,18 +16,24 @@ import {
   type StewardAct,
   type StewardFailureKind,
 } from '@forge/contracts/steward';
+import { refuseRunWithoutSlot } from '../devices/index.js';
 import { logger } from '../lib/logger.js';
+import { RefusalError } from '../lib/refusal.js';
 import { stewardAccountOf } from './account.js';
-import { enqueueStewardJob, jobEndFailure, revokeJobCredential, stewardJobLive } from './job.js';
-import { budgetNote, judgeOwedNote } from './note.js';
-import { admitRun, nextUtcDay, slotsFor, stewardStanceOf } from './policy.js';
+import {
+  boxesOf,
+  enqueueStewardJob,
+  type JobStart,
+  jobEndFailure,
+  revokeJobCredential,
+} from './job.js';
+import { repeatedNote } from './note.js';
+import { admitRun, repeatedRefusal } from './policy.js';
 import { openStandings } from './ports.js';
 import {
   carryActs,
   claimDueRuns,
-  deferSweepRun,
   endRun,
-  type RunEnd,
   type RunRow,
   requeueRun,
   runsToSettle,
@@ -36,8 +44,8 @@ import { runGatewayAct } from './turn.js';
 
 /** How many runs this core takes up at once, across its projects. */
 const CORE_SLOTS = 16;
-/** How long a run behind its project's live steward job waits before it is tried again. */
-const JOB_LIVE_RETRY_MS = 60_000;
+/** How long a run whose project has no free slot for its job waits before it is tried again. */
+const SLOT_RETRY_MS = 60_000;
 
 /** The subject's row of the one standing read, or null where the read holds none. */
 async function standingOf(run: RunRow): Promise<ItemStanding | null> {
@@ -107,17 +115,65 @@ async function endedSince(run: RunRow, acts: readonly StewardAct[]): Promise<boo
   return !subject || actsOwedAt(subject.kind, subject.status, acts).length === 0;
 }
 
-/** Where a run stands after a tick: ended, waiting on the job it started, or behind its project's live steward job. */
-type RunOutcome = 'ended' | 'job_started' | 'job_live';
+/** Where a run stands after a tick: ended, waiting on the job it started, or waiting for a slot. */
+type RunOutcome = 'ended' | 'job_started' | 'slot_wait';
 
-/** Take one claimed run as far as it goes now; a `job_live` run is put back by the caller to retry. */
-export async function runOne(run: RunRow, now: Date): Promise<RunOutcome> {
+/** What one tick knows: the projects already found with no free slot, read once a tick. */
+export interface Tick {
+  noSlot: Set<string>;
+}
+
+const isSlotRefusal = (err: unknown): boolean =>
+  err instanceof RefusalError && err.refusals.some((r) => r.code === 'RUN_SLOT_UNAVAILABLE');
+
+/**
+ * Whether the project has a free slot for one more run on a box it is bound to: the run-declare
+ * door's own answer. A project bound to no box is let through, and the job's enqueue names that.
+ */
+async function slotFree(projectId: string, tick: Tick): Promise<boolean> {
+  if (tick.noSlot.has(projectId)) return false;
+  const boxes = await boxesOf(projectId);
+  if (boxes.length === 0) return true;
+  for (const deviceId of boxes) {
+    try {
+      await refuseRunWithoutSlot({ deviceId, projectId });
+      return true;
+    } catch (err) {
+      if (!isSlotRefusal(err)) throw err;
+    }
+  }
+  tick.noSlot.add(projectId);
+  return false;
+}
+
+/**
+ * Slot reads and job enqueues taken one at a time in this process, so two runs of a project never
+ * both read the one free slot before either job is there to hold it.
+ */
+let slotGate: Promise<unknown> = Promise.resolve();
+function throughSlotGate<T>(fn: () => Promise<T>): Promise<T> {
+  const next = slotGate.then(fn, fn);
+  slotGate = next.catch(() => undefined);
+  return next;
+}
+
+/** Start the run's job where its project has a free slot; null where it has none. */
+const startJobInSlot = (run: RunRow, runner: readonly StewardAct[], tick: Tick) =>
+  throughSlotGate<JobStart | null>(async () =>
+    (await slotFree(run.projectId, tick)) ? enqueueStewardJob(run, runner) : null,
+  );
+
+/** Take one claimed run as far as it goes now; a `slot_wait` run is put back by the caller to retry. */
+export async function runOne(run: RunRow, tick: Tick = { noSlot: new Set() }): Promise<RunOutcome> {
   const subject = await subjectOf(run.projectId, run.subjectKind, run.subjectId);
   const owed = subject ? actsOwedAt(subject.kind, subject.status, run.actsToRun) : [];
   if (owed.length === 0) {
     await endRun(run.id, { state: 'skipped', reason: 'subject_ended' });
     return 'ended';
   }
+  // a run owing only a job waits for its slot before anything else is read
+  const jobOnly = owed.every((a) => STEWARD_ACT_RUNTIME[a] === 'runner_job');
+  if (jobOnly && !(await slotFree(run.projectId, tick))) return 'slot_wait';
   const standing = await standingOf(run);
   const after = actsAfterStanding(owed, standing);
   if (after.length === 0) {
@@ -126,59 +182,29 @@ export async function runOne(run: RunRow, now: Date): Promise<RunOutcome> {
   }
   const { acts, apart } = checkAlone(after);
   const gateway = acts.filter((a) => STEWARD_ACT_RUNTIME[a] === 'gateway_turn');
-  // one steward job live per project: a run owing only a job waits, before it spends a turn; one
-  // owing turns too starts with them, and its job waits in the run its end queues (ISS-618 c1)
-  const behindJob =
-    acts.some((a) => STEWARD_ACT_RUNTIME[a] === 'runner_job') &&
-    (await stewardJobLive(run.projectId));
-  if (behindJob && gateway.length === 0) return 'job_live';
-  let taken = behindJob ? gateway : acts;
-  let refused = await admitRun(run, taken, now);
-  // a refused turn never ends the job it was carrying: the run waits for the job, and is read whole
-  if (refused && behindJob) return 'job_live';
-  // the day's runner jobs are spent, or the sweep's share of them, and its turns are not: the turns
-  // run now and the job waits for tomorrow's, as it waits behind a live job (ISS-618 c1, judged on
-  // dev.325: FB-292's note fit and the whole run was skipped, its triage with it; REQ-48 BC-7 on
-  // dev.683: FB-646's standing moved and its note waited a day behind the triage it carried)
-  let carriedUntil: Date | null = null;
-  if (
-    (refused === 'budget_spent' || refused === 'next_day') &&
-    gateway.length > 0 &&
-    gateway.length < acts.length
-  ) {
-    if ((await admitRun(run, gateway, now)) === null) {
-      taken = gateway;
-      refused = null;
-      carriedUntil = nextUtcDay(now);
-    }
+  const runner = acts.filter((a) => STEWARD_ACT_RUNTIME[a] === 'runner_job');
+  // left owing only a job, it waits for its slot before it is taken up; one owing turns too starts
+  // with them, so a filed item's note is never held behind its project's busy box (ISS-618 c1)
+  if (!jobOnly && gateway.length === 0 && !(await slotFree(run.projectId, tick))) {
+    return 'slot_wait';
   }
-  if (refused === 'next_day') {
-    // the sweep's share of today is spent: the run waits for tomorrow's, in its place in the queue,
-    // unless a handoff arrived while it was claimed
-    await deferSweepRun(run.id, nextUtcDay(now));
-    return 'ended';
-  }
-  if (refused === 'budget_spent') {
-    // nothing it owes fits today: it waits for the next day's budget, queued, and the item says so;
-    // an ended run is raised again by nothing (dev.287's judges, dev.325's FB-292)
-    const until = nextUtcDay(now);
-    await deferSweepRun(run.id, until);
-    if (acts.includes('release_followthrough')) {
-      await judgeOwedNote(run, until, (await stewardStanceOf(run.projectId)).budget.runnerJobs);
-    } else {
-      await budgetNote(run, standing);
-    }
+  const basis = standing?.basis ?? run.basis;
+  const refused = await admitRun(run, acts, basis);
+  if (refused && 'skip' in refused) {
+    await endRun(run.id, { state: 'skipped', reason: refused.skip });
     return 'ended';
   }
   if (refused) {
-    await endRun(run.id, { state: 'skipped', reason: refused });
+    await repeatedNote(run, standing, refused.repeated);
+    await endRun(run.id, {
+      state: 'failed',
+      failure: repeatedRefusal(run, refused.repeated),
+      kind: 'refused',
+    });
     return 'ended';
   }
-  const runner = taken.filter((a) => STEWARD_ACT_RUNTIME[a] === 'runner_job');
-  await stampRun(run.id, { actsToRun: acts, basis: standing?.basis ?? run.basis });
-  const carried = [...apart, ...acts.filter((a) => !taken.includes(a))];
-  if (carried.length > 0) await carryActs(run.id, carried);
-  const end = (e: RunEnd) => endRun(run.id, e, new Date(), { followUpNotBefore: carriedUntil });
+  await stampRun(run.id, { actsToRun: acts, basis });
+  if (apart.length > 0) await carryActs(run.id, apart);
   const ran = gateway.length > 0 ? await runGatewayActs(run, gateway, standing) : null;
   if (ran && ran.failures.length > 0) {
     // the item ended while its turns ran: nothing is owed an ended item, so the run is skipped as one
@@ -186,17 +212,27 @@ export async function runOne(run: RunRow, now: Date): Promise<RunOutcome> {
     // half a minute into their output check, the note door refused an item no longer open, and the
     // run read failed, REQ-48 BC-6)
     if (await endedSince(run, gateway)) {
-      await end({ state: 'skipped', reason: 'subject_ended' });
+      await endRun(run.id, { state: 'skipped', reason: 'subject_ended' });
       return 'ended';
     }
-    await end({ state: 'failed', failure: ran.failures.join('\n'), kind: ran.kind });
+    await endRun(run.id, { state: 'failed', failure: ran.failures.join('\n'), kind: ran.kind });
     return 'ended';
   }
   if (runner.length === 0) {
-    await end({ state: 'done' });
+    await endRun(run.id, { state: 'done' });
     return 'ended';
   }
-  const started = await enqueueStewardJob(run, runner);
+  const started = await startJobInSlot(run, runner, tick);
+  if (started === null) {
+    if (gateway.length === 0) return 'slot_wait';
+    // its turns are taken and its project's slots are not free: the job waits for one in the run its
+    // end queues, tried again after the retry
+    await carryActs(run.id, runner);
+    await endRun(run.id, { state: 'done' }, new Date(), {
+      followUpNotBefore: new Date(Date.now() + SLOT_RETRY_MS),
+    });
+    return 'ended';
+  }
   if (!started.ok) {
     await endRun(run.id, { state: 'failed', failure: started.failure, kind: 'error' });
     return 'ended';
@@ -218,13 +254,13 @@ export async function settleJobRun(run: RunRow, jobStatus: string | null): Promi
   await endRun(run.id, { state: 'failed', failure, kind: 'error' });
 }
 
-/** The runs this core has taken up and not yet finished, by run id, with the project each is of. */
-const inFlight = new Map<string, string>();
+/** The runs this core has taken up and not yet finished, by run id. */
+const inFlight = new Set<string>();
 
 /** One claimed run taken as far as it goes, its failure ended on the run rather than thrown. */
-async function takeUp(run: RunRow, now: Date): Promise<void> {
+async function takeUp(run: RunRow, tick: Tick): Promise<void> {
   try {
-    if ((await runOne(run, now)) === 'job_live') await requeueRun(run.id, JOB_LIVE_RETRY_MS);
+    if ((await runOne(run, tick)) === 'slot_wait') await requeueRun(run.id, SLOT_RETRY_MS);
   } catch (err) {
     logger.error({ err, runId: run.id, subject: run.subjectKey }, 'steward: a run failed');
     await endRun(run.id, {
@@ -238,11 +274,10 @@ async function takeUp(run: RunRow, now: Date): Promise<void> {
 }
 
 /**
- * Settle the runs nothing else ends, then take up the due runs this core has slots for: up to
- * `CORE_SLOTS` at once, and per project the slots its daily budget sizes (`policy.ts:slotsFor`).
- * A run beyond its project's slots goes back to the queue, due now. The timer does not wait for the
- * runs it took up (`wait: false`), so a long turn never holds the next tick's claim; a caller that
- * reads what the runs did waits for them.
+ * Settle the runs nothing else ends, then take up the due runs this core has room for, up to
+ * `CORE_SLOTS` at once, handoffs first (`claimDueRuns`). The timer does not wait for the runs it took
+ * up (`wait: false`), so a long turn never holds the next tick's claim; a caller that reads what the
+ * runs did waits for them.
  */
 export async function dispatchStewardRuns(
   now = new Date(),
@@ -253,21 +288,11 @@ export async function dispatchStewardRuns(
     if (!inFlight.has(run.id)) await settleJobRun(run, jobStatus);
   }
   const claimed = await claimDueRuns(now, CORE_SLOTS - inFlight.size);
+  const tick: Tick = { noSlot: new Set() };
   const launched: Promise<void>[] = [];
-  const slots = new Map<string, number>();
   for (const run of claimed) {
-    let free = slots.get(run.projectId);
-    if (free === undefined) {
-      const busy = [...inFlight.values()].filter((p) => p === run.projectId).length;
-      free = slotsFor((await stewardStanceOf(run.projectId)).budget) - busy;
-    }
-    if (free <= 0) {
-      await requeueRun(run.id, 0);
-      continue;
-    }
-    slots.set(run.projectId, free - 1);
-    inFlight.set(run.id, run.projectId);
-    launched.push(takeUp(run, now));
+    inFlight.add(run.id);
+    launched.push(takeUp(run, tick));
   }
   if (opts.wait !== false) await Promise.all(launched);
   return { started: launched.length, settled: stranded.length };

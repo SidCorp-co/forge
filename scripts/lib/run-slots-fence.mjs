@@ -31,10 +31,7 @@ export const SIZE_HOLDERS = {
  * Files defining a function of the same name for another subject, each with what it counts. Not a
  * box's subagents, so not this rule's; a file that is moves under the rule instead.
  */
-export const OTHER_SLOTS = {
-  'packages/core/src/steward/policy.ts':
-    "a steward's runs at once, by its gateway budget: runs core starts, not subagents a box starts",
-};
+export const OTHER_SLOTS = {};
 
 const SIZE = /\b(maxSubagents|max_subagents|setMaxSubagents)\b/;
 const DEFINES_RULE = /\b(?:function\s+slotsFor|(?:const|let|var)\s+slotsFor\b|fn\s+slots_for\b)/;

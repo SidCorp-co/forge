@@ -77,7 +77,6 @@ const sweep = (projectId: string, now: Date) =>
     changed: 0,
     settledAsks: 0,
     checks: 0,
-    paced: 0,
   });
 
 /** A run a test left queued is never taken up by the next test's dispatch. */
@@ -130,22 +129,6 @@ const changedOn = async (projectId: string) =>
 
 const noteOf = async (projectId: string, subjectId: string): Promise<StewardNote | null> =>
   (await realStandings(projectId)).find((s) => s.subject.id === subjectId)?.note ?? null;
-
-/** Leave the sweep's share of today room for exactly `room` more runs on `projectId`. */
-async function leaveRoom(projectId: string, filler: Item, room: number) {
-  const { spentSince, sweepQueued } = await import('../../src/steward/runs-store.js');
-  const { sharesOf, stewardStanceOf, utcDayStart } = await import('../../src/steward/policy.js');
-  const now = new Date();
-  const share = sharesOf((await stewardStanceOf(projectId)).budget).sweep.gatewayTurns;
-  const used =
-    (await spentSince(projectId, utcDayStart(now), { sweepOnly: true })).gatewayTurns +
-    (await sweepQueued(projectId, now)).gatewayTurns;
-  await rows(sql`
-    INSERT INTO steward_runs (project_id, subject_kind, subject_id, subject_key, trigger, events, acts_to_run,
-                              state, turns, not_before, started_at, ended_at)
-    VALUES (${projectId}, 'issue', ${filler.id}, ${filler.key}, 'standing.changed', '[]'::jsonb,
-            ARRAY['note']::text[], 'done', ${share - used - room}, now(), now(), now())`);
-}
 
 beforeAll(async () => {
   testEnv();
@@ -257,20 +240,26 @@ describe('a note written under facts core has since reworded is re-diagnosed (IS
     expect(await noteRunsOf(read.subject.id)).toHaveLength(1);
   });
 
-  it("spends only the sweep's share, the oldest note first (boundary)", async () => {
+  it('rewrites every reworded note in one sweep, whatever the steward ran today (boundary)', async () => {
     const projectId = (await createTestProject(ownerId)).id;
     const filler = await createTestIssue(projectId, ownerId, 1, {
       status: 'dropped',
       createdAt: new Date(),
     });
+    // a day the old budget would have read spent: 200 gateway turns of notes
+    await rows(sql`
+      INSERT INTO steward_runs (project_id, subject_kind, subject_id, subject_key, trigger, events, acts_to_run,
+                                state, turns, not_before, started_at, ended_at)
+      VALUES (${projectId}, 'issue', ${filler.id}, ${filler.key}, 'standing.changed', '[]'::jsonb,
+              ARRAY['note']::text[], 'done', 200, now(), now(), now())`);
     const newer = await requirement(projectId, 'Night rounds list the nurse');
     const older = await requirement(projectId, 'Ward rounds list the doctor');
     await noteWrittenBefore(projectId, newer, new Date(Date.now() - 3_600_000));
     await noteWrittenBefore(projectId, older, new Date(Date.now() - 3 * 86_400_000));
-    await leaveRoom(projectId, filler, 1);
     await sweep(projectId, new Date());
-    // room for one: the older note is rewritten today, the newer waits for a later sweep
-    expect(await changedOn(projectId)).toEqual([older.subject.key]);
+    expect((await changedOn(projectId)).sort()).toEqual(
+      [older.subject.key, newer.subject.key].sort(),
+    );
     await settleOutbox();
     await dropQueued(projectId);
   });

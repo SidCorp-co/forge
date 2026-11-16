@@ -16,13 +16,12 @@
 // alone because its standing's decision forbade an ask, and spent the sweep's day by 02:00Z.
 // An ask of the master stands until its item's basis moves, its item waits on a person, or a reasoned
 // decision on the item, or on the item whose run asked, answers it; one answered since it was made
-// leaves the master's nudge at once, and the sweep settles it. The sweep spends only its share of the
-// day's budget (`policy.ts:sharesOf`), less what handoffs spent past their own: it raises no more runs
-// than that has room for, oldest stuck first, then the oldest note, and the rest wait for a later
-// sweep, so a full backlog is paced across days and the handoff share stays whole. Before any of it,
-// an agreed requirement whose check ended without finishing an hour ago, or never ran, has its check
-// queued again (`owed-checks.ts`): its delivery waits on that check, so it is a handoff billed to the
-// handoff share whatever room the sweep has left, and nothing else raises it.
+// leaves the master's nudge at once, and the sweep settles it. It raises stuck items oldest stuck
+// first, then the oldest note; the dispatch takes a handoff's run ahead of all of them
+// (`runs-store.ts:claimDueRuns`), and a job one of them owes waits for its project's slot like any
+// run on the box (ISS-1255). Before any of it, an agreed requirement whose check ended without
+// finishing an hour ago, or never ran, has its check queued again (`owed-checks.ts`): its delivery
+// waits on that check, so it is queued as the handoff that owed it, and nothing else raises it.
 
 import type { ItemStanding, StandingSubject, StandingSubjectKind } from '@forge/contracts/steward';
 import { isNull } from 'drizzle-orm';
@@ -41,10 +40,10 @@ import {
   settleAsks,
 } from './asks.js';
 import { raiseOwedChecks } from './owed-checks.js';
-import { sharesOf, stewardStanceOf, utcDayStart } from './policy.js';
+import { stewardStanceOf } from './policy.js';
 import { openStandings } from './ports.js';
 import { sweepRequirementRuleMoves } from './requirement-rule-moves.js';
-import { diagnosesOnBasis, ranOnBasis, spentSince, sweepQueued } from './runs-store.js';
+import { diagnosesOnBasis, ranOnBasis } from './runs-store.js';
 
 export interface SweepTally {
   projects: number;
@@ -53,26 +52,11 @@ export interface SweepTally {
   settledAsks: number;
   /** Requirements whose owed check it queued again: it ended without finishing, or never ran. */
   checks: number;
-  /** Items the sweep would have raised and left for a later sweep, its share of the day spent. */
-  paced: number;
 }
 
-/**
- * How many gateway turns the sweep may still commit today: its share less what it spent, or the whole
- * day less what every run spent where handoffs spent past their own share into it, less what it queued.
- */
-async function sweepRoom(projectId: string, now: Date): Promise<number> {
-  const { budget } = await stewardStanceOf(projectId);
-  const day = utcDayStart(now);
-  const swept = await spentSince(projectId, day, { sweepOnly: true });
-  const all = await spentSince(projectId, day);
-  const queued = await sweepQueued(projectId, now);
-  const left = Math.min(
-    sharesOf(budget).sweep.gatewayTurns - swept.gatewayTurns,
-    budget.gatewayTurns - all.gatewayTurns,
-  );
-  return left - queued.gatewayTurns;
-}
+/** The UTC midnight `now` falls after: the day `DIAGNOSES_PER_BASIS_A_DAY` counts in. */
+const utcDayStart = (now: Date): Date =>
+  new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 
 /** How many times one stuck basis may be diagnosed in a UTC day, whatever ended each diagnosis. */
 export const DIAGNOSES_PER_BASIS_A_DAY = 2;
@@ -98,7 +82,7 @@ async function diagnosedEnough(
 
 /**
  * Stuck items first, longest stuck first, then the rest by their note, oldest first, and those with
- * none as read: the order the sweep's room is spent in.
+ * none as read: the order the sweep raises them in.
  */
 function byAge(rows: readonly ItemStanding[]): ItemStanding[] {
   const since = (r: ItemStanding) =>
@@ -132,7 +116,6 @@ async function sweepRow(
   row: ItemStanding,
   stuckIssues: ReadonlySet<string>,
   tally: SweepTally,
-  room: { turns: number },
   now: Date,
 ) {
   const subject = { kind: row.subject.kind, id: row.subject.id, key: row.subject.key };
@@ -145,11 +128,6 @@ async function sweepRow(
     // a diagnosed item's note under reworded facts is rewritten by a note run, below
     if (diagnosed && !reworded) return;
     if (!diagnosed) {
-      if (room.turns <= 0) {
-        tally.paced += 1;
-        return;
-      }
-      room.turns -= 1;
       await db.transaction((tx) =>
         emitEvent(tx, 'standing.stuck', {
           projectId,
@@ -169,11 +147,6 @@ async function sweepRow(
   // a reworded note counts only the runs since it was written, so the run that wrote it is none
   const since = reworded ? { queuedAfter: new Date(reworded.writtenAt) } : {};
   if (await ranOnBasis(subject, 'note', row.basis, since)) return;
-  if (room.turns <= 0) {
-    tally.paced += 1;
-    return;
-  }
-  room.turns -= 1;
   await db.transaction((tx) =>
     emitEvent(tx, 'standing.changed', { projectId, subject, basis: row.basis }),
   );
@@ -204,10 +177,9 @@ export async function sweepProjectStandings(
   const stuckIssues = new Set(
     rows.filter((r) => r.subject.kind === 'issue' && r.stuck).map((r) => r.subject.key),
   );
-  // a check owed holds a delivery: a handoff, billed to the handoff share, never to the sweep's room
+  // a check owed holds a delivery: queued as the handoff that owed it
   tally.checks += await raiseOwedChecks(projectId, now);
-  const room = { turns: await sweepRoom(projectId, now) };
-  for (const row of byAge(rows)) await sweepRow(projectId, row, stuckIssues, tally, room, now);
+  for (const row of byAge(rows)) await sweepRow(projectId, row, stuckIssues, tally, now);
   tally.settledAsks += await settleProjectAsks(projectId, rows, now);
 }
 
@@ -220,7 +192,6 @@ export async function sweepStandings(now = new Date()): Promise<SweepTally> {
     changed: 0,
     settledAsks: 0,
     checks: 0,
-    paced: 0,
   };
   const live = await db
     .select({ id: projects.id })

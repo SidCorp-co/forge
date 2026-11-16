@@ -876,11 +876,14 @@ export function stewardDecisionEffect(
 /** Why a run was skipped rather than run: said on the item, never silent. */
 export const STEWARD_SKIP_REASONS = [
 	"basis_unchanged",
+	/** Retired (ISS-1255): no run waits on a daily budget now; the value names the runs skipped before, which a store keeps. */
 	"budget_spent",
 	"steward_off",
 	"subject_ended",
 ] as const;
 export type StewardSkipReason = (typeof STEWARD_SKIP_REASONS)[number];
+/** The skip reasons core still writes: every one but the retired. */
+export type StewardLiveSkipReason = Exclude<StewardSkipReason, "budget_spent">;
 
 /** A trigger starts its run within this (BC-1); events inside the debounce fold into one run. */
 export const STEWARD_START_WITHIN_MS = 5 * 60_000;
@@ -889,12 +892,6 @@ export const STEWARD_DEBOUNCE_MS = 2 * 60_000;
 export const STEWARD_STUCK_ACT_WITHIN_MS = 60 * 60_000;
 /** The stuck sweep's period: an item turning stuck by time is seen within it. */
 export const STANDING_SWEEP_MS = 5 * 60_000;
-
-/** Per project and UTC day, unless the project's `steward` policy lowers them. */
-export const STEWARD_DAILY_BUDGET = {
-	gatewayTurns: 200,
-	runnerJobs: 10,
-} as const;
 
 /**
  * A steward run as the item's page and the run log read it (BC-1). A run carries every distinct act
@@ -965,7 +962,8 @@ export const STEWARD_REFUSAL_CODES = [
 	"STEWARD_ACT_UNKNOWN",
 	"STEWARD_ACT_NOT_UNDOABLE",
 	"STEWARD_ACT_SUPERSEDED",
-	"STEWARD_BUDGET_SPENT",
+	/** The same act on the same item ran its limit of times without the item's standing moving: a runaway (ISS-1255). */
+	"STEWARD_ACT_REPEATED",
 	"STEWARD_DECISION_REASON_REQUIRED",
 	"STEWARD_DECISION_STALE",
 	"STEWARD_DECISION_SUBJECT_UNKNOWN",
@@ -989,7 +987,7 @@ export const STEWARD_REFUSAL_STATUSES = {
 	STEWARD_RUN_NOT_JOB: 409,
 	STEWARD_ACT_UNKNOWN: 404,
 	STEWARD_ACT_SUPERSEDED: 409,
-	STEWARD_BUDGET_SPENT: 409,
+	STEWARD_ACT_REPEATED: 409,
 	STEWARD_DECISION_STALE: 409,
 	STEWARD_DECISION_SUBJECT_UNKNOWN: 404,
 	STEWARD_MERGE_TARGET_ENDED: 409,

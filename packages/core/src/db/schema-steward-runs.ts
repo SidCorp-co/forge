@@ -45,8 +45,9 @@ export interface StewardUndo {
  * `running`) is the only one its subject holds, by the partial unique index; a trigger arriving while
  * one is queued folds into it (`acts_to_run`, `events`), and one arriving while it runs is kept in
  * `follow_up` / `follow_up_events`, which the run's end queues as the next run. `basis` is the
- * standing basis the run read, so the sweep starts no stuck diagnosis twice on the same basis.
- * `turns` counts the gateway turns it spent, which the daily budget sums.
+ * standing basis the run read, so the sweep starts no stuck diagnosis twice on the same basis, and
+ * the runaway guard counts an act repeated on it (`steward/policy.ts`). `turns` counts the gateway
+ * turns it spent.
  */
 export const stewardRuns = pgTable(
   'steward_runs',

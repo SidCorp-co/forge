@@ -3,6 +3,7 @@
 // method, so the runner never branches on the type. The steward account's token is minted when a box
 // claims the job and handed in the brief, never stored with the job; it is revoked when the job ends.
 // Where no runner is bound the run ends failed naming it: it never falls back to a gateway guess.
+// Whether it may start is its project's slot on the box (`dispatch.ts`), never a count of its own.
 
 import type { PoolClaimRefusalCode } from '@forge/contracts/devices';
 import { OCCUPYING_JOB_STATUSES } from '@forge/contracts/job-machine';
@@ -11,7 +12,6 @@ import { and, eq, like, or, sql } from 'drizzle-orm';
 import { lockPatName, revokeLiveTokens } from '../credentials/pat.js';
 import { turnAuthorityRefusalOf } from '../credentials/turn-credential.js';
 import { db, type Tx } from '../db/client.js';
-import { rowsOf } from '../db/raw-sql.js';
 import { jobs, personalAccessTokens, runners } from '../db/schema.js';
 import { finalizeJobDone } from '../jobs/index.js';
 import { env } from '../lib/env.js';
@@ -22,7 +22,7 @@ import { stewardAccountOf } from './account.js';
 import { mintStewardCredential } from './credential.js';
 import { stewardPorts } from './ports.js';
 import { actContext, actPrompt } from './prompts.js';
-import { endRun, liveStewardJobOf, type RunRow, runOfProject } from './runs-store.js';
+import { endRun, type RunRow, runOfProject } from './runs-store.js';
 
 /** The job's own limit, and its token's life past it. */
 const JOB_TIMEOUT_SECONDS = 3600;
@@ -30,21 +30,13 @@ const JOB_TOKEN_TTL_MS = (JOB_TIMEOUT_SECONDS + 10 * 60) * 1000;
 
 export type JobStart = { ok: true; jobId: string } | { ok: false; failure: string };
 
-async function runnerBound(projectId: string): Promise<boolean> {
-  const [row] = await db
-    .select({ id: runners.id })
+/** The boxes the project is bound to, where its steward job may run and holds its slot. */
+export async function boxesOf(projectId: string): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ deviceId: runners.deviceId })
     .from(runners)
-    .where(eq(runners.projectId, projectId))
-    .limit(1);
-  return row !== undefined;
-}
-
-/** Whether the project already has a steward job live for a live run: one at a time per project (cost guard). */
-export async function stewardJobLive(projectId: string): Promise<boolean> {
-  const [row] = rowsOf<{ live: boolean }>(
-    await db.execute(sql`SELECT ${liveStewardJobOf(sql`${projectId}::uuid`)} AS live`),
-  );
-  return row?.live === true;
+    .where(eq(runners.projectId, projectId));
+  return rows.map((r) => r.deviceId);
 }
 
 /** The job's last act: the door that settles it, named with its body, so the job never ends unsettled. */
@@ -78,7 +70,7 @@ export async function enqueueStewardJob(
   run: RunRow,
   acts: readonly StewardAct[],
 ): Promise<JobStart> {
-  if (!(await runnerBound(run.projectId))) {
+  if ((await boxesOf(run.projectId)).length === 0) {
     return {
       ok: false,
       failure: `no runner is bound to this project, so ${acts.join(' and ')} on ${run.subjectKey} cannot run; it needs the codebase and the running build, and is never guessed on the gateway instead`,

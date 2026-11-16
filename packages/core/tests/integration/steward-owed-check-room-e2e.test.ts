@@ -3,18 +3,14 @@
  * On forge-dev, 2026-11-07, the sweep raised REQ-45's owed check only from its own leftover room,
  * which stuck diagnoses had spent by 02:00Z: REQ-45 alone was diagnosed every 5 minutes on one basis,
  * each run ending on a note because a decision on its standing forbade an ask, so it and agenfold
- * REQ-18 stayed `REQUIREMENT_UNCHECKED` all day. The budget read showed the handoffs' runner jobs as
- * "10 of 4", a ceiling they were never held to.
- * - An owed check is queued whatever room the sweep's share has left, billed as the handoff that
- *   owed it; where the whole day is spent it is queued due when the budget resumes, and the refusal
- *   names that time.
+ * REQ-18 stayed `REQUIREMENT_UNCHECKED` all day.
+ * - An owed check is queued as the handoff that owed it, due after its debounce whatever the steward
+ *   ran today (ISS-1255: no daily budget holds it), and the refusal names that due time.
  * - A stuck item whose diagnosis ended on a note while an ask holds its standing is not diagnosed
  *   again on the same basis, and no basis is diagnosed more than twice a UTC day.
- * - The budget read never shows a side spent past what it may spend.
  *
  * @direct-test-of packages/core/src/steward/owed-checks.ts
  * @direct-test-of packages/core/src/steward/sweep.ts
- * @direct-test-of packages/core/src/steward/policy.ts
  * @direct-test-of packages/core/src/steward/runs-store.ts
  * @direct-test-of packages/core/src/requirements/delivery-check.ts
  */
@@ -50,15 +46,12 @@ let seq = 0;
 /** What the standing read answers for this project, test by test. */
 let standings: ItemStanding[] = [];
 const at = (path: string) => `/api/projects/${projectId}${path}`;
-const tally = () => ({ projects: 0, stuck: 0, changed: 0, settledAsks: 0, paced: 0, checks: 0 });
+const tally = () => ({ projects: 0, stuck: 0, changed: 0, settledAsks: 0, checks: 0 });
 
 const refusalsOf = (r: Reply) =>
   (r.json.error?.refusals ?? []) as { code: string; path: string; detail: string }[];
 
 /** The UTC midnight after `now`: when the steward's budget resumes. */
-const resumesAfter = (now: Date) =>
-  new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
-
 /** An agreed requirement with one live issue, so only its delivery check can hold its delivery. */
 async function agreedWithIssue(title: string): Promise<{ key: string; id: string }> {
   const key = ok(
@@ -215,47 +208,31 @@ afterAll(async () => {
   await closeWorld();
 });
 
-describe('an owed check is a handoff, whatever room the sweep has left', () => {
-  it("is queued though the sweep's share of the day is spent, as the handoff that owed it", async () => {
+describe('an owed check is a handoff, whatever the steward ran today', () => {
+  it('is queued as the handoff that owed it, due after its debounce, and its refusal names that time', async () => {
     seq += 1;
-    const req = await agreedWithIssue(`Spent sweep ${seq}`);
-    await spend('standing.stuck', 120);
-    const now = new Date();
-    const t = tally();
-    await sweep.sweepProjectStandings(projectId, now, t);
-    const queued = await checksQueued(req.id);
-    expect(queued.map((q) => q.trigger)).toEqual(['requirement.agreed']);
-    expect(new Date(queued[0]?.due ?? 0).getTime()).toBeLessThanOrEqual(
-      now.getTime() + STEWARD_DEBOUNCE_MS,
-    );
-    expect(t.checks).toBe(1);
-  });
-
-  it('is queued due when the budget resumes where the whole day is spent, and its refusal names that time', async () => {
-    seq += 1;
-    const req = await agreedWithIssue(`Spent day ${seq}`);
-    await spend('standing.stuck', 120);
+    const req = await agreedWithIssue(`Busy day ${seq}`);
+    // a day the old budget would have read spent: 200 turns of diagnoses and 80 of handoffs
+    await spend('standing.stuck', 200);
     await spend('feedback.filed', 80);
     const now = new Date();
     const before = refusalsOf(await say('POST', `/requirements/${req.key}/start-delivery`, {}));
     expect(before.map((r) => r.code)).toEqual(['REQUIREMENT_UNCHECKED']);
-    // not yet queued: it promises no hour the budget cannot keep, and names when the budget resumes
-    expect(before[0]?.detail).toContain(resumesAfter(now).toISOString());
+    expect(before[0]?.detail).not.toMatch(/budget|UTC/);
 
-    await sweep.sweepProjectStandings(projectId, now, tally());
+    const t = tally();
+    await sweep.sweepProjectStandings(projectId, now, t);
     const queued = await checksQueued(req.id);
-    expect(queued.map((q) => [q.trigger, new Date(q.due).toISOString()])).toEqual([
-      ['requirement.agreed', resumesAfter(now).toISOString()],
-    ]);
+    expect(queued.map((q) => q.trigger)).toEqual(['requirement.agreed']);
+    const due = new Date(queued[0]?.due ?? 0);
+    expect(due.getTime()).toBeLessThanOrEqual(now.getTime() + STEWARD_DEBOUNCE_MS);
+    expect(t.checks).toBe(1);
     const refused = refusalsOf(await say('POST', `/requirements/${req.key}/start-delivery`, {}));
     expect(refused[0]?.code).toBe('REQUIREMENT_UNCHECKED');
-    expect(refused[0]?.detail).toContain(`due at ${resumesAfter(now).toISOString()}`);
-    expect(refused[0]?.detail).toContain('budget resumes');
+    expect(refused[0]?.detail).toContain(`due at ${due.toISOString()}`);
+    expect(refused[0]?.detail).not.toMatch(/budget/);
     const check = ok(await say('GET', `/requirements/${req.key}`)).deliveryCheck;
-    expect(check.attempt).toMatchObject({
-      state: 'queued',
-      dueAt: resumesAfter(now).toISOString(),
-    });
+    expect(check.attempt).toMatchObject({ state: 'queued', dueAt: due.toISOString() });
   });
 });
 
@@ -312,29 +289,5 @@ describe('one stuck item cannot spend the day (REQ-45, 2026-11-07)', () => {
     standings = [stuckIssue(issue, `stuck|replan|${seq}|moved`)];
     await swept();
     expect(await diagnosesOf(issue.id)).toHaveLength(3);
-  });
-});
-
-describe('the budget read never shows a side spent past what it may spend', () => {
-  it("reads the handoffs' runner jobs within the day the sweep left them, their kept share apart", async () => {
-    for (let i = 0; i < 10; i += 1) {
-      await rows(sql`
-        INSERT INTO steward_runs (project_id, subject_kind, subject_id, subject_key, trigger, events,
-                                  acts_to_run, state, not_before, queued_at, started_at)
-        VALUES (${projectId}, 'feedback', gen_random_uuid(), ${`FB-${700 + i}`}, 'feedback.filed',
-                '[]'::jsonb, ARRAY['triage_draft']::text[], 'running', now(), now(), now())`);
-    }
-    await spend('standing.stuck', 117);
-    const budget = ok(await say('GET', '/steward-budget'));
-    expect(budget.handoff.runnerJobs).toEqual({ spent: 10, of: 10 });
-    expect(budget.handoff.kept).toEqual({ gatewayTurns: 80, runnerJobs: 4 });
-    expect(budget.sweep.runnerJobs).toEqual({ spent: 0, of: 0 });
-    expect(budget.sweep.gatewayTurns).toEqual({ spent: 117, of: 120 });
-    expect(budget.handoff.gatewayTurns).toEqual({ spent: 0, of: 83 });
-    for (const side of [budget.handoff, budget.sweep]) {
-      for (const unit of [side.gatewayTurns, side.runnerJobs]) {
-        expect(unit.spent).toBeLessThanOrEqual(unit.of);
-      }
-    }
   });
 });

@@ -3,15 +3,12 @@
  * (run ae4f80c3, ISS-632/634/635). The project declares `delivery.verdictsRequired: false`, so its
  * issues are judged after the release. Given no facts, the check claimed "no production
  * environment", cited a proof plan that does not exist, and reopened ISS-635 two minutes after the
- * batch claimed it; the release shipped it anyway. Then the three post-release judges were skipped
- * `budget_spent` and left nothing on the issues. The steward now sends no issue back at all
+ * batch claimed it; the release shipped it anyway. The steward now sends no issue back at all
  * (`steward/door-writes.ts:MOVE`, 2026-10-26): its output check reads the release facts
  * (`release-batch/steward-release-facts.ts`) and writes what is missing in its note.
  *
  * @direct-test-of packages/core/src/release-batch/steward-release-facts.ts
  * @direct-test-of packages/core/src/steward/door-writes.ts
- * @direct-test-of packages/core/src/steward/dispatch.ts
- * @direct-test-of packages/core/src/steward/policy.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -179,119 +176,6 @@ describe('what the output check is told of the release', () => {
     expect(facts).not.toContain('no production environment');
     expect(facts).toContain('delivery.verdictsRequired: false');
     expect(facts).toContain(`member of release batch ${run}, still running`);
-  });
-});
-
-describe('the judge a release owes, where the day cannot pay for it', () => {
-  it('waits for the next day, queued, and says so on the issue, where dev.287 skipped it silently', async () => {
-    await db.execute(sql`
-      UPDATE project_config_documents
-         SET document = jsonb_set(document, '{steward}', '{"budget": {"runnerJobs": 0}}'::jsonb)
-       WHERE project_id = ${projectId}`);
-    const issue = await createTestIssue(projectId, ownerId, 635, {
-      status: 'closed',
-      createdAt: new Date(),
-      mergedAt: new Date(),
-    });
-    const [queued] = await rows<{ id: string }>(sql`
-      INSERT INTO steward_runs (project_id, subject_kind, subject_id, subject_key, trigger, events,
-                                acts_to_run, state, queued_at, not_before)
-      VALUES (${projectId}, 'issue', ${issue.id}, 'ISS-635', 'release.shipped', '[]'::jsonb,
-              ARRAY['release_followthrough']::text[], 'queued', now() - interval '3 minutes',
-              now() - interval '1 minute')
-      RETURNING id`);
-    const { dispatchStewardRuns } = await import('../../src/steward/dispatch.js');
-    const now = new Date();
-
-    await dispatchStewardRuns(now);
-
-    const [run] = await rows<{ state: string; skip_reason: string | null; not_before: string }>(sql`
-      SELECT state, skip_reason, not_before::text FROM steward_runs WHERE id = ${queued?.id}`);
-    expect(run?.skip_reason ?? null).toBeNull();
-    expect(run?.state).toBe('queued');
-    const midnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
-    expect(new Date(run?.not_before ?? 0).getTime()).toBe(midnight);
-    const comments = await rows<{ body: string }>(sql`
-      SELECT body FROM comments WHERE issue_id = ${issue.id}`);
-    expect(comments.map((c) => c.body).join('\n')).toContain(
-      'The judge this release owes ISS-635 has not run yet',
-    );
-  });
-});
-
-describe('the runner jobs kept for release follow-throughs (4 of the default 10)', () => {
-  /** A claimed run of `act` on a fresh subject, as dispatch hands it to the cost guard. */
-  async function claimed(kind: string, key: string, trigger: string, act: string) {
-    const [made] = await rows<{ id: string }>(sql`
-      INSERT INTO steward_runs (project_id, subject_kind, subject_id, subject_key, trigger, events,
-                                acts_to_run, state, not_before)
-      VALUES (${projectId}, ${kind}, ${randomUUID()}, ${key}, ${trigger}, '[]'::jsonb,
-              ARRAY[${act}]::text[], 'running', now())
-      RETURNING id`);
-    return { id: made?.id ?? '', projectId, trigger };
-  }
-
-  // 2026-10-22's shape: feedback triages take the runner jobs up from the small hours, and the
-  // release that ships at 18:44 finds none left for its three judges
-  it('lets three follow-throughs run after ten handoff triages asked for the whole day', async () => {
-    const { admitRun } = await import('../../src/steward/policy.js');
-    const now = new Date();
-    const triaged: (string | null)[] = [];
-    for (let n = 0; n < 10; n += 1) {
-      const run = await claimed('feedback', `FB-${180 + n}`, 'feedback.filed', 'triage_draft');
-      triaged.push(await admitRun(run, ['triage_draft'], now));
-    }
-    const judged: (string | null)[] = [];
-    for (const key of ['ISS-632', 'ISS-634', 'ISS-635']) {
-      const run = await claimed('issue', key, 'release.shipped', 'release_followthrough');
-      judged.push(await admitRun(run, ['release_followthrough'], now));
-    }
-
-    expect(judged).toEqual([null, null, null]);
-    expect(triaged.filter((r) => r === null)).toHaveLength(6);
-    expect(triaged.slice(6)).toEqual([
-      'budget_spent',
-      'budget_spent',
-      'budget_spent',
-      'budget_spent',
-    ]);
-  });
-
-  // dev.683 (REQ-48 BC-1, BC-4, BC-10): a backlog of follow-throughs deferred to the next day, all
-  // due at 00:00Z, spent the whole day's 10 by 00:19Z three days running, and no triage draft or
-  // newer follow-through ever started. Past its kept 4 a follow-through waits while another run
-  // owing a job is due, and spends what is left once none is.
-  it('holds a follow-through past its kept 4 while a triage is due, and lets it spend the rest after', async () => {
-    const { admitRun } = await import('../../src/steward/policy.js');
-    // read after the claims below, whose `not_before` is the database's now()
-    const now = new Date(Date.now() + 60_000);
-    const kept: (string | null)[] = [];
-    for (const key of ['ISS-816', 'ISS-820', 'ISS-821', 'ISS-831']) {
-      const run = await claimed('issue', key, 'release.shipped', 'release_followthrough');
-      kept.push(await admitRun(run, ['release_followthrough'], now));
-    }
-    expect(kept).toEqual([null, null, null, null]);
-    const triage = await claimed('feedback', 'FB-646', 'feedback.filed', 'triage_draft');
-    const fifth = await claimed('issue', 'ISS-832', 'release.shipped', 'release_followthrough');
-
-    expect(await admitRun(fifth, ['release_followthrough'], now)).toBe('budget_spent');
-    expect(await admitRun(triage, ['triage_draft'], now)).toBeNull();
-    const sixth = await claimed('issue', 'ISS-835', 'release.shipped', 'release_followthrough');
-    expect(await admitRun(sixth, ['release_followthrough'], now)).toBeNull();
-  });
-
-  it('keeps ceil(40%) of a lowered cap: 2 of 3', async () => {
-    await db.execute(sql`
-      UPDATE project_config_documents
-         SET document = jsonb_set(document, '{steward}', '{"budget": {"runnerJobs": 3}}'::jsonb)
-       WHERE project_id = ${projectId}`);
-    const { admitRun } = await import('../../src/steward/policy.js');
-    const now = new Date();
-    const first = await claimed('feedback', 'FB-1', 'feedback.filed', 'triage_draft');
-    const second = await claimed('feedback', 'FB-2', 'feedback.filed', 'triage_draft');
-
-    expect(await admitRun(first, ['triage_draft'], now)).toBeNull();
-    expect(await admitRun(second, ['triage_draft'], now)).toBe('budget_spent');
   });
 });
 

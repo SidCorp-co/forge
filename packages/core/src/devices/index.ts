@@ -28,7 +28,7 @@ export { returnIssuesForRun } from './run-issue-return.js';
 export { handleRunnerSessions } from './run-ledger-ws.js';
 export { reapAbandonedDeclarations } from './run-session-queued.js';
 export { reapDeadRunSessions } from './run-session-reaper.js';
-export { readBoxSlotsForView, subagentSlotsOf } from './run-slots-read.js';
+export { readBoxSlotsForView, refuseRunWithoutSlot, subagentSlotsOf } from './run-slots-read.js';
 export { subagentOver } from './run-verdict.js';
 export { SESSION_SILENCE_TIMEOUT_MS, SESSION_SILENCE_TIMEOUT_S } from './session-silence.js';
 export { runDeviceStaleSweep } from './stale-detector.js';

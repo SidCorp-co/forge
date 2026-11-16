@@ -363,38 +363,25 @@ export const CHECK_RETRY_MS = 60 * 60_000;
 /** How long after its agree a requirement no check was tried on waits for the sweep to start one. */
 export const CHECK_UNTRIED_GRACE_MS = 5 * 60_000;
 
-/** The UTC midnight after `at`: when the steward's daily budget resumes (`steward/policy.ts:nextUtcDay`). */
-const budgetResumesAfter = (at: Date) =>
-  new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate() + 1)).toISOString();
-
 /**
  * Where its check stands and what takes it on, as the refusal says it. A check is a handoff: the
- * sweep queues it whatever room its own share has left, due at once where the day's budget pays for
- * it and when the budget resumes where it cannot (ISS-1100), so a queued one names its own due time,
- * and one not yet queued names both, never a time the budget will not keep.
+ * sweep queues it due after its debounce, so a queued one names its own due time.
  */
 function uncheckedDetail(attempt: DeliveryCheckAttempt | null, runs: string, now: Date): string {
   const read = `the steward's runs on it read at GET ${runs}; nothing of it is the master's to do`;
-  const budget = (from: Date) =>
-    `it runs then if the steward's budget for the day has room, else when the budget resumes at ${budgetResumesAfter(from)}`;
   if (!attempt) {
-    const by = new Date(now.getTime() + 15 * 60_000);
-    return `the steward has not finished a check of it since its head was agreed, and none has been tried; the standing sweep queues one within 15 minutes of its agree, and ${budget(by)} (${read}).`;
+    return `the steward has not finished a check of it since its head was agreed, and none has been tried; the standing sweep queues one within 15 minutes of its agree, and it runs then (${read}).`;
   }
   if (attempt.state === 'running') {
     return `the steward's check of it is running since ${attempt.at}; delivery may start once it ends done (${read}).`;
   }
   if (attempt.state === 'queued') {
     const due = attempt.dueAt && Date.parse(attempt.dueAt) > now.getTime() ? attempt.dueAt : null;
-    // a run the day's budget could not pay for is due at the UTC midnight the budget resumes
-    const resumes = due?.endsWith('T00:00:00.000Z')
-      ? ", when the steward's daily budget resumes"
-      : '';
-    const when = due ? `due at ${due}${resumes}` : 'due now';
+    const when = due ? `due at ${due}` : 'due now';
     return `the steward's check of it is queued since ${attempt.at}, ${when}; delivery may start once it ends done (${read}).`;
   }
   const again = new Date(Math.max(Date.parse(attempt.at) + CHECK_RETRY_MS, now.getTime()));
-  return `the steward's last check of it ended ${attempt.state} at ${attempt.at} (${attempt.why ?? 'no reason recorded'}); the standing sweep queues it again from ${again.toISOString()}, and ${budget(again)} (${read}).`;
+  return `the steward's last check of it ended ${attempt.state} at ${attempt.at} (${attempt.why ?? 'no reason recorded'}); the standing sweep queues it again from ${again.toISOString()} (${read}).`;
 }
 
 /**

@@ -22,6 +22,7 @@ import { memoizedRead } from '../db/read-memo.js';
 import { devices } from '../db/schema.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { readAdmissibleIssues } from './admissible.js';
+import { devicesPorts } from './ports.js';
 import { refuseDevice } from './refusals.js';
 import { type SlotDemand, slotsFor } from './run-slots.js';
 
@@ -75,7 +76,7 @@ export async function readBoxSlots(
   opts: { declaring?: string; executor?: Executor } = {},
 ): Promise<BoxSlots> {
   const executor = opts.executor ?? db;
-  const [[device], inUse, admissible] = await Promise.all([
+  const [[device], inUse, admissible, steward] = await Promise.all([
     executor
       .select({ maxSubagents: devices.maxSubagents })
       .from(devices)
@@ -83,6 +84,7 @@ export async function readBoxSlots(
       .limit(1),
     inUseByProject(executor, deviceId),
     readAdmissibleIssues({ deviceId }),
+    devicesPorts().stewardSlotDemand(executor, deviceId, new Date()),
   ]);
   const waiting = new Map<string, { n: number; urgent: boolean }>();
   for (const item of admissible.items) {
@@ -91,6 +93,13 @@ export async function readBoxSlots(
       n: held.n + 1,
       urgent: held.urgent || URGENT.has(item.priority ?? ''),
     });
+  }
+  // a steward runner job is a run of its project like any other (ISS-1255): live, it holds a slot;
+  // due, it is a ready part, urgent where it is a release follow-through
+  for (const [projectId, s] of steward) {
+    inUse.set(projectId, (inUse.get(projectId) ?? 0) + s.live);
+    const held = waiting.get(projectId) ?? { n: 0, urgent: false };
+    waiting.set(projectId, { n: held.n + s.waiting, urgent: held.urgent || s.urgent });
   }
   const ids = new Set([...inUse.keys(), ...waiting.keys()]);
   if (opts.declaring) ids.add(opts.declaring);

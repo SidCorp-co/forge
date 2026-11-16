@@ -145,6 +145,7 @@ import {
   openStewardAsks,
   releaseNamerOf,
   stewardJobCredential,
+  stewardSlotDemand,
 } from './steward/index.js';
 import {
   classifyCommand,
@@ -285,6 +286,22 @@ async function liveChecksOwed(projectId: string) {
 const unhandledRoomMessagesOwed = (projectId: string) =>
   unhandledMessagesOf(projectId, new Date(Date.now() - 24 * 60 * 60_000));
 
+/** The questions a box asks for its master. */
+const deviceQuestions = {
+  // the box names its issue as `forge-runner question ask --issue ISS-n` does: a display key is
+  // resolved in the project it asks in, and one naming no issue there is refused by name (ISS-619)
+  askQuestion: async (input: { projectId: string; issueId?: unknown }) =>
+    askQuestion({
+      ...input,
+      ...(typeof input.issueId === 'string'
+        ? { issueId: await resolveIssueKeyInProject(input.issueId, input.projectId) }
+        : {}),
+    } as AskInput),
+  registerWaiter,
+  waiterFor,
+  answerOf,
+};
+
 export function provideExecutionPorts(): void {
   provideReleaseBatchPorts({
     contractProviderGate,
@@ -353,24 +370,12 @@ export function provideExecutionPorts(): void {
     cmpVersion,
     checkoutOrientation: servedCheckoutOrientation,
     recordOrientationCarried,
-    questions: {
-      // the box names its issue as `forge-runner question ask --issue ISS-n` does: a display key is
-      // resolved in the project it asks in, and one naming no issue there is refused by name (ISS-619)
-      askQuestion: async (input) =>
-        askQuestion({
-          ...input,
-          ...(typeof input.issueId === 'string'
-            ? { issueId: await resolveIssueKeyInProject(input.issueId, input.projectId) }
-            : {}),
-        } as AskInput),
-      registerWaiter,
-      waiterFor,
-      answerOf,
-    },
+    questions: deviceQuestions,
     comments: { postIssueNotice, postIssueNoticeOnce, latestIssueCommentWith },
     projectHandleUserId: async (tx, projectId) =>
       (await resolveProjectHandle(tx, projectId)).userId,
     requirementIdOf: (projectId, ref) => requirementIdIn(db, projectId, ref),
+    stewardSlotDemand,
   });
 
   provideRunnersPorts({

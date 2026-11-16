@@ -11,7 +11,6 @@
 // @direct-test-of packages/core/src/steward/sweep.ts
 // @direct-test-of packages/core/src/questions/read.ts
 // @direct-test-of packages/core/src/steward/undo-rules.ts
-// @direct-test-of packages/core/src/steward/policy.ts
 // @direct-test-of packages/core/src/steward/read.ts
 
 import type { Said } from '@forge/contracts/said';
@@ -47,7 +46,7 @@ let ownerId = '';
 let stewardId = '';
 let standings: ItemStanding[] = [];
 let diagnose: (issue: { id: string; key: string }, recommended: string) => Promise<string>;
-let sweep: (now?: Date) => Promise<{ stuck: number; changed: number; paced: number }>;
+let sweep: (now?: Date) => Promise<{ stuck: number; changed: number }>;
 
 const said = (text: string) => ({ key: text }) as unknown as Said;
 
@@ -367,22 +366,16 @@ describe("the steward's questions and acts show on their item, the Steward named
   });
 });
 
-describe('the sweep spends only its share of the day, oldest stuck first (REQ-48 BC-1, dev.271)', () => {
-  it('raises as many stuck items as its share has room for, the longest stuck first, and paces the rest', async () => {
-    const { spentSince, sweepQueued } = await import('../../src/steward/runs-store.js');
-    const { sharesOf, stewardStanceOf, utcDayStart } = await import('../../src/steward/policy.js');
+describe('the sweep raises every stuck item no run diagnosed, the longest stuck first (ISS-1255)', () => {
+  it('raises all of them in one sweep, whatever the steward ran today, oldest first', async () => {
     const now = new Date();
-    const share = sharesOf((await stewardStanceOf(projectId)).budget).sweep.gatewayTurns;
-    const used =
-      (await spentSince(projectId, utcDayStart(now), { sweepOnly: true })).gatewayTurns +
-      (await sweepQueued(projectId, now)).gatewayTurns;
-    // the sweep's share has room for exactly one more run today
+    // a day the old budget would have read spent: 200 gateway turns of stuck diagnoses
     const filler = await draft(140);
     await rows(sql`
       INSERT INTO steward_runs (project_id, subject_kind, subject_id, subject_key, trigger, events, acts_to_run,
                                 state, turns, not_before, started_at, ended_at)
       VALUES (${projectId}, 'issue', ${filler.id}, ${filler.key}, 'standing.stuck', '[]'::jsonb,
-              ARRAY['stuck_diagnosis']::text[], 'done', ${share - used - 1}, now(), now(), now())
+              ARRAY['stuck_diagnosis']::text[], 'done', 200, now(), now(), now())
       RETURNING id`);
     const [newest, oldest, middle] = [await draft(141), await draft(142), await draft(143)];
     standings = [
@@ -400,11 +393,16 @@ describe('the sweep spends only its share of the day, oldest stuck first (REQ-48
       ),
     ];
     const tally = await sweep(now);
-    expect([tally.stuck, tally.paced]).toEqual([1, 2]);
+    expect(tally.stuck).toBe(3);
     const emitted = await rows<{ subject: string }>(sql`
       SELECT payload -> 'subject' ->> 'key' AS subject FROM pipeline_outbox
        WHERE payload ->> 'projectId' = ${projectId} AND type = 'standing.stuck'
-         AND payload -> 'subject' ->> 'key' IN (${newest?.key}, ${oldest?.key}, ${middle?.key})`);
-    expect(emitted).toEqual([{ subject: oldest?.key }]);
+         AND payload -> 'subject' ->> 'key' IN (${newest?.key}, ${oldest?.key}, ${middle?.key})
+       ORDER BY seq`);
+    expect(emitted).toEqual([
+      { subject: oldest?.key },
+      { subject: middle?.key },
+      { subject: newest?.key },
+    ]);
   });
 });

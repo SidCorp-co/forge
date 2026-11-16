@@ -86,6 +86,15 @@ interface DevicesPorts {
   requirementIdOf(projectId: string, ref: string): Promise<string | null>;
   /** The user a project's workspace handle acts as, minted when the project has none. */
   projectHandleUserId(tx: Tx, projectId: string): Promise<string>;
+  /**
+   * What each project bound to the box holds (`live`) and waits on (`waiting`, `urgent` where one is a
+   * release follow-through) of its steward's runner jobs: runs on the box like any other (ISS-1255).
+   */
+  stewardSlotDemand(
+    executor: Pick<Tx, 'execute'>,
+    deviceId: string,
+    now: Date,
+  ): Promise<Map<string, { live: number; waiting: number; urgent: boolean }>>;
 }
 
 const slot = portSlot<DevicesPorts>('devices', 'provideDevicesPorts');

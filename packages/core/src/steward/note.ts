@@ -1,14 +1,15 @@
 // The note's body, built by code from the standing a run read (REQ-48 BC-7, BC-8): its claims and
 // basis are that standing's own fields and its cites name the item and the record the wait names, so
 // the door's vet compares the standing with itself and a note fails only on its words or a moved
-// standing. A model writes the two lines alone (`door-writes.ts:NOTE`). The note a run that may not
-// act writes without a model (the cost guard) is built the same way.
+// standing. A model writes the two lines alone (`door-writes.ts:NOTE`). The note the runaway guard
+// writes without a model, on an act it refused for repeating (`policy.ts`), is built the same way.
 
 import {
   basisFieldsOf,
   claimsOf,
   type ItemStanding,
   STEWARD_NOTE_CITES_MAX,
+  type StewardAct,
   type StewardCite,
   type StewardNoteWrite,
   type StewardTrigger,
@@ -73,73 +74,72 @@ export const TRIGGER_WORDS: Record<StewardTrigger, string> = {
   'standing.changed': 'the change in where this stands',
 };
 
-export function budgetNoteBody(run: RunRow, standing: ItemStanding): StewardNoteWrite {
+/** What each act is, in the words a person reads on the item: never the act's own id. */
+export const ACT_WORDS: Record<StewardAct, string> = {
+  note: 'its note',
+  intake_check: 'the intake check',
+  breakdown_check: 'the breakdown check',
+  triage_draft: 'the triage draft',
+  stuck_diagnosis: 'the diagnosis of what is stuck',
+  output_check: 'the output check',
+  release_followthrough: 'the check of the shipped release',
+};
+
+/** What the runaway guard refused, as the steward's note on an item with an open standing. */
+export function repeatedNoteBody(
+  run: RunRow,
+  standing: ItemStanding,
+  repeated: { act: StewardAct; count: number },
+): StewardNoteWrite {
   return noteWriteOf(
     standing,
     [
-      `The steward's daily budget for this project is spent, so it did not act on ${TRIGGER_WORDS[run.trigger]} here.`,
-      'It acts again after midnight UTC; until then this item waits on whoever its standing names.',
+      `The steward took ${ACT_WORDS[repeated.act]} here ${repeated.count} times while where this stands did not move, so it stopped repeating it.`,
+      'It acts again once this item moves; until then the item waits on whoever its standing names.',
     ],
     [],
     run.id,
   );
 }
 
-/** Write the budget note on the run's item: a requirement, a feedback item or an issue. */
-export async function budgetNote(run: RunRow, standing: ItemStanding | null): Promise<void> {
-  if (!standing) return;
-  const credential = await mintStewardCredential({
-    projectId: run.projectId,
-    stewardId: await stewardAccountOf(run.projectId),
-    acts: ['note'],
-    ttlMs: STEWARD_TURN_TTL_MS,
-  });
-  try {
-    const answer = await callDoor(
-      {
-        method: 'PUT',
-        path: `/api/projects/${run.projectId}/steward-notes/${run.subjectKind}/${run.subjectKey}`,
-        body: budgetNoteBody(run, standing),
-      },
-      bearer(credential.token),
-    );
-    if (!answer.ok) {
-      logger.warn(
-        {
-          runId: run.id,
-          subject: run.subjectKey,
-          status: answer.status,
-          body: answer.text.slice(0, 300),
-        },
-        'steward: the budget note was refused; the run itself says budget_spent',
-      );
-    }
-  } finally {
-    await credential.revoke();
-  }
-}
-
-/**
- * What a shipped issue is told when the judge its release owes cannot run today: a closed issue has no
- * open standing to hold a note, so the steward says it on the issue itself, naming the cap, what spent
- * it and when the judge runs. dev.287's three judges were skipped and left nothing anywhere.
- */
-export function judgeOwedBody(
+/** The same said on an issue with no open standing to hold a note: as a comment on the issue. */
+export function repeatedCommentBody(
   run: RunRow,
-  until: Date,
-  runnerJobs: number,
+  repeated: { act: StewardAct; count: number },
 ): { intent: 'note'; body: string } {
   return {
     intent: 'note',
     body: [
-      `The judge this release owes ${run.subjectKey} has not run yet: the steward's daily budget for this project is spent (${runnerJobs} runner jobs a UTC day, every one used), so the release follow-through waits for the next day's budget.`,
-      `It runs after ${until.toISOString()}. Until then this issue's criteria stand unjudged on the shipped build.`,
+      `The steward took ${ACT_WORDS[repeated.act]} on ${run.subjectKey} ${repeated.count} times while the issue did not move, so it stopped repeating it.`,
+      'It acts again once the issue moves.',
     ].join('\n\n'),
   };
 }
 
-/** Say on the issue that its post-release judge waits for the next day's budget. */
-export async function judgeOwedNote(run: RunRow, until: Date, runnerJobs: number): Promise<void> {
+/**
+ * Say on the run's item that the runaway guard refused its act (`policy.ts:admitRun`): the steward's
+ * note where the item has an open standing, else a comment on the issue. The run's own failure names
+ * the refusal whatever this write answers.
+ */
+export async function repeatedNote(
+  run: RunRow,
+  standing: ItemStanding | null,
+  repeated: { act: StewardAct; count: number },
+): Promise<void> {
+  const call = standing
+    ? {
+        method: 'PUT' as const,
+        path: `/api/projects/${run.projectId}/steward-notes/${run.subjectKind}/${run.subjectKey}`,
+        body: repeatedNoteBody(run, standing, repeated),
+      }
+    : run.subjectKind === 'issue'
+      ? {
+          method: 'POST' as const,
+          path: `/api/issues/${run.subjectId}/comments`,
+          body: repeatedCommentBody(run, repeated),
+        }
+      : null;
+  if (!call) return;
   const credential = await mintStewardCredential({
     projectId: run.projectId,
     stewardId: await stewardAccountOf(run.projectId),
@@ -147,14 +147,7 @@ export async function judgeOwedNote(run: RunRow, until: Date, runnerJobs: number
     ttlMs: STEWARD_TURN_TTL_MS,
   });
   try {
-    const answer = await callDoor(
-      {
-        method: 'POST',
-        path: `/api/issues/${run.subjectId}/comments`,
-        body: judgeOwedBody(run, until, runnerJobs),
-      },
-      bearer(credential.token),
-    );
+    const answer = await callDoor(call, bearer(credential.token));
     if (!answer.ok) {
       logger.warn(
         {
@@ -163,7 +156,7 @@ export async function judgeOwedNote(run: RunRow, until: Date, runnerJobs: number
           status: answer.status,
           body: answer.text.slice(0, 300),
         },
-        'steward: the judge-owed comment was refused; the run waits queued for the next day',
+        'steward: the repeated-act note was refused; the run itself names STEWARD_ACT_REPEATED',
       );
     }
   } finally {
