@@ -6,6 +6,11 @@
 // its standing unmoved, runs `STEWARD_ACT_REPEAT_LIMIT` times and the next is refused
 // STEWARD_ACT_REPEATED, said on the item.
 //
+// ISS-596 c6. Which of a project's runs takes its free slot is the head of its job line, by when each
+// is due its slot from its first trigger: on forge's one slot, FB-650's triage waited behind nine
+// release follow-throughs, taken by whichever run's minute retry happened to be due when the slot
+// freed, until a person triaged it by hand.
+//
 // @direct-test-of packages/core/src/steward/dispatch.ts
 // @direct-test-of packages/core/src/steward/policy.ts
 // @direct-test-of packages/core/src/steward/slot-demand.ts
@@ -292,5 +297,125 @@ describe('the runaway guard: the same act on one item, its standing unmoved (ISS
     const again = await stewardRun(pid, subject, 'note', { trigger: 'standing.changed', basis });
     await dispatch(new Date());
     expect(await runRow(again)).toMatchObject({ state: 'done', failure: null });
+  });
+});
+
+describe("a filed item's triage takes the next slot that frees, ahead of a follow-through backlog (ISS-596 c6)", () => {
+  /** A queued steward run owing `act`, its trigger at `eventAgoMs`, due for its retry `dueInMs` from now. */
+  async function lined(
+    pid: string,
+    subject: { kind: string; id: string; key: string },
+    act: 'triage_draft' | 'release_followthrough',
+    opts: { eventAgoMs: number; dueInMs: number },
+  ): Promise<string> {
+    const trigger = act === 'triage_draft' ? 'feedback.filed' : 'release.shipped';
+    const at = new Date(Date.now() - opts.eventAgoMs).toISOString();
+    const events = JSON.stringify([{ trigger, outboxId: `iss596-${subject.key}`, at }]);
+    const [made] = await rows<{ id: string }>(sql`
+      INSERT INTO steward_runs (project_id, subject_kind, subject_id, subject_key, trigger, events,
+                                acts_to_run, state, queued_at, not_before)
+      VALUES (${pid}, ${subject.kind}, ${subject.id}, ${subject.key}, ${trigger}, ${events}::jsonb,
+              ARRAY[${act}]::text[], 'queued', now() - interval '1 minute',
+              now() + make_interval(secs => ${opts.dueInMs / 1000}))
+      RETURNING id`);
+    return made?.id ?? '';
+  }
+
+  async function shippedIssue(pid: string, seq: number) {
+    const issue = await createTestIssue(pid, ownerId, seq, {
+      status: 'closed',
+      createdAt: new Date(),
+      mergedAt: new Date(),
+    });
+    return { kind: 'issue', id: issue.id, key: issue.key };
+  }
+
+  async function filedItem(pid: string, seq: number) {
+    const key = await createTestFeedback(pid, ownerId, seq);
+    const [fb] = await rows<{ id: string }>(sql`
+      SELECT id FROM feedback WHERE project_id = ${pid} AND fb_seq = ${seq}`);
+    return { kind: 'feedback', id: fb?.id ?? '', key };
+  }
+
+  /** End the run's job and the run with it: its slot frees. */
+  async function finish(runId: string) {
+    const { db } = await import('../../src/db/client.js');
+    const { withKernelMarker } = await import('../../src/db/kernel-marker.js');
+    const job = (await runRow(runId))?.job_id ?? null;
+    if (!job) throw new Error('the run holds no job to finish');
+    await withKernelMarker(db, (tx) =>
+      tx.execute(sql`UPDATE jobs SET status = 'done', finished_at = now() WHERE id = ${job}`),
+    );
+    await rows(
+      sql`UPDATE steward_runs SET state = 'done', ended_at = now() WHERE id = ${runId} RETURNING id`,
+    );
+  }
+
+  const withJob = async (ids: string[]) =>
+    (await Promise.all(ids.map(runRow))).filter((r) => r?.job_id != null).length;
+
+  it('starts the triage in the slot that frees, before the backlog drains, then drains the backlog', async () => {
+    const pid = (await createTestProject(ownerId)).id;
+    const device = await createTestDevice(ownerId, { maxSubagents: 1 });
+    await bindTestRunner(pid, device);
+    // three follow-throughs of a release shipped half an hour ago, each due for its retry now
+    const backlog: string[] = [];
+    for (const seq of [5961, 5962, 5963]) {
+      backlog.push(
+        await lined(pid, await shippedIssue(pid, seq), 'release_followthrough', {
+          eventAgoMs: 30 * 60_000,
+          dueInMs: -60_000,
+        }),
+      );
+    }
+    // the item was filed three minutes ago; its own retry for the slot comes half a minute from now
+    const triage = await lined(pid, await filedItem(pid, 596), 'triage_draft', {
+      eventAgoMs: 3 * 60_000,
+      dueInMs: 30_000,
+    });
+
+    // the slot is free and only the backlog is due: no follow-through takes it from the triage
+    await dispatch(new Date());
+    expect(await withJob(backlog), 'a follow-through took the slot the triage is owed').toBe(0);
+    const called = await runRow(triage);
+    expect(called?.state).toBe('queued');
+    expect(
+      new Date(called?.not_before ?? 0).getTime(),
+      'the triage was not made due',
+    ).toBeLessThanOrEqual(Date.now());
+
+    // the next tick starts it, the backlog still waiting
+    await dispatch(new Date());
+    const started = await runRow(triage);
+    expect(started?.state).toBe('running');
+    expect(started?.job_id, 'the triage did not start in the free slot').not.toBeNull();
+    expect(await withJob(backlog)).toBe(0);
+
+    // its job ends: the backlog takes the slots that free, one at a time, never starved
+    await finish(triage);
+    await dispatch(new Date(Date.now() + 61_000));
+    expect(await withJob(backlog)).toBe(1);
+  });
+
+  it('lets a follow-through that has waited past its hour go ahead of a fresh triage (boundary)', async () => {
+    const pid = (await createTestProject(ownerId)).id;
+    const device = await createTestDevice(ownerId, { maxSubagents: 1 });
+    await bindTestRunner(pid, device);
+    const overdue = await lined(pid, await shippedIssue(pid, 5964), 'release_followthrough', {
+      eventAgoMs: 2 * 60 * 60_000,
+      dueInMs: -60_000,
+    });
+    const fresh = await lined(pid, await filedItem(pid, 597), 'triage_draft', {
+      eventAgoMs: 60_000,
+      dueInMs: -60_000,
+    });
+
+    await dispatch(new Date());
+
+    expect(
+      (await runRow(overdue))?.job_id,
+      'the overdue follow-through was starved',
+    ).not.toBeNull();
+    expect(await runRow(fresh)).toMatchObject({ state: 'queued', job_id: null });
   });
 });

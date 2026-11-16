@@ -8,6 +8,7 @@ import {
   STEWARD_ACT_RUNTIME,
   STEWARD_ACTS,
   STEWARD_DEBOUNCE_MS,
+  STEWARD_START_WITHIN_MS,
   STEWARD_TRIGGER_ACT,
   type StandingSubject,
   type StewardAct,
@@ -143,13 +144,48 @@ export const isSweepTrigger = (trigger: string): boolean =>
   STANDING_TRIGGERS.includes(trigger as StewardTrigger);
 
 /**
+ * How long a run waiting for its project's slot may wait for its job, by the act it owes, before it is
+ * due one: a filed item's triage within BC-1's bound, a release follow-through within an hour. A slot
+ * goes to the run due soonest (`jobDue`), so a triage filed while a release's follow-throughs drain
+ * takes the next slot that frees, and a follow-through that has waited its hour goes ahead of any
+ * triage filed after that. A run's due is fixed at its first trigger, so no run waits behind ones
+ * that arrive after it is due: neither kind starves the other (ISS-596 c6: FB-650 waited queued
+ * behind nine follow-throughs on forge's one slot until a person triaged it by hand).
+ */
+export const JOB_WAIT_ALLOWANCE_MS: Readonly<Partial<Record<StewardAct, number>>> = {
+  triage_draft: STEWARD_START_WITHIN_MS,
+  release_followthrough: 60 * 60_000,
+};
+
+/**
+ * When the run owing a steward job is due its slot: its first trigger's time (its queueing where it
+ * carries none) plus the least allowance of the runner acts it owes. A carried or requeued run keeps
+ * its events, so its due never moves.
+ */
+function jobDue(alias: string) {
+  const r = sql.raw(alias);
+  const allowances = RUNNER_ACTS.map((act) => {
+    const ms = JOB_WAIT_ALLOWANCE_MS[act];
+    if (ms === undefined) throw new Error(`steward: the runner act ${act} has no wait allowance`);
+    return sql.raw(
+      `CASE WHEN '${act}' = ANY(${alias}.acts_to_run) THEN interval '${ms} milliseconds' END`,
+    );
+  });
+  return sql`(coalesce((SELECT min((e ->> 'at')::timestamptz) FROM jsonb_array_elements(${r}.events) e),
+                       ${r}.queued_at)
+              + coalesce(LEAST(${sql.join(allowances, sql`, `)}), interval '0'))`;
+}
+
+/**
  * Claim at most `limit` queued runs whose start has come as `running`: a handoff event's run first,
  * then the standing's backlog, and within each a run owing a gateway turn ahead of one owing only a
- * job, each oldest first, so neither a sweep's hundred runs nor jobs waiting for a slot starve a
- * filed item's note. Whether a run's job may start is its project's slot on the box, which
- * `dispatch.ts:runOne` asks when it takes the run up, never the claim. The pick
- * is materialized: an `IN (… LIMIT … SKIP LOCKED)` subquery the planner rescans claims past its
- * limit. A claim is not a start: `started_at` is stamped by `markStarted` when the run is taken up.
+ * job, the turns oldest first and the jobs by when each is due its slot (`jobDue`), so neither a
+ * sweep's hundred runs nor jobs waiting for a slot starve a filed item's note. Whether a run's job
+ * may start is its project's slot on the box, which `dispatch.ts:runOne` asks when it takes the run
+ * up, never the claim; which of its runs takes a free slot is the head of its job line
+ * (`nextInJobLine`). The pick is materialized: an `IN (… LIMIT … SKIP LOCKED)` subquery the planner
+ * rescans claims past its limit. A claim is not a start: `started_at` is stamped by `markStarted`
+ * when the run is taken up.
  */
 export async function claimDueRuns(now: Date, limit: number): Promise<RunRow[]> {
   if (limit <= 0) return [];
@@ -159,14 +195,15 @@ export async function claimDueRuns(now: Date, limit: number): Promise<RunRow[]> 
     WITH picked AS MATERIALIZED (
       SELECT r.id FROM steward_runs r
        WHERE r.state = 'queued' AND r.not_before <= ${sqlTimestamp(now)}
-       ORDER BY (r.trigger = ANY(${standing})), (r.acts_to_run <@ ${runnerActs}), r.not_before,
+       ORDER BY (r.trigger = ANY(${standing})), (r.acts_to_run <@ ${runnerActs}),
+                CASE WHEN r.acts_to_run <@ ${runnerActs} THEN ${jobDue('r')} END, r.not_before,
                 r.queued_at
        LIMIT ${limit}
        FOR UPDATE SKIP LOCKED)
     UPDATE steward_runs s SET state = 'running', started_at = NULL
       FROM picked WHERE s.id = picked.id AND s.state = 'queued'
-    RETURNING s.id
-  `)) as unknown as { id: string }[];
+    RETURNING s.id, ${jobDue('s')}::text AS due
+  `)) as unknown as { id: string; due: string }[];
   if (rows.length === 0) return [];
   const claimed = await db
     .select()
@@ -178,15 +215,50 @@ export async function claimDueRuns(now: Date, limit: number): Promise<RunRow[]> 
       ),
     );
   // in the claim's own order, so a caller with fewer slots than runs takes the handoffs first
+  const dueOf = new Map(rows.map((r) => [r.id, new Date(r.due).getTime()]));
   const jobOnly = (r: RunRow) => r.actsToRun.every((a) => RUNNER_ACTS.includes(a));
   const rank = (r: RunRow) =>
     (STANDING_TRIGGERS.includes(r.trigger as StewardTrigger) ? 2 : 0) + (jobOnly(r) ? 1 : 0);
+  const key = (r: RunRow) => (jobOnly(r) ? (dueOf.get(r.id) ?? 0) : 0);
   return claimed.sort(
     (a, b) =>
       rank(a) - rank(b) ||
+      key(a) - key(b) ||
       a.notBefore.getTime() - b.notBefore.getTime() ||
       a.queuedAt.getTime() - b.queuedAt.getTime(),
   );
+}
+
+/**
+ * The project's run next in line for a free slot: of its live runs owing a runner act that no job was
+ * started for, the one due soonest (`jobDue`). A run taken up is in the line while it takes its turns,
+ * so the slot it will ask for is not taken by a run due later; one its process died under leaves the
+ * line when it is read orphaned (`runsToSettle`), as it is settled.
+ */
+export async function nextInJobLine(
+  projectId: string,
+  now = new Date(),
+): Promise<{ id: string; state: string } | null> {
+  const runnerActs = sql.raw(`ARRAY[${RUNNER_ACTS.map((a) => `'${a}'`).join(', ')}]::text[]`);
+  const orphaned = sqlTimestamp(new Date(now.getTime() - ORPHANED_AFTER_MS));
+  const [head] = rowsOf<{ id: string; state: string }>(
+    await db.execute(sql`
+      SELECT r.id::text AS id, r.state FROM steward_runs r
+       WHERE r.project_id = ${projectId} AND r.job_id IS NULL AND r.acts_to_run && ${runnerActs}
+         AND (r.state = 'queued'
+           OR (r.state = 'running' AND COALESCE(r.started_at, r.not_before) >= ${orphaned}))
+       ORDER BY ${jobDue('r')}, r.queued_at, r.id
+       LIMIT 1`),
+  );
+  return head ?? null;
+}
+
+/** Make a queued run due now: the head of its job line, a slot of its project being free for it. */
+export async function callToFront(runId: string, now = new Date()): Promise<void> {
+  await db
+    .update(stewardRuns)
+    .set({ notBefore: sql`least(${stewardRuns.notBefore}, ${sqlTimestamp(now)})` })
+    .where(and(eq(stewardRuns.id, runId), eq(stewardRuns.state, 'queued')));
 }
 
 /**

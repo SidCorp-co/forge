@@ -31,9 +31,11 @@ import { repeatedNote } from './note.js';
 import { admitRun, repeatedRefusal } from './policy.js';
 import { openStandings } from './ports.js';
 import {
+  callToFront,
   carryActs,
   claimDueRuns,
   endRun,
+  nextInJobLine,
   type RunRow,
   requeueRun,
   runsToSettle,
@@ -157,11 +159,23 @@ function throughSlotGate<T>(fn: () => Promise<T>): Promise<T> {
   return next;
 }
 
-/** Start the run's job where its project has a free slot; null where it has none. */
+/**
+ * Start the run's job where its project has a free slot and the run is the head of its project's job
+ * line (`runs-store.ts:nextInJobLine`); null otherwise. `slotsFor` alone says whether the project may
+ * start a run; the line says which of its runs takes it, whatever order the tick took them up in or
+ * whichever happened to be due when the slot freed (ISS-596 c6). A run behind the head leaves the
+ * slot to it and makes it due now, so the slot waits at most a tick for its head.
+ */
 const startJobInSlot = (run: RunRow, runner: readonly StewardAct[], tick: Tick) =>
-  throughSlotGate<JobStart | null>(async () =>
-    (await slotFree(run.projectId, tick)) ? enqueueStewardJob(run, runner) : null,
-  );
+  throughSlotGate<JobStart | null>(async () => {
+    if (!(await slotFree(run.projectId, tick))) return null;
+    const head = await nextInJobLine(run.projectId);
+    if (head && head.id !== run.id) {
+      if (head.state === 'queued') await callToFront(head.id);
+      return null;
+    }
+    return enqueueStewardJob(run, runner);
+  });
 
 /** Take one claimed run as far as it goes now; a `slot_wait` run is put back by the caller to retry. */
 export async function runOne(run: RunRow, tick: Tick = { noSlot: new Set() }): Promise<RunOutcome> {
