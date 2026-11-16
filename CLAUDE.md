@@ -195,8 +195,9 @@ records the coupling.
 **forge-dev's master changes that repo directly** (owner, 2026-11-16): in its own worktree there,
 through that repo's gate (`npm run check`, scoped as `node tools/gates.mjs -h` says), landed by its
 route (`node tools/run.mjs ship`), recorded on the `forge-plugin` item. A change with a half in each
-repo lands as a pair, each commit subject naming the issue key. A defect there that another job
-meets is a `forge-plugin` issue, filed there for that master to work.
+repo lands as a pair, each commit subject naming the issue key. A defect there is filed as its issue,
+and its items are reached with `FORGE_PROJECT_SLUG=forge-plugin FORGE_BORROW_FROM=<the box's
+forge-plugin checkout credential> forge-runner api`; the pane's own slug `forge` is refused `PAT_PROJECT_OUTSIDE_FENCE`.
 
 ## Green is a claim about one proposition
 
