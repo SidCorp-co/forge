@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import type postgres from 'postgres';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 vi.hoisted(() => {
@@ -6,7 +7,8 @@ vi.hoisted(() => {
   process.env.INTEGRATION_MASTER_KEY ??= Buffer.alloc(32, 5).toString('base64');
 });
 
-import { settleOwnerAnswer } from '../../src/support/owner-answer.js';
+import { db } from '../../src/db/client.js';
+import { openAsksQuery, settleOwnerAnswer } from '../../src/support/owner-answer.js';
 import { insertAction } from '../../src/support/store.js';
 import { rows } from '../helpers/factories.js';
 import { AgentWorld, agentBlock, OWNER_ID } from '../helpers/support-agent-world.js';
@@ -231,6 +233,36 @@ describe('REQ-77 BC-12, ISS-1246: an agent asks the owner in the technical chann
     );
     expect(code(none)).toBe('SUPPORT_OWNER_NOT_NAMED');
     expect(JSON.stringify(none)).toContain('names no owner');
+  });
+});
+
+describe('debt 868356b3: a room’s open asks are read through an index', () => {
+  it('finds a room’s open asks through the rid index, in a custom plan and in the generic plan a prepared statement settles on', async () => {
+    // debt 868356b3: every message in an operations room or a DM runs this read; without migration
+    // 0674's index it reads support_actions end to end. Sequential scans are priced out, so a plan
+    // with no usable index falls back to some other index or the scan and names no rid index.
+    const q = openAsksQuery(DM).toSQL();
+    const client = (db as unknown as { $client: postgres.Sql }).$client;
+    // EXPLAIN takes no bound parameter whose type its inner statement implies, so the statement is
+    // prepared with its types and executed with its values as literals
+    const types = q.params.map(() => 'text').join(', ');
+    const args = (q.params as string[]).map((v) => `'${v.replaceAll("'", "''")}'`).join(', ');
+    const plans = await client.begin(async (tx) => {
+      await tx`SET LOCAL enable_seqscan = off`;
+      await tx.unsafe(`PREPARE open_asks_plan(${types}) AS ${q.sql}`);
+      const planned = async (mode: string) => {
+        await tx.unsafe(`SET LOCAL plan_cache_mode = ${mode}`);
+        return JSON.stringify(
+          await tx.unsafe(`EXPLAIN (FORMAT JSON) EXECUTE open_asks_plan(${args})`),
+        );
+      };
+      const custom = await planned('force_custom_plan');
+      const generic = await planned('force_generic_plan');
+      await tx`DEALLOCATE open_asks_plan`;
+      return { custom, generic };
+    });
+    expect(plans.custom).toContain('"Index Name":"support_actions_output_rid_idx"');
+    expect(plans.generic).toContain('"Index Name":"support_actions_output_rid_idx"');
   });
 });
 

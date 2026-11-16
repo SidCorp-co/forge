@@ -29,9 +29,13 @@ const ANSWER = 'owner_answer';
  */
 const RAISE_OWED = 'raise_owed';
 
-/** The asks and owed raises posted in a room of the technical channel his reply has not answered yet, oldest first. */
-async function openAsksAt(rid: string): Promise<ActionRow[]> {
-  const asks = await db
+/**
+ * The asks and owed raises posted in a room of the technical channel, oldest first, answered or not.
+ * Served by `support_actions_output_rid_idx` (migration 0674): a change to the `rid` expression keeps
+ * that index's text, or every message read in a room scans the table again.
+ */
+export function openAsksQuery(rid: string) {
+  return db
     .select()
     .from(supportActions)
     .where(
@@ -44,6 +48,11 @@ async function openAsksAt(rid: string): Promise<ActionRow[]> {
       ),
     )
     .orderBy(asc(supportActions.createdAt));
+}
+
+/** The asks and owed raises posted in a room of the technical channel his reply has not answered yet, oldest first. */
+async function openAsksAt(rid: string): Promise<ActionRow[]> {
+  const asks = await openAsksQuery(rid);
   if (asks.length === 0) return [];
   const rows = await db
     .select()

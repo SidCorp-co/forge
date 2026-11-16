@@ -4271,6 +4271,13 @@
       "when": 1841097600000,
       "tag": "0673_every_agent_audits_its_own_output_into_one_verdict_store",
       "breakpoints": true
+    },
+    {
+      "idx": 674,
+      "version": "7",
+      "when": 1841184000000,
+      "tag": "0674_an_owner_ask_is_found_by_its_room",
+      "breakpoints": true
     }
   ]
 }
