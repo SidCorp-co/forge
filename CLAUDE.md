@@ -22,7 +22,7 @@ forms and splits, when wide checks run); what follows is only how this repo runs
 running it and runs `pnpm test:changed` over its own tree: `pnpm tc:changed`'s typecheck and only
 the DIRECT tests of what it touched (a test touched, a test importing a touched file, a test
 declaring `@direct-test-of <path>` over it; `--integration` adds the core integration tests chosen
-the same way), never a whole suite; a change touching shared logic, billing, permissions or data adds
+the same way) and archmap over the files it touched, never a whole suite; a change touching shared logic, billing, permissions or data adds
 `--integration` and the whole suite of the module it shares. The batch's ONE gate is wider than the
 org's bar, because the script runs more than the bar asks: `pnpm verify` — the conformance entrypoint — and `GITHUB_BASE_REF=dev pnpm merge-check --probes <file>` over the batch rebased onto
 the latest `dev`, which refuses a branch behind its base (`MERGE_BEHIND_BASE`) and a claimed
