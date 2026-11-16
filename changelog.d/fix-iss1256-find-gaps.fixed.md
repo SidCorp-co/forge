@@ -1,0 +1,1 @@
+**Search answers nonsense with no match, kept as a gap.** Capability hits open in their module, lessons read by gist, statuses in words, org rules apart from Unplaced. Agent maps keep every module; the pillar stacks on phones.
