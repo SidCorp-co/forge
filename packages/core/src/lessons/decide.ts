@@ -19,7 +19,11 @@ import { and, eq, inArray, isNull, max } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { corrections, lessons } from '../db/schema-lessons.js';
 import { requirementAreas } from '../db/schema-requirements.js';
-import { putLessonEntry, setLessonEntryInjection } from '../knowledge/index.js';
+import {
+  markLessonEntryInvalid,
+  putLessonEntry,
+  setLessonEntryInjection,
+} from '../knowledge/index.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { movedRow, transition } from '../lifecycle/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
@@ -358,7 +362,8 @@ export async function retireLesson(input: {
 /**
  * A landing touched what an approved lesson is about (ISS-1251 §5): it is held, kept for its history
  * and served to no agent, with when and what touched it, until the steward re-admits, edits or retires
- * it. Core records the fact the landing made true, so the mover is the system; a lesson already held
+ * it; its entry read by slug says it is invalid and why. Core records the fact the landing made true,
+ * so the mover is the system; a lesson already held
  * or decided is left as it is. Answers whether this call invalidated it.
  */
 export async function invalidateLessonIn(tx: Tx, row: LessonRow, by: string): Promise<boolean> {
@@ -376,7 +381,7 @@ export async function invalidateLessonIn(tx: Tx, row: LessonRow, by: string): Pr
       returning: ['id'],
     }),
   );
-  await withdrawLessonEntry(tx, row);
+  await markLessonEntryInvalid(tx, row.projectId, row.number, { at: now, by: by.slice(0, 500) });
   return true;
 }
 

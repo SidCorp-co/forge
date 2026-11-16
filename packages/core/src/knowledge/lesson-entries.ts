@@ -89,6 +89,8 @@ export async function putLessonEntry(
         body: row.body,
         kind: row.kind,
         injection: row.injection,
+        // a lesson published again after an invalidation reads verified, its invalid mark gone
+        confidence: row.confidence,
         authoredBy: row.authoredBy,
         // a rewritten sentence is embedded again by the backfill; an unchanged one keeps its vector
         embedding: sql`CASE WHEN ${knowledgeEntries.body} = ${row.body} THEN ${knowledgeEntries.embedding} ELSE NULL END`,
@@ -188,6 +190,35 @@ export async function setLessonEntryInjection(
   await tx
     .update(knowledgeEntries)
     .set({ injection, updatedAt: new Date() })
+    .where(
+      and(
+        eq(knowledgeEntries.projectId, projectId),
+        eq(knowledgeEntries.slug, lessonEntrySlug(number)),
+        eq(knowledgeEntries.kind, 'lesson'),
+      ),
+    );
+}
+
+/**
+ * A lesson a landing invalidated (ISS-1251): its entry is out of every map and search, and read by
+ * its slug it says so, `deprecated` and naming when and what touched it, never plain `verified`.
+ * Publishing the lesson again (`putLessonEntry`) clears the mark.
+ */
+export async function markLessonEntryInvalid(
+  tx: Tx,
+  projectId: string,
+  number: number,
+  invalid: { at: Date; by: string },
+): Promise<void> {
+  const mark = { invalid: true, invalidAt: invalid.at.toISOString(), invalidBy: invalid.by };
+  await tx
+    .update(knowledgeEntries)
+    .set({
+      injection: 'none',
+      confidence: 'deprecated',
+      metadata: sql`COALESCE(${knowledgeEntries.metadata}, '{}'::jsonb) || ${JSON.stringify(mark)}::jsonb`,
+      updatedAt: new Date(),
+    })
     .where(
       and(
         eq(knowledgeEntries.projectId, projectId),

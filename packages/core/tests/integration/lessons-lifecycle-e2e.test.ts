@@ -23,6 +23,7 @@ import { settleOutbox } from '../helpers/ecosystem-world.js';
 import { rows } from '../helpers/factories.js';
 import {
   approve,
+  at,
   block,
   correction,
   lesson,
@@ -30,6 +31,7 @@ import {
   openLessonsWorld,
   pass,
   proposal,
+  say,
   w,
 } from '../helpers/lessons-world.js';
 
@@ -121,6 +123,12 @@ describe('a landing that touches a lesson’s anchor invalidates it (§5)', () =
       invalid_by: `ISS-71 changed ${WIDGET}`,
     });
     expect((await stateOf(touched))?.invalid_at).not.toBeNull();
+    // read by its slug it says it is invalid and why, never plain verified (dev.701: lesson-99)
+    const read = await say('member', 'GET', at(`/knowledge/lesson-${touched}`));
+    expect(read.json).toMatchObject({
+      confidence: 'deprecated',
+      metadata: { invalid: true, invalidBy: `ISS-71 changed ${WIDGET}` },
+    });
     expect(await stateOf(other)).toMatchObject({ status: 'approved', invalid_at: null });
     const map = await block(every);
     expect(map).not.toContain(`- lesson-${touched}:`);
@@ -163,6 +171,9 @@ describe('a landing that touches a lesson’s anchor invalidates it (§5)', () =
       invalid_by: null,
     });
     expect((await lesson(n)).sentence).toBe('Cache the widget layout per theme.');
+    const read = await say('member', 'GET', at(`/knowledge/lesson-${n}`));
+    expect(read.json.confidence).toBe('verified');
+    expect(read.json.metadata).not.toHaveProperty('invalid');
     expect(await block(every)).toContain(`- lesson-${n}:`);
   });
 

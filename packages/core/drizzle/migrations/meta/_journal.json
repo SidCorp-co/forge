@@ -4304,7 +4304,7 @@
       "idx": 678,
       "version": "7",
       "when": 1841529600000,
-      "tag": "0678_a_box_write_names_the_session_it_was_made_in",
+      "tag": "0678_a_box_write_names_its_session_and_an_invalid_lesson_reads_invalid",
       "breakpoints": true
     }
   ]

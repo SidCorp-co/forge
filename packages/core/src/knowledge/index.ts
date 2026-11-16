@@ -17,6 +17,7 @@ export {
   type LessonEntryMeta,
   lessonEntrySlug,
   lessonsMonthSlug,
+  markLessonEntryInvalid,
   putLessonEntry,
   putLessonsMonthEntry,
   selectLessonEntries,
