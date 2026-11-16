@@ -184,7 +184,7 @@ is evidence attached to it and never its Outcome. A fix that cannot be shown clo
 failure is a guess with a commit message, and a causal chain stated with its gap is a starting
 point where the same chain implied whole is a trap.
 
-### The one carve-out: forge-plugin is reached by issue, never by diff
+### forge-plugin: the second half, changed there and landed as a pair
 
 **The driver skill lives in a second repo**, github.com/SidCorp-co/forge-plugin — the `forge` CLI,
 the session hooks, and the issue-flow skill every `drive` job runs. It is a Forge project too
@@ -192,12 +192,11 @@ the session hooks, and the issue-flow skill every `drive` job runs. It is a Forg
 driver statuses, the drive prompt or the phase endpoints has a second half there, and nothing here
 records the coupling.
 
-**A defect there leaves as an issue there, and you do not edit that repo from a job in this one** —
-a verb that refuses wrongly, a missing way out, a skill naming something this repo no longer has.
-Name it in your comment under `Extra fixes:` as **reported**, not fixed — even when the fix
-here needs it. It is the out-of-reach route made absolute, and a boundary rather than an amnesty: the two repos ship on
-different clocks, so a change landing there from here is one no gate here has seen and no reviewer
-there asked for.
+**forge-dev's master changes that repo directly** (owner, 2026-11-16): in its own worktree there,
+through that repo's gate (`npm run check`, scoped as `node tools/gates.mjs -h` says), landed by its
+route (`node tools/run.mjs ship`), recorded on the `forge-plugin` item. A change with a half in each
+repo lands as a pair, each commit subject naming the issue key. A defect there that another job
+meets is a `forge-plugin` issue, filed there for that master to work.
 
 ## Green is a claim about one proposition
 

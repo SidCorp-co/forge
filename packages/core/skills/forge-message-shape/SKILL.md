@@ -77,7 +77,7 @@ stamp it.
 
 `issue-references-exist` is deliberately **not** in this cell. Measured on this
 project: 6 of 391 comments in an 18-issue sample cite a `forge-plugin` key,
-which CLAUDE.md's own carve-out *requires* an agent to do. A reference this
+as a change landed in pair with that repo must. A reference this
 project does not hold is most likely another project's, so it is not judged. A
 status **asserted of** an issue this project does hold still is.
 

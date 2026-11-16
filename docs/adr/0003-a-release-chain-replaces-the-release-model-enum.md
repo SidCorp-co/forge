@@ -192,6 +192,6 @@ is worth its price: those are the agent's, for the same reason cutting the tag i
   default is an unreported normalisation — a project may carry a strategy nobody chose.
 - A chain longer than two becomes expressible. The enum could not express it at all.
 - Every document describing the enum is deleted in the change that lands the chain, not annotated.
-- Work that this repository cannot carry: the plugin's half. It leaves as an issue in
-  `github.com/SidCorp-co/forge-plugin` and is not edited from here.
+- Work that this repository cannot gate: the plugin's half. It lands in
+  `github.com/SidCorp-co/forge-plugin` through that repository's gate, as the core half's pair.
 - Not decided here: what `/version` should answer. ADR 0002 left it open and it stays open.

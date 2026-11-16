@@ -1,0 +1,1 @@
+**forge-dev's master changes forge-plugin directly.** CLAUDE.md and the docs stop teaching that the plugin is reached through an issue: a change there goes through that repo's gate and route, and a two-repo change lands as a pair naming its key.

@@ -69,7 +69,7 @@ must end at is one path per capability: a tool calls what the route calls.
    agent drives: pair a runner, claim a job, move an issue through its statuses, grant a token.
 3. **Every feature mount grantable to a token** (ISS-1373). An exclusion is refused unless it is named with its
    reason.
-4. **MCP and the CLI on the API's path** (ISS-1372; the CLI half is reached by issue in forge-plugin). A capability has one implementation, and every wrapper
+4. **MCP and the CLI on the API's path** (ISS-1372; the CLI half lands in forge-plugin as its pair). A capability has one implementation, and every wrapper
    calls it.
 
 ## Honest costs
