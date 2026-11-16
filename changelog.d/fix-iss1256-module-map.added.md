@@ -1,1 +1,0 @@
-**The Modules screen is the module map.** Terms, rules, requirements, decisions and sources sit under their module, with counts, a tree and relations. One search, ⌘K for people and find for agents, reaches every record by any of its names.

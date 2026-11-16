@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.699] - 2026-11-16
+
+One module map and one search for terms, rules, requirements and decisions
+
+### Added
+
+- **The Modules screen is the module map.** Terms, rules, requirements, decisions and sources sit under their module, with counts, a tree and relations. One search, ⌘K for people and find for agents, reaches every record by any of its names.
+
 ## [0.4.0-dev.698] - 2026-11-16
 
 Plain proposal summaries, tool cards that teach agents, and named learning sources per project
