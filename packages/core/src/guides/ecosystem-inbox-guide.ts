@@ -12,7 +12,13 @@ export const ECOSYSTEM_INBOX_GUIDE: CoreGuide = {
   title: "Working a project's ecosystem inbox",
   summary:
     'What a channel document or an open builder run owes a master, how the box tells it, and the order to read, reply, submit, map the links this project uses and keep them true, and publish the interface and contract versions this project provides — over REST, with the author taken from the token.',
-  version: 10,
+  version: 11,
+  // the doors its publishing steps act through: their cards are rendered beneath the body (ISS-1251)
+  doors: [
+    'ecosystem.interface_write',
+    'ecosystem.contract_version_publish',
+    'ecosystem.contract_version_decide',
+  ],
   body: `## Working a project's ecosystem inbox
 
 A project in an ecosystem is written to by the projects it shares that ecosystem with: a change notice
@@ -170,29 +176,16 @@ reason \`BUILDER_RUN_SUPERSEDE_WITHOUT_REASON\`. A superseded run is closed: a w
 The ecosystem is built by the agents in it: this project's own master writes the interface it
 publishes and the versions of its contracts, and a person is not handed that work.
 
-1. \`GET /api/projects/:id/interface\`, then \`PUT /api/projects/:id/interface { baseRevision, document }\`
-   with the revision you read. Each contract this project serves is a \`publishes\` entry: its \`type\` is the
-   contract kind, and an artifact you upload is \`artifact: { upload: true }\`; an opaque contract has \`artifact: null\`.
-2. \`commitments\` are this project's promise to its consumers: the versioning scheme, the days of notice
-   before a breaking change takes effect (\`deprecationNoticeDays\`), and the days it answers an RFI or a
-   change request in (\`responseDays\`). Propose the windows the project can keep; the first ones are stored as you
-   wrote them. Moving commitments that are already set takes \`commitments.write\`, which a full token
-   holds where its holder does and a named token only where its grant names it, so without it send them back as they stand
-   (\`PERMISSION_FORBIDDEN\` otherwise). The read answers \`commitmentsSetBy { agency, revision }\`.
-3. Upload each version: \`POST /api/projects/:id/contracts/:contract/versions { version, kind, artifact, sourceRef }\`.
-   - \`kind\` is the publication's type: \`graphql\` takes the SDL text; \`mcp-tools\` takes
-     \`{ tools: [{ name, description, inputSchema }] }\`; \`cli\` takes
-     \`{ program, commands: [{ name, description?, options?: ["--flag"] }] }\`, a command's \`name\` being
-     the words after the program (\`record verdict\`); \`openapi\` and \`json-schema\` their JSON.
-   - \`sourceRef\` is where you read it, \`<repository path>@<commit sha>\`, a commit on the project's base
-     branch (\`CONTRACT_SOURCE_NOT_LANDED\` otherwise). A \`graphql\`, \`openapi\` or \`json-schema\` artifact
-     is that file as it stands at that commit, byte for byte (\`CONTRACT_SOURCE_FILE_MISSING\`,
-     \`CONTRACT_SOURCE_DIGEST_MISMATCH\`); a \`cli\` or \`mcp-tools\` one is described from the source it
-     names. Both are read from the source host, and where it cannot be read the version is refused
-     \`CONTRACT_SOURCE_UNREAD\`; leave \`sourceRef\` out where the artifact was read from no commit.
-   - \`version\` is in the interface's scheme and after the latest; on semver a breaking measurement owes a
-     MAJOR and an additive one a MINOR, and a change measured unknown is recorded, unknown, at the
-     version you name.
+1. Read the interface (\`GET /api/projects/:id/interface\`), then write it whole with the revision you
+   read (\`PUT /api/projects/:id/interface\`): each contract this project serves is a \`publishes\`
+   entry, and \`commitments\` are this project's promise to its consumers. How, and what a write is
+   refused for: the interface write's card, below.
+2. Record each version from its landed artifact
+   (\`POST /api/projects/:id/contracts/:contract/versions\`), then decide it: the version publish and
+   decide cards, below, say how, with the kind each publication takes and each refusal. Whoever
+   holds \`contracts.approve\` on the provider project (project admin, or an org owner or admin)
+   decides any version, breaking included, person or agent alike; without it the decision is
+   refused \`PERMISSION_FORBIDDEN\`.
    Core indexes the elements and measures the change against the latest version. A GraphQL contract's
    elements are its operations under their role (\`Query.products\`, \`Mutation.productCreate\`), their
    arguments (\`Query.products(first)\`) and each type's fields (\`Product.title\`). graphql-inspector
@@ -206,21 +199,7 @@ publishes and the versions of its contracts, and a person is not handed that wor
    (\`<tool>/properties/<input>\`). A cli contract's elements are each command as typed
    (\`forge record verdict\`) and its flags (\`forge record verdict/options/--criterion\`); a removed
    command or flag is breaking, an added one additive.
-   Refused by name, nothing recorded: \`CONTRACT_KIND_UNKNOWN\` (a kind core does not index),
-   \`CONTRACT_KIND_MISMATCH\` (not the publication's type), \`ARTIFACT_UNREADABLE\` (the source does not
-   parse, the detail naming the line and column; or an openapi artifact the pinned oasdiff cannot load,
-   the detail naming its error and the place holding a non-schema where a schema belongs),
-   \`VERSION_BUMP_TOO_SMALL\` or \`VERSION_NOT_IN_SCHEME\`, \`VERSION_NOT_MEASURED\` (a semver change no differ
-   measured — an opaque contract, or a previous artifact the differ cannot read — is recorded only at the
-   \`version\` you name, never at a MAJOR core guessed), \`VERSION_CHANGE_UNKNOWN\` (a semver change
-   measured unknown, the same: name the \`version\`),
-   \`CONTRACT_NOT_PUBLISHED\` (no such publication, or another project's).
-   A recorded version is proposed; it is current only once approved:
-   \`POST /api/projects/:id/contracts/:contract/versions/:version/decision { decision: approve | return, reason? }\`. Whoever holds
-   \`contracts.approve\` on the provider project (project admin, or an org owner or admin) decides any
-   version, breaking included, person or agent alike, and outside strict the provider project's master
-   decides its own (an agent's token, or a paired box's, that writes the project); without it the call
-   is refused \`PERMISSION_FORBIDDEN\`. A contract published in no ecosystem is
+   A contract published in no ecosystem is
    in-project: the project's own modules consume it (a \`consumes\` entry or a link naming no
    ecosystem), and naming an ecosystem for it is refused \`SELF_CONSUMPTION\`.
    An issue that needs a contract version waits on the version, never on the provider's issue:
@@ -243,9 +222,6 @@ publishes and the versions of its contracts, and a person is not handed that wor
    provider's production serves the version, unless every ecosystem it is shared through sets
    \`releases.providerLive: "off"\`; the release then records each wait it passed under
    \`providerLiveGateOff\`.
-
-Writing either takes \`contracts.write\` on this project (member or above); without it the write is
-\`PERMISSION_FORBIDDEN\`.
 
 ### Issue comments
 A comment a person marks as a question (\`intent: question\`) on one of this project's issues is owed

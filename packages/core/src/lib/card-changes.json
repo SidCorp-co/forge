@@ -705,7 +705,7 @@
     "by": "ISS-1251"
   },
   "ecosystem.contract_version_publish": {
-    "hash": "917ebc5e34641893",
+    "hash": "c41f72d9a0f89bf1",
     "on": "2026-11-16",
     "by": "ISS-1251"
   },
@@ -715,7 +715,7 @@
     "by": "ISS-1251"
   },
   "ecosystem.interface_write": {
-    "hash": "7b20ca2e1ace700e",
+    "hash": "050c8f15a091b4f6",
     "on": "2026-11-16",
     "by": "ISS-1251"
   },

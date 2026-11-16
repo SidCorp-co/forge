@@ -35,7 +35,11 @@ export const CARDS = {
     situations: [
       {
         when: 'this project serves a contract its consumers call and the interface does not name it',
-        do: 'add a publishes entry, artifact { upload: true } for an artifact you will upload, then publish its versions',
+        do: 'add a publishes entry, its type the contract kind and artifact { upload: true } for an artifact you will upload (null for an opaque contract), then publish its versions',
+      },
+      {
+        when: 'you set the promise this project keeps to its consumers, or it no longer holds',
+        do: 'write commitments: the versioning scheme, deprecationNoticeDays before a breaking change takes effect and responseDays to answer an RFI or a change request, windows the project can keep; the first ones are stored as written',
       },
       {
         when: 'an adopt was refused for an unmeasured or breaking step, and you checked the code against the version',
@@ -49,12 +53,17 @@ export const CARDS = {
     practice: [
       'Send the whole document with the revision interface answered.',
       'builtAgainst names an approved version; a proposed or returned one is refused CONTRACT_VERSION_NOT_APPROVED.',
+      'Moving commitments already set takes commitments.write (commitmentsSetBy says who set them): without it send them back as they stand, or the write is refused PERMISSION_FORBIDDEN.',
     ],
     example: {
       projectId: '<project uuid>',
       baseRevision: 3,
       document: '<the whole interface interface answered, with your change>',
     },
+    // ISS-790 (FB-372, catalog-fe builder run 966a1da8): the use behind a consumption was deleted and
+    // the record of it left standing; forge-dev's door use shows no refused interface write to draw on
+    redFlag:
+      'Leaving a consumption the code no longer calls standing in the interface: a builder run reports it as declaredWithoutCallSite, and the provider’s change notices keep reaching a project that does not use it.',
     family: 'ecosystem',
     audience: ['master'],
   },
@@ -273,10 +282,26 @@ export const CARDS = {
         when: 'a version is refused VERSION_NOT_MEASURED or VERSION_CHANGE_UNKNOWN',
         do: 'name the version yourself: core records the change unknown at that version, never at a MAJOR it guessed',
       },
+      {
+        when: 'you choose the version to record',
+        do: 'take the next in the interface’s scheme: on semver a breaking measurement owes a MAJOR and an additive one a MINOR',
+        watch: 'one too small or outside the scheme is refused VERSION_BUMP_TOO_SMALL or VERSION_NOT_IN_SCHEME',
+      },
+      {
+        when: 'you send the artifact',
+        do: 'send a graphql, openapi or json-schema file as it stands at sourceRef, byte for byte; describe a cli or mcp-tools contract from the source sourceRef names; leave sourceRef out where you read the artifact from no commit',
+        watch:
+          'refused CONTRACT_SOURCE_FILE_MISSING, CONTRACT_SOURCE_DIGEST_MISMATCH, or CONTRACT_SOURCE_UNREAD where the source host cannot be read',
+      },
+      {
+        when: 'a version is refused for what it is',
+        do: 'read the refusal: CONTRACT_KIND_UNKNOWN or CONTRACT_KIND_MISMATCH names a kind not the publication’s, ARTIFACT_UNREADABLE the line and column the source does not parse at, CONTRACT_NOT_PUBLISHED a contract the interface does not publish',
+      },
     ],
     practice: [
-      'kind is the publication’s type: graphql takes the SDL text, mcp-tools { tools }, cli { program, commands }.',
-      'A recorded version is proposed; it is current only once contract_version_decide approves it.',
+      'kind is the publication’s type: graphql takes the SDL text, openapi and json-schema their JSON, mcp-tools { tools: [{ name, description, inputSchema }] }, cli { program, commands: [{ name, description?, options? }] }, a command’s name the words after the program.',
+      'A recorded version is proposed; it is current only once contract_version_decide approves it, which outside strict the provider’s own master does.',
+      'Writing takes contracts.write on this project (member or above); without it the write is refused PERMISSION_FORBIDDEN.',
     ],
     example: {
       projectId: '<project uuid>',
