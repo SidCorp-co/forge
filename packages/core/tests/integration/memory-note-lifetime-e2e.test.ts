@@ -220,7 +220,6 @@ describe('a search hit carries its standing (criterion 3)', () => {
     const res = await api(w.token, 'POST', '/api/memory/search', {
       projectId: w.projectId,
       query: 'zephyrquartz',
-      strategy: 'keyword',
     });
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     const hits = res.body.hits as { sourceRef: string; standing?: string }[];

@@ -171,17 +171,6 @@ describe('BC-7: three phrasings of five current rules recall the live entry, nev
       expect(ids.filter((id) => retired.has(id))).toEqual([]);
     },
   );
-
-  it('answers the same live entries by keyword, with no embedding at all', async () => {
-    const res = await api(w.token, 'POST', `/api/projects/${w.projectId}/knowledge/search`, {
-      query: 'trước khi lưu memory phải trả lời những câu hỏi nào',
-      strategy: 'keyword',
-    });
-    expect((res.body.knowledge as Body[])[0]).toMatchObject({
-      slug: 'curated-memory',
-      origin: 'org',
-    });
-  });
 });
 
 async function mcp(name: string, args: Record<string, unknown>) {
@@ -222,7 +211,7 @@ describe('BC-7: MCP search and fetch read the same entries', () => {
 // of the query while an org ruling held any, and the two were merged by their fused scores, which
 // capped a project hit at half an org hit's. Planted: six org rulings sharing three of the query's
 // words, each out-scoring the exact project lesson on the old merge.
-describe('ISS-1142: the project lesson a question asks for is recalled first in every strategy', () => {
+describe('ISS-1142: the project lesson a question asks for is recalled first', () => {
   const ASK = 'what the master does when a landing push hangs';
   let lessonId = '';
 
@@ -248,18 +237,15 @@ describe('ISS-1142: the project lesson a question asks for is recalled first in 
     lessonId = (row as { id: string }).id;
   });
 
-  it.each(['semantic', 'hybrid', 'keyword'] as const)(
-    'recalls it first by %s, ahead of the org rulings sharing the question’s words',
-    async (strategy) => {
-      const res = await api(w.token, 'POST', `/api/projects/${w.projectId}/knowledge/search`, {
-        query: ASK,
-        scope: 'knowledge',
-        strategy,
-      });
-      expect(res.status, JSON.stringify(res.body)).toBe(200);
-      const found = (res.body.knowledge as Body[]).map((h) => h.id as string);
-      expect(found[0], JSON.stringify(found)).toBe(lessonId);
-      expect(found.length).toBeGreaterThan(1);
-    },
-  );
+  // one rank since ISS-1256: the find door's keyword and dense arms fused, no strategy to pick
+  it('recalls it first, ahead of the org rulings sharing the question’s words', async () => {
+    const res = await api(w.token, 'POST', `/api/projects/${w.projectId}/knowledge/search`, {
+      query: ASK,
+      scope: 'knowledge',
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const found = (res.body.knowledge as Body[]).map((h) => h.id as string);
+    expect(found[0], JSON.stringify(found)).toBe(lessonId);
+    expect(found.length).toBeGreaterThan(1);
+  });
 });

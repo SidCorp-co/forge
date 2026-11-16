@@ -123,7 +123,6 @@ describe('a project entry owes its source, scope and re-check condition (criteri
     ).toMatchObject(SOURCED);
     const found = await api(w.admin, 'POST', `/api/projects/${w.projectId}/knowledge/search`, {
       query: 'Provenance-marker-zq7',
-      strategy: 'keyword',
     });
     expect(found.status, JSON.stringify(found.body)).toBe(200);
     expect(

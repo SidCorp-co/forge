@@ -115,7 +115,6 @@ async function restSearch(token: string): Promise<Hit> {
   const res = await api(token, 'POST', '/api/memory/search', {
     projectId: ids.home,
     query: 'Payroll',
-    strategy: 'keyword',
   });
   expect(res.status, JSON.stringify(res.body)).toBe(200);
   return ofRef(res.body.hits as Hit[]);
@@ -131,7 +130,6 @@ async function restKnowledgeSearch(token: string): Promise<Hit> {
   const res = await api(token, 'POST', `/api/projects/${ids.home}/knowledge/search`, {
     query: 'Payroll',
     scope: 'memory',
-    strategy: 'keyword',
   });
   expect(res.status, JSON.stringify(res.body)).toBe(200);
   return ofRef(res.body.memory as Hit[]);
@@ -184,7 +182,6 @@ describe('a turn reads nothing of a project outside its fence', () => {
       await turnTool('asker', 'forge_memory', {
         action: 'search',
         query: 'Payroll',
-        strategy: 'keyword',
       }),
     );
   });
@@ -194,7 +191,6 @@ describe('a turn reads nothing of a project outside its fence', () => {
       await turnTool('owner', 'forge_memory', {
         action: 'search',
         query: 'Payroll',
-        strategy: 'keyword',
       }),
     );
   });
@@ -206,7 +202,6 @@ describe('a turn reads nothing of a project outside its fence', () => {
           action: 'search',
           query: 'Payroll',
           scope: 'memory',
-          strategy: 'keyword',
         }),
       );
     }

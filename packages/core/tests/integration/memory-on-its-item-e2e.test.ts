@@ -35,7 +35,6 @@ async function note(w: World, sourceRef: string, textContent: string) {
 async function recall(w: World, query: string): Promise<string[]> {
   const res = await api(w.token, 'POST', '/api/memory/search', {
     projectId: w.projectId,
-    strategy: 'keyword',
     query,
   });
   expect(res.status, JSON.stringify(res.body)).toBe(200);

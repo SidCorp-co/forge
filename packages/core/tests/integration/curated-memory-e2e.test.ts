@@ -236,20 +236,20 @@ describe('BC-3: an issue copy is history, never memory', () => {
     expect((await entries('&sources=issue')).status).toBe(400);
   });
 
-  it('is not recalled unless the filter names it', async () => {
+  it('is never recalled: a filter naming it is refused, pointing at the find door', async () => {
     const recall = await api(w.token, 'POST', '/api/memory/search', {
       projectId: w.projectId,
       query: 'store theme',
-      strategy: 'keyword',
     });
     expect((recall.body.hits as Body[]).map((h) => h.source)).not.toContain('issue');
+    // memory search is the find door's memory filter (ISS-1256); issues are its issue filter
     const byName = await api(w.token, 'POST', '/api/memory/search', {
       projectId: w.projectId,
       query: 'store theme',
-      strategy: 'keyword',
       sourceFilter: ['issue'],
     });
-    expect((byName.body.hits as Body[]).map((h) => h.source)).toEqual(['issue']);
+    expect(byName.status).toBe(400);
+    expect(JSON.stringify(byName.body)).toMatch(/memory filter[\s\S]*find with type/);
   });
 
   it('deletes a memory for good on request, keeping only the reason as history', async () => {

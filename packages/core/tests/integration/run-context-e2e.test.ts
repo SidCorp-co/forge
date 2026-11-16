@@ -216,7 +216,6 @@ describe("c2: a knowledge get and a memory search made with a run's token record
     const got = await api(w.box, 'POST', '/api/memory/search', {
       projectId: w.projectId,
       query: 'release cut aborted fragments',
-      strategy: 'keyword',
     });
     expect(got.status, JSON.stringify(got.body)).toBe(200);
     expect((got.body.hits as { id: string }[]).map((h) => h.id)).toContain(w.memoryId);
