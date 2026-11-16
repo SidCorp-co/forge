@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.696] - 2026-11-16
+
+forge-dev agents change the forge-plugin repository directly through its own route
+
+### Changed
+
+- **forge-dev's master changes forge-plugin directly.** CLAUDE.md and the docs stop teaching that the plugin is reached through an issue: a change there goes through that repo's gate and route, and a two-repo change lands as a pair naming its key.
+
 ## [0.4.0-dev.695] - 2026-11-16
 
 Steward runs take allocated slots; releases parked on approval keep their version
