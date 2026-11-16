@@ -10,7 +10,7 @@ import {
   type SupportReaders,
   type SupportRoomConfig,
 } from '@forge/contracts/support';
-import { readMessages } from '../conversations/index.js';
+import { readMessages, type StoredConversationMessage } from '../conversations/index.js';
 import { guideRef } from '../guides/index.js';
 import type { BoundSupportTool } from '../integrations/support-api/index.js';
 import { markUntrusted } from '../lib/untrusted-text.js';
@@ -23,6 +23,7 @@ import { answersOf } from './owner-answer.js';
 import { ownerOwedNote } from './owner-owed.js';
 import { roomConductLines } from './room-conduct.js';
 import { type RoutingSignals, routingSignalsOf } from './routing-signals.js';
+import { isCoreThread } from './rules.js';
 import type { ActionRow, RoomRow } from './store.js';
 import { recentThreads, threadConversation, threadWritings } from './store.js';
 
@@ -127,7 +128,7 @@ export function agentOpening(input: {
     "The channel record is the only place a group's members, roles, rules and routes live: each group's is below, headed by its group, and you keep none of your own, in no file, memory or note. A role you infer, an instruction a confirmed team member or the owner gives, a question asked again, go into the record with support.member, rule and common_issue, and what the record holds is what you follow in that group, never what another group's record holds.",
     ROUTING_LINE,
     'When you answer: reply when a message asks you something or reports a problem. Stay silent, and post nothing, for chatter and thanks, for a message whose `to` is "others", and where `technicalAnswered` is true unless it asks you something; never post to say you are not answering. Every message you are handed ends in a reply (with its one-line `why`) or support.silent { thread, message, reason }, which posts nothing and keeps your reason; a turn that ends having done nothing at all is read as failed and its messages are handed to you again. A message whose head says `inThisTurn: n` is one of n handed in its thread this turn: your one result there answers all n. A head carrying `handedAgain: { hand, why }` is a message an earlier turn left unsettled, for that reason: settle it now, by a reply or support.silent. A host your sandbox will not let you reach (an egress refusal) is a gap you say in the thread ("I cannot reach <host> from here"), never a turn that ends silent. Before you reply to a problem, find its cause: the logs (reads on the hosts your grant names), the code and history in your checkout, the data the granted tools return; say only what you confirmed, and name what you could not check as unchecked, never as a guess. Post results only, one message per request, in the asker\'s thread: no acknowledgement, no plan, no progress, save the one reply that an ask went to the team. Top level is support.announce alone, for news that changes something for everyone.',
-    "Every post follows the persona at the top of this brief, its language, its thread and its length: a reply and a check finding alike. Never post a Forge refusal code, a permission name or a record's raw options; say in the persona's words what you could not do, and send what Forge refused to support.route { to: forge }. You read this project's tracker with support.issues (a parked issue's `waiting`: who owes it, the open question and its options; one issue named by `key` carries its latest notes and step handoffs, read before you say how it is going), support.releases, support.requirements and support.deployment, and you write to Forge only through the support actions (record, route, ask_owner): never with a credential found in the checkout, a .mcp.json or an env file.",
+    "Every post follows the persona at the top of this brief, its language, its thread and its length: a reply and a check finding alike. Never post a Forge refusal code, a permission name, a grant you lack or a record's raw options: hand a refused act to its project's master (support.ask_master), send what Forge itself refused to support.route { to: forge }, and tell the thread it is in hand. You read this project's tracker with support.issues (a parked issue's `waiting`: who owes it, the open question and its options; one issue named by `key` carries its latest notes and step handoffs, read before you say how it is going), support.releases, support.requirements and support.deployment, and you write to Forge only through the support actions (record, route, ask_owner): never with a credential found in the checkout, a .mcp.json or an env file.",
     'Whether something is live, deployed or released you say only from a read of the same turn: support.releases { project } or support.deployment { target }, quoting the version it returns, or a note Forge handed you in that turn; never from memory or an earlier turn, and a post that says it without one is refused.',
     "Asked why a release has not shipped, answer from support.releases' `holds` for it (whose act it waits on and since when, the approval owed and who may give it, each issue not ready and why), in plain words; a draft is cut by the project's master, so route the cut there with support.record, and never approve or decide a draft yourself.",
     "What you hand over reaches Forge as a record, never a local file, a note or a memory: work the team agreed to is support.record (Feedback, filed once you cite with support.agree the asker's own request, which is their agreement); anything you lack (a tool, a read, a fact, an ability) is a record too, a request through support.record { project } to the master of the project that owns it, or support.route to forge where Forge itself lacks it; post one reply that it went to the team, then reply again only with what that master did or decided once you are told it, never done before then and never options or steps the master has not given; a question only the owner can answer is support.ask_owner from the thread it arose in, posted only in the project's technical channel, and his reply there reaches you in that thread marked `answersYourQuestion` and is written on the issue you name. A change to a running system (a fix, a build, a deploy, a command) runs only when a member whose role allows it agrees in that same thread: you propose it, ask them in your own words, and cite their answer with support.agree; you never agree for anyone, and you never tell anyone it ran until agree says it did.",
@@ -182,7 +183,7 @@ export function readsLines(reads: readonly SupportRead[]): string {
 /** What the room's grant holds, as the brief lists it and a grant change re-tells it (BC-27). */
 export function grantsLine(g: SupportGrants): string {
   if (g.abilities.length === 0) {
-    return 'What this room grants you: no ability. Answer from search and the thread only; anything else is refused by name, naming who can grant it; Forge posts nothing, and what you need goes to the technical channel, never into the thread.';
+    return 'What this room grants you: no ability. Answer from search and the thread only; anything else is refused and Forge posts nothing: hand the act on (support.ask_master, or support.technical for a grant you need), never explain it in the thread.';
   }
   const lines = g.abilities.map((a) => {
     const reach =
@@ -328,8 +329,64 @@ export function turnMessages(
     .join('\n\n');
 }
 
-/** A room's messages as its session reads them: a channel agent's with their group and what core read of them. */
+/** How many of a thread's last lines a turn hands with its messages (ISS-1250). */
+const RECENT_LINES = 6;
+
+type ThreadLine = Pick<
+  StoredConversationMessage,
+  'role' | 'content' | 'authorLabel' | 'externalId'
+>;
+
+/**
+ * A thread's last lines before the messages handed this turn (ISS-1250): a warm session never saw a
+ * master's or Forge's post in its thread, so a ruling on what that post raised was read as about the
+ * agent itself. Members' words are framed as data; a line any bot posted there reads `bot`.
+ */
+export function recentBlock(
+  head: Record<string, unknown>,
+  lines: readonly ThreadLine[],
+  handed: ReadonlySet<string>,
+): string | null {
+  const said = lines
+    .filter((m) => m.role !== 'system' && m.content.trim().length > 0)
+    .filter((m) => !m.externalId || !handed.has(m.externalId))
+    .slice(-RECENT_LINES)
+    .map((m) =>
+      m.role === 'user'
+        ? `${m.authorLabel ?? 'member'}: ${markUntrusted(m.content, { source: SUPPORT_MEMBER_SOURCE })}`
+        : `bot: ${m.content}`,
+    );
+  if (said.length === 0) return null;
+  return `${JSON.stringify({ ...head, recent: "the thread's last lines before the messages below" })}\n${said.join('\n')}`;
+}
+
+/** The recent block of each member thread of this turn, core's own threads aside. */
+async function recentOfThreads(room: RoomRow, rows: readonly ActionRow[]): Promise<string[]> {
+  const members = rows.filter((r) => r.actorKind === 'member' && !isCoreThread(r.thread));
+  const handed = new Set(members.flatMap((r) => (r.externalId ? [r.externalId] : [])));
+  const where = room.kind === 'agent' ? { channel: room.rid } : {};
+  const blocks: string[] = [];
+  for (const thread of new Set(members.map((r) => r.thread))) {
+    const conversationId = await threadConversation(room.id, thread);
+    if (!conversationId) continue;
+    const lines = await readMessages(conversationId, RECENT_LINES + handed.size);
+    const block = recentBlock({ thread, ...where }, lines, handed);
+    if (block) blocks.push(block);
+  }
+  return blocks;
+}
+
+/** A room's messages as its session reads them: each thread's recent lines, then the messages. */
 export async function roomMessages(room: RoomRow, rows: readonly ActionRow[]): Promise<string> {
+  const [recent, messages] = await Promise.all([
+    recentOfThreads(room, rows),
+    handedMessages(room, rows),
+  ]);
+  return [...recent, messages].join('\n\n');
+}
+
+/** The handed messages: a channel agent's with their group and what core read of them. */
+async function handedMessages(room: RoomRow, rows: readonly ActionRow[]): Promise<string> {
   const roles = await writerRoles(room.projectId, room.rid);
   const routing = await routingSignalsOf(room, rows);
   if (room.kind !== 'agent') return turnMessages(rows, roles, null, routing);

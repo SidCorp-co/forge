@@ -3,7 +3,8 @@
 // such a need is raised in the project's technical channel (`technical-channel.ts`), and the thread
 // gets the answer or a short note that it is in hand. 60 replies and 54 routed posts of 01/11-15/11
 // carried it (in Vietnamese: "I have no permission to share the mailbox yet", "this room is not
-// granted the feedback list", "please grant me access"). The screen reads the agent's own
+// granted the feedback list", "please grant me access"), and after it the epod thread's "this room
+// does not let me keep a channel rule ... in my role" (ISS-1250). The screen reads the agent's own
 // first-person claim, so an answer explaining a user's own access to a screen still posts.
 
 import { no, type Outcome } from './outcome.js';
@@ -15,6 +16,9 @@ const PERMISSION_TALK: readonly RegExp[] = [
   // Vietnamese, from a letter boundary (`\b` is ASCII-only): "I have no / not yet a permission", "I am not allowed"
   /(?<![\p{L}\p{N}_])(?:em|bot|mình|tôi)\s+(?:vẫn\s+)?(?:không|chưa|ko)\s+(?:có\s+quyền|được\s+cấp\s+quyền|được\s+phép|được\s+quyền)/iu, // i18n-allow: the Vietnamese phrasing of a permission claim being policed
   /(?:phòng|nhóm|room)\s+này\s+(?:không|chưa)\s+(?:được\s+cấp\s+quyền|có\s+quyền)/iu, // i18n-allow: the Vietnamese phrasing of a permission claim being policed
+  // Vietnamese, the room or the role keeping it from the agent: "this room does not let me", "in my role" (ISS-1250, epod 16/11)
+  /(?:phòng|nhóm|room|vai\s+trò)\s+này\s+(?:không|chưa)\s+(?:cho|để)\s+(?:em|bot|mình|tôi)\b/iu, // i18n-allow: the Vietnamese phrasing of a permission claim being policed
+  /(?:vai\s+trò|quyền(?:\s+hạn)?)\s+của\s+(?:em|bot|mình)(?![\p{L}\p{N}_])/iu, // i18n-allow: the Vietnamese phrasing of a permission claim being policed
   // Vietnamese, asking or waiting on someone to grant or allow it first
   /(?<![\p{L}\p{N}_])(?:nhờ|cần|đợi|chờ)\s+(?:anh|chị|admin|owner|sếp)[^.!?\n]{0,40}?\s(?:cấp\s+quyền|cho\s+phép|duyệt\s+quyền)/iu, // i18n-allow: the Vietnamese phrasing of a permission claim being policed
   // English, first person: "I don't have permission", "I am not allowed/permitted", "I lack access"
@@ -22,6 +26,8 @@ const PERMISSION_TALK: readonly RegExp[] = [
   /\bI(?:'m|\s+am)\s+not\s+(?:allowed|permitted|granted|authori[sz]ed)\b/i,
   /\bI\s+(?:lack|have\s+no)\s+(?:the\s+)?(?:permission|access|grant|rights?)\b/i,
   /\bthis\s+room\s+(?:is\s+not|isn't)\s+granted\b/i,
+  /\bthis\s+(?:room|group|channel|role)\s+(?:does\s+not|doesn't|won't|will\s+not)\s+(?:let|allow)\s+me\b/i,
+  /\bmy\s+(?:role|grants?|permissions?)\b/i,
   // waiting on someone to grant: "once the owner grants", "until an admin gives me access"
   /\b(?:until|once|after)\s+(?:the\s+owner|an?\s+admin|someone|the\s+team|you)\s+(?:grants?|gives?\s+me\s+(?:access|permission))\b/i,
 ];
