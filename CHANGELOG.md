@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.701] - 2026-11-16
+
+Tool cards with agent self-audits, and search that ignores nonsense matches
+
+### Fixed
+
+- **Every tool an agent uses now has a card, and agents audit their own work.** Cards carry a red flag, an example and real scenarios; masters, runs and the steward record what they missed, and the Capabilities page counts it.
+- **Find no longer answers nonsense with requirements or feedback.** A requirement or feedback item now counts as a meaning match only above its own measured floor; exact words still find it.
+
 ## [0.4.0-dev.700] - 2026-11-16
 
 Search places each capability under its module and reads plainly on a phone
