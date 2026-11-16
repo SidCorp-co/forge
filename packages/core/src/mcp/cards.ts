@@ -59,12 +59,20 @@ export const situationText = (card: CapabilityCard | undefined) =>
 
 type Proposed = CardFreshness['proposedDeltas'][number];
 
-/** The card as `forge_describe` answers it: what to do when, how to do it well, and what goes wrong. */
-export const describedCard = (card: CapabilityCard, proposed: readonly Proposed[] = []) => ({
+/**
+ * The card as `forge_describe` answers it: what to do when, how to do it well, and what goes wrong.
+ * Where describe already answers the action's own example (`exampleShown`), the card's is left out:
+ * one example to call by, not two.
+ */
+export const describedCard = (
+  card: CapabilityCard,
+  proposed: readonly Proposed[] = [],
+  exampleShown = false,
+) => ({
   purpose: card.purpose,
   when: card.situations.map((s) => `${s.when} → ${s.do}${s.watch ? ` (watch: ${s.watch})` : ''}`),
   practice: card.practice,
-  ...(card.example ? { cardExample: card.example } : {}),
+  ...(card.example && !exampleShown ? { cardExample: card.example } : {}),
   ...(card.redFlag ? { redFlag: card.redFlag } : {}),
   // a lesson folded into the card stays taught here until its code carries it (owner of ISS-1251's
   // fold: the orchestrator, 2026-11-16), marked as proposed so it is not read as the card's own text

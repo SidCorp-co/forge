@@ -8,13 +8,20 @@
 import { MCP_LISTED_TOOLS } from '@forge/contracts/mcp-tools';
 import Ajv2020 from 'ajv/dist/2020.js';
 import { Hono } from 'hono';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { PAT_GRANT_EPOCH } from '../credentials/pat-permissions.js';
 import { provideChatWriteHold } from '../middleware/chat-write-hold.js';
 import type { PrincipalVars } from '../middleware/require-pat.js';
 import { mcpMessageBody } from '../root-routes.js';
 import { mcpHandler } from './handler.js';
 import { mcpRequestClass } from './request-class.js';
+
+// describe answers a carded action's card with the lessons proposed for it, read from Postgres, which
+// this suite has none of (ISS-1251): a card here carries none proposed
+vi.mock('../lessons/index.js', async (actual) => ({
+  ...(await actual<typeof import('../lessons/index.js')>()),
+  cardFreshness: async () => [],
+}));
 
 const principal = {
   kind: 'pat',
@@ -123,7 +130,14 @@ describe('forge_find and forge_describe', () => {
     });
     expect(d.data.guide).toMatch(/^create \{/);
     expect(d.data.guide).not.toMatch(/revise \{/);
-    expect(Buffer.byteLength(d.text)).toBeLessThan(8 * 1024);
+    // its card rides along, without a second example beside the action's own (ISS-1251)
+    expect(d.data.card).toMatchObject({ purpose: expect.any(String) });
+    expect(d.data.card).not.toHaveProperty('cardExample');
+    // Amnesty (ISS-1251): 10 KB, not 8. It trades about 1.8 KB more on the largest actions'
+    // describe, because an action's capability card is part of its describe by design, and costs that
+    // context on every forge_describe call. It ends when requirements.create's input field texts are
+    // compacted (REQ-78 BC-3), debt db715025-9a0c-4b44-805a-f499f2848e21; the budget returns to 8 KB.
+    expect(Buffer.byteLength(d.text)).toBeLessThan(10 * 1024);
   });
 
   // REQ-78 BC-3: describe alone is enough to call it, so it names the document's schema where it is

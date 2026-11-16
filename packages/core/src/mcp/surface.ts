@@ -199,6 +199,7 @@ export async function callSurface(
             card: describedCard(
               entry.card,
               await proposedFor(entry.card.id, deps.ctx.boundProjectId ?? null),
+              entry.example !== undefined,
             ),
           }
         : {}),
