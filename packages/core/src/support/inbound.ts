@@ -209,9 +209,10 @@ async function takeIntoRoom(
     return fresh;
   };
 
-  // the owner's reply in the project's technical channel answers the ask waiting there: it reaches
-  // the asking session in the asker's thread, and is kept here as context alone (ISS-1246)
-  if (await settleOwnerAnswer(ownerReplyOf(m))) {
+  // the owner's reply in the project's technical channel, a thread of the shared operations room,
+  // answers the ask waiting there: it reaches the asking session in the asker's thread, and is kept
+  // here as context alone (ISS-1246)
+  if (room.kind === 'operations' && (await settleOwnerAnswer(ownerReplyOf(m)))) {
     await recordAndFlag(m, author, { deliver: false });
     return;
   }
