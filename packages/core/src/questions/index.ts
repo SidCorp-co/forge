@@ -9,6 +9,7 @@ export {
   answeredSinceSql,
   recordAnswerResume,
 } from './answer-outcome.js';
+export { QUESTION_REST_CARDS } from './cards.js';
 export {
   type AgedRound,
   agedRounds,
