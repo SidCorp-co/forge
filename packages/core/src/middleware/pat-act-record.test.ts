@@ -8,7 +8,8 @@ vi.mock('../credentials/mcp-audit.js', async (actual) => ({
   writeMcpAudit: (row: Record<string, unknown>) => written.push(row),
 }));
 
-const { actResultOf, projectOfPath, recordingPatAct } = await import('./pat-act-record.js');
+const { auditResultOf } = await import('../credentials/mcp-audit.js');
+const { projectOfPath, recordingPatAct } = await import('./pat-act-record.js');
 
 const P = '22222222-2222-4222-8222-222222222222';
 const principal = { userId: 'u1', tokenId: 't1', deviceId: null } as never;
@@ -73,7 +74,7 @@ describe('every act a token makes over REST is recorded against it (REQ-27 BC-2)
   });
 
   it('reads the result and the project off the answer and the path', () => {
-    expect([200, 404, 429, 500, 401].map(actResultOf)).toEqual([
+    expect([200, 404, 429, 500, 401].map(auditResultOf)).toEqual([
       'ok',
       'not_found',
       'rate_limited',
