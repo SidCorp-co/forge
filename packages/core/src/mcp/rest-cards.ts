@@ -20,6 +20,7 @@ import { PROJECT_CONFIG_REST_CARDS } from '../project-config/index.js';
 import { card } from '../prompt/index.js';
 import { QUESTION_REST_CARDS } from '../questions/index.js';
 import { RELEASE_REST_CARDS } from '../release-batch/index.js';
+import { REQUIREMENT_REST_CARDS } from '../requirements/index.js';
 import { SCHEDULE_REST_CARDS } from '../schedules/index.js';
 import { STEWARD_REST_CARDS } from '../steward/index.js';
 import { STEWARD_NOTE_REST_CARDS } from '../steward-notes/index.js';
@@ -48,4 +49,5 @@ export const REST_CARDS: readonly CapabilityCard[] = [
   ...ownedBy('lessons', LESSON_REST_CARDS),
   ...ownedBy('comments', COMMENT_REST_CARDS),
   ...ownedBy('feedback', FEEDBACK_REST_CARDS),
+  ...ownedBy('requirements', REQUIREMENT_REST_CARDS),
 ];

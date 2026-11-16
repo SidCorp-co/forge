@@ -1,6 +1,7 @@
 export { acceptDelivery, dropAsDuplicateIn, dropRequirement, moveDelivery } from './acceptance.js';
 export { acceptRevision, agreeRequirement } from './agree.js';
 export { latestBaselineIn } from './baselines.js';
+export { REQUIREMENT_REST_CARDS } from './cards.js';
 export { requirementKeysAndTitles, requirementStatusesBySeq } from './cited-requirements.js';
 export {
   contractAboutRefusal,
