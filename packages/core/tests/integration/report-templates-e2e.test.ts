@@ -1,7 +1,17 @@
+import {
+  BUILTIN_REPORT_TEMPLATES,
+  builtinReportTemplate,
+} from '@forge/contracts/report-template-builtins';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { api, type Body, userToken } from '../helpers/api.js';
 import { addProjectMember, createTestUser } from '../helpers/factories.js';
 import { type World, world } from '../helpers/forecast-world.js';
+
+// the progress template's own queries, in its order, read from the template rather than copied (ISS-1254)
+const PROGRESS = builtinReportTemplate('progress');
+if (!PROGRESS)
+  throw new Error('@forge/contracts/report-template-builtins holds no "progress" template');
+const PROGRESS_QUERIES = PROGRESS.queries.map((q) => q.query);
 
 // A report template runs its queries as the asker and keeps each run; its narrative may cite only
 // those runs; its output is shared frozen, every run read again as the person sharing (REQ-32, A7).
@@ -38,23 +48,14 @@ describe('a template run', () => {
 
   it('lists the templates, and runs progress as the asker, keeping a run per query', async () => {
     const list = await api(w.token, 'GET', `/api/projects/${w.projectId}/report-templates`);
-    expect((list.body.templates as Body[]).map((t) => t.id)).toEqual([
-      'progress',
-      'release',
-      'roadmap',
-    ]);
+    expect((list.body.templates as Body[]).map((t) => t.id)).toEqual(
+      BUILTIN_REPORT_TEMPLATES.map((t) => t.id),
+    );
     const res = await runTemplate('progress');
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     const document = res.body.document as Body;
     const runs = document.runs as Body[];
-    expect(runs.map((r) => r.queryId)).toEqual([
-      'period-flow',
-      'issue-flow',
-      'status-time',
-      'closed-by-requirement',
-      'progress-by-requirement',
-      'gated-moves',
-    ]);
+    expect(runs.map((r) => r.queryId)).toEqual(PROGRESS_QUERIES);
     expect((res.body.slots as Body[]).map((s) => s.slot)).toEqual([
       'summary',
       'risks',

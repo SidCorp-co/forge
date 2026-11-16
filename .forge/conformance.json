@@ -40,8 +40,8 @@
     },
     "relations": {
       "level": 2,
-      "gate": "archmap check + check-module-boundaries + check-module-shape + check-root-dependencies + tc-changed --consumers",
-      "owns": "which module may depend on which: archmap's contracts, and pattern v2's context direction, kind direction, runtime cycles, face-only access and adapter ports (check-module-boundaries, at zero with nothing frozen, so any violation fails); and which module may write which table, where a database call, a refusal and the global fetch may be written (check-module-shape, type-aware ESLint rules ratcheted by the bulk suppressions in .forge/module-shape-suppressions.json, whose per-rule total may not rise over the base revision); and which package a root consumer under scripts/ or .forge/, or a .arch-tsconfig.json paths target, may reach: only one its own manifest declares (check-root-dependencies, at zero but for priced allowances in checkers.root-dependencies, each refused once it covers nothing); and whether every package importing a changed one, by its manifest or by a tsconfig paths entry, still typechecks against it (tc-changed --consumers, at zero: a red names the consumer file)",
+      "gate": "archmap check + check-module-boundaries + check-module-shape + check-root-dependencies + tc-changed --consumers + check-hand-kept-inventories",
+      "owns": "which module may depend on which: archmap's contracts, and pattern v2's context direction, kind direction, runtime cycles, face-only access and adapter ports (check-module-boundaries, at zero with nothing frozen, so any violation fails); and which module may write which table, where a database call, a refusal and the global fetch may be written (check-module-shape, type-aware ESLint rules ratcheted by the bulk suppressions in .forge/module-shape-suppressions.json, whose per-rule total may not rise over the base revision); and which package a root consumer under scripts/ or .forge/, or a .arch-tsconfig.json paths target, may reach: only one its own manifest declares (check-root-dependencies, at zero but for priced allowances in checkers.root-dependencies, each refused once it covers nothing); and whether every package importing a changed one, by its manifest or by a tsconfig paths entry, still typechecks against it (tc-changed --consumers, at zero: a red names the consumer file); and that test code reads what a registry registers rather than keeping a list of it (check-hand-kept-inventories, at zero but for priced allowances in checkers.hand-kept-inventories, each refused once it covers nothing)",
       "baseline": {
         "path": ".arch.json",
         "keyBy": "contract",
@@ -440,6 +440,41 @@
           "why": "archmap's resolution map sends `hono/*` to node_modules/hono/dist/* so dependency-cruiser counts core's `hono/http-exception` edges as resolved (167 were dropped without it). hono is core's dependency: the root node_modules holds it only because .npmrc hoists core's copy there.",
           "$costs": "The map works only while node-linker=hoisted stands: without hoisting the target is gone and archmap's unresolvable edges went from 33 to 208 against R7's ceiling of 50 (measured 2026-09-27). A hono bump in packages/core/package.json moves what archmap resolves, with nothing recording the link.",
           "endsWhen": "The root manifest declares hono, or .arch-tsconfig.json maps `hono/*` into packages/core/node_modules/hono with hoisting off. Either one turns this entry stale, and the checker refuses it until it is removed."
+        }
+      ]
+    },
+    "hand-kept-inventories": {
+      "$comment": "ISS-1254. Test code keeps no literal list of what a registry registers: such a list fails a builder who never touched the test the day one is added (a new route's inputs, the credential-door inventory), or passes while it no longer covers what it names. A list is refused when at least `min` of its string elements, and half of them, are one registry's names; the test reads the registry instead. A classification a person decides stays a table keyed by the registry, failing by name on an unclassified entry, and is a Record with a value per name rather than a bare list, which this does not read. Source code is not read: a list there is a registration or a vocabulary of its own. Read by scripts/check-hand-kept-inventories.mjs, the rule in scripts/lib/hand-kept-inventories.mjs. An allowance is priced or it is not taken, and one that covers no list is refused.",
+      "scan": ["packages", "scripts"],
+      "testCode": "\\.(test|spec|fixture)\\.[cm]?[jt]sx?$|/tests/|/src/test/|/witness/",
+      "min": 4,
+      "registries": [
+        { "name": "routes", "source": "packages/core/contracts/forge-api.openapi.json", "reader": "openapi-routes" },
+        { "name": "MCP doors", "source": "packages/contracts/src/mcp-tools.ts", "reader": "array", "symbol": "MCP_TOOL_NAMES" },
+        { "name": "timers", "source": "packages/core/src/timer-registry.ts", "reader": "property", "property": "name" },
+        { "name": "report queries", "source": "packages/core/src/report-queries/*.ts", "reader": "property", "property": "id" },
+        { "name": "outbox events", "source": "packages/contracts/src/outbox-events.ts", "reader": "array", "symbol": "OUTBOX_EVENT_TYPES" },
+        { "name": "guides", "source": "packages/core/src/guides/guide-ref.ts", "reader": "array", "symbol": "GUIDE_SLUGS" },
+        { "name": "core modules", "source": "packages/core/src/modules.json", "reader": "json-keys", "pointer": "/modules", "min": 8 }
+      ],
+      "allowed": [
+        {
+          "file": "packages/core/src/guides/registry.test.ts",
+          "registry": "guides",
+          "why": "METHODS is a classification ISS-275 made, not a copy of the registry: the method guides a pane follows on its own dev core, which must name no plugin command. Other guides (ecosystem-inbox, feedback-triage) still name one.",
+          "endsWhen": "The guide registry says on each guide whether a pane follows it as its method, and the test reads that field."
+        },
+        {
+          "file": "packages/core/src/prompt/no-question-count.test.ts",
+          "registry": "core modules",
+          "why": "ASKING_MODULES is a classification, the modules whose text asks a person something; a new module that asks is not scanned until it is added here, which is the stale gap this check exists for.",
+          "endsWhen": "modules.json declares which modules ask a person, or the test scans every module and excuses the ones that ask nobody by name."
+        },
+        {
+          "file": "packages/core/src/ws/org-activity-frames.test.ts",
+          "registry": "outbox events",
+          "why": "The eight events are ISS-951's requirement, the moves the org room must hear; reading them from OUTBOX_CONSUMERS would assert the table against itself.",
+          "endsWhen": "The requirement's list lives in one declaration the consumer table is checked against, and the test reads it."
         }
       ]
     }

@@ -145,6 +145,14 @@ export const CHECKS = [
     scopeMayBeEmpty: true,
   },
   {
+    axis: 'relations',
+    label: 'hand-kept-inventories',
+    cmd: ['node', 'scripts/check-hand-kept-inventories.mjs'],
+    scanned: /^hand-kept-inventories: (\d+) file\(s\) read/m,
+    needs: ['deps'],
+    unit: 'files',
+  },
+  {
     axis: 'form',
     label: 'core lint',
     cmd: ['pnpm', '--filter', '@forge/core', 'lint'],

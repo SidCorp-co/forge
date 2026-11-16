@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { builtinReportTemplate } from '@forge/contracts/report-template-builtins';
 import { checkBlock, VISUAL_BLOCK_VERSION } from '@forge/contracts/visual-blocks';
 import { sql } from 'drizzle-orm';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -9,6 +10,12 @@ import type { McpContext } from '../../src/lib/tool.js';
 import { forgeReportTool, forgeTemplateTool } from '../../src/reports/tool.js';
 import { api, type Body } from '../helpers/api.js';
 import { DAY, issue, moved, requirement, type World, world } from '../helpers/forecast-world.js';
+
+// the progress template's own queries, in its order, read from the template rather than copied (ISS-1254)
+const PROGRESS = builtinReportTemplate('progress');
+if (!PROGRESS)
+  throw new Error('@forge/contracts/report-template-builtins holds no "progress" template');
+const PROGRESS_QUERIES = PROGRESS.queries.map((q) => q.query);
 
 // REQ-32 r8, the three criteria QA failed on dev.213 (lane report-depth). BC-3: a line and a burndown
 // chart are drawn from registered report queries, run through the same doors as every other query,
@@ -306,14 +313,7 @@ describe('BC-15: the progress report reads a chosen period against the one befor
   it('shows work closed, filed, verified, sent back, linked and proven, each against the period before', async () => {
     const body = await progress(7);
     const document = body.document as Body;
-    expect((document.runs as Body[]).map((r) => r.queryId)).toEqual([
-      'period-flow',
-      'issue-flow',
-      'status-time',
-      'closed-by-requirement',
-      'progress-by-requirement',
-      'gated-moves',
-    ]);
+    expect((document.runs as Body[]).map((r) => r.queryId)).toEqual(PROGRESS_QUERIES);
     expect(document.params).toEqual({ days: 7 });
     const [kpi, line, bar, table, roadmap] = document.blocks as [Body, Body, Body, Body, Body];
     const period = ((kpi.frame as Body).rows as Body[])[0];

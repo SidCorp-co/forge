@@ -325,6 +325,11 @@ jobs:
       # one anyway. Priced allowances live in .forge/conformance.json. exit 1 = an undeclared
       # use or a stale allowance · exit 2 = it could not run.
       - run: node scripts/check-root-dependencies.mjs
+      # Test code reads what a registry registers (routes, MCP doors, timers, report queries,
+      # outbox events, guides, core modules) rather than keeping its own list (ISS-1254). Priced
+      # allowances live in .forge/conformance.json. exit 1 = a hand-kept list or a stale allowance
+      # · exit 2 = it could not run.
+      - run: node scripts/check-hand-kept-inventories.mjs
 
   changes:
     runs-on: ubuntu-latest

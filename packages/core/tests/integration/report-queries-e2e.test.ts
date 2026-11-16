@@ -1,5 +1,6 @@
 import { ReportRunSchema } from '@forge/contracts/report-queries';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { listReportQueries } from '../../src/report-queries/registry.js';
 import { api, type Body, userToken } from '../helpers/api.js';
 import { addProjectMember, createTestUser } from '../helpers/factories.js';
 import { type World, world } from '../helpers/forecast-world.js';
@@ -31,19 +32,10 @@ describe('the report-queries door', () => {
     const res = await api(w.token, 'GET', `/api/projects/${w.projectId}/report-queries`);
     expect(res.status).toBe(200);
     const queries = res.body.queries as Body[];
-    expect(queries.map((q) => q.id).sort()).toEqual([
-      'burndown',
-      'closed-by-requirement',
-      'criteria-coverage',
-      'gated-moves',
-      'issue-flow',
-      'period-flow',
-      'progress-by-requirement',
-      'release-readiness',
-      'roadmap-eta',
-      'status-time',
-      'workflow-status',
-    ]);
+    // the registry's own ids, never a copy of them kept here (ISS-1254)
+    const registered = listReportQueries().map((q) => q.descriptor.id);
+    expect(registered.length).toBeGreaterThan(0);
+    expect(queries.map((q) => q.id).sort()).toEqual(registered.sort());
     const progress = queries.find((q) => q.id === 'progress-by-requirement') as Body;
     expect(progress).toMatchObject({ version: 1, permission: 'project.read', egress: 'product' });
     expect((progress.params as Body).additionalProperties).toBe(false);
@@ -97,7 +89,9 @@ describe('the report-queries door', () => {
     const res = await run(w.token, 'velocity');
     expect(res.status).toBe(404);
     expect(detail(res)).toBe(
-      'report query "velocity" is not registered; registered: progress-by-requirement, roadmap-eta, release-readiness, criteria-coverage, workflow-status, issue-flow, burndown, period-flow, status-time, closed-by-requirement, gated-moves',
+      `report query "velocity" is not registered; registered: ${listReportQueries()
+        .map((q) => q.descriptor.id)
+        .join(', ')}`,
     );
   });
 

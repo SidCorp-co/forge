@@ -8,9 +8,17 @@
 // served text is read as a reader gets it, so a sentence put back in its old shape goes red here.
 
 import { describe, expect, it } from 'vitest';
+import { composeLayers } from '../assistant/prompt/layer.js';
+import { METHOD_LAYERS } from '../assistant/prompt/layers.js';
 import { renderFact } from '../prompt/facts/registry.js';
 import { releaseBatchStatePrompt } from '../prompt/state-prompts/release-batch.js';
+import { provideAssistantMethod } from './assistant-method-guide.js';
+import type { GuideSlug } from './guide-ref.js';
+import { listGuides } from './registry.js';
 import { guideRoutes } from './routes.js';
+
+// What the composition root hands in at boot, so every guide the registry lists is served.
+provideAssistantMethod(composeLayers(METHOD_LAYERS));
 
 async function served(slug: string): Promise<string> {
   const res = await guideRoutes.request(`/guides/${slug}.md`);
@@ -160,14 +168,16 @@ describe('verdicts come from the judge after landing, unless a gate holds them b
 });
 
 describe('a served guide names REST, never a command of the plugin CLI', () => {
-  it('names no `forge` CLI command in the guides that once did', async () => {
-    for (const slug of [
-      'project-settings-and-test-credentials',
-      'memory-and-knowledge',
-      'deploy-safety',
-      'attachments-and-uploads',
-      'agent-setup',
-    ]) {
+  // every guide the registry serves (ISS-1254), but one named here with why
+  const NOT_THE_CLI: Partial<Record<GuideSlug, string>> = {
+    'answering-as-the-assistant':
+      "the assistant's own method, whose tracker is its `forge` tool, verbs and all (assistant/prompt/tools.ts)",
+  };
+
+  it('names no `forge` CLI command in any guide the registry serves', async () => {
+    const slugs = listGuides().map((g) => g.slug);
+    expect(slugs).toContain('agent-setup');
+    for (const slug of slugs.filter((s) => !(s in NOT_THE_CLI))) {
       const guide = await served(slug);
       expect(guide, slug).not.toMatch(
         /`forge (knowledge|coolify|attach|issue|new|comment|guide)\b/,

@@ -261,6 +261,14 @@ const GATES: Readonly<Record<string, readonly string[]>> = {
   'ws/server.ts': ['attachWs'],
 };
 
+/** What each refusal below asks for, so a failure names the table to edit and how to choose. */
+const FIXTURE = 'credential-inputs.fixture.ts';
+const CLASSIFY_INPUT = `an input no table classifies: add its <kind>:<name> to CREDENTIAL_INPUTS in ${FIXTURE} if a presented secret arrives in it, else to the PLAIN_INPUTS group that says why`;
+const CLASSIFY_READ = `a whole read no table classifies: add its key to CREDENTIAL_READS in ${FIXTURE} if a presented secret arrives in it, else to the PLAIN_READS group that says why`;
+const CLASSIFY_IMPORT = `a hono-family import no table classifies: add it to FRAMEWORK_IMPORTS in ${FIXTURE}, saying whether it reads a credential`;
+const STALE = `classified, but nothing in src reads it any more: delete it from ${FIXTURE} or the list here`;
+const TWICE = `classified twice: keep it in one table of ${FIXTURE}`;
+
 const plainInputs = new Set(Object.values(PLAIN_INPUTS).flat());
 const plainReads = new Set(Object.values(PLAIN_READS).flat());
 const isSeed = (a: Access) =>
@@ -287,18 +295,20 @@ describe('every door a credential is admitted at is named, with what a chat cred
     expect(all.filter((a) => a.kind === 'refused').map((a) => a.key)).toEqual([]);
   });
 
+  // The inputs are read from every route in src, so a new route needs no edit here unless it reads
+  // an input nobody classified yet; then it fails naming the input and where it goes (ISS-1254).
   it('classifies every input read by name, naming the module that reads it', () => {
     const unclassified = all
       .filter((a) => a.kind === 'input' && !(a.key in CREDENTIAL_INPUTS) && !plainInputs.has(a.key))
       .map((a) => `${a.mod} reads ${a.key}`);
-    expect([...new Set(unclassified)].sort()).toEqual([]);
+    expect([...new Set(unclassified)].sort(), CLASSIFY_INPUT).toEqual([]);
   });
 
   it('classifies every whole read', () => {
     const unclassified = all
       .filter((a) => a.kind === 'whole' && !(a.key in CREDENTIAL_READS) && !plainReads.has(a.key))
       .map((a) => a.key);
-    expect([...new Set(unclassified)].sort()).toEqual([]);
+    expect([...new Set(unclassified)].sort(), CLASSIFY_READ).toEqual([]);
   });
 
   it('classifies each input and read once, and none that core does not make', () => {
@@ -309,8 +319,14 @@ describe('every door a credential is admitted at is named, with what a chat cred
       ...Object.keys(CREDENTIAL_READS),
       ...plainReads,
     ];
-    expect(listed.filter((k) => !seen.has(k))).toEqual([]);
-    expect(listed.filter((k, i) => listed.indexOf(k) !== i)).toEqual([]);
+    expect(
+      listed.filter((k) => !seen.has(k)),
+      STALE,
+    ).toEqual([]);
+    expect(
+      listed.filter((k, i) => listed.indexOf(k) !== i),
+      TWICE,
+    ).toEqual([]);
   });
 
   it('lists every hono, hono/* and @hono/* import as reading a credential or not', () => {
@@ -318,14 +334,24 @@ describe('every door a credential is admitted at is named, with what a chat cred
       list.map((i) => ({ mod, key: i.key })),
     );
     const unlisted = imports.filter((i) => !(i.key in FRAMEWORK_IMPORTS));
-    expect(unlisted.map((i) => `${i.mod} imports ${i.key}`).sort()).toEqual([]);
+    expect(unlisted.map((i) => `${i.mod} imports ${i.key}`).sort(), CLASSIFY_IMPORT).toEqual([]);
     const used = new Set(imports.map((i) => i.key));
-    expect(Object.keys(FRAMEWORK_IMPORTS).filter((k) => !used.has(k))).toEqual([]);
+    expect(
+      Object.keys(FRAMEWORK_IMPORTS).filter((k) => !used.has(k)),
+      STALE,
+    ).toEqual([]);
   });
 
   it('names every module a credential reaches in exactly one list', () => {
     const lists = [DOORS, SECRET_DOORS, ADMITS_NOTHING].flatMap((l) => Object.keys(l));
-    expect(read.doors).toEqual([...lists].sort());
+    expect(
+      read.doors.filter((d) => !lists.includes(d)),
+      'a module a credential reaches that no list names: add it, with what a chat credential meets there, to DOORS, SECRET_DOORS or ADMITS_NOTHING in credential-doors.test.ts',
+    ).toEqual([]);
+    expect(
+      lists.filter((d) => !read.doors.includes(d)),
+      STALE,
+    ).toEqual([]);
     expect(lists.filter((k, i) => lists.indexOf(k) !== i)).toEqual([]);
   });
 

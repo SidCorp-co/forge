@@ -44,6 +44,7 @@ import { fileURLToPath } from 'node:url';
 import { decisionOutcomeRequestSchema } from '@forge/contracts/chat-decide';
 import { IDEA_OFFER_TOOL, ideaOfferParamsSchema } from '@forge/contracts/idea-offer';
 import { ISSUE_ATTENTION_GROUPS, ISSUE_WAITING_KINDS } from '@forge/contracts/issue-standing';
+import { MCP_TOOL_NAMES, type McpToolName } from '@forge/contracts/mcp-tools';
 import { MODULE_ATTENTION_GROUPS, MODULE_OPEN_KINDS } from '@forge/contracts/modules';
 import { NEEDS_YOU_AREAS, NEEDS_YOU_ENTITIES } from '@forge/contracts/needs-you';
 import { DECISION_ACTS, decisionOpensSchema } from '@forge/contracts/needs-you-decisions';
@@ -233,18 +234,15 @@ describe('no product MCP door moves an issue', () => {
     ...actionCatalog(mcpTools({ principal, projectSlug: null } as unknown as McpContext)).values(),
   ];
 
-  // the product layer a person works in from an MCP client (`mcp/server.ts`); the support room's
-  // door is its bot session's alone, and the channel and ecosystem doors are kept for forge-plugin
-  const PRODUCT_DOORS = [
-    'forge_requirements',
-    'project_feedback',
-    'forge_feedback',
-    'forge_releases',
-    'forge_design',
-    'forge_questions',
-    'forge_issues',
-    'forge_uploads',
-  ];
+  // the product layer a person works in from an MCP client: every door the MCP server serves
+  // (`MCP_TOOL_NAMES`) but the ones named here with why, so a new door is held to this the day it is
+  // served, never by a hand edit (ISS-1254)
+  const NOT_PRODUCT: Partial<Record<McpToolName, string>> = {
+    forge_support: "the support room's door, its bot session's alone",
+    forge_channel: 'kept for forge-plugin',
+    forge_ecosystem: 'kept for forge-plugin',
+  };
+  const PRODUCT_DOORS: string[] = MCP_TOOL_NAMES.filter((d) => !(d in NOT_PRODUCT));
 
   it('names no action that moves, admits, links or files an issue on any other product door', () => {
     expect(PRODUCT_DOORS.filter((d) => !catalog.some((a) => a.tool === d))).toEqual([]);

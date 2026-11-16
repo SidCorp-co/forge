@@ -41,6 +41,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { sql } from 'drizzle-orm';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -68,6 +69,27 @@ import {
   seedOrg,
 } from '../helpers/factories.js';
 
+// Every read declared instance-admin that takes no required parameter, from the contract
+// `check-api-contracts` holds byte-equal to the mounted app, so a new one is covered the day it is
+// mounted, never by a hand edit here (ISS-1254).
+const CONTRACT = JSON.parse(
+  readFileSync(new URL('../../contracts/forge-api.openapi.json', import.meta.url), 'utf8'),
+) as {
+  paths: Record<
+    string,
+    Record<
+      string,
+      { 'x-forge-permission'?: Record<string, unknown>; parameters?: { required?: boolean }[] }
+    >
+  >;
+};
+const INSTANCE_ADMIN_READS = Object.entries(CONTRACT.paths)
+  .filter(([, ops]) => {
+    const get = ops.get;
+    return get?.['x-forge-permission']?.instanceAdmin && !get.parameters?.some((p) => p.required);
+  })
+  .map(([path]) => path);
+
 const tokens = { operator: '', person: '' };
 
 const codeOf = (body: Body) => {
@@ -82,19 +104,20 @@ beforeAll(async () => {
 }, 120_000);
 
 describe('an instance-admin route is checked at the door, from the admin list', () => {
-  it.each([
-    '/api/admin/overview',
-    '/api/admin/projects',
-    '/api/admin/alerts',
-    '/api/admin/outbox/dead',
-    '/api/admin/instance-settings',
-  ])('refuses %s to a person off the list, ADMIN_ONLY, and answers the operator', async (route) => {
-    const refused = await api(tokens.person, 'GET', route);
-    expect(refused.status, JSON.stringify(refused.body)).toBe(403);
-    expect(codeOf(refused.body)).toBe('ADMIN_ONLY');
-    const answered = await api(tokens.operator, 'GET', route);
-    expect(answered.status, JSON.stringify(answered.body)).toBe(200);
+  it('reads instance-admin routes from the contract', () => {
+    expect(INSTANCE_ADMIN_READS).toContain('/api/admin/overview');
   });
+
+  it.each(INSTANCE_ADMIN_READS)(
+    'refuses %s to a person off the list, ADMIN_ONLY, and answers the operator',
+    async (route) => {
+      const refused = await api(tokens.person, 'GET', route);
+      expect(refused.status, JSON.stringify(refused.body)).toBe(403);
+      expect(codeOf(refused.body)).toBe('ADMIN_ONLY');
+      const answered = await api(tokens.operator, 'GET', route);
+      expect(answered.status, JSON.stringify(answered.body)).toBe(200);
+    },
+  );
 
   it('refuses before the input is read: a bad query from a non-admin is ADMIN_ONLY, not invalid', async () => {
     const refused = await api(tokens.person, 'GET', '/api/admin/overview?window=never');
