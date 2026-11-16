@@ -165,7 +165,7 @@ export const INTEGRATION_DOOR_REST_CARDS = {
       'An organization’s connection takes org.admin there; a personal one is the caller’s own.',
     ],
     example: {
-      provider: 'prometheus',
+      provider: MONITORING_PROVIDER,
       config: { prometheusUrl: 'https://prom.example.com', prometheusUser: 'forge', ruler: 'file' },
       secrets: { prometheusPassword: '<the password its web.yml admits>' },
     },

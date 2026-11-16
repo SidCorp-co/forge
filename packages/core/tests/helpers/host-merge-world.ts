@@ -127,12 +127,12 @@ export async function hostMerged(
   number: number,
   headRef: string,
   commitSha: string,
-  mergedAt = '2026-10-23T10:00:00.000Z',
+  mergedAt?: string,
 ) {
   // a commit GitLab made for another request keeps that request's message
   if (!messages.has(commitSha)) messages.set(commitSha, mergeMessage(number, headRef));
   await db.execute(sql`
-    UPDATE repo_pull_requests SET state = 'merged', merge_commit_sha = ${commitSha}, merged_at = now()
+    UPDATE repo_pull_requests SET state = 'merged', merge_commit_sha = ${commitSha}, merged_at = COALESCE(${mergedAt ?? null}::timestamptz, now())
      WHERE project_id = ${world.projectId} AND number = ${number}`);
   await settleOutbox();
 }

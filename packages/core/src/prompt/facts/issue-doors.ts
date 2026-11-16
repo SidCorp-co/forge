@@ -43,10 +43,7 @@ export function issueDoorsText(opts: { besideTable: boolean }): string {
     );
     return [
       `- \`${card.id}\`: ${card.purpose}`,
-      ...own.map(
-        (s) =>
-          `  - When ${after(sentence(s.when))}: ${sentence(s.do)}.`,
-      ),
+      ...own.map((s) => `  - When ${after(sentence(s.when))}: ${sentence(s.do)}.`),
       ...card.practice.map((p) => `  - ${p}`),
       ...(card.redFlag ? [`  - Red flag: ${card.redFlag}`] : []),
     ].join('\n');

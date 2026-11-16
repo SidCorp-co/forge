@@ -22,7 +22,6 @@ import { CONFORMANCE_GUIDE } from './conformance-guide.js';
 import { DISPATCH_GUIDE } from './dispatch-guide.js';
 import { ECOSYSTEM_INBOX_GUIDE } from './ecosystem-inbox-guide.js';
 import { FAST_DELIVERY_GUIDE } from './fast-delivery-guide.js';
-import { FORGE_MASTER_GUIDE } from './master-guide.js';
 import { FEEDBACK_TRIAGE_GUIDE } from './feedback-guide.js';
 import { ISSUE_FLOW_GUIDE } from './issue-flow-guide.js';
 import {
@@ -31,6 +30,7 @@ import {
   WRITING_AN_ISSUE_GUIDE,
 } from './issue-guides.js';
 import { LINK_CHAT_GUIDE } from './link-chat-guide.js';
+import { FORGE_MASTER_GUIDE } from './master-guide.js';
 import { MOCKUPS_GUIDE } from './mockups-guide.js';
 import { MONITORING_GUIDE } from './monitoring-guide.js';
 import { PRODUCT_ROLE_GUIDE } from './product-role-guide.js';

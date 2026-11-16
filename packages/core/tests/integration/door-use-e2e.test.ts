@@ -378,7 +378,9 @@ describe("a run's preamble carries its map, ranked by what this project's agents
     // named act by act, or merged into its tool with a count where naming each would overflow
     const named = (name: string) => {
       const [tool, act] = name.split('.');
-      return new RegExp(`→ (.* · )?${tool}\\.(([a-z_]+ · )*${act}( · |$)|\\*( \\(\\d+\\))?( · |$))`);
+      return new RegExp(
+        `→ (.* · )?${tool}\\.(([a-z_]+ · )*${act}( · |$)|\\*( \\(\\d+\\))?( · |$))`,
+      );
     };
     expect(lines[0]).toMatch(named(doorNames(doorCatalog().doors).get(top.door) ?? top.door));
     expect(lines.some((l) => named('project_feedback.submit').test(l))).toBe(true);

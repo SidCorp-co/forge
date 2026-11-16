@@ -278,7 +278,10 @@ describe('a door judging each action under its own request', () => {
     // each act's entry is read alone (`McpTool.actionEntries`), rendered from its card (ISS-1251)
     const own = support.actionEntries?.record ?? '';
     expect(own.startsWith('record { thread, kind: ')).toBe(true);
-    const actionEntries = { ...support.actionEntries, record: `${TODAY} ${own.split(': ').slice(-1)}` };
+    const actionEntries = {
+      ...support.actionEntries,
+      record: `${TODAY} ${own.split(': ').slice(-1)}`,
+    };
     expect(() => actionCatalog([{ ...support, actionEntries }])).toThrow(
       "mcp registry: forge_support's entry for record leaves out `whereSeen`, `project`, `separate`, which its request takes",
     );

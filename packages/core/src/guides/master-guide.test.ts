@@ -3,6 +3,7 @@
 // cards, each door's card, and the method (`dispatch`, `forge-master`, `issue-flow`). What the skill
 // used to say is pinned here on what is served now, so a teaching the move dropped goes red by name,
 // and the skill growing a method again goes red too.
+// @direct-test-of packages/runner/crates/runner-workspace/assets/forge-master-skill.md
 
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
@@ -17,10 +18,7 @@ provideDoorCatalog({ doorCatalog: servedDoorCatalog, doorCalls: async () => new 
 
 const flat = (text: string) => text.split(/\s+/).join(' ');
 const SKILL = readFileSync(
-  new URL(
-    '../../../runner/crates/runner-workspace/assets/forge-master-skill.md',
-    import.meta.url,
-  ),
+  new URL('../../../runner/crates/runner-workspace/assets/forge-master-skill.md', import.meta.url),
   'utf8',
 );
 const served = (slug: GuideSlug) => {

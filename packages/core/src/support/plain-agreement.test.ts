@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { servedGuideBody } from '../guides/index.js';
 import { ROOM_AGENT_GUIDE } from '../guides/room-agent-guide.js';
 import { provideDoorCatalog } from '../lib/door-catalog.js';
-import { servedDoorCatalog } from '../mcp/door-catalog.js';
 import { actionCatalog } from '../mcp/action-catalog.js';
+import { servedDoorCatalog } from '../mcp/door-catalog.js';
 import { agentOpening, supportBrief } from './prompt.js';
 import { forgeSupportTool } from './tool.js';
 

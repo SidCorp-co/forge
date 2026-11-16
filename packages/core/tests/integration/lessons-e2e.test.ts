@@ -288,7 +288,9 @@ describe('an approved lesson reaches every agent in its scope by retrieval, and 
       itemKind: 'requirement',
     });
     expect(await block({ produces: ['issue'], area: w.areaA })).toContain(`- lesson-${billing}: `);
-    expect(await block({ produces: ['issue'], area: w.areaB })).not.toContain(`- lesson-${billing}: `);
+    expect(await block({ produces: ['issue'], area: w.areaB })).not.toContain(
+      `- lesson-${billing}: `,
+    );
     expect(await block({ produces: ['issue'], area: null })).not.toContain(`- lesson-${reqs}: `);
     expect(await block({ produces: ['requirement'], area: null })).toContain(
       `When writing requirements:\n- lesson-${reqs}: `,

@@ -857,8 +857,8 @@
         "runContextReaches",
         "runnerEvents",
         "skills",
-        "supportActions",
         "supportRooms",
+        "supportReplyVerdicts",
         "usageRecords",
         "users"
       ],

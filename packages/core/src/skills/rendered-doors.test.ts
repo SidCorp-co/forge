@@ -30,9 +30,9 @@ describe("a served skill's doors are rendered from their cards (ISS-1251)", () =
 
   it('refuses by name a door this build serves no card for', () => {
     serve(servedDoorCatalog);
-    expect(() =>
-      withRenderedDoors('<!-- forge:doors POST /api/nowhere -->\n', 'forge-x'),
-    ).toThrow('forge-x/SKILL.md renders POST /api/nowhere, which this build serves no card for');
+    expect(() => withRenderedDoors('<!-- forge:doors POST /api/nowhere -->\n', 'forge-x')).toThrow(
+      'forge-x/SKILL.md renders POST /api/nowhere, which this build serves no card for',
+    );
   });
 
   it('hashes what it rendered, so a card change re-seeds the skill', () => {

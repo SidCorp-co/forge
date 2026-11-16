@@ -17,7 +17,11 @@ const flat = (text: string) => text.split(/\s+/).join(' ');
 describe('the ecosystem inbox guide publishes through its doors’ cards (ISS-1251)', () => {
   it('serves the interface write and version cards beneath its method', () => {
     const served = flat(servedGuideBody(ECOSYSTEM_INBOX_GUIDE));
-    for (const act of ['interface_write', 'contract_version_publish', 'contract_version_decide'] as const) {
+    for (const act of [
+      'interface_write',
+      'contract_version_publish',
+      'contract_version_decide',
+    ] as const) {
       const card = capabilityCardSchema.parse(CARDS[act]);
       for (const line of card.practice) expect(served).toContain(flat(line));
     }

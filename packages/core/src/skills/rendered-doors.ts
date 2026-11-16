@@ -3,8 +3,8 @@
 // method and the card stays the one copy of how a door is used. The seed hashes the rendered text, so
 // a card change re-seeds every skill that renders it, as an edit of the skill itself does.
 
-import { cardText, doorCatalog } from '../lib/door-catalog.js';
 import { doorNamed } from '../guides/index.js';
+import { cardText, doorCatalog } from '../lib/door-catalog.js';
 
 /** `<!-- forge:doors PUT /api/projects/:id/knowledge/:slug | POST … -->`, on a line of its own. */
 const MARKER = /^<!-- forge:doors (.+?) -->$/m;

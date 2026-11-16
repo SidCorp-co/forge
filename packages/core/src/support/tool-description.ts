@@ -46,7 +46,9 @@ export function supportActEntries(
   for (const act of new Set(actions)) {
     const signature = signatures.get(act);
     if (!signature) {
-      throw new Error(`support: forge_support lists no shape for ${act} (support/tool.ts SIGNATURES)`);
+      throw new Error(
+        `support: forge_support lists no shape for ${act} (support/tool.ts SIGNATURES)`,
+      );
     }
     const body = SUPPORT_ACT_CARDS[act];
     const own = UNCARDED_ENTRIES[act];

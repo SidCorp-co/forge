@@ -518,6 +518,9 @@ jobs:
               # edit runs the core job without a Testcontainers run.
               - 'docker-compose.dev.yml'
               - 'docker-compose.prod.yml'
+              # Read by path by packages/core/src/guides/master-guide.test.ts, which pins the master
+              # skill the runner ships on what core serves (ISS-1251).
+              - 'packages/runner/crates/runner-workspace/assets/forge-master-skill.md'
 
   web:
     needs: changes

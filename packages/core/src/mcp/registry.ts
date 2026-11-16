@@ -19,7 +19,7 @@ import {
 import { forgeBindingsTool, forgeConfigTool } from '../project-config/index.js';
 import { forgeProjectsTool } from '../projects/index.js';
 import { forgeReferencesTool } from '../references/tool.js';
-import { forgeAuditTool } from '../support/audit-tool.js';
+import { forgeAuditTool } from '../support/index.js';
 import { forgeSupportTool } from '../support/tool.js';
 import { forgeUploadsTool } from '../uploads/tool.js';
 import { projectFeedbackMcpTool } from './feedback-tool.js';
