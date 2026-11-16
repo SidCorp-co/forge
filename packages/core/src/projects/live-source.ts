@@ -1,3 +1,4 @@
+import type { MarkCommitCheck } from '@forge/contracts/mark-merged-words';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projectGitCredentials, projects, workspaceSshKeys } from '../db/schema.js';
@@ -146,8 +147,6 @@ export async function resolveLiveSource(
  * where it names one Forge holds no way to read (criterion 362). Null where the declaration could not
  * be read, so the Commit hint says both cases rather than guess one (ISS-1421 r37, judge-151).
  */
-export type MarkCommitCheck = 'checked' | 'claim' | 'refused';
-
 export async function markCommitCheck(
   projectId: string,
   deps: LiveSourceDeps = defaultDeps,
@@ -159,11 +158,6 @@ export async function markCommitCheck(
   } catch {
     return null;
   }
-}
-
-/** A mark on this project may name no commit: it names no repository (criterion 360). */
-export async function namesNoRepository(projectId: string): Promise<boolean> {
-  return (await markCommitCheck(projectId)) === 'claim';
 }
 
 export interface ProjectDivergenceDeps {

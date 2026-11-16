@@ -247,6 +247,25 @@ export const CHECKS = [
   },
   {
     axis: 'form',
+    label: 'contracts typecheck',
+    layer: 'shared',
+    reads: 'packages/contracts with its tests, which its build and test script never type',
+    cmd: [
+      'pnpm',
+      '--filter',
+      '@forge/contracts',
+      'exec',
+      'tsc',
+      '--noEmit',
+      '--extendedDiagnostics',
+      '--typeRoots',
+      '../../node_modules/@types',
+    ],
+    scanned: /^Files:\s+(\d+)/m,
+    needs: ['deps', 'observability-build'],
+  },
+  {
+    axis: 'form',
     label: 'web typecheck',
     layer: 'shared',
     reads:
@@ -373,6 +392,7 @@ const CI_COVERAGE = {
   'pnpm --filter @forge/core typecheck': 'verify',
   'pnpm --filter web-v2 lint': 'verify, as the lint-budget check',
   'pnpm --filter @forge/contracts test': 'pnpm test',
+  'pnpm --filter @forge/contracts typecheck': 'verify',
   'pnpm --filter web-v2 exec vitest run --passWithNoTests': 'pnpm test',
   'pnpm --filter web-v2 build': 'pnpm build',
   'pnpm --filter @forge/core test': 'pnpm test',

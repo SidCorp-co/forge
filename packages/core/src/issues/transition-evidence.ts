@@ -1,7 +1,7 @@
 import { type Db, db } from '../db/client.js';
 import { logger } from '../logger.js';
 import { findMissingWorkEvidence } from '../pipeline/work-evidence.js';
-import { namesNoRepository } from '../projects/live-source.js';
+import { markCommitCheck } from '../projects/live-source.js';
 import type { ActorAgency } from './actor-agency.js';
 import type { TransitionErrorCode, TransitionIssueRow } from './apply-transition.js';
 import { findUnmetEntryCriteria } from './entry-criteria.js';
@@ -113,8 +113,8 @@ const entryCriteriaRule: EvidenceRule = {
   },
 };
 
-/** How a missing mark is made: its lane, and in git whether the project names no repository, so its
- *  Commit may stay empty (ISS-1421 r41, r42). Read only where a mark is what is missing; a read that
+/** How a missing mark is made: its lane, and in git what its Commit takes on the project (ISS-1421
+ *  r41-r43). Read only where a mark is what is missing; a read that
  *  fails leaves the sentence saying only what the mark records rather than the refusal unmade. */
 async function missingMarkShape(
   ctx: TransitionEvidenceContext,
@@ -123,8 +123,8 @@ async function missingMarkShape(
   if (!unmet.includes('merged_mark')) return null;
   try {
     const evidence = await readLandingEvidence(ctx.executor ?? db, ctx.issue.id);
-    if (evidence && evidence.lane.shape !== 'git') return { outsideGit: true, noRepository: false };
-    return { outsideGit: false, noRepository: await namesNoRepository(ctx.issue.projectId) };
+    if (evidence && evidence.lane.shape !== 'git') return { outsideGit: true, commit: null };
+    return { outsideGit: false, commit: await markCommitCheck(ctx.issue.projectId) };
   } catch (err) {
     logger.warn(
       { err, issueId: ctx.issue.id },

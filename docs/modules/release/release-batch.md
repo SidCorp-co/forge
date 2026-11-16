@@ -256,8 +256,12 @@ leaves (`packages/core/src/release-batch/refused-close-words.ts:refusedCloseComm
   none is said with no sentence about blocking objects;
 - what clears it, as an act the issue's page offers at the release gate — for `OPEN_QUESTIONS`,
   answer each in its "Decision waiting" card; for `CLOSE_REQUIRES_SHIPPED`, Mark merged's own steps
-  (`packages/contracts/src/mark-merged-words.ts:markMergedSteps`), which on a project naming no
-  repository say Commit may stay empty; a code with no such act keeps the refusal's own detail
+  (`packages/contracts/src/mark-merged-words.ts:markMergedSteps`), by what the project's Mark merged
+  takes for a commit (`packages/core/src/projects/live-source.ts:markCommitCheck`): the commit under
+  Commit where Forge reads the repository, Commit may stay empty where none is named, and leave
+  Commit empty to record a claim where a repository is named that Forge cannot read, as the panel
+  says there (ISS-1421 r43). The release gate, the issue's banner, Shape & release and the close
+  refusal read the same steps. A code with no such act keeps the refusal's own detail
   (`packages/core/src/release-batch/refused-close-words.ts:personClears`);
 - for a close that failed before any rule decided it, a sentence of Forge's saying so, with what
   Forge said quoted beneath it (`packages/core/src/issues/merge-record.ts:quotedRefusal`). The gate
@@ -275,10 +279,15 @@ leaves (`packages/core/src/release-batch/refused-close-words.ts:refusedCloseComm
   `awaiting_release` row holds none — no withdrawal of a question, which no surface there offers,
   and no API route (`docs/proposals/a-shipped-issue-at-the-gate-closes-only-by-another-release.md`).
 
-Where the run recorded a `promote` attempt, the refused issue does not move while the run is live:
-it stays at `releasing`, still claimed, because the code may be on production. Its comment names the
-same refusal, and in place of the last point it says that once the run has ended the releasing sweep
-settles it, and that View release on the issue shows where its run stands.
+A finish settles its own refused issues whatever its run's promotions were: it ends its run in the
+same call, so holding them at `releasing` would only hand them to the releasing sweep under a
+sentence the sweep then contradicts (ISS-1421 r43, judge-171). A promotion counts as going out only
+where it reported back with a verdict other than `failed`, as a deploy does. Forge writes the
+comment and names who reported the finish, a person or account by what it is called and a box by
+its name (`packages/core/src/release-batch/job-start.ts:actorNamedInside`); the status moves stay
+the finisher's. Only an abort, or a run that ended unfinished, holds a roster whose run recorded a
+`promote` attempt at `releasing`, claimed, because an act declared and never reported back may have
+landed; its note says the sweep settles it within a minute of the run ending.
 
 ### A row at `releasing` that nothing carries (ISS-1421)
 
@@ -289,7 +298,9 @@ takes every row at `releasing` whose claim is empty or names a run that is neith
 paused, at most 50 a pass, on every project. The stale-claims reaper (`packages/core/src/pipeline/stale-release-claims.ts:reapStaleReleaseBatchClaims`) leaves such a row claimed, so the sweep's comment can say how the run that claimed it ended. It reads the project's verified live identity
 (`packages/core/src/release-batch/releasing-settle-reading.ts`) and, through the repository reader,
 whether that identity descends from the row's landing commit. It posts one comment naming why nothing
-was carrying the row and what it found, returns the row to `awaiting_release` with the dead claim
+was carrying the row and what it found — a run that completed is said to have finished its release
+and left the row there, never to have ended without finishing it
+(`packages/core/src/release-batch/run-ended-words.ts:releaseRunStopped`, ISS-1421 r43) — returns the row to `awaiting_release` with the dead claim
 cleared in the same transaction — without re-reading the gate's entry records, which would otherwise
 hold the row at `releasing` for good — and, where production carries the landing commit, closes it
 through a release record naming the serving commit; that close is refused, under a lock on the row, where the issue's landing commit is no longer the one production was read as carrying. An unverified project, an unreadable probe or
@@ -319,8 +330,8 @@ named beside the reason (`the database names constraint "…"`). A name that is 
 out. Any other cut in the message reads "(a value of this write, withheld)". Where a bound value
 would survive outside those names, the SQLSTATE's class description stands in (`packages/core/src/lib/db-errors.ts:pgErrorClassDescription`).
 The SQL statement and its bound values reach neither the comment nor the finish answer's
-`failed[].reason` (ISS-1381 r2). The comment is written as the finishing person or, for a finish a box reported, as
-that box's owner.
+`failed[].reason` (ISS-1381 r2). The comment is written by Forge, naming who reported the finish
+(ISS-1421 r43).
 
 Nothing here reads when such a fault is fixed, so Release now stays on offer, and the comment, the
 issue's awaiting-release banner and its row on the release gate panel each say a release started

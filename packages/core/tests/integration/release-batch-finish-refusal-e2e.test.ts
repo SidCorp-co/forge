@@ -212,7 +212,9 @@ describe('a release finish that cannot close an issue', () => {
     }
   });
 
-  it('names the refusal on a batch that recorded a promotion, where the issue stays claimed', async () => {
+  // ISS-1421 r43 (judge-171): the finish ends its run in the same call, so a run that recorded a
+  // promotion no longer holds the issue at Releasing for the sweep; it returns, saying the refusal.
+  it('names the refusal on a batch that recorded a promotion, and returns the issue unclaimed', async () => {
     const { finishReleaseBatch } = await import('../../src/release-batch/service.js');
     const { openAttempt } = await import('../../src/release-batch/ledger.js');
     const held = await fx.insertIssue();
@@ -229,7 +231,7 @@ describe('a release finish that cannot close an issue', () => {
     const result = await finishReleaseBatch(runId, { type: 'user', id: ownerId });
 
     expect(result.closed).toEqual([free]);
-    expect((await fx.stored(held)).status).toBe('releasing');
+    expect(await fx.stored(held)).toMatchObject({ status: 'awaiting_release', claim: null });
     const said = await lastComment(held);
     // ISS-1421 r42 (judge-169): one question is one; a promotion that never reported back is not
     // said to have gone out.
@@ -240,15 +242,16 @@ describe('a release finish that cannot close an issue', () => {
     );
     expect(said).toContain(`The release finished as version ${version}, but`);
     expect(said).not.toMatch(/went out/);
-    expect(said).toContain('stay at Releasing and claimed while its run is live');
-    expect(said).toContain("Forge's releasing sweep settles them within a minute");
-    expect(said).toContain('View release on the issue shows where its run stands.');
+    expect(said).not.toMatch(/stay at Releasing|while its run is live|may be on production/);
+    expect(said).toContain('The issue is back at Awaiting release.');
     expect(said).not.toMatch(/\/api\/|\/abort/);
     expect(said).not.toContain(question);
   });
 
-  it('writes the comment as the device owner when a device finished the batch', async () => {
+  // ISS-1421 r43: Forge writes the comment and names the box; the move stays the device's.
+  it('writes the comment as Forge, naming the box, when a device finished the batch', async () => {
     const { finishReleaseBatch } = await import('../../src/release-batch/service.js');
+    const { FORGE_AUTHOR_ID } = await import('../../src/comments/forge-author.js');
     const held = await fx.insertIssue();
     const { runId } = await fx.claim([held]);
     const question = await askOn(held);
@@ -258,7 +261,12 @@ describe('a release finish that cannot close an issue', () => {
     const said = await lastComment(held);
     expect(said).toContain('The close was refused because the issue holds an open question.');
     expect(said).toContain('Blocking it: 1 open question.');
+    expect(said).toContain('The finish was reported by a box.');
     expect(said).not.toContain(question);
+    const rows = await harness.db.execute(sql`
+      SELECT author_id FROM comments WHERE issue_id = ${held} ORDER BY created_at DESC LIMIT 1
+    `);
+    expect(rows[0]?.author_id).toBe(FORGE_AUTHOR_ID);
   });
 });
 

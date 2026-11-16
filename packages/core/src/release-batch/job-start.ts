@@ -10,8 +10,9 @@
 import { and, asc, desc, eq, inArray, isNotNull, or, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { devices, type JobStatus, jobs } from '../db/schema.js';
+import type { TransitionActor } from '../issues/actor-agency.js';
 import { actorKey } from '../issues/actor-identity.js';
-import { resolveActors } from '../issues/actor-resolution.js';
+import { resolveActors, userLabels } from '../issues/actor-resolution.js';
 import { releaseIneligibleRunners } from '../runners/ineligible.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';
 import { readAbortStamp } from './abort-stamp.js';
@@ -135,6 +136,20 @@ async function whyWaiting(projectId: string): Promise<{ reason: WaitingReason; w
 export async function personLabel(userId: string): Promise<string> {
   const resolved = await resolveActors([{ type: 'user', id: userId }]);
   return resolved.get(actorKey('user', userId))?.displayName ?? 'Unknown';
+}
+
+/** Who acted, as a sentence names them mid-way: a person or agent account by what it is called
+ *  ("a member" with no name), a box by its name (ISS-1421 r43). */
+export async function actorNamedInside(actor: TransitionActor): Promise<string> {
+  if (actor.type === 'device') {
+    const [box] = await db
+      .select({ name: devices.name })
+      .from(devices)
+      .where(eq(devices.id, actor.id))
+      .limit(1);
+    return box ? `the box ${box.name}` : 'a box';
+  }
+  return (await userLabels([actor.id], 'inside')).get(actor.id) ?? 'a member';
 }
 
 const RELEASE_JOB_COLUMNS = {

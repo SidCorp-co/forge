@@ -96,6 +96,11 @@ const DECLARED = {
     listed: ['packages/runner'],
     built: BUILT,
   },
+  'contracts typecheck': {
+    roots: [...PNPM, 'scripts', ...WORKSPACE],
+    listed: ['packages/runner'],
+    built: BUILT,
+  },
   'web typecheck': {
     roots: [...PNPM, 'scripts', ...WORKSPACE],
     listed: ['packages/runner'],

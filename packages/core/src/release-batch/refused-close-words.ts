@@ -1,4 +1,4 @@
-import { markMergedSteps } from '@forge/contracts/mark-merged-words';
+import { type MarkCommitCheck, markMergedSteps } from '@forge/contracts/mark-merged-words';
 import type { IssueStatus } from '../db/schema.js';
 import { quotedRefusal } from '../issues/merge-record.js';
 import { ISSUE_STATUS_LABELS } from '../issues/status-sets.js';
@@ -33,7 +33,7 @@ function personRefusedFor(refusal: Extract<CloseRefusal, { kind: 'refused' }>): 
  *  steps included; a code with none keeps its own detail (ISS-1381 r3, ISS-1421 r41). */
 function personClears(
   refusal: Extract<CloseRefusal, { kind: 'refused' }>,
-  noRepository: boolean,
+  commit: MarkCommitCheck | null,
 ): string {
   switch (refusal.code) {
     case 'OPEN_QUESTIONS':
@@ -41,7 +41,7 @@ function personClears(
         ? 'answer the open question in its "Decision waiting" card on this issue\'s page.'
         : 'answer each open question in its "Decision waiting" card on this issue\'s page.';
     case 'CLOSE_REQUIRES_SHIPPED': {
-      const steps = markMergedSteps(refusal.outsideGit, noRepository);
+      const steps = markMergedSteps(refusal.outsideGit, commit);
       return `${steps.charAt(0).toLowerCase()}${steps.slice(1)}`;
     }
     case 'STALE_TRANSITION':
@@ -126,14 +126,14 @@ export function refusedCloseComment(args: {
   delivery: RunDelivery;
   /** The issue holds a merge mark. */
   marked: boolean;
-  /** The project names no repository, so a mark may name no commit (`markCommitCheck` `claim`). */
-  noRepository?: boolean | undefined;
-  /** How a roster its run promoted is settled; such an issue stays claimed rather than moving. */
-  held?: string | undefined;
+  /** What a mark's commit meets on the project (`markCommitCheck`), so Mark merged's steps match its panel. */
+  commit?: MarkCommitCheck | null | undefined;
+  /** Who reported the finish, as a sentence names them mid-way; Forge writes the comment (ISS-1421 r43). */
+  finishedBy?: string | undefined;
   /** Earlier releases whose finish failed this close for the same reason, oldest first. */
   repeats?: ReadonlyArray<string | null> | undefined;
 }): string {
-  const { refusal, version, destination, held, repeats = [], delivery, marked } = args;
+  const { refusal, version, destination, repeats = [], delivery, marked } = args;
   const named = version ? `as version ${version}` : 'with this batch';
   const finished =
     delivery === 'reported'
@@ -145,18 +145,15 @@ export function refusedCloseComment(args: {
       : '';
   const why =
     refusal.kind === 'refused'
-      ? `${personRefusedFor(refusal)}${blocking} What clears it: ${personClears(refusal, args.noRepository === true)}`
+      ? `${personRefusedFor(refusal)}${blocking} What clears it: ${personClears(refusal, args.commit ?? null)}`
       : 'The close failed inside Forge before it reached a decision. Nothing on this issue refused it, so nothing here is yours to clear: whoever operates this Forge fixes it, and what Forge said is quoted at the end.';
   const before =
     repeats.length > 0
       ? ` The release${repeats.length === 1 ? '' : 's'} before it (${releasesNamed(repeats)}) could not close it for the same reason either.`
       : '';
-  const opening = `${finished}, but this issue could not be closed.${before} ${why}\n\n`;
+  const by = args.finishedBy ? ` The finish was reported by ${args.finishedBy}.` : '';
+  const opening = `${finished}, but this issue could not be closed.${by}${before} ${why}\n\n`;
   const quote = refusal.kind === 'failed' ? `\n\n${quotedRefusal(refusal.message)}` : '';
-  if (held) {
-    const again = refusal.kind === 'refused' ? 'refused' : 'failed';
-    return `${opening}${held} Clear the reason above first, or that close is ${again} again.${quote}`;
-  }
   return `${opening}${howItCloses(destination, refusal, delivery, marked)}${quote}`;
 }
 

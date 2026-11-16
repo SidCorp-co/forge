@@ -1,6 +1,7 @@
 // What the finish's close would refuse each roster issue for, read before the press by calling the
 // close's own predicates (ISS-1337): `docs/modules/release/release-batch.md`.
 
+import type { MarkCommitCheck } from '@forge/contracts/mark-merged-words';
 import { db } from '../db/client.js';
 import { resolveDeclaredEntryCriteria } from '../issues/entry-criteria.js';
 import { refuseUnshippedClose } from '../issues/merged-at.js';
@@ -9,6 +10,7 @@ import { issueHasSession } from '../pipeline/runs-of-issue.js';
 import { markCommitCheck } from '../projects/live-source.js';
 import { openQuestionIdsOn, openQuestionsFault } from '../questions/issue-coupling.js';
 import {
+  commitCheckDetails,
   entryRecordsShortfallWords,
   landingShortfallWords,
   openQuestionsShortfallWords,
@@ -29,15 +31,15 @@ export type CloseShortfalls = Map<string, CloseShortfall[]>;
 
 function landingShortfallOf(
   refusal: { detail: string; details: Record<string, unknown> },
-  noRepository: boolean,
+  commit: MarkCommitCheck | null,
 ): CloseShortfall {
   const outside = refusal.details.shape === 'outside_git';
   // Carried on, so a sentence written from the details alone names Commit as the panel does.
-  const claim = !outside && noRepository ? { noRepository: true } : {};
+  const check = outside ? {} : commitCheckDetails(commit);
   return {
-    ...landingShortfallWords(outside, noRepository),
+    ...landingShortfallWords(outside, commit),
     detail: refusal.detail,
-    details: { ...refusal.details, shape: outside ? 'outside_git' : 'git', ...claim },
+    details: { ...refusal.details, shape: outside ? 'outside_git' : 'git', ...check },
   };
 }
 
@@ -45,11 +47,11 @@ async function shortfallsOf(
   projectId: string,
   issueId: string,
   declared: Awaited<ReturnType<typeof resolveDeclaredEntryCriteria>>,
-  noRepository: () => Promise<boolean>,
+  commitCheck: () => Promise<MarkCommitCheck | null>,
 ): Promise<CloseShortfall[]> {
   const found: CloseShortfall[] = [];
-  const unshipped = await refuseUnshippedClose(db, { issueId, toStatus: 'closed' });
-  if (unshipped) found.push(landingShortfallOf(unshipped, await noRepository()));
+  const unshipped = await refuseUnshippedClose(db, { issueId, toStatus: 'closed', commitCheck });
+  if (unshipped) found.push(landingShortfallOf(unshipped, await commitCheck()));
 
   const asked = await openQuestionIdsOn(db, issueId);
   if (asked.length > 0) {
@@ -96,14 +98,14 @@ export async function rosterCloseShortfalls(
   const out: CloseShortfalls = new Map();
   if (issueIds.length === 0) return out;
   const declared = await resolveDeclaredEntryCriteria(projectId, 'closed');
-  // Read once, and only where an issue is not marked merged: whether a mark may name no commit.
-  let claim: Promise<boolean> | undefined;
-  const noRepository = () => {
-    claim ??= markCommitCheck(projectId).then((check) => check === 'claim');
-    return claim;
+  // Read once, and only where an issue is not marked merged: what a mark's commit meets here.
+  let check: Promise<MarkCommitCheck | null> | undefined;
+  const commitCheck = () => {
+    check ??= markCommitCheck(projectId);
+    return check;
   };
   for (const issueId of issueIds) {
-    const found = await shortfallsOf(projectId, issueId, declared, noRepository);
+    const found = await shortfallsOf(projectId, issueId, declared, commitCheck);
     if (found.length > 0) out.set(issueId, found);
   }
   return out;

@@ -23,6 +23,7 @@ import {
 import { carriedUndecidedSentence } from './carried-sentences.js';
 import { agree, counted, issuesByName, namesInWords } from './counted.js';
 import { runnerHoldReaderClause, runnersHeldSentence } from './runner-hold-sentences.js';
+import { commitCheckOf } from './shortfall-words.js';
 
 /** Every check a release reason can stand in for, as a person names the work it does. */
 export const RELEASE_CHECK_WORDS = {
@@ -147,11 +148,7 @@ function unmergedForReader(details: Details): string | null {
   const w = (one: string, many: string) => agree(n, one, many);
   const who = issuesByName(details);
   if (details.shape !== 'outside_git') {
-    const steps = markMergedSteps(
-      false,
-      details.noRepository === true,
-      w("the issue's", "each issue's"),
-    );
+    const steps = markMergedSteps(false, commitCheckOf(details), w("the issue's", "each issue's"));
     return `${who} ${w('is', 'are')} not marked merged, so nothing says ${w('its', 'their')} work is on the branch this release deploys, and a release closes what it carries. ${steps}`;
   }
   return `${who} ${w('has', 'have')} no mark saying where ${w('its', 'their')} work landed. ${w('Its', 'Their')} work lands outside git, so mark ${w('it', 'each one')} merged naming where the work now is — the live URL, CMS entry or storefront resource — first: a release records what went out, and a mark naming nothing does not say that anything did.`;
