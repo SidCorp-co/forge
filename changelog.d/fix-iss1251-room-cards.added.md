@@ -1,1 +1,0 @@
-**Room agents learn each act from its card, and keep a project's reference sources.** A room agent's brief renders from its acts' cards; it reads sources first, cites them, and adds the one a person names.

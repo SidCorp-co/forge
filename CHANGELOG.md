@@ -9,6 +9,22 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.698] - 2026-11-16
+
+Plain proposal summaries, tool cards that teach agents, and named learning sources per project
+
+### Added
+
+- **Room agents learn each act from its card, and keep a project's reference sources.** A room agent's brief renders from its acts' cards; it reads sources first, cites them, and adds the one a person names.
+
+### Changed
+
+- **Forge shapes agent behaviour by teaching, not forcing.** Beyond the kernel, agents get tools they choose to call, guidance in what they read and results a person sees, never a hard-coded step or a refused policy choice.
+
+### Fixed
+
+- **A proposal card whose agent wrote no summary shows the proposal's own one-line summary beside "No summary"**, so a person reads what Record it records. The steward's requirement question takes the same plain text, taught in its prompt.
+
 ## [0.4.0-dev.697] - 2026-11-16
 
 Feedback triage drafts no longer wait behind release follow-ups

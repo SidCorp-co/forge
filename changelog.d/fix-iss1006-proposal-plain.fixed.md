@@ -1,1 +1,0 @@
-**A proposal card whose agent wrote no summary shows the proposal's own one-line summary beside "No summary"**, so a person reads what Record it records. The steward's requirement question takes the same plain text, taught in its prompt.

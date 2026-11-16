@@ -1,1 +1,0 @@
-**Forge shapes agent behaviour by teaching, not forcing.** Beyond the kernel, agents get tools they choose to call, guidance in what they read and results a person sees, never a hard-coded step or a refused policy choice.
