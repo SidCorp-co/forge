@@ -98,4 +98,48 @@ export const INTEGRATION_DOOR_REST_CARDS = {
     audience: ['master'],
     changed: CHANGED,
   },
+  'POST /api/integration-connections/:id/bindings': {
+    purpose: 'Binds projects to a connection with what each watches, deploys or reads through it.',
+    situations: [
+      {
+        when: 'a project needs production monitoring and the Prometheus connection is set up',
+        do: 'bind it with role monitoring and a target naming its scrapes, probes and rules',
+        watch: 'a step the server has not done yet is refused by name, pointing at that setup step',
+      },
+    ],
+    practice: [
+      'Rules name a kind Forge writes the PromQL for; raw PromQL is not taken, and `for` is at least 1m.',
+      'Read the connection’s readiness first: a binding needing what the server cannot do is refused.',
+    ],
+    example: {
+      bindings: [
+        {
+          projectId: '0b8e6f4a-2c1d-4e3f-9a5b-7c6d8e9f0a1b',
+          role: 'monitoring',
+          target: {
+            provider: 'prometheus',
+            probe: [{ name: 'site', url: 'https://example.com/health', module: 'http_2xx' }],
+          },
+        },
+      ],
+    },
+    // buy-before-build (forge ISS-1225): projects hand-rolled watch scripts and metrics parsers
+    redFlag:
+      'Building a watch script or a metrics parser in the project instead of binding it here.',
+    audience: ['master'],
+    changed: CHANGED,
+  },
+  'POST /api/integration-connections/:id/monitoring/readiness': {
+    purpose: 'Reads now what a Prometheus connection’s server can do, step by setup step.',
+    situations: [
+      {
+        when: 'you followed a connection’s setup list, or a binding was refused for a step not done',
+        do: 'read readiness and fix each step that reads false; null means unread, never done',
+      },
+    ],
+    practice: ['Each false names the setup step that turns it true.'],
+    example: {},
+    audience: ['master'],
+    changed: CHANGED,
+  },
 } satisfies Record<string, CapabilityCardBody>;

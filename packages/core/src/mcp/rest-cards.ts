@@ -8,6 +8,7 @@ import type { CapabilityCard, CapabilityCardBody } from '@forge/contracts/capabi
 import { CLEANUP_REST_CARDS } from '../cleanup/index.js';
 import { INTEGRATION_DOOR_REST_CARDS } from '../integration-door/index.js';
 import { ISSUE_REST_CARDS } from '../issues/index.js';
+import { MONITORING_REST_CARDS } from '../monitoring/index.js';
 import { card } from '../prompt/index.js';
 import { QUESTION_REST_CARDS } from '../questions/index.js';
 import { RELEASE_REST_CARDS } from '../release-batch/index.js';
@@ -24,4 +25,5 @@ export const REST_CARDS: readonly CapabilityCard[] = [
   ...ownedBy('questions', QUESTION_REST_CARDS),
   ...ownedBy('integration-door', INTEGRATION_DOOR_REST_CARDS),
   ...ownedBy('schedules', SCHEDULE_REST_CARDS),
+  ...ownedBy('monitoring', MONITORING_REST_CARDS),
 ];

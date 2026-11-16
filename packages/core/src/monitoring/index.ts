@@ -1,3 +1,4 @@
+export { MONITORING_REST_CARDS } from './cards.js';
 export {
   mintMonitoringToken,
   monitoringSetupOf,
