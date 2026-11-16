@@ -155,7 +155,8 @@ describe("a project's door use counts each call against the catalog, the never-c
     });
     expect(door(view, 'support.member').feature).toContain('forge_support');
     expect(door(view, 'support.member').tiers).toEqual({});
-    expect(door(view, 'feedback.door').tiers).toEqual({ bot: 0, master: 0, run: 0 });
+    // a card's door is in each audience's map it teaches, at Tier 0 (carried) or Tier 1 (found)
+    expect(Object.keys(door(view, 'feedback.door').tiers).sort()).toEqual(['bot', 'master', 'run']);
     expect(door(view, 'POST /api/projects/:id/feedback')).toMatchObject({
       surface: 'rest',
       calls: 1,
@@ -331,8 +332,17 @@ describe('each pile a prompt carries reads against its cap', () => {
     // the Tier-0 map of each audience, rendered from the cards that teach it
     const master = piles.find((p) => p.name === 'map (master)');
     expect(master).toMatchObject({ pile: 'tier0_map', cap: 2500 });
-    expect(master?.items).toBeGreaterThanOrEqual(15);
-    expect(master?.carried).toBe(master?.items);
+    // more cards teach a master than its map holds: the most used are carried whole, the rest are
+    // Tier 1, and each door's row says which
+    expect(master?.items).toBeGreaterThan(master?.carried ?? 0);
+    expect(master?.carried).toBeGreaterThan(0);
+    expect(master?.over).toBe(true);
+    const view = await doorsOf();
+    const atTier = (n: 0 | 1) => view.doors.filter((d) => d.tiers.master === n).length;
+    expect(atTier(0)).toBe(master?.carried);
+    expect(atTier(0) + atTier(1)).toBe(master?.items);
+    // the one carded door this project called ranks into the map
+    expect(door(view, 'POST /api/projects/:id/feedback').tiers.master).toBe(0);
     expect(piles.find((p) => p.name === 'map (bot)')?.items).toBeGreaterThan(0);
     expect(piles.find((p) => p.pile === 'skill_always_on' && p.size === 1100)).toMatchObject({
       cap: 1024,
