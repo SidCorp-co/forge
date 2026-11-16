@@ -1,0 +1,1 @@
+**Every tool an agent uses now has a card, and agents audit their own work.** Cards carry a red flag, an example and real scenarios; masters, runs and the steward record what they missed, and the Capabilities page counts it.
