@@ -19,6 +19,8 @@ export const CORRECTION_SOURCES = [
 	"room",
 	"feedback_triaged",
 	"feedback_declined",
+	/** A master's, run's or steward's failed audit of its own output (ISS-1251). */
+	"self_audit",
 ] as const;
 export type CorrectionSource = (typeof CORRECTION_SOURCES)[number];
 

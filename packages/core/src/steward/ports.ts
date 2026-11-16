@@ -5,10 +5,13 @@
 // needed it and names the provide it lacked.
 
 import type { PilesView } from '@forge/contracts/door-use';
+import type { CorrectionItemKind } from '@forge/contracts/lessons';
 import type { Said } from '@forge/contracts/said';
 import type { WaitingOn } from '@forge/contracts/standing';
 import type { OpenStandingsRead } from '@forge/contracts/steward';
+import type { SelfAuditFailed, SelfAuditRequest } from '@forge/contracts/support-reply-audit';
 import { portSlot } from '../lib/port-slot.js';
+import type { Refusal } from '../lib/refusal.js';
 
 interface StewardPorts {
   /** Core's REST app (`app.fetch`), answering one request as a client's would be. */
@@ -61,6 +64,25 @@ interface StewardPorts {
    * `piles.ts:readPiles`, ISS-1251): a pile past its cap is owed consolidation, never a cut.
    */
   piles(projectId: string): Promise<PilesView>;
+  /**
+   * A steward job's audit of its own run, read against the door catalog and kept in the one verdict
+   * store every agent's self-audit goes to (the support module's `reply-audit/self-audit.ts`,
+   * ISS-1251), a failed one a correction on the run's subject; or the refusal naming the door that
+   * cannot stand, with nothing kept.
+   */
+  keepSelfAudit(
+    input: StewardSelfAudit,
+  ): Promise<{ ok: true } | { ok: false; refusals: Refusal[] }>;
+}
+
+/** What a steward job says of its own run in its done call. */
+export interface StewardSelfAudit {
+  projectId: string;
+  runId: string;
+  userId: string;
+  subject: { kind: CorrectionItemKind; id: string; key: string };
+  failed: SelfAuditFailed;
+  missed: SelfAuditRequest['missed'];
 }
 
 /** A release that has not shipped and its own wait, as its page reads it. */

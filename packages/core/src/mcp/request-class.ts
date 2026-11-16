@@ -66,6 +66,7 @@ const READ_ACTIONS = {
   forge_project: new Set<string>(PROJECT_TOOL_READS),
   forge_references: new Set<string>(REFERENCES_TOOL_READS),
   forge_module: new Set<string>(MODULE_TOOL_READS),
+  forge_audit: new Set<string>(),
 } satisfies Record<McpToolName, ReadonlySet<string>>;
 
 /** The action a tool takes when the call names none — its schema's own default. */

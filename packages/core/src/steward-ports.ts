@@ -19,6 +19,7 @@ import {
 import { provideReleasePagePorts } from './release-page/index.js';
 import { heldStewardOf, provideStewardPorts, releaseNamerOf } from './steward/index.js';
 import { provideSuggestionsPorts } from './suggestions/index.js';
+import { judgeSelfAudit, keepSelfAudit } from './support/index.js';
 import { wakeMastersForSteward } from './ws/index.js';
 
 export function provideStewardDomainPorts(
@@ -36,6 +37,21 @@ export function provideStewardDomainPorts(
     releaseHoldingAct: (_projectId, issueId) => releaseHoldingActOf(issueId),
     holdingRelease: holdingReleaseOf,
     piles: (projectId) => readPiles(projectId, doorCatalog()),
+    // the steward's audit of its own run, in the store and shape every agent's goes to (ISS-1251)
+    keepSelfAudit: async (a) => {
+      const judged = judgeSelfAudit('steward', a.failed, a.missed);
+      if (!judged.ok) return judged;
+      await keepSelfAudit({
+        projectId: a.projectId,
+        agent: 'steward',
+        output: { kind: 'steward_run', ref: a.runId },
+        byUserId: a.userId,
+        agency: 'agent',
+        judged: judged.value,
+        item: { ...a.subject, title: null },
+      });
+      return { ok: true };
+    },
   });
   provideSuggestionsPorts({ stewardOf: heldStewardOf });
   provideReleasePagePorts({ releaseNamer: releaseNamerOf });

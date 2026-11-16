@@ -72,12 +72,13 @@ export async function replyVerdictsOf(
   return {
     verdicts: rows.slice(0, limit).map(({ verdict: r, rid }) => ({
       id: r.id,
-      bot: r.bot,
-      roomId: r.roomId,
+      // a row joined to its room is a room's verdict, whose room columns its check holds set (0673)
+      bot: r.bot as string,
+      roomId: r.roomId as string,
       rid,
-      roomKind: r.roomKind,
-      thread: r.thread,
-      message: r.message,
+      roomKind: r.roomKind as NonNullable<typeof r.roomKind>,
+      thread: r.thread as string,
+      message: r.message as string,
       verdict: r.verdict,
       failed: r.failed as ReplyRubricLine[],
       findings: r.findings as ReplyFinding[],

@@ -4,6 +4,7 @@
 import { REASON_SENTENCE_MAX } from '@forge/contracts/comments';
 import { plainDecisionSchema } from '@forge/contracts/plain-decision';
 import { STEWARD_MERGE_SHARES_MAX } from '@forge/contracts/steward';
+import { auditMissedSchema, selfAuditFailedSchema } from '@forge/contracts/support-reply-audit';
 import { Hono } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { z } from 'zod';
@@ -44,14 +45,18 @@ const runParam = zValidator(
   invalid('invalid path: a project uuid and a steward run uuid'),
 );
 
+// the job's audit of its own run rides on its last act (ISS-1251): the job's token ends with this call,
+// so an audit made after it could never be sent
 const doneBody = zValidator(
   'json',
   z.strictObject({
     refused: z.array(z.string().trim().min(3).max(600)).max(20),
     broken: z.array(z.string().trim().min(3).max(600)).max(20).default([]),
+    failed: selfAuditFailedSchema.optional(),
+    missed: auditMissedSchema.optional(),
   }),
   invalid(
-    'invalid body: { refused: ["METHOD path: CODE detail", ...], broken?: [...] }, both empty where every write landed',
+    'invalid body: { refused: ["METHOD path: CODE detail", ...], broken?: [...], failed?: [{ line | redFlag, why }], missed?: [{ door, why }] }, refused and broken empty where every write landed',
   ),
 );
 
@@ -152,12 +157,16 @@ stewardRoutes.post(
 // a steward job's last act: its acts are over, and these writes were refused (REQ-48 BC-1)
 stewardRoutes.post('/:id/steward-runs/:runId/done', runParam, reads, doneBody, async (c) => {
   const { id, runId } = c.req.valid('param');
+  const { refused, broken, failed, missed } = c.req.valid('json');
   const state = await finishStewardJob({
     projectId: id,
     runId,
     userId: c.get('userId'),
-    refused: c.req.valid('json').refused,
-    broken: c.req.valid('json').broken,
+    refused,
+    broken,
+    ...(failed !== undefined || missed !== undefined
+      ? { audit: { failed: failed ?? [], missed } }
+      : {}),
   });
   return c.json({ state });
 });

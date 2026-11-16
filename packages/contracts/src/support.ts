@@ -1615,6 +1615,14 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_MESSAGE_UNKNOWN",
 	/** support.audit's `missed` names a door Forge serves none as (ISS-1251). */
 	"SUPPORT_AUDIT_DOOR_UNKNOWN",
+	/** A self-audit's `missed` or `redFlag` names a door Forge serves none as (ISS-1251). */
+	"SELF_AUDIT_DOOR_UNKNOWN",
+	/** A self-audit's failed line names neither or both of a line and a red flag, or a line its role's rubric does not hold (ISS-1251). */
+	"SELF_AUDIT_LINE_UNKNOWN",
+	/** A self-audit's `redFlag` names a door whose card carries no red flag (ISS-1251). */
+	"SELF_AUDIT_NO_RED_FLAG",
+	/** A self-audit's `output` names no issue in the project (ISS-1251). */
+	"SELF_AUDIT_OUTPUT_UNKNOWN",
 	"SUPPORT_RULE_AUTHOR",
 	"SUPPORT_NOT_REPEATED",
 	"SUPPORT_FEEDBACK_UNKNOWN",
@@ -1855,6 +1863,10 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_CHANNEL_PRIVATE_DATA: 400,
 	SUPPORT_MESSAGE_UNKNOWN: 404,
 	SUPPORT_AUDIT_DOOR_UNKNOWN: 400,
+	SELF_AUDIT_DOOR_UNKNOWN: 400,
+	SELF_AUDIT_LINE_UNKNOWN: 400,
+	SELF_AUDIT_NO_RED_FLAG: 400,
+	SELF_AUDIT_OUTPUT_UNKNOWN: 404,
 	SUPPORT_RULE_AUTHOR: 403,
 	SUPPORT_NOT_REPEATED: 409,
 	SUPPORT_FEEDBACK_UNKNOWN: 404,

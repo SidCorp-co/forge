@@ -62,6 +62,19 @@ export interface ReplyMiss {
 }
 
 /**
+ * What an audit says its output missed: each capability by the door the catalog names it with, read
+ * against that catalog where it is kept. One shape for a room agent's audit and every other agent's.
+ */
+export const auditMissedSchema = z
+	.array(
+		z.strictObject({
+			door: z.string().trim().min(3).max(300),
+			why: z.string().trim().min(3).max(REASON_LINE_MAX),
+		}),
+	)
+	.max(SUPPORT_AUDIT_MISSED_MAX);
+
+/**
  * support.audit: the agent's own reading of one reply it posted, by its chat message id: each rubric
  * line it fails, with why; an empty list where it fails none.
  */
@@ -85,14 +98,7 @@ export const supportAuditRequestSchema = z.strictObject({
 		.describe(
 			"each rubric line the reply fails, with why; [] where it fails none",
 		),
-	missed: z
-		.array(
-			z.strictObject({
-				door: z.string().trim().min(3).max(300),
-				why: z.string().trim().min(3).max(REASON_LINE_MAX),
-			}),
-		)
-		.max(SUPPORT_AUDIT_MISSED_MAX)
+	missed: auditMissedSchema
 		.optional()
 		.describe(
 			"each capability this reply should have reached for and did not, by its name as forge_find lists it (`support.member`), with why; leave it out where none",
@@ -159,4 +165,169 @@ export interface ReplyVerdictsView {
 		pass: number;
 		fail: number;
 	}>;
+}
+
+// Every other agent's audit of its own output (ISS-1251 c4): a master, a run it starts and the steward
+// score what they shipped against their cards' red flags and their role's rubric, and name what they
+// missed, in the shape a room agent's support.audit takes. Kept in the one verdict store, so the
+// capabilities page counts every kind's misses by one read. Nothing makes an agent audit; its card
+// teaches when.
+
+/** The agents that audit their own output beside a room's. */
+export const SELF_AUDIT_ROLES = ["master", "run", "steward"] as const;
+export type SelfAuditRole = (typeof SELF_AUDIT_ROLES)[number];
+
+const STATE_TRUE =
+	"Every status, mark and comment it left says what is true: fixed, released and live told apart.";
+const DEFECTS_PLACED =
+	"Every defect it saw went to one place: fixed, recorded as debt, or routed to its owner.";
+
+/** Each role's rubric, line by line: what its output owes. Declared once, here. */
+export const ROLE_RUBRICS = {
+	master: {
+		delegated:
+			"It built nothing beyond a change too small to brief; each build part went to a run.",
+		one_gate:
+			"What landed went through the batch's one gate, its report recorded on each issue it landed.",
+		state_true: STATE_TRUE,
+		defects_placed: DEFECTS_PLACED,
+		asked_only_owed:
+			"It asked a person only for something irreversible, money, credentials or a new direction.",
+		tidy: "It left no worktree, scratch folder or process behind once the work landed.",
+	},
+	run: {
+		criteria_proven:
+			"Each criterion it calls met is proven by a run, a probe or a verdict on the record.",
+		in_scope:
+			"It did the issue's work and what bounds or proves it, and nothing beside it.",
+		refused_loudly:
+			"Wrong input is refused by name; nothing was widened, guessed or skipped in silence.",
+		state_true: STATE_TRUE,
+		defects_placed: DEFECTS_PLACED,
+		docs_true: "No doc it touched disagrees with the code it changed.",
+	},
+	steward: {
+		delta_only:
+			"It changed a card or a lesson by delta, never rewrote one whole.",
+		read_first:
+			"Each lesson it drew was drawn after its thread or item was read, an owner's ruling quoted.",
+		anchored:
+			"Each lesson it admitted is anchored to a card, a BC or a file.ts:symbol.",
+		writes_named:
+			"Each write a door refused is named in done, and none it fixed by resending is.",
+		state_true: STATE_TRUE,
+	},
+} as const satisfies Record<SelfAuditRole, Record<string, string>>;
+
+/** How a tripped red flag is kept among the failed lines: the door whose card names it. */
+export const RED_FLAG_LINE_PREFIX = "red_flag:";
+
+/** The most lines one self-audit names as failed. */
+export const SELF_AUDIT_FAILED_MAX = 12;
+
+/**
+ * Each line the output fails, with why: a line of the role's rubric, or the red flag of a card it
+ * tripped, named by that card's door as forge_find lists it.
+ */
+export const selfAuditFailedSchema = z
+	.array(
+		z.strictObject({
+			line: z
+				.string()
+				.trim()
+				.min(3)
+				.max(40)
+				.optional()
+				.describe("a line of your role's rubric"),
+			redFlag: z
+				.string()
+				.trim()
+				.min(3)
+				.max(300)
+				.optional()
+				.describe(
+					"the door whose card's red flag you tripped, as forge_find lists it (`issues.transition`)",
+				),
+			why: z.string().trim().min(3).max(REASON_LINE_MAX),
+		}),
+	)
+	.max(SELF_AUDIT_FAILED_MAX);
+export type SelfAuditFailed = z.infer<typeof selfAuditFailedSchema>;
+
+/**
+ * Each failed entry that names neither or both of a rubric line and a red flag, or a line the role's
+ * rubric does not hold, by its path and with the lines it does.
+ */
+export function rubricFaults(
+	role: SelfAuditRole,
+	failed: SelfAuditFailed | undefined,
+): { path: (string | number)[]; message: string }[] {
+	const lines = Object.keys(ROLE_RUBRICS[role]);
+	const out: { path: (string | number)[]; message: string }[] = [];
+	for (const [i, f] of (failed ?? []).entries()) {
+		if ((f.line === undefined) === (f.redFlag === undefined)) {
+			out.push({
+				path: ["failed", i],
+				message:
+					"name one of `line` (a rubric line) or `redFlag` (the door whose card's red flag you tripped)",
+			});
+		} else if (f.line !== undefined && !lines.includes(f.line)) {
+			out.push({
+				path: ["failed", i, "line"],
+				message: `${f.line} is no line of the ${role} rubric: ${lines.join(", ")}`,
+			});
+		}
+	}
+	return out;
+}
+
+/** The output an audit is about: an issue the master or run worked, by its key or uuid. */
+export const SELF_AUDIT_OUTPUT_KINDS = ["issue"] as const;
+
+const selfAuditFields = {
+	as: z
+		.enum(["master", "run"])
+		.describe(
+			"the role whose rubric you audit by: master, or run for a session building an issue",
+		),
+	output: z
+		.strictObject({
+			kind: z.enum(SELF_AUDIT_OUTPUT_KINDS),
+			ref: z.string().trim().min(1).max(64),
+		})
+		.describe("what you audit: { kind: issue, ref: ISS-n }"),
+	failed: selfAuditFailedSchema.describe(
+		"each rubric line or card red flag your output fails, with why; [] where it fails none",
+	),
+	missed: auditMissedSchema
+		.optional()
+		.describe(
+			"each capability you should have reached for and did not, by its name as forge_find lists it, with why; leave it out where none",
+		),
+};
+
+/** The self-audit's fields, for a door that takes them beside its own (the MCP action's input). */
+export const selfAuditRequestShape = selfAuditFields;
+
+/**
+ * `POST /api/projects/:id/self-audits` and audit.self: a master's or run's audit of its own output.
+ * Its failed lines are judged against the role's rubric where it is kept (`rubricFaults`), as the
+ * steward's done call's are.
+ */
+export const selfAuditRequestSchema = z.strictObject(selfAuditFields);
+export type SelfAuditRequest = z.infer<typeof selfAuditRequestSchema>;
+
+export const SELF_AUDIT_SHAPE =
+	"{ as: master | run, output: { kind: issue, ref: ISS-n }, failed: [{ line | redFlag, why }], missed?: [{ door, why }] }";
+
+/** What a self-audit answers: the verdict kept, and the correction a failed one became. */
+export interface SelfAuditView {
+	verdict: ReplyVerdict;
+	/** The rubric lines failed, and each tripped red flag as `red_flag:<door>`. */
+	failed: string[];
+	missed: ReplyMiss[];
+	/** The correction a failed verdict became in the lessons store, where its output names an item. */
+	correctionId: string | null;
+	/** This output was audited before in this role; this is that verdict, unchanged. */
+	already: boolean;
 }

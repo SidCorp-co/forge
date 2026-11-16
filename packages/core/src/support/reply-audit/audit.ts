@@ -71,6 +71,29 @@ const reasonOf = (j: Judgement) =>
   );
 
 /**
+ * The door a capability is named as: an action as forge_find lists it, a route, or a route the catalog
+ * folds into an action, which is that action. Null where Forge serves no such door.
+ */
+export function doorNamed(ref: string, catalog = doorCatalog()) {
+  return (
+    catalog.doors.find((d) => d.id === ref) ??
+    (/^[A-Z]+ \//.test(ref) ? catalog.doorOf({ tool: 'rest', action: ref }) : null)
+  );
+}
+
+/** The refusal a door Forge serves none as answers, with the shape a door is named in. */
+export const doorUnknown = <T>(
+  code: 'SUPPORT_AUDIT_DOOR_UNKNOWN' | 'SELF_AUDIT_DOOR_UNKNOWN',
+  path: string,
+  ref: string,
+): Outcome<T> =>
+  no(
+    code,
+    path,
+    `${ref} is no door Forge serves: name a capability as forge_find lists it (\`support.member\`) or as a route (\`POST /api/projects/:id/feedback\`). Nothing was kept.`,
+  );
+
+/**
  * Each miss under the door id the catalog serves it as: an action as forge_find lists it, a route, or a
  * route the catalog folds into an action, which is kept as that action. A door Forge serves none as is
  * refused by name, with the shape a door is named in.
@@ -78,19 +101,12 @@ const reasonOf = (j: Judgement) =>
 export function missesOf(
   missed: SupportAuditRequest['missed'],
   catalog = doorCatalog(),
+  code: 'SUPPORT_AUDIT_DOOR_UNKNOWN' | 'SELF_AUDIT_DOOR_UNKNOWN' = 'SUPPORT_AUDIT_DOOR_UNKNOWN',
 ): Outcome<ReplyMiss[]> {
   const out: ReplyMiss[] = [];
   for (const [i, m] of (missed ?? []).entries()) {
-    const door =
-      catalog.doors.find((d) => d.id === m.door) ??
-      (/^[A-Z]+ \//.test(m.door) ? catalog.doorOf({ tool: 'rest', action: m.door }) : null);
-    if (!door) {
-      return no(
-        'SUPPORT_AUDIT_DOOR_UNKNOWN',
-        `/missed/${i}/door`,
-        `${m.door} is no door Forge serves: name a missed capability as forge_find lists it (\`support.member\`) or as a route (\`POST /api/projects/:id/feedback\`). Nothing was kept.`,
-      );
-    }
+    const door = doorNamed(m.door, catalog);
+    if (!door) return doorUnknown(code, `/missed/${i}/door`, m.door);
     if (!out.some((o) => o.door === door.id)) out.push({ door: door.id, why: m.why });
   }
   return { ok: true, value: out };

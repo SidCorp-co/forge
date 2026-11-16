@@ -4,6 +4,128 @@
   "generator": "packages/core/src/contracts-generate.ts",
   "tools": [
     {
+      "description": "self { as: master | run, output: { kind: issue, ref: ISS-n }, failed: [{ line | redFlag, why }], missed?: [{ door, why }] }: audit your own finished output once, as the role whose rubric you hold. failed names each rubric line it fails (master: delegated, one_gate, state_true, defects_placed, asked_only_owed, tidy; run: criteria_proven, in_scope, refused_loudly, state_true, defects_placed, docs_true) or the card whose red flag you tripped ({ redFlag: <door>, why }); [] where it fails none. missed names each capability you should have reached for, by its forge_find name. Each door is read against the catalog and an unknown one refused SELF_AUDIT_DOOR_UNKNOWN; nothing is kept on a refusal. A failed verdict becomes a correction on the issue, which the steward draws lessons from; the capabilities page counts your misses. A second audit of one output in one role answers the first, already: true.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "self"
+            ],
+            "type": "string"
+          },
+          "as": {
+            "description": "the role whose rubric you audit by: master, or run for a session building an issue",
+            "enum": [
+              "master",
+              "run"
+            ],
+            "type": "string"
+          },
+          "failed": {
+            "description": "each rubric line or card red flag your output fails, with why; [] where it fails none",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "line": {
+                  "description": "a line of your role's rubric",
+                  "maxLength": 40,
+                  "minLength": 3,
+                  "type": "string"
+                },
+                "redFlag": {
+                  "description": "the door whose card's red flag you tripped, as forge_find lists it (`issues.transition`)",
+                  "maxLength": 300,
+                  "minLength": 3,
+                  "type": "string"
+                },
+                "why": {
+                  "maxLength": 500,
+                  "minLength": 3,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "why"
+              ],
+              "type": "object"
+            },
+            "maxItems": 12,
+            "type": "array"
+          },
+          "missed": {
+            "description": "each capability you should have reached for and did not, by its name as forge_find lists it, with why; leave it out where none",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "door": {
+                  "maxLength": 300,
+                  "minLength": 3,
+                  "type": "string"
+                },
+                "why": {
+                  "maxLength": 500,
+                  "minLength": 3,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "door",
+                "why"
+              ],
+              "type": "object"
+            },
+            "maxItems": 8,
+            "type": "array"
+          },
+          "output": {
+            "additionalProperties": false,
+            "description": "what you audit: { kind: issue, ref: ISS-n }",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "issue"
+                ],
+                "type": "string"
+              },
+              "ref": {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "ref"
+            ],
+            "type": "object"
+          },
+          "projectId": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "projectId",
+          "as",
+          "output",
+          "failed"
+        ],
+        "type": "object"
+      },
+      "name": "forge_audit",
+      "x-forge-permission": {
+        "self": {
+          "on": {
+            "arg": "projectId"
+          },
+          "permission": "project.write"
+        }
+      }
+    },
+    {
       "description": "A project's integration bindings, each read and written whole as a binding document (its role, connection, target and instructions; a connection's credential stays in core).\n- get { projectId, binding? }: one binding, or every binding with those that have no document form.\n- write { projectId, binding, baseRevision, document }: the whole binding document, as PUT /api/projects/:id/bindings/:bindingId writes it; it takes project.admin. { base, patch } is refused CONFIG_WRITE_SHAPE, and a baseRevision the binding has moved past is refused by name: get it again.",
       "inputSchema": {
         "additionalProperties": false,

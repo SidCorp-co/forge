@@ -4,8 +4,9 @@
  * kind read and which lessons it said it applied. Every figure is a count over a log Forge already
  * keeps: `mcp_audit_log` (every MCP call, and every REST write a token makes, a refused one with its
  * refusal code), `run_context_reaches` (what a box session or a room's agent was given and read),
- * `lesson_applications`, and `support_reply_verdicts` (the capabilities a room agent's own audit of a
- * reply says it missed). Core infers no miss: a miss is only what an agent named. The catalog is the
+ * `lesson_applications`, and `support_reply_verdicts` (the capabilities an agent's own audit says it
+ * missed: a room agent's of a reply, a master's, run's or steward's of its output). Core infers no miss: a
+ * miss is only what an agent named. The catalog is the
  * denominator, so a door no agent ever reached for shows, with 0.
  */
 
@@ -35,7 +36,7 @@ export const DOOR_USE_LIMITS = [
   'A box credential is shared by its master and the runs it starts, so their REST writes count under box; their reads are told apart under session:<kind>.',
   'A call counts for this project where it named the project, or its credential is fenced to this project alone.',
   'A refusal is counted by the code it answered with; one logged before refusal codes were kept (ISS-1251) reads by its outcome (forbidden, not_found, error), and one a door answered rather than threw was logged ok.',
-  "Misses are the capabilities an agent's own audit named as ones it should have reached for; only a room agent's support.audit records them so far.",
+  "Misses are the capabilities an agent's own audit named as ones it should have reached for: a room agent's support.audit, a master's or run's audit.self, the steward's done call. A master or run counts under the role it audited as, since one box credential serves both.",
   "An applied lesson a box records reads under its credential's holder (person or agent account), since one box credential serves its master and its runs.",
 ];
 
@@ -75,7 +76,7 @@ export type CallRow = {
   last_at: Date | string | null;
 };
 
-/** A capability a room agent's own audit says it missed, by the door id it was kept under. */
+/** A capability an agent's own audit says it missed, by the door id it was kept under. */
 export type MissRow = { door: string; agent: string; n: number };
 
 /** The logged calls of one project in the window: named it, or made on a credential fenced to it alone. */
@@ -99,12 +100,17 @@ async function callRows(projectId: string, since: Date): Promise<CallRow[]> {
 }
 
 /**
- * The capabilities room agents' own audits named as missed (`support.audit`'s `missed`), by door and
- * room kind. The door is kept as the catalog names it, so each counts on its row as written.
+ * The capabilities agents' own audits named as missed, by door and agent kind, read off the one
+ * verdict store: a room's by its kind, a master's and a run's under the session kinds their calls
+ * count under, the steward's as itself. The door is kept as the catalog names it, so each counts on
+ * its row as written.
  */
 async function missRows(projectId: string, since: Date): Promise<MissRow[]> {
   return (await db.execute(sql`
-    SELECT m ->> 'door' AS door, 'room:' || v.room_kind AS agent, count(*)::int AS n
+    SELECT m ->> 'door' AS door,
+      CASE v.agent WHEN 'room' THEN 'room:' || v.room_kind WHEN 'master' THEN 'session:master'
+        WHEN 'run' THEN 'session:run_session' ELSE v.agent END AS agent,
+      count(*)::int AS n
     FROM support_reply_verdicts v, jsonb_array_elements(v.missed) m
     WHERE v.project_id = ${projectId}::uuid AND v.audited_at >= ${since.toISOString()}::timestamptz
       AND jsonb_typeof(v.missed) = 'array'

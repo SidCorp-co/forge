@@ -93,6 +93,7 @@ export const REST_TWINS: Readonly<Record<string, readonly string[]>> = {
   ],
   'requirements.trace_criterion': ['PUT /api/projects/:id/requirements/:req/criteria/:code/steps'],
   'questions.answer': ['POST /api/questions/:id/answer'],
+  'audit.self': ['POST /api/projects/:id/self-audits'],
   // a master's seed of reference sources went over REST (16 calls on forge, 2026-11-16) and counted
   // on no card while references.add read 0 (ISS-1251 c3): each route runs what its action runs
   'references.add': ['POST /api/projects/:id/reference-sources'],

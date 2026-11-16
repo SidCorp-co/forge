@@ -15,12 +15,12 @@ import { db, type Tx } from '../db/client.js';
 import { jobs, personalAccessTokens, runners } from '../db/schema.js';
 import { finalizeJobDone } from '../jobs/index.js';
 import { env } from '../lib/env.js';
-import { refuser } from '../lib/refusal.js';
+import { RefusalError, refuser } from '../lib/refusal.js';
 import { requireDeclaredOn } from '../permissions/index.js';
 import { insertAndEnqueueJob, openOneShotRun } from '../pipeline/index.js';
 import { stewardAccountOf } from './account.js';
 import { mintStewardCredential } from './credential.js';
-import { stewardPorts } from './ports.js';
+import { type StewardSelfAudit, stewardPorts } from './ports.js';
 import { actContext, actPrompt } from './prompts.js';
 import { endRun, type RunRow, runOfProject } from './runs-store.js';
 
@@ -43,6 +43,7 @@ export async function boxesOf(projectId: string): Promise<string[]> {
 export const jobDoneStep = (run: RunRow) =>
   [
     `Your last act, whatever happened: \`POST /api/projects/${run.projectId}/steward-runs/${run.id}/done\` with \`{"refused": []}\`.`,
+    'Audit your run in the same call where you can: `failed` names each line of the steward rubric or card red flag you tripped (`{ line | redFlag, why }`), `missed` each capability you should have reached for (`{ door, why }`); its card says how.',
     'Name in `refused` each write a door refused (a 4xx), as `METHOD path: CODE detail`, and in `broken` each a door could not answer (a 5xx); leave both empty where every write landed.',
     'This is what ends the job. Without it the box reads a finished agent as a failed job a quarter hour later, and the run fails with it.',
   ].join('\n');
@@ -237,6 +238,11 @@ export async function finishStewardJob(input: {
   userId: string;
   refused: readonly string[];
   broken?: readonly string[];
+  /**
+   * The job's audit of its own run (ISS-1251), where it made one: kept before the run ends, so a door
+   * it names that cannot stand is refused with the run still open to a corrected call.
+   */
+  audit?: Pick<StewardSelfAudit, 'failed' | 'missed'>;
 }): Promise<'done' | 'failed'> {
   await requireDeclaredOn(input.projectId, input.userId, 'project.read');
   const stewardId = await stewardAccountOf(input.projectId);
@@ -261,6 +267,16 @@ export async function finishStewardJob(input: {
       `steward run ${run.id} is ${run.state}${job ? '' : ' with no job'}; only a running run's own job settles it.`,
       '/runId',
     );
+  }
+  if (input.audit) {
+    const kept = await stewardPorts().keepSelfAudit({
+      projectId: input.projectId,
+      runId: run.id,
+      userId: input.userId,
+      subject: { kind: run.subjectKind, id: run.subjectId, key: run.subjectKey },
+      ...input.audit,
+    });
+    if (!kept.ok) throw new RefusalError(kept.refusals, 'SELF_AUDIT_REFUSED');
   }
   let state: 'done' | 'failed' = run.state === 'failed' ? 'failed' : 'done';
   if (run.state === 'running') {

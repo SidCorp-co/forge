@@ -18,6 +18,10 @@ export const STEWARD_REST_CARDS = {
         when: 'a door refused a write (a 4xx) and resending it right never landed it',
         do: 'name it in `refused` as `METHOD path: CODE detail`; a 5xx a door could not answer goes in `broken`',
       },
+      {
+        when: 'your run tripped a line of the steward rubric or a card’s red flag, or skipped an act it needed',
+        do: 'audit it in the same call: `failed` as `{ line | redFlag, why }`, `missed` as `{ door, why }`; `failed: []` where every line holds',
+      },
     ],
     practice: [
       'Any entry in `refused` marks the run failed: list only writes that never landed.',
@@ -28,6 +32,7 @@ export const STEWARD_REST_CARDS = {
       refused: [
         'POST /api/issues/ISS-1240/verdicts: VERDICT_JUDGED_BY_REVIEW criterion 2 is judged by review',
       ],
+      failed: [],
     },
     // memory steward-done-refused-list (ISS-575 follow-through, ISS-738): refusals already
     // corrected by a resend were listed, and the run closed failed though every write landed

@@ -75,8 +75,8 @@ export const supportRoutes = new Hono<{ Variables: AuthVars }>();
 
 // what every support door was held to while other project routers' `use('*')` gates ran ahead of
 // these (ISS-925): a credential, and a verified email for a person; `agent-roles` and a run's
-// `ops-reads` (ISS-707) are this router's too
-for (const path of ['/:id/support/*', '/:id/agent-roles', '/:id/ops-reads/*']) {
+// `ops-reads` (ISS-707) are this router's too, and a master's or run's `self-audits` (ISS-1251)
+for (const path of ['/:id/support/*', '/:id/agent-roles', '/:id/ops-reads/*', '/:id/self-audits']) {
   supportRoutes.use(path, requireAuth(), assertEmailVerified());
 }
 

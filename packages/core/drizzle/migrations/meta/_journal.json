@@ -4264,6 +4264,13 @@
       "when": 1841011200000,
       "tag": "0672_a_refusal_keeps_its_code_and_an_audit_names_what_it_missed",
       "breakpoints": true
+    },
+    {
+      "idx": 673,
+      "version": "7",
+      "when": 1841097600000,
+      "tag": "0673_every_agent_audits_its_own_output_into_one_verdict_store",
+      "breakpoints": true
     }
   ]
 }

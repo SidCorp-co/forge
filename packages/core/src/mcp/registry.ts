@@ -19,6 +19,7 @@ import {
 import { forgeBindingsTool, forgeConfigTool } from '../project-config/index.js';
 import { forgeProjectsTool } from '../projects/index.js';
 import { forgeReferencesTool } from '../references/tool.js';
+import { forgeAuditTool } from '../support/audit-tool.js';
 import { forgeSupportTool } from '../support/tool.js';
 import { forgeUploadsTool } from '../uploads/tool.js';
 import { projectFeedbackMcpTool } from './feedback-tool.js';
@@ -62,4 +63,6 @@ export const MCP_TOOLS = {
   forge_references: (ctx) => forgeReferencesTool(ctx),
   // The module map (ISS-1256): a module's tree, the pillar, and the placements and relations agents write.
   forge_module: (ctx) => forgeModuleTool(ctx),
+  // A master's or run's audit of its own output (ISS-1251), in the shape a room agent's support.audit takes.
+  forge_audit: (ctx) => forgeAuditTool(ctx),
 } satisfies Record<McpToolName, ContextScopedMcpToolFactory>;

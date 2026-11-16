@@ -40,11 +40,13 @@ import { agentSwitchGate } from './switches.js';
 import { raiseTechnical } from './technical-channel.js';
 import { warmColdRooms, warmProjectRooms, warmRoomsOfDevice } from './warm.js';
 
+export { forgeAuditTool } from './audit-tool.js';
 export { classifyCommand } from './command-class.js';
 export { projectReadBox, secretEnvOf, withoutSecrets } from './declared-read.js';
 export { forgetMemberships } from './health.js';
 export { masterAsksOf } from './master-ask.js';
 export { roomWriterUserId } from './ops-asker.js';
+export { judgeSelfAudit, keepSelfAudit } from './reply-audit/self-audit.js';
 export { SUPPORT_REST_CARDS } from './rest-cards.js';
 export { roomConductLines } from './room-conduct.js';
 export { unhandledMessagesOf } from './room-reads.js';
