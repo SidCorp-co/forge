@@ -18,7 +18,7 @@ const ROOTS = [
   'packages/web-v2/src',
   'packages/runner/crates',
 ];
-const SKIP_DIRS = ['node_modules', 'dist', 'coverage', '.next', '.turbo', 'target', 'drizzle'];
+const SKIP_DIRS = ['node_modules', 'dist', 'coverage', '.next', '.turbo', 'target'];
 const keep = (_path, name) => /\.(ts|tsx|mjs|rs)$/.test(name);
 
 function main() {

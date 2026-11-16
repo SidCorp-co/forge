@@ -39,12 +39,11 @@ const IMPORTS_RULE = /from\s+['"][^'"]*\/run-slots(?:\.js)?['"]/;
 
 const lineOf = (text, index) => text.slice(0, index).split('\n').length;
 const isTest = (rel) => /\.test\.(ts|tsx|mjs)$/.test(rel) || rel.includes('/tests/');
-// Rust comments are `//` too, and strings are not where these names are read.
-const code = (rel, source) => (rel.endsWith('.sql') ? '' : stripComments(source));
 
 /** Every line of `source` (the file at `rel`) that crosses the fence, as `{ rel, line, how }`. */
 export function fenceFaults(rel, source) {
-  const text = code(rel, source);
+  // Rust comments are `//` too, and strings are not where these names are read.
+  const text = stripComments(source);
   const faults = [];
   const hit = (re, how) => {
     const m = re.exec(text);
