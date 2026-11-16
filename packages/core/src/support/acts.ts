@@ -33,6 +33,7 @@ import {
 } from './ability-acts.js';
 import { type RoomHint, sessionCaller } from './access.js';
 import { deniedActRefusal } from './act-deny.js';
+import { askerFacts } from './asker-read.js';
 import { announce, inferMember, noteCommonIssue, routeNeed, ruleFromMessage } from './channel.js';
 import { sessionChannelView } from './channel-read.js';
 import { checkResult } from './checks.js';
@@ -163,6 +164,7 @@ export type SupportActInput =
   | ({ action: 'ask_master' } & SupportAskMasterRequest)
   | { action: 'in_flight'; thread: string }
   | { action: 'raise_owed'; thread: string; text: string }
+  | { action: 'asker'; thread: string; message: string }
   | ({ action: 'technical' } & SupportTechnicalRequest)
   | ({ action: 'owner_forge_act' } & SupportForgeActRequest)
   | {
@@ -302,6 +304,8 @@ const SHARED = new Set<SupportActInput['action']>([
   'raise_owed',
   // every room agent raises what it needs in its project's technical channel (ISS-1243)
   'technical',
+  // and reads who wrote a message and the thread around it (ISS-1250)
+  'asker',
 ]);
 
 const OPERATION_ACTIONS: readonly string[] = OPERATIONS_ACTIONS;
@@ -459,6 +463,8 @@ async function act(
       const { action: _, ...request } = input;
       return ownerForgeAct(room, request);
     }
+    case 'asker':
+      return askerFacts(room, { thread: input.thread, message: input.message });
     case 'owner_sign_in':
       return startOwnerSignIn(room, {
         thread: input.thread,

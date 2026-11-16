@@ -39,6 +39,7 @@ import {
   SUPPORT_FORGE_ACTS,
   supportAnnounceRequestSchema,
   supportAnswerQuestionRequestSchema,
+  supportAskerRequestSchema,
   supportAskOwnerRequestSchema,
   supportCheckResultRequestSchema,
   supportCommonIssueRequestSchema,
@@ -101,6 +102,7 @@ export const SUPPORT_TOOL_READS: readonly string[] = [
   'project',
   'image',
   'in_flight',
+  'asker',
 ];
 
 const ACTIONS = [...SUPPORT_ACTIONS, ...OPERATIONS_ACTIONS] as const;
@@ -155,6 +157,7 @@ const REQUESTS = {
   raise_owed: supportRaiseOwedRequestSchema,
   technical: supportTechnicalRequestSchema,
   owner_forge_act: supportForgeActRequestSchema,
+  asker: supportAskerRequestSchema,
 } as const satisfies Record<(typeof ACTIONS)[number], z.ZodType>;
 
 /** Each action's request as `forge_describe` answers it, its entry below naming exactly these (ISS-1033). */
@@ -286,6 +289,7 @@ const SHAPE = [
   'in_flight { thread }',
   'raise_owed { thread, text }',
   'technical { thread, need: permission | approval | finding | ask, text }',
+  'asker { thread, message }',
   `owner_forge_act { thread, message, project, act: ${SUPPORT_FORGE_ACTS.join(' | ')}, item, reason?, carry?, commit?, baseRevision?, document? }`,
   'any action may add rid: the group, where you answer several and the act names no thread',
   'a channel agent following several projects names one as project on search, project, record, issues, releases and requirements, and on promise where the key alone does not say; its home when omitted',
@@ -295,6 +299,7 @@ const DESCRIPTION = [
   'Answer a Rocket.Chat support group, or an operations room, as its assistant. Every answer people see goes through this tool; nothing you write outside it reaches the room.',
   'search {query, project?}: the project knowledge and its published OpenAPI contracts (of a followed project, named as project); each hit carries `cite`, which you put in brackets after what it supports.',
   'thread {thread}: the thread so far, oldest first, each message with its id, which agree cites. tools {}: the checks (diagnose) and changes (fix) this group grants you.',
+  "asker {thread, message}: who wrote that message and what the thread holds around it, before you read a ruling or choose your tone: their Forge account, their role in the organization (owner, admin, member) and on its projects, the projects they filed in lately, the channel record's row for them and the roles their account says (keep those with member where the record holds none), how a reply to them reads (`reader`: owner, detail or plain), and the thread's last lines before the message, what they said there earlier and the asks still open in it. Nothing is written or posted.",
   "reply {thread, text, why?}: post your answer in that thread; `why`, one line, says why the message asked for one. It is screened before it is posted; a refusal names what to rewrite. In a group the product's users read, any post holding a Forge issue key (a store's own order number such as RIV-68493 may stay), an MR or PR number, an environment variable name, a commit sha or a credential word is refused SUPPORT_INTERNAL_CODE.",
   'silent {thread, message?, reason}: post nothing for a message you were handed, saying why in one line (chatter, for someone else, already answered by a Technical member, working on it in the background): recorded on the room, never posted. Every message you are handed gets a reply, a refusal or this.',
   "decide {thread, message?, decision, project?, signals, confidence, why}: for each message you were handed, record what you decided from its meaning before you act on it: answer it, gather more on your own first (the thread, the routing signals you were handed, a search of the projects you follow), ask the person one short question (only once gathering is exhausted), or stay silent; the project it concerns, by slug (one you follow; omitted where it concerns none); the signals it rested on (message, sender, sender_history, thread_history, room_projects, search); how sure you are; and why, one line. It is kept on your turn and counted; nothing is posted. decision silent is the message's stated silence too, so no support.silent is needed after it. A project you do not follow is refused OPS_OUT_OF_SCOPE and nothing is recorded.",

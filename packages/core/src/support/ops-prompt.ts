@@ -16,7 +16,16 @@ import { roomConductLines } from './room-conduct.js';
  * The acts every room holds besides its role's (`acts.ts:SHARED`), named so an act the role lacks is
  * handed on: an operations room told only its role's acts explained its grants instead (ISS-1250).
  */
-const HAND_ON = ['reply', 'thread', 'ask_master', 'in_flight', 'ask_owner', 'technical'] as const;
+const HAND_ON = [
+  'reply',
+  'thread',
+  'asker',
+  'member',
+  'ask_master',
+  'in_flight',
+  'ask_owner',
+  'technical',
+] as const;
 
 export function operationsBrief(input: {
   role: ChatRole;

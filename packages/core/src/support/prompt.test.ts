@@ -220,8 +220,8 @@ describe('every room agent brief carries the room conduct', () => {
   });
 
   // ISS-1250 (epod, 16/11): the operations room explained its grants and sent the owner to settings,
-  // told its role's acts alone and to name who can grant the rest. Every brief now hands an act on
-  // with ask_master, never says who could grant it, and links the web app, never the API host.
+  // told its role's acts alone and to name who can grant the rest. Every brief now teaches it to read
+  // who asks and the thread (asker), hand an act on with ask_master, and link the web app.
   it('hands an act it cannot make to the master, and tells no thread who could grant it', () => {
     expect(operations).toMatch(/Your acts: [^.]*\bask_master\b[^.]*\./);
     expect(operations).toContain('you hand on and never explain');
@@ -231,6 +231,12 @@ describe('every room agent brief carries the room conduct', () => {
     }
     expect(NO_PERMISSION_TALK).toContain('support.ask_master');
     expect(NO_PERMISSION_TALK).toContain('never send anyone, the owner included, to a page');
+    expect(NO_PERMISSION_TALK).toContain('A refusal from Forge is a problem to solve');
+    // who is asking, and the thread around the ruling, are read through asker before acting on it
+    expect(ANSWER_THE_ASKER).toContain('support.asker { thread, message }');
+    expect(ANSWER_THE_ASKER).toContain('to the owner, the decision or result first');
+    expect(operations).toMatch(/Your acts: [^.]*\basker\b[^.]*\./);
+    expect(brief).toContain('read them with support.asker');
     for (const text of [brief, channel, operations]) {
       expect(text).toContain(linksOnWeb('http://localhost:3000'));
     }

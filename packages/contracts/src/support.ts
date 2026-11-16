@@ -925,6 +925,7 @@ export const SUPPORT_ACTIONS = [
 	"in_flight",
 	"raise_owed",
 	"technical",
+	"asker",
 ] as const;
 
 export const supportSearchRequestSchema = z.strictObject({

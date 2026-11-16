@@ -193,6 +193,18 @@ export const rulingDecidersSchema = z
 export const RULING_DECIDERS_SHAPE = `metadata.${RULING_DECIDERS_KEY}: [{ member: <chat username> | "${ANY_ROOM_MEMBER}" (any member of the room), acts: (${CHANNEL_DECIDER_ACTS.join(" | ")})[], targets?: <project slug>[] }], on an entry of kind rule`;
 
 /** An instruction a member gave in the channel, kept as a rule linked to its message (BC-35). */
+/**
+ * Who wrote a member's message and what its thread holds around it (ISS-1250): their Forge account,
+ * organization and project roles, the record's row for them, the thread's last lines, what they said
+ * there earlier and the asks still open. Read only.
+ */
+export const supportAskerRequestSchema = z.strictObject({
+	thread: supportThreadIdSchema,
+	message: supportThreadIdSchema.describe(
+		"the member's message you are reading (`message` in what you were handed)",
+	),
+});
+
 export const supportRuleRequestSchema = z.strictObject({
 	thread: supportThreadIdSchema,
 	message: supportThreadIdSchema,
