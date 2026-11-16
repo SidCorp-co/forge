@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.700] - 2026-11-16
+
+Search places each capability under its module and reads plainly on a phone
+
+### Fixed
+
+- **Search answers nonsense with no match, kept as a gap.** Capability hits open in their module, lessons read by gist, statuses in words, org rules apart from Unplaced. Agent maps keep every module; the pillar stacks on phones.
+
 ## [0.4.0-dev.699] - 2026-11-16
 
 One module map and one search for terms, rules, requirements and decisions
