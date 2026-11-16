@@ -1689,18 +1689,14 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_PROJECT_THREAD_UNRECORDED",
 	/** A master's post naming no thread, where the room's report thread could not be opened (ISS-1224). */
 	"SUPPORT_POST_NEEDS_THREAD",
-	/** A question for the owner outside the room the binding names as `ownerRoom` (ISS-872). */
-	"SUPPORT_NOT_THE_OWNER_ROOM",
 	/** A thread that names no parked question handed to this group (ISS-873). */
 	"SUPPORT_QUESTION_UNKNOWN",
 	/** An answer naming neither or both of where it is: the record, or the owner's message (ISS-873). */
 	"SUPPORT_ANSWER_SOURCE",
 	/** A message the owner did not write in this group, cited as their answer (ISS-873). */
 	"SUPPORT_ANSWER_NOT_THE_OWNER",
-	/** The question was already asked and waits in the owner's room (ISS-873). */
+	/** The question was already asked and waits in the technical channel (ISS-873, ISS-1246). */
 	"SUPPORT_OWNER_ALREADY_ASKED",
-	/** No thread for the day's questions is open yet, and the ask carries no line to open it (ISS-873). */
-	"SUPPORT_DAY_THREAD_OPENER",
 	/** The message carries no picture at that place (ISS-1010). */
 	"SUPPORT_IMAGE_UNKNOWN",
 	/** The picture is larger than a session reads (ISS-1010). */
@@ -1892,12 +1888,10 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_THREAD_OF_ANOTHER_ROOM: 409,
 	SUPPORT_PROJECT_THREAD_UNRECORDED: 409,
 	SUPPORT_POST_NEEDS_THREAD: 503,
-	SUPPORT_NOT_THE_OWNER_ROOM: 409,
 	SUPPORT_QUESTION_UNKNOWN: 404,
 	SUPPORT_ANSWER_SOURCE: 400,
 	SUPPORT_ANSWER_NOT_THE_OWNER: 409,
 	SUPPORT_OWNER_ALREADY_ASKED: 409,
-	SUPPORT_DAY_THREAD_OPENER: 409,
 	SUPPORT_IMAGE_UNKNOWN: 404,
 	SUPPORT_IMAGE_TOO_LARGE: 409,
 	SUPPORT_IMAGE_GONE: 404,

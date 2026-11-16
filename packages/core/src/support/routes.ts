@@ -133,7 +133,7 @@ const SHAPES = {
   commonIssue: '{ threads, question, answer, feedback? }',
   route: '{ thread, to: forge | technical | product, member?, title?, text }',
   announce: '{ text }',
-  askOwner: '{ thread, question, record?, forgeQuestion?, opener? }',
+  askOwner: '{ thread, question, record?, forgeQuestion? }',
   answerQuestion: '{ thread, forgeQuestion?, source | message, option? | answer? }',
   checkResult: '{ check, finding: string | null }',
   gitCredential: '{ host, path }',

@@ -501,20 +501,6 @@ export const supportAskOwnerRequestSchema = z.strictObject({
 		.describe(
 			"a master's open Forge question of this project, by id: the owner's answer is recorded on it",
 		),
-	/**
-	 * Asking from a parked question's thread (ISS-873), where the owner's room has no thread for the
-	 * day's questions yet: one short line, in the persona's language, that opens it at the room's top
-	 * level; the question goes inside it.
-	 */
-	opener: z
-		.string()
-		.trim()
-		.min(3)
-		.max(300)
-		.optional()
-		.describe(
-			"one short line in the persona's language opening today's questions thread of the owner's room, where none is open yet",
-		),
 });
 
 /**

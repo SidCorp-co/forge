@@ -22,7 +22,7 @@ import { fireDueChecks } from './checks.js';
 import { sendDirectTurn } from './direct-turn.js';
 import { deliverWaiting, drainSupportRooms, onSupportTurnEnded } from './dispatch.js';
 import { expireSupportFixes } from './fixes.js';
-import { handleSupportMessage } from './inbound.js';
+import { handleSupportMessage, handleUnboundMessage } from './inbound.js';
 import { INJECT_INTENT, onInjectRefused, settleInjects } from './inject.js';
 import { recoverLostTurns } from './lost-turns.js';
 import { handAllOwnerOwed, provideTechnicalRaise } from './owner-owed-raise.js';
@@ -87,7 +87,7 @@ export async function recoverSupportRooms(): Promise<void> {
  * core lost while it was away (ISS-850); once at boot.
  */
 export function registerSupportRooms(): void {
-  provideSupportRoomHandler({ handle: handleSupportMessage });
+  provideSupportRoomHandler({ handle: handleSupportMessage, unbound: handleUnboundMessage });
   // what waits on the owner is raised through the one door to his technical channel (ISS-1243 item 23)
   provideTechnicalRaise(raiseTechnical);
   // a group an outside bot answers joins the channel agent only through its switch (REQ-77 BC-16)

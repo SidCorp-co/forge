@@ -298,7 +298,22 @@ class RocketChatConnectionManager {
     ac.routes = await buildRoutes(connectionId);
     const route = ac.routes.get(m.rid);
     if (!route) {
-      logger.debug({ connectionId, rid: m.rid }, 'rocketchat: no binding for room; ignoring');
+      // the owner's reply in a direct message that is a project's technical channel (ISS-1246)
+      if (ac.seenMessage(m.id)) return;
+      const taken = await Promise.resolve()
+        .then(() => supportRoomHandler().unbound({ m }))
+        .catch((err) => {
+          ac.seenMessage.forget(m.id);
+          logger.error({ err, connectionId, rid: m.rid }, 'rocketchat: unbound message failed');
+          reportFailure(err, {
+            tags: { area: 'rocketchat', phase: 'support' },
+            extra: { connectionId, rid: m.rid },
+          });
+          return true;
+        });
+      if (!taken) {
+        logger.debug({ connectionId, rid: m.rid }, 'rocketchat: no binding for room; ignoring');
+      }
       return;
     }
     const restAuth = { serverUrl: ac.serverUrl, authToken: ac.authToken, userId: ac.botUserId };

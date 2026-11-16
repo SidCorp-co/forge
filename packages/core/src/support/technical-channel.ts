@@ -34,7 +34,16 @@ export async function technicalChannelOf(projectId: string): Promise<TechnicalCh
   return (await readProjectDocument(projectId))?.document.technicalChannel ?? OWNER_DM;
 }
 
-type Raised = Outcome<{ channel: 'thread' | 'dm'; rid: string; messageId: string | null }>;
+/**
+ * Where a post went: the channel's kind, its room, the line's id, and for the shared room the
+ * project's thread it went into (a direct message posts at its top level).
+ */
+export type Raised = Outcome<{
+  channel: 'thread' | 'dm';
+  rid: string;
+  messageId: string | null;
+  thread: string | null;
+}>;
 
 /** The operations room every project of the organization shares, recording this project's thread. */
 async function sharedThreadOf(
@@ -51,30 +60,34 @@ async function sharedThreadOf(
   return null;
 }
 
-async function postInSharedThread(room: RoomRow, text: string): Promise<Raised> {
+async function postInSharedThread(room: RoomRow, text: string, path: string): Promise<Raised> {
   const at = await sharedThreadOf(room.projectId);
   if (!at) {
     const slug = (await findProjectSlugs([room.projectId])).get(room.projectId) ?? room.projectId;
     return no(
       'SUPPORT_TECHNICAL_CHANNEL_UNNAMED',
-      '/need',
+      path,
       `this project's technical channel is its own thread of the operations room its organization shares, and no bound room of scope forge records a thread for ${slug} (\`operations.threads[rid].${slug}\` on that room's binding); record it there, or name a direct message in ${KEY}. Nothing was raised.`,
     );
   }
   const posted = await postInThread({ room: at.room, thread: at.thread, text });
-  return { ok: true, value: { channel: 'thread', rid: at.room.rid, messageId: posted.messageId } };
+  return {
+    ok: true,
+    value: { channel: 'thread', rid: at.room.rid, messageId: posted.messageId, thread: at.thread },
+  };
 }
 
 async function postInDirect(
   room: RoomRow,
   channel: { user?: string | undefined },
   text: string,
+  path: string,
 ): Promise<Raised> {
   const user = channel.user ?? grantsOf(await supportConfigOf(room)).owner ?? null;
   if (!user) {
     return no(
       'SUPPORT_TECHNICAL_CHANNEL_UNNAMED',
-      '/need',
+      path,
       `this project's technical channel is a direct message, and it names no person while this room's binding names no owner (its grant's \`owner\`): name one in ${KEY}. Nothing was raised.`,
     );
   }
@@ -83,7 +96,7 @@ async function postInDirect(
   if (!direct.ok) {
     return no(
       'SUPPORT_TECHNICAL_CHANNEL_UNREACHABLE',
-      '/need',
+      path,
       `${direct.reason}, so nothing was raised in the technical channel; name another person or the shared thread in ${KEY}.`,
     );
   }
@@ -93,13 +106,24 @@ async function postInDirect(
     safe,
     FIXED_REPLY_CONSTANT,
   );
-  return { ok: true, value: { channel: 'dm', rid: direct.rid, messageId } };
+  return { ok: true, value: { channel: 'dm', rid: direct.rid, messageId, thread: null } };
 }
 
 /** The line the channel is handed: whose need, from which room and thread, then the agent's words. */
-async function headed(room: RoomRow, need: TechnicalNeed, thread: string, text: string) {
+export async function headed(room: RoomRow, need: TechnicalNeed, thread: string, text: string) {
   const slug = (await findProjectSlugs([room.projectId])).get(room.projectId) ?? room.projectId;
   return `[${slug} | ${need}] from ${room.rid}, thread ${thread}:\n${text}`;
+}
+
+/**
+ * Post `text` in the project's technical channel and nowhere else, or the refusal naming the key
+ * that fixes it at `path`; nothing is recorded here, the caller records it on its own thread.
+ */
+export async function postTechnical(room: RoomRow, text: string, path: string): Promise<Raised> {
+  const channel = await technicalChannelOf(room.projectId);
+  return channel.kind === 'thread'
+    ? postInSharedThread(room, text, path)
+    : postInDirect(room, channel, text, path);
 }
 
 /**
@@ -113,12 +137,8 @@ export async function raiseTechnical(
 ): Promise<Raised> {
   const conversationId = await knownThread(room, input.thread);
   if (!conversationId) return threadUnknown(input.thread);
-  const channel = await technicalChannelOf(room.projectId);
   const text = await headed(room, input.need, input.thread, input.text);
-  const out =
-    channel.kind === 'thread'
-      ? await postInSharedThread(room, text)
-      : await postInDirect(room, channel, text);
+  const out = await postTechnical(room, text, '/need');
   if (!out.ok) return out;
   await insertAction({
     roomId: room.id,

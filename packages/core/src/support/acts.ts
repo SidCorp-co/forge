@@ -143,7 +143,6 @@ export type SupportActInput =
       question: string;
       record?: string | undefined;
       forgeQuestion?: string | undefined;
-      opener?: string | undefined;
     }
   | ({ action: 'answer_question' } & SupportAnswerQuestionRequest)
   | { action: 'check_result'; check: string; finding: string | null }

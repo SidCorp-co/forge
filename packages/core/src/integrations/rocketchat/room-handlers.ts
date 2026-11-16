@@ -46,6 +46,11 @@ interface SupportRoomHandler {
     m: RocketChatIncomingMessage;
     shape: RoomShape;
   }): Promise<void>;
+  /**
+   * A message in a room no binding names: the owner's reply in the direct message that is a
+   * project's technical channel (ISS-1246). True when it was taken; a throw un-sees the message.
+   */
+  unbound(input: { m: RocketChatIncomingMessage }): Promise<boolean>;
 }
 
 const supportSlot = portSlot<SupportRoomHandler>('rocketchat', 'provideSupportRoomHandler');

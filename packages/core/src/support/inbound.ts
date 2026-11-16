@@ -24,7 +24,7 @@ import { deliverWaiting } from './dispatch.js';
 import { answersOfConfig } from './grants.js';
 import { recordedImagesOf } from './images.js';
 import { tellLastResort } from './last-resort.js';
-import { settleOwnerAnswer } from './owner-ask.js';
+import { settleOwnerAnswer } from './owner-answer.js';
 import { noteRoomMessage } from './room-replies.js';
 import { ensureSupportRoom } from './rooms.js';
 import { clipMessage, limitsOf, threadOf } from './rules.js';
@@ -69,6 +69,30 @@ async function heardInMentionsRoom(
   if (addressed === 'you') return true;
   if (addressed !== 'nobody' || !m.tmid) return false;
   return sessionRepliedInThread(room.id, m.tmid);
+}
+
+/** A message as the technical channel's answer reads it: where, what, and the server's word on who. */
+function ownerReplyOf(m: RocketChatIncomingMessage) {
+  return {
+    rid: m.rid,
+    thread: m.tmid ?? null,
+    message: { id: m.id, text: m.text, replyTo: m.replyToId ?? null },
+    author: { key: m.userId, label: m.username ?? null },
+  };
+}
+
+/**
+ * A message in a room no binding names (ISS-1246): the owner's reply in the direct message that is
+ * the project's technical channel, taken as the answer to the ask waiting there. False, and nothing
+ * kept, for any other message, as before. A posted secret is scrubbed first, as in a bound room.
+ */
+export async function handleUnboundMessage(input: {
+  m: RocketChatIncomingMessage;
+}): Promise<boolean> {
+  const m = containsSecret(input.m.text)
+    ? { ...input.m, text: scrubLogText(input.m.text) }
+    : input.m;
+  return settleOwnerAnswer(ownerReplyOf(m));
 }
 
 export async function handleSupportMessage(input: {
@@ -185,14 +209,12 @@ async function takeIntoRoom(
     return fresh;
   };
 
-  // the owner's message in a thread that asked them something is the answer to it, and is handed to
-  // the asking session whatever the room's answering mode (REQ-77 BC-12)
-  const ownerAnswer = await settleOwnerAnswer({
-    room,
-    thread,
-    message: { id: m.id, text: m.text },
-    author,
-  });
+  // the owner's reply in the project's technical channel answers the ask waiting there: it reaches
+  // the asking session in the asker's thread, and is kept here as context alone (ISS-1246)
+  if (await settleOwnerAnswer(ownerReplyOf(m))) {
+    await recordAndFlag(m, author, { deliver: false });
+    return;
+  }
 
   // a room that answers only mentions keeps every other message as the thread's context (REQ-75 r5);
   // a channel agent's group may say so for itself (ISS-874)
@@ -205,17 +227,17 @@ async function takeIntoRoom(
   );
   // in a group shared with another project, a message naming that project is its, kept here as
   // context only (ISS-1220)
-  if (forAnother && !ownerAnswer) {
+  if (forAnother) {
     await recordAndFlag(m, author, { deliver: false });
     return;
   }
   // a thread another binding of the group holds is its, kept here as context, unless this project is
   // named (ISS-1243)
-  if (!ownerAnswer && !namesThis && (await threadHeldByAnother(room, thread))) {
+  if (!namesThis && (await threadHeldByAnother(room, thread))) {
     await recordAndFlag(m, author, { deliver: false });
     return;
   }
-  if (mentionsOnly && !ownerAnswer && !(await heardInMentionsRoom(room, m, addressed))) {
+  if (mentionsOnly && !(await heardInMentionsRoom(room, m, addressed))) {
     await recordAndFlag(m, author, { deliver: false });
     return;
   }
