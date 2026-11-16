@@ -1,6 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { ROOM_AGENT_GUIDE } from '../guides/room-agent-guide.js';
 import { agentOpening, supportBrief } from './prompt.js';
+
+// ISS-1251: the brief is a map naming the room agent's guide, where each line's detail now lives;
+// what the agent is taught is the brief and that guide together
+const taught = (b: string): string => {
+  expect(b).toContain('support.guide {}');
+  return `${b}\n\n${ROOM_AGENT_GUIDE.body}`;
+};
 
 // @direct-test-of packages/core/src/support/prompt.ts
 // @direct-test-of packages/core/src/support/tool.ts
@@ -40,7 +48,7 @@ const described = (): string => {
 describe('a plain agreement in any words is consent, never a set word', () => {
   it('the room brief teaches it and demands no word', () => {
     for (const b of briefs) {
-      expect(b).toContain(TEACHES);
+      expect(taught(b)).toContain(TEACHES);
       expect(b).not.toMatch(SET_WORD);
     }
   });

@@ -17,6 +17,8 @@ import { code } from '../helpers/support-channel.js';
 // @direct-test-of packages/core/src/support/tool.ts
 // @direct-test-of packages/core/src/support/master-ask-routes.ts
 // @direct-test-of packages/contracts/src/support-channel.ts
+// @direct-test-of packages/core/src/support/room-guide.ts
+// @direct-test-of packages/core/src/guides/room-agent-guide.ts
 //
 // ISS-1250 (epod thread of the shared operations room, 16/11): the epod master posted at 02:18 that
 // the new errors read in Vietnamese; at 02:21 the organization's owner ruled "language per the
@@ -115,6 +117,38 @@ describe('the agent reads who is asking and the thread around a ruling', () => {
 
   it('teaches the agent to read it before an instruction', () => {
     expect(w.brief()).toContain('support.asker { thread, message }');
-    expect(w.brief()).toContain('read them with support.asker');
+    expect(w.brief()).toContain('support.guide {}');
+  });
+});
+
+// ISS-1251 (owner 2026-11-16): the brief is a map, and the detail behind it is the room agent's
+// guide, which the organization's knowledge entry stands in for, so teaching changes with no deploy.
+describe('the room agent reads its guide: its organization’s where it keeps one, else Forge’s', () => {
+  async function guide() {
+    let out: Record<string, unknown> = {};
+    await w.hear(
+      () => w.stand.say(w.stand.bob, 'how do refunds work?'),
+      async (_t, act, message) => {
+        out = await act({ action: 'guide' });
+        await act({ action: 'silent', thread: message().thread, reason: 'read the guide' });
+      },
+    );
+    return out;
+  }
+
+  it('hands the shipped guide, then the organization’s own once it keeps one', async () => {
+    const shipped = await guide();
+    expect(shipped.isError, JSON.stringify(shipped)).toBe(false);
+    expect(shipped).toMatchObject({ from: 'forge', slug: 'room-agent' });
+    expect(String(shipped.body)).toContain('### Deciding each message');
+    await db.execute(sql`
+      INSERT INTO org_knowledge_entries (org_id, slug, title, body, injection)
+      SELECT org_id, 'room-agent-guide', 'Room agent guide', 'When the owner rules, hand it on.', 'on_demand'
+        FROM projects WHERE id = ${w.projectId}::uuid`);
+    expect(await guide()).toMatchObject({
+      from: 'org',
+      slug: 'room-agent-guide',
+      body: 'When the owner rules, hand it on.',
+    });
   });
 });

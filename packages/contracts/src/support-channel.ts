@@ -205,6 +205,9 @@ export const supportAskerRequestSchema = z.strictObject({
 	),
 });
 
+/** The room agent's guide (ISS-1251): the project's or its org's own, or the one Forge ships. */
+export const supportGuideRequestSchema = z.strictObject({});
+
 export const supportRuleRequestSchema = z.strictObject({
 	thread: supportThreadIdSchema,
 	message: supportThreadIdSchema,

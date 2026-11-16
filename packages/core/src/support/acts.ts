@@ -61,6 +61,7 @@ import { proposeFix, proposeRecord } from './propose.js';
 import { answerHandedQuestion } from './question-task.js';
 import { decideReleaseFromMessage } from './release-decision.js';
 import { auditReply } from './reply-audit/audit.js';
+import { roomGuideOf } from './room-guide.js';
 import { decideRouting } from './routing.js';
 import { search } from './search.js';
 import { listTools, readThread, reply, runDiagnose, staySilent } from './service.js';
@@ -167,6 +168,7 @@ export type SupportActInput =
   | { action: 'in_flight'; thread: string }
   | { action: 'raise_owed'; thread: string; text: string }
   | { action: 'asker'; thread: string; message: string }
+  | { action: 'guide' }
   | ({ action: 'technical' } & SupportTechnicalRequest)
   | ({ action: 'audit' } & SupportAuditRequest)
   | ({ action: 'owner_forge_act' } & SupportForgeActRequest)
@@ -234,6 +236,8 @@ const ANY_ROOM = new Set<SupportActInput['action']>([
   'releases',
   'requirements',
   'feedback',
+  // the room agent's guide is the project's, or its organization's (ISS-1251)
+  'guide',
 ]);
 
 /** What an act names that places it in one group of a channel agent's (REQ-77). */
@@ -309,8 +313,9 @@ const SHARED = new Set<SupportActInput['action']>([
   'technical',
   // every room agent audits its own reply right after posting it (ISS-1250)
   'audit',
-  // and reads who wrote a message and the thread around it (ISS-1250)
+  // and reads who wrote a message and the thread around it (ISS-1250), and its guide (ISS-1251)
   'asker',
+  'guide',
 ]);
 
 const OPERATION_ACTIONS: readonly string[] = OPERATIONS_ACTIONS;
@@ -472,6 +477,8 @@ async function act(
       const { action: _, ...request } = input;
       return ownerForgeAct(room, request);
     }
+    case 'guide':
+      return roomGuideOf(room);
     case 'asker':
       return askerFacts(room, { thread: input.thread, message: input.message });
     case 'owner_sign_in':

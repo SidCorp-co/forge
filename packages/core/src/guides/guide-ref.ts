@@ -32,6 +32,7 @@ const GUIDE_SLUGS = [
   'script-schedules',
   'monitoring',
   'product-role',
+  'room-agent',
 ] as const;
 
 export type GuideSlug = (typeof GUIDE_SLUGS)[number];

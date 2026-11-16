@@ -37,6 +37,7 @@ import { QA_GUIDE } from './qa-guide.js';
 import { RECORDS_GUIDE } from './records-guide.js';
 import { RELEASE_TAGS_GUIDE } from './release-tags-guide.js';
 import { REQUIREMENT_LIFECYCLE_GUIDE } from './requirements-guide.js';
+import { ROOM_AGENT_GUIDE } from './room-agent-guide.js';
 import { RUNS_AND_MASTERS_GUIDE } from './runs-guide.js';
 import { SCRIPT_SCHEDULES_GUIDE } from './script-schedules-guide.js';
 import { SUGGESTIONS_GUIDE } from './suggestions-guide.js';
@@ -358,6 +359,7 @@ section, which is why this migration is what turns the feature on.`,
   DISPATCH_GUIDE,
   QA_GUIDE,
   LINK_CHAT_GUIDE,
+  ROOM_AGENT_GUIDE,
   PRODUCT_ROLE_GUIDE,
 ] as const;
 

@@ -44,6 +44,7 @@ import {
   supportCheckResultRequestSchema,
   supportCommonIssueRequestSchema,
   supportForgeActRequestSchema,
+  supportGuideRequestSchema,
   supportMemberRequestSchema,
   supportReleaseDecisionRequestSchema,
   supportRouteFieldsSchema,
@@ -67,6 +68,7 @@ import {
   operationsRequirementsRequestSchema,
   operationsResearchRequestSchema,
 } from '@forge/contracts/support-operations';
+import { supportAuditRequestSchema } from '@forge/contracts/support-reply-audit';
 import { supportTechnicalRequestSchema } from '@forge/contracts/support-technical';
 import { z } from 'zod';
 
@@ -86,6 +88,7 @@ import { permissionless } from '../permissions/index.js';
 import { type SupportActInput, supportAct } from './acts.js';
 import type { ImageRead } from './images.js';
 import { refusalOf } from './refusals.js';
+import { AUDIT_TOOL_TEXT } from './reply-audit/teach.js';
 
 /** The actions that write nothing: the rest post in a thread, file an item, or act or record for a member. */
 export const SUPPORT_TOOL_READS: readonly string[] = [
@@ -103,6 +106,7 @@ export const SUPPORT_TOOL_READS: readonly string[] = [
   'image',
   'in_flight',
   'asker',
+  'guide',
 ];
 
 const ACTIONS = [...SUPPORT_ACTIONS, ...OPERATIONS_ACTIONS] as const;
@@ -158,6 +162,8 @@ const REQUESTS = {
   technical: supportTechnicalRequestSchema,
   owner_forge_act: supportForgeActRequestSchema,
   asker: supportAskerRequestSchema,
+  guide: supportGuideRequestSchema,
+  audit: supportAuditRequestSchema,
 } as const satisfies Record<(typeof ACTIONS)[number], z.ZodType>;
 
 /** Each action's request as `forge_describe` answers it, its entry below naming exactly these (ISS-1033). */
@@ -193,6 +199,7 @@ const inputSchema = z.strictObject({
   ...supportSearchRequestSchema.partial().shape,
   ...supportReplyRequestSchema.partial().shape,
   ...supportSilentRequestSchema.partial().shape,
+  failed: supportAuditRequestSchema.shape.failed.optional(),
   signals: supportDecideRequestSchema.shape.signals.optional(),
   confidence: supportDecideRequestSchema.shape.confidence.optional(),
   ...supportProposeFixRequestSchema.partial().shape,
@@ -290,6 +297,8 @@ const SHAPE = [
   'raise_owed { thread, text }',
   'technical { thread, need: permission | approval | finding | ask, text }',
   'asker { thread, message }',
+  'guide {}',
+  'audit { thread, message, failed: [{ line, why }] }',
   `owner_forge_act { thread, message, project, act: ${SUPPORT_FORGE_ACTS.join(' | ')}, item, reason?, carry?, commit?, baseRevision?, document? }`,
   'any action may add rid: the group, where you answer several and the act names no thread',
   'a channel agent following several projects names one as project on search, project, record, issues, releases and requirements, and on promise where the key alone does not say; its home when omitted',
@@ -299,6 +308,7 @@ const DESCRIPTION = [
   'Answer a Rocket.Chat support group, or an operations room, as its assistant. Every answer people see goes through this tool; nothing you write outside it reaches the room.',
   'search {query, project?}: the project knowledge and its published OpenAPI contracts (of a followed project, named as project); each hit carries `cite`, which you put in brackets after what it supports.',
   'thread {thread}: the thread so far, oldest first, each message with its id, which agree cites. tools {}: the checks (diagnose) and changes (fix) this group grants you.',
+  "guide {}: this room's guide, the detail behind each line of your brief, by situation: the project's or its organization's own where it keeps one (knowledge entry room-agent-guide), else the one Forge ships. Read it before a situation your brief's line does not settle. Nothing is posted.",
   "asker {thread, message}: who wrote that message and what the thread holds around it, before you read a ruling or choose your tone: their Forge account, their role in the organization (owner, admin, member) and on its projects, the projects they filed in lately, the channel record's row for them and the roles their account says (keep those with member where the record holds none), how a reply to them reads (`reader`: owner, detail or plain), and the thread's last lines before the message, what they said there earlier and the asks still open in it. Nothing is written or posted.",
   "reply {thread, text, why?}: post your answer in that thread; `why`, one line, says why the message asked for one. It is screened before it is posted; a refusal names what to rewrite. In a group the product's users read, any post holding a Forge issue key (a store's own order number such as RIV-68493 may stay), an MR or PR number, an environment variable name, a commit sha or a credential word is refused SUPPORT_INTERNAL_CODE.",
   'silent {thread, message?, reason}: post nothing for a message you were handed, saying why in one line (chatter, for someone else, already answered by a Technical member, working on it in the background): recorded on the room, never posted. Every message you are handed gets a reply, a refusal or this.',
@@ -323,6 +333,7 @@ const DESCRIPTION = [
   "read {name, args?, thread? | check?} runs a production read your room's grant declares (ops_reads), by the name and parameters your brief lists: at once, read-only, through the box, which keeps the read's own credential; you get what it printed, scrubbed, and nothing is posted. Name the thread it answers, or the check it serves. An undeclared read is refused SUPPORT_READ_UNDECLARED, and an argument outside its parameter's pattern, values or length, or one it does not take, SUPPORT_READ_ARGS; nothing runs. What your room's grant opens (your brief lists what it holds): move_issue moves an issue of this project as the writer of the message it names, the one that asked (deliver); build proposes committing your working copy of the development branch on a feat/ or fix/ branch, pushing it and opening a change request into it (build); deploy proposes deploying a bound target the grant names (deploy); deployment {target} reads that target's latest deployment record (its status, when, and the revision it runs), to watch a deploy after a merge, and posts nothing; project {} (a channel agent's) reads the project document, its source, environments and their deploy bindings; command runs a command on a host the grant names (run_commands) — one that only reads runs at once and you get its output, posted nowhere; anything else is proposed. A build, a deploy and a command that changes a host are proposals: ask a confirmer the room names, in your own words, and cite their plain yes with agree; you are handed the result. An ability the room was not granted is refused SUPPORT_ABILITY_NOT_GRANTED; nothing is posted: hand the act to the project's master with ask_master, or raise the grant with technical, and never explain it in the thread.",
   "In an operations room (your brief says which room you answer) the acts are your role's: projects, issues and releases read the projects of the room's scope (a parked issue's `waiting` says who owes what: its open question in plain words, the options, or the reason it gave); move changes an issue's status, and draft_requirement and draft_feedback draft product direction for a person to decide, each as the member who wrote last in the thread and under their own Forge permissions; research reads one public https page. An act your role is not granted, a project outside the scope, or a member Forge cannot name is refused by name: hand the act to the master of the project it concerns with ask_master (or raise a grant with technical), and never explain it in the thread. The support group acts (search, tools, run, propose_fix, record) are refused there, as these are in a support group.",
   "technical {thread, need, text}: raise what you need from the thread it arose in (a permission or an approval, a technical finding, an ask of the owner) in the project's one technical channel, and nowhere else: Forge posts it there (the project's own thread of the shared operations room, or a direct message to the person the project names, the owner by default) and records where; the thread is posted nothing, so tell it the answer or one short note that it is in hand. A channel the project names but Forge cannot reach is refused SUPPORT_TECHNICAL_CHANNEL_UNNAMED or SUPPORT_TECHNICAL_CHANNEL_UNREACHABLE, naming the project document key that fixes it.",
+  AUDIT_TOOL_TEXT,
   `A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and posts nothing. Actions: ${SHAPE}.`,
 ].join(' ');
 

@@ -6,12 +6,14 @@ vi.hoisted(() => {
   process.env.INTEGRATION_MASTER_KEY ??= Buffer.alloc(32, 5).toString('base64');
 });
 
+import { ROOM_AGENT_GUIDE } from '../../src/guides/room-agent-guide.js';
 import { rows } from '../helpers/factories.js';
 import { AgentWorld, agentBlock, dave, OWNER_ID, zed } from '../helpers/support-agent-world.js';
 import { carol, code } from '../helpers/support-channel.js';
 import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 import type { Member } from '../helpers/support-world.js';
 
+// @direct-test-of packages/core/src/guides/room-agent-guide.ts
 // @direct-test-of packages/core/src/support/confirm-role.ts
 // @direct-test-of packages/core/src/support/ability-acts.ts
 // @direct-test-of packages/core/src/support/ability-run.ts
@@ -193,7 +195,9 @@ describe('REQ-77 BC-11: agreed work and what the agent lacks reach Forge as reco
   });
 
   it('is briefed that anything it lacks is a record, never a file', () => {
-    const text = w.brief();
+    // ISS-1251: the brief is a map naming the room agent's guide, which carries this detail
+    expect(w.brief()).toContain('support.guide {}');
+    const text = `${w.brief()}\n\n${ROOM_AGENT_GUIDE.body}`;
     expect(text).toContain('reaches Forge as a record, never a local file, a note or a memory');
     expect(text).toContain(
       'anything you lack (a tool, a read, a fact, an ability) is a record too',

@@ -3,7 +3,10 @@
 // session; a master reads the asks waiting on it and its rooms' open threads, and answers an ask, under
 // its project's own grants.
 
-import { supportAskerRequestSchema } from '@forge/contracts/support-channel';
+import {
+  supportAskerRequestSchema,
+  supportGuideRequestSchema,
+} from '@forge/contracts/support-channel';
 import {
   supportAskMasterRequestSchema,
   supportInFlightRequestSchema,
@@ -54,6 +57,14 @@ export function mountMasterAskRoutes(app: Hono<{ Variables: AuthVars }>): void {
     SESSION_ONLY,
     strictBody(supportAskerRequestSchema, '{ thread, message }'),
     (c) => act(c, c.req.valid('param').id, { action: 'asker', ...c.req.valid('json') }),
+  );
+  // the room agent's guide, as the project or its org keeps it, else Forge's (ISS-1251)
+  app.post(
+    '/:id/support/session/guide',
+    projectParam,
+    SESSION_ONLY,
+    strictBody(supportGuideRequestSchema, '{}'),
+    (c) => act(c, c.req.valid('param').id, { action: 'guide' }),
   );
   app.post(
     '/:id/support/session/in-flight',

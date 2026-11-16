@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { DISPATCH_GUIDE } from '../guides/dispatch-guide.js';
+import { ROOM_AGENT_GUIDE } from '../guides/room-agent-guide.js';
 import { agentOpening, supportBrief } from './prompt.js';
+
+// ISS-1251: the brief is a map naming the room agent's guide, where each line's detail now lives;
+// what the agent is taught is the brief and that guide together
+const taught = (b: string): string => {
+  expect(b).toContain('support.guide {}');
+  return `${b}\n\n${ROOM_AGENT_GUIDE.body}`;
+};
 
 // @direct-test-of packages/core/src/support/prompt.ts
 // @direct-test-of packages/core/src/guides/dispatch-guide.ts
@@ -27,13 +35,13 @@ const guide = flat(DISPATCH_GUIDE.body);
 describe('a person asking about a screen is shown that screen', () => {
   it('the room brief has the assistant offer a picture guide and ask the master for it on a yes', () => {
     for (const b of briefs) {
-      expect(b).toContain('show them the screen as they see it, not words alone');
-      expect(b).toContain(
+      expect(taught(b)).toContain('show them the screen as they see it, not words alone');
+      expect(taught(b)).toContain(
         'on their plain yes, ask the master of the project that owns the screen for it with support.record { kind: request, project }',
       );
-      expect(b).toContain('say in the thread that the guide will follow');
-      expect(b).toContain('made away from production with test data');
-      expect(b).toContain('one PDF in one message, never one message per step');
+      expect(taught(b)).toContain('say in the thread that the guide will follow');
+      expect(taught(b)).toContain('made away from production with test data');
+      expect(taught(b)).toContain('one PDF in one message, never one message per step');
     }
   });
 

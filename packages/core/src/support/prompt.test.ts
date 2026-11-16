@@ -1,12 +1,21 @@
 import { describe, expect, it } from 'vitest';
+import { ROOM_AGENT_GUIDE } from '../guides/room-agent-guide.js';
 import { operationsBrief } from './ops-prompt.js';
-import { agentOpening, grantsLine, supportBrief, toolsLine } from './prompt.js';
+import { agentOpening, grantsLine, SUPPORT_MAP, supportBrief, toolsLine } from './prompt.js';
 import {
   ANSWER_THE_ASKER,
   DONE_ONLY_WHEN_CHECKED,
   linksOnWeb,
   NO_PERMISSION_TALK,
+  roomConductLines,
 } from './room-conduct.js';
+
+// ISS-1251: the brief is a map naming the room agent's guide, where each line's detail now lives;
+// what the agent is taught is the brief and that guide together
+const taught = (b: string): string => {
+  expect(b).toContain('support.guide {}');
+  return `${b}\n\n${ROOM_AGENT_GUIDE.body}`;
+};
 
 const brief = supportBrief({ projectName: 'P', product: null, tools: [] });
 
@@ -14,29 +23,29 @@ const brief = supportBrief({ projectName: 'P', product: null, tools: [] });
 // meets — a person's plain yes, cited with support.agree — never a numbered script to walk.
 describe('the support brief states goals, and the consent a change waits on', () => {
   it('carries no numbered how-to-work script', () => {
-    expect(brief).not.toContain('How to work:');
+    expect(taught(brief)).not.toContain('How to work:');
     expect(brief).not.toMatch(/\n\d\. /);
-    expect(brief).toContain('What you are for: answer, diagnose, fix and record');
+    expect(taught(brief)).toContain('What you are for: answer, diagnose, fix and record');
   });
 
   it('keeps the consent and the claim a change waits on, in the agent own words', () => {
-    expect(brief).toContain(
+    expect(taught(brief)).toContain(
       'only once they agree in plain words and you cite that message with support.agree',
     );
-    expect(brief).toContain('never claim it ran or was recorded until agree says so');
+    expect(taught(brief)).toContain('never claim it ran or was recorded until agree says so');
     // ISS-1243 item 17: a filing asked for by its asker is agreed by the request itself.
-    expect(brief).toContain(
+    expect(taught(brief)).toContain(
       'their asking is their agreement, so cite it with support.agree at once',
     );
-    expect(brief).not.toContain('runs or is filed only once they agree');
-    expect(brief).not.toContain("cite the asker's plain yes");
-    expect(brief).not.toContain('type a code');
+    expect(taught(brief)).not.toContain('runs or is filed only once they agree');
+    expect(taught(brief)).not.toContain("cite the asker's plain yes");
+    expect(taught(brief)).not.toContain('type a code');
   });
 
   // ISS-1162 (REQ-75 BC-12): a diagnose posts nothing in the room; its check is on the action.
   it('says a diagnose posts nothing in the room and its check is recorded on the action', () => {
-    expect(brief).not.toContain('the group sees each check');
-    expect(brief).toContain(
+    expect(taught(brief)).not.toContain('the group sees each check');
+    expect(taught(brief)).toContain(
       'a diagnose posts nothing in the room and each check is recorded on its action',
     );
   });
@@ -50,20 +59,22 @@ describe('the support brief states goals, and the consent a change waits on', ()
         tools: [],
         config: { readers } as NonNullable<Parameters<typeof supportBrief>[0]['config']>,
       });
-      expect(text).toContain('Work you can do now, do now, in this turn');
-      expect(text).toContain('say in the task what it waits for');
+      expect(taught(text)).toContain('Work you can do now, do now, in this turn');
+      expect(taught(text)).toContain('say in the task what it waits for');
       // ISS-1208 (FB-609): a reply answers every part of the message, or names the part it cannot yet.
-      expect(text).toContain(
+      expect(taught(text)).toContain(
         'answer each question the message asked and cover each item it asked for',
       );
       // ISS-1211 (FB-613, agenfold L-46): look a fact up before asking a person for it.
-      expect(text).toContain('Before you ask a person for a fact or recommend a change');
+      expect(taught(text)).toContain('Before you ask a person for a fact or recommend a change');
       // ISS-1214 (FB-618, agenfold L-74): a person's choice goes in, in their words, replacing what it corrects.
-      expect(text).toContain("A person's choice or correction");
-      expect(text).toContain('replaces the line it corrects');
+      expect(taught(text)).toContain("A person's choice or correction");
+      expect(taught(text)).toContain('replaces the line it corrects');
       // ISS-1217 (FB-621, agenfold L-17): an organization is not its workspaces; act on the one named.
-      expect(text).toContain('which organization holds which workspaces');
-      expect(text).toContain('a workspace rename renames the workspace, never its organization');
+      expect(taught(text)).toContain('which organization holds which workspaces');
+      expect(taught(text)).toContain(
+        'a workspace rename renames the workspace, never its organization',
+      );
     }
   });
 });
@@ -84,22 +95,22 @@ describe('the room brief teaches an ask it cannot do to wait on the master', () 
   });
 
   it('routes it to the owning project’s master, holds once, and replies only with what was done', () => {
-    expect(channel).toContain(
+    expect(taught(channel)).toContain(
       'a request through support.record { project } to the master of the project that owns it',
     );
-    expect(channel).toContain('post one reply that it went to the team');
-    expect(channel).toContain(
+    expect(taught(channel)).toContain('post one reply that it went to the team');
+    expect(taught(channel)).toContain(
       'reply again only with what that master did or decided once you are told it, never done before then and never options or steps the master has not given',
     );
-    expect(channel).toContain('save the one reply that an ask went to the team');
+    expect(taught(channel)).toContain('save the one reply that an ask went to the team');
   });
 
   it('tells a result as what the team said or shipped, never done before it', () => {
     for (const text of [brief, channel]) {
-      expect(text).toContain(
+      expect(taught(text)).toContain(
         'You are told once recorded work is answered, live or will not be done, with what the team said or shipped',
       );
-      expect(text).toContain('never call it done before then');
+      expect(taught(text)).toContain('never call it done before then');
     }
   });
 });
@@ -123,10 +134,10 @@ describe('the room brief states an item only from the record, either way', () =>
 
   it('asserts neither done nor not done from what the record does not show', () => {
     for (const text of [brief, channel]) {
-      expect(text).toContain(
+      expect(taught(text)).toContain(
         "never call it done before then, nor not done: an item's state is only what the record shows (that result, or a master's post through Forge)",
       );
-      expect(text).toContain(
+      expect(taught(text)).toContain(
         "where the thread claims a state the record does not show, or the asker asks for one you cannot read, ask the owning project's master with support.record { project }, post one holding reply, and wait, asserting neither",
       );
     }
@@ -164,23 +175,25 @@ describe('the tools line names the binding each tool reads', () => {
 // alone; both briefs now tell it to read the routing signals first, gather before it asks, ask one
 // short question at most, stay silent where nothing needs saying, and record every decision.
 describe('every room brief decides each message from its meaning and records it', () => {
-  const opening = agentOpening({
+  const opening = supportBrief({
     projectName: 'P',
     product: null,
-    channels: ['g1'],
-    ownerMode: false,
-  }).join('\n\n');
+    tools: [],
+    opening: agentOpening({ projectName: 'P', product: null, channels: ['g1'], ownerMode: false }),
+  });
   it.each([
     ['the support brief', brief],
-    ['the channel agent opening', opening],
+    ['the channel agent brief', opening],
   ])('%s routes by the signals, gathers before asking, and records the decision', (_, text) => {
-    expect(text).toContain('record the decision with support.decide');
-    expect(text).toContain("read its head's `routing` first, before any guess");
-    expect(text).toContain('on a vague message gather on your own first (decision gather)');
-    expect(text).toContain(
+    expect(taught(text)).toContain('record the decision with support.decide');
+    expect(taught(text)).toContain("read its head's `routing` first, before any guess");
+    expect(taught(text)).toContain('on a vague message gather on your own first (decision gather)');
+    expect(taught(text)).toContain(
       'ask the person one short question (decision ask) only once that is exhausted',
     );
-    expect(text).toContain('asks no "ok?" of anyone whose own request already agrees to it');
+    expect(taught(text)).toContain(
+      'asks no "ok?" of anyone whose own request already agrees to it',
+    );
   });
 });
 
@@ -204,19 +217,23 @@ describe('every room agent brief carries the room conduct', () => {
 
   it('sends a permission need to the technical channel, never the thread', () => {
     for (const text of [brief, channel, operations]) {
-      expect(text).toContain(NO_PERMISSION_TALK);
-      expect(text).toContain('support.technical');
+      expect(taught(text)).toContain(NO_PERMISSION_TALK);
+      expect(taught(text)).toContain('support.technical');
     }
-    expect(brief).not.toContain('Forge posts nothing, so tell the person in your own words');
+    expect(taught(brief)).not.toContain(
+      'Forge posts nothing, so tell the person in your own words',
+    );
     expect(operations).not.toContain('who can do it instead');
   });
 
   it('says done only once live and checked against each thing asked', () => {
-    for (const text of [brief, channel, operations]) expect(text).toContain(DONE_ONLY_WHEN_CHECKED);
+    for (const text of [brief, channel, operations])
+      expect(taught(text)).toContain(DONE_ONLY_WHEN_CHECKED);
   });
 
   it('answers the asker with the deliverable asked for, short, steps only for a guide', () => {
-    for (const text of [brief, channel, operations]) expect(text).toContain(ANSWER_THE_ASKER);
+    for (const text of [brief, channel, operations])
+      expect(taught(text)).toContain(ANSWER_THE_ASKER);
   });
 
   // ISS-1250 (epod, 16/11): the operations room explained its grants and sent the owner to settings,
@@ -236,9 +253,20 @@ describe('every room agent brief carries the room conduct', () => {
     expect(ANSWER_THE_ASKER).toContain('support.asker { thread, message }');
     expect(ANSWER_THE_ASKER).toContain('to the owner, the decision or result first');
     expect(operations).toMatch(/Your acts: [^.]*\basker\b[^.]*\./);
-    expect(brief).toContain('read them with support.asker');
+    expect(taught(brief)).toContain('read them with support.asker');
     for (const text of [brief, channel, operations]) {
-      expect(text).toContain(linksOnWeb('http://localhost:3000'));
+      expect(taught(text)).toContain(linksOnWeb('http://localhost:3000'));
     }
+  });
+});
+
+// ISS-1251 (owner 2026-11-16, prompt-is-a-map): the brief is a map of situations and their doors, its
+// detail in the room agent's guide; every map line opens on the situation it is for.
+describe('the room brief is a map of situations', () => {
+  it('opens each map and conduct line on its situation, and stays short', () => {
+    for (const m of SUPPORT_MAP) expect(m.line).toMatch(/^- When /);
+    for (const line of roomConductLines('http://w')) expect(line).toMatch(/^(When|After) /);
+    expect(brief.length).toBeLessThan(5_000);
+    expect(ROOM_AGENT_GUIDE.body).toContain('### Deciding each message');
   });
 });

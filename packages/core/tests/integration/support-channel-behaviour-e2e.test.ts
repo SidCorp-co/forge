@@ -7,11 +7,13 @@ vi.hoisted(() => {
 });
 
 import { db } from '../../src/db/client.js';
+import { ROOM_AGENT_GUIDE } from '../../src/guides/room-agent-guide.js';
 import { rows } from '../helpers/factories.js';
 import { AgentWorld } from '../helpers/support-agent-world.js';
 import { carol, code } from '../helpers/support-channel.js';
 import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 
+// @direct-test-of packages/core/src/guides/room-agent-guide.ts
 // @direct-test-of packages/core/tests/helpers/support-session-box.ts
 // @direct-test-of packages/core/src/support/prompt.ts
 // @direct-test-of packages/core/src/support/store.ts
@@ -126,7 +128,9 @@ describe('REQ-77 BC-6: it replies when asked or told of a problem, and is silent
   });
 
   it('is briefed to stay silent on chatter, on messages for others, and where Technical answered', () => {
-    const text = w.brief();
+    // ISS-1251: the brief is a map naming the room agent's guide, which carries this detail
+    expect(w.brief()).toContain('support.guide {}');
+    const text = `${w.brief()}\n\n${ROOM_AGENT_GUIDE.body}`;
     expect(text).toContain('reply when a message asks you something or reports a problem');
     expect(text).toContain('Stay silent, and post nothing, for chatter and thanks');
     expect(text).toContain('whose `to` is "others"');
@@ -136,7 +140,9 @@ describe('REQ-77 BC-6: it replies when asked or told of a problem, and is silent
 
 describe('REQ-77 BC-7: it finds the cause before it replies to a problem', () => {
   it('is briefed to read the logs, the code and the data, and to say only what it confirmed', () => {
-    const text = w.brief();
+    // ISS-1251: the brief is a map naming the room agent's guide, which carries this detail
+    expect(w.brief()).toContain('support.guide {}');
+    const text = `${w.brief()}\n\n${ROOM_AGENT_GUIDE.body}`;
     expect(text).toContain('find its cause: the logs');
     expect(text).toContain('the code and history in your checkout');
     expect(text).toContain('the data the granted tools return');
