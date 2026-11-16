@@ -9,11 +9,12 @@ import {
   selectOnDemandSlugsFromKnowledge,
   selectOnDemandSourcesFromKnowledge,
 } from '../knowledge/index.js';
-import { lessonsMapText, restLessonDoors } from '../lessons/index.js';
+import { cardFreshness, lessonsMapText, restLessonDoors } from '../lessons/index.js';
 import { logger } from '../lib/logger.js';
+import { AFFORDANCE_CARDS } from './facts/affordance-cards.js';
 import { guideIndexText } from './facts/guide-index.js';
 import { projectRulesText } from './facts/project-rules.js';
-import { OPERATING_AFFORDANCES_TEXT } from './facts/registry.js';
+import { operatingAffordancesText } from './facts/registry.js';
 
 /**
  * The line every generated orientation carries under its heading. The runner reads it
@@ -40,6 +41,11 @@ export type OrientationRules =
       };
       /** The project's working agreements, resolved for no task (REQ-90). */
       agreements?: AgreementsView;
+      /**
+       * By card id, the situations this project's lessons folded into an orientation card that its
+       * code does not carry yet (ISS-1251), shown in the table as proposed.
+       */
+      proposed?: ReadonlyMap<string, readonly string[]>;
     }
   | { unreadable: true };
 
@@ -120,7 +126,7 @@ server in \`.mcp.json\` carries only what neither covers, and its instructions n
   (\`did_not_help\`, \`unclear\` or \`missing\`) files it on the feature that owns the door.
 - **Before you write or tune this project's pipeline skills**, read the \`forge-skills\` MCP prompt.
 
-${OPERATING_AFFORDANCES_TEXT}
+${operatingAffordancesText('unreadable' in rules ? undefined : rules.proposed)}
 ${projectRules ? `\n${projectRules.trimEnd()}\n` : ''}`;
 }
 
@@ -132,15 +138,16 @@ ${projectRules ? `\n${projectRules.trimEnd()}\n` : ''}`;
 export async function servedCheckoutOrientation(projectId: string, slug: string): Promise<string> {
   let rules: OrientationRules;
   try {
-    const [entries, lessons, project, org, sources, agreements] = await Promise.all([
+    const [entries, lessons, project, org, sources, agreements, proposed] = await Promise.all([
       selectAlwaysInjectFromKnowledge(projectId),
       selectLessonEntries(projectId),
       selectOnDemandSlugsFromKnowledge(projectId),
       orgOnDemandSlugsOf(projectId),
       selectOnDemandSourcesFromKnowledge(projectId),
       readAgreements(projectId, null),
+      proposedSituations(projectId),
     ]);
-    rules = { entries, lessons, guides: { project, org, sources }, agreements };
+    rules = { entries, lessons, guides: { project, org, sources }, agreements, proposed };
   } catch (err) {
     logger.error(
       { err: (err as Error).message, projectId },
@@ -149,4 +156,19 @@ export async function servedCheckoutOrientation(projectId: string, slug: string)
     rules = { unreadable: true };
   }
   return checkoutOrientation(projectId, slug, rules);
+}
+
+/** The situations this project's lessons folded into the orientation's cards, by card id. */
+async function proposedSituations(projectId: string): Promise<Map<string, string[]>> {
+  const fresh = await cardFreshness(AFFORDANCE_CARDS.map((c) => c.id));
+  return new Map(
+    fresh.map((f) => [
+      f.cardId,
+      f.proposedDeltas
+        .filter(
+          (d) => d.field === 'situation' && (d.projectId === null || d.projectId === projectId),
+        )
+        .map((d) => d.text),
+    ]),
+  );
 }

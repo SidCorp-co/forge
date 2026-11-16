@@ -60,16 +60,24 @@ export interface ForgeFact {
   relevant?(ctx: FactRenderContext): boolean;
 }
 
-export const OPERATING_AFFORDANCES_TEXT = `## Operating affordances
+/**
+ * The operating affordances table, rendered from the orientation's cards; `proposed` adds, by card id,
+ * the situations a project's lessons folded into a card, shown as proposed until its code carries them.
+ */
+export const operatingAffordancesText = (
+  proposed: ReadonlyMap<string, readonly string[]> = new Map(),
+) => `## Operating affordances
 Forge gives you a REST call for things agents routinely do in prose (\`forge-runner api <path>\`, the \`/api/\` prefix implied). Use judgement about which fits; the refusals named here are the ones core holds.
 
 What counts as an issue, and where a note, a question or a done record usually goes instead: \`${guideRef('what-is-an-issue')}\`.
 
 | When you need | Use | Watch for |
 |---|---|---|
-${affordanceRows()}
+${affordanceRows(undefined, proposed)}
 
 How to write the body of an issue: guide \`writing-an-issue\`.`;
+
+export const OPERATING_AFFORDANCES_TEXT = operatingAffordancesText();
 
 const LIFECYCLE_GUIDE_POINTER = guideRef('pipeline-and-issue-lifecycle');
 

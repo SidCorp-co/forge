@@ -279,16 +279,30 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
   }),
 ];
 
-/** The orientation table's rows: one per situation, each with what to watch for in it. */
-export function affordanceRows(cards: readonly CapabilityCard[] = AFFORDANCE_CARDS): string {
+/** A situation in the orientation a master or its runs meet. */
+const forMasterOrRun = (s: CapabilityCard['situations'][number]) =>
+  !s.for || s.for.includes('master') || s.for.includes('run');
+
+/**
+ * The orientation table's rows: one per situation a master or its runs meet, each with what to watch
+ * for in it, and after a card's own rows each situation a lesson folded into it (`proposed`, by card
+ * id), marked as proposed until the card's code carries it.
+ */
+export function affordanceRows(
+  cards: readonly CapabilityCard[] = AFFORDANCE_CARDS,
+  proposed: ReadonlyMap<string, readonly string[]> = new Map(),
+): string {
   return cards
-    .flatMap((c) =>
-      c.situations
-        .filter((s) => !s.for || s.for.includes('master') || s.for.includes('run'))
-        .map((s) => {
+    .flatMap((c) => {
+      const own = c.situations.filter(forMasterOrRun);
+      const does = own[0]?.do ?? '';
+      return [
+        ...own.map((s) => {
           const watch = s.watch ?? c.redFlag;
           return `| ${s.when} | ${s.do} |${watch ? ` ${watch} ` : ' '}|`;
         }),
-    )
+        ...(proposed.get(c.id) ?? []).map((t) => `| (proposed) ${t} | ${does} | |`),
+      ];
+    })
     .join('\n');
 }

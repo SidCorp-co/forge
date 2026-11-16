@@ -8,6 +8,11 @@ const store = vi.hoisted(() => ({
   sources: vi.fn(),
 }));
 const agreements = vi.hoisted(() => ({ read: vi.fn() }));
+const freshness = vi.hoisted(() => ({ read: vi.fn() }));
+vi.mock('../lessons/index.js', async (actual) => ({
+  ...(await actual<typeof import('../lessons/index.js')>()),
+  cardFreshness: freshness.read,
+}));
 vi.mock('../agreements/index.js', async (actual) => ({
   ...(await actual<typeof import('../agreements/index.js')>()),
   readAgreements: agreements.read,
@@ -111,6 +116,7 @@ describe('the orientation core serves reads the rules from the knowledge store',
     store.guides.mockReset().mockResolvedValue([]);
     store.orgGuides.mockReset().mockResolvedValue([]);
     store.sources.mockReset().mockResolvedValue({});
+    freshness.read.mockReset().mockResolvedValue([]);
   });
 
   it("reads this project's always-applied entries", async () => {
@@ -122,8 +128,44 @@ describe('the orientation core serves reads the rules from the knowledge store',
         ...RULES,
         guides: { project: [], org: [], sources: {} },
         agreements: INHERITED,
+        proposed: new Map(),
       }),
     );
+  });
+
+  it("shows a situation this project's lesson folded into an orientation card as proposed, and no other project's (ISS-1251)", async () => {
+    store.read.mockResolvedValue([]);
+    const delta = (projectId: string | null, text: string, field = 'situation') => ({
+      id: text,
+      field,
+      op: 'add',
+      text,
+      replaces: null,
+      fromLesson: 'L-4',
+      projectId,
+      at: '2026-11-16T00:00:00Z',
+    });
+    freshness.read.mockResolvedValue([
+      {
+        cardId: 'POST /api/memory',
+        recheckOwed: null,
+        scenarios: [],
+        proposedDeltas: [
+          delta('p-1', 'A gotcha a later run would hit again'),
+          delta('p-2', 'Another project only'),
+          delta(null, 'Every project learned this'),
+          delta('p-1', 'Not a situation', 'practice'),
+        ],
+      },
+    ]);
+    const body = await servedCheckoutOrientation('p-1', 'forge');
+    expect(body).toMatch(
+      /\| \(proposed\) A gotcha a later run would hit again \| [^|]*memory -X POST[^|]* \| \|/,
+    );
+    expect(body).toContain('| (proposed) Every project learned this |');
+    expect(body).not.toContain('Another project only');
+    expect(body).not.toContain('Not a situation');
+    expect(checkoutOrientation('p-1', 'forge', RULES)).not.toContain('(proposed)');
   });
 
   it("names the project's approved lessons beside its rules, each with when it applies and its gist (ISS-867, ISS-1251)", async () => {
