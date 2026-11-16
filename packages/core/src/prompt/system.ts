@@ -42,9 +42,7 @@ interface BuiltPreamble {
 const BRANCH_SENTINEL = '<detect-from-git>';
 
 const CHAT_ORIENTATION = `## Project Orientation
-You are working in a Forge-managed project. Its issues, comments, status and project memory are reached through the Forge REST API (\`forge-runner api <path>\` or the \`forge\` CLI): \`issues/<id>\`, \`issues/<id>/comments\`, \`projects/<id>/config\`, \`memory/search\`. Use them when the request relates to issues, tasks, status, or project memory.
-
-For codebase & project knowledge, read \`projects/<id>/knowledge\` (or \`forge knowledge\`) — no local file. Follow any always-applied Project rules in this preamble, then explore with search tools.`;
+You are working in a Forge-managed project, reached through \`forge-runner api <path>\` or the \`forge\` CLI. When the request is about an issue, read it and its comments before answering (\`issues/<id>\`, \`issues/<id>/comments\`). When it touches what earlier work settled, recall it (\`memory/search\`). When it needs the project's own words (build commands, rules, guides), read \`projects/<id>/knowledge\` (or \`forge knowledge\`): no local file holds them. Follow any always-applied Project rules in this preamble, then explore with search tools.`;
 
 const CHAT_ISSUE_RULES = `## Turning a request into issues
 When the conversation produces work to track, shape it the way it will be built: a request that is one change is one issue with the whole spec the user gave; parts that ship separately are separate issues, with a \`blocks\` edge where one must land first. Use judgement, and follow the user where they say how they want it filed.`;
