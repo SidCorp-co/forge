@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CatalogDoor } from '../lib/door-catalog.js';
 import { card } from '../prompt/index.js';
-import { catalogOf, twinned } from './door-catalog.js';
+import { catalogOf, servedDoorCatalog, twinned } from './door-catalog.js';
 
 const taught = card('POST /api/things/:id/confirm-wait', 'feedback', {
   purpose: 'Waits on a later event.',
@@ -64,5 +64,30 @@ describe('a REST twin is folded into the door whose act it does', () => {
     expect(() => twinned(two, { 'thing.decide': ['POST /api/things/:id/confirm-wait'] })).toThrow(
       /one act carries two cards, thing\.decide/,
     );
+  });
+});
+
+describe("a room session's REST acts are folded into forge_support's acts (ISS-1251)", () => {
+  const SESSION = '/api/projects/:id/support/session/';
+
+  it('leaves no session write but the git credential as a door of its own', () => {
+    const own = servedDoorCatalog()
+      .doors.filter((d) => d.surface === 'rest' && d.id.includes(SESSION))
+      .map((d) => d.id);
+    expect(own).toEqual([`POST ${SESSION}git-credential`]);
+  });
+
+  it.each([
+    ['reference-adds', 'support.reference_add'],
+    ['reference-citations', 'support.reference_cite'],
+    ['reference-proposals', 'support.reference_propose'],
+    ['references', 'support.references'],
+    ['members', 'support.member'],
+  ])('counts a call to session/%s on %s and its card, as a twin', (path, door) => {
+    const call = { tool: 'rest', action: `POST /api/projects/p-1/support/session/${path}` };
+    const catalog = servedDoorCatalog();
+    expect(catalog.doorOf(call)?.id).toBe(door);
+    expect(catalog.doorOf(call)?.card?.id).toBe(door);
+    expect(catalog.viaTwin(call)).toBe(true);
   });
 });

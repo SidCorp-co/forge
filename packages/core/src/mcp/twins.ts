@@ -5,7 +5,72 @@
 // catalog folds each twin into its action and refuses a pair either side of which this build does
 // not serve, or which carries two cards (`door-catalog.ts:twinned`).
 
+/**
+ * A room session's acts over REST (`support/*-routes.ts`): each `POST …/support/session/<path>`
+ * runs `support/acts.ts:supportAct` as forge_support's action does, so it is that act's twin. Its
+ * key is the act, its value the route's last segment; `git-credential` runs no act and is no twin.
+ */
+const SUPPORT_SESSION_ROUTES = {
+  search: 'search',
+  thread: 'thread',
+  reply: 'replies',
+  silent: 'silences',
+  run: 'checks',
+  propose_fix: 'fixes',
+  record: 'records',
+  agree: 'agreements',
+  link: 'links',
+  image: 'images',
+  move_issue: 'issue-moves',
+  build: 'builds',
+  deploy: 'deploys',
+  deployment: 'deployments',
+  command: 'commands',
+  read: 'reads',
+  issues: 'issues',
+  releases: 'releases',
+  requirements: 'requirements',
+  move: 'moves',
+  draft_requirement: 'requirement-drafts',
+  draft_feedback: 'feedback-drafts',
+  research: 'research',
+  member: 'members',
+  rule: 'rules',
+  common_issue: 'common-issues',
+  route: 'routes',
+  announce: 'announcements',
+  ask_owner: 'owner-questions',
+  answer_question: 'question-answers',
+  check_result: 'check-results',
+  ask_master: 'master-asks',
+  raise_owed: 'owed-raises',
+  asker: 'askers',
+  guide: 'guide',
+  in_flight: 'in-flight',
+  promise: 'promises',
+  references: 'references',
+  reference_add: 'reference-adds',
+  reference_cite: 'reference-citations',
+  reference_propose: 'reference-proposals',
+  decide: 'decisions',
+  approve: 'approvals',
+  feedback: 'feedback',
+  technical: 'technical-needs',
+  owner_consent: 'owner-consents',
+  owner_act: 'owner-acts',
+  owner_sign_in: 'owner-sign-ins',
+  release_decision: 'release-decisions',
+  owner_forge_act: 'forge-acts',
+  audit: 'audits',
+} as const;
+
 export const REST_TWINS: Readonly<Record<string, readonly string[]>> = {
+  ...Object.fromEntries(
+    Object.entries(SUPPORT_SESSION_ROUTES).map(([act, path]) => [
+      `support.${act}`,
+      [`POST /api/projects/:id/support/session/${path}`],
+    ]),
+  ),
   'feedback.submit': ['POST /api/forge/feedback'],
   'feedback.verify': ['POST /api/forge/feedback/:key/verify'],
   'feedback.reopen': ['POST /api/forge/feedback/:key/reopen'],
