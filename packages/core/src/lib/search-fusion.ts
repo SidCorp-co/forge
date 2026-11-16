@@ -25,7 +25,7 @@ export const SEMANTIC_FLOOR = 0.55;
 /**
  * The floor of the find door's memory-backed arm (memory's semantic read: core's copies of the
  * issues, and memory's notes, decisions and knowledge copies), where `SEMANTIC_FLOOR` is the
- * knowledge and item arms'. Short issues, such as dropped "[judge K80 test] throwaway" ones, embed
+ * knowledge arm's. Short issues, such as dropped "[judge K80 test] throwaway" ones, embed
  * near any token soup: measured on forge-dev after dev.700 (2026-11-17, memory semantic read over
  * issues), nonsense led at 0.561 ("zzqx flarn vobble"), 0.553 ("qzxv wbrlt"), 0.55 ("lorem ipsum
  * dolor"), 0.523 and 0.487, while narrow real queries led at 0.62 ("run slots") to 0.735 ("the
@@ -34,6 +34,19 @@ export const SEMANTIC_FLOOR = 0.55;
  * takes no floor from here.
  */
 export const ISSUE_SEMANTIC_FLOOR = 0.59;
+
+/**
+ * The floor of the find door's item arms (requirements and feedback, over `item_embeddings`). A
+ * short item embeds near token soup like a short issue does: measured on forge-dev at d369cb8b
+ * (2026-11-17, feedback similar's top cosines), nonsense led at 0.562 ("lorem ipsum dolor"), 0.552
+ * ("zzqx flarn vobble", which answered FB-289 and FB-197), 0.543 ("asdf qwer zxcv") and 0.54
+ * ("qzxv wbrlt"), while real paraphrases led at 0.638 ("proposal card shows no summary") to 0.735
+ * ("owner chat account not linked"). 0.6 is the line between them. Narrow literal queries ("run
+ * slots" 0.575, "module map pillar" 0.57) sit inside the noise and are left under it on purpose: the
+ * keyword arm finds a requirement by its title and a feedback item by its title or body when their
+ * words are there.
+ */
+export const ITEM_SEMANTIC_FLOOR = 0.6;
 
 /** One ranked list a fusion takes, and its weight. */
 export interface RankedList<T> {

@@ -12,7 +12,7 @@ import { requirements } from '../db/schema-requirements.js';
 import { type NearestItem, nearestItems } from '../knowledge/index.js';
 import type { ProjectReader } from '../lib/authz.js';
 import { env } from '../lib/env.js';
-import { ISSUE_SEMANTIC_FLOOR, SEMANTIC_FLOOR } from '../lib/search-fusion.js';
+import { ISSUE_SEMANTIC_FLOOR, ITEM_SEMANTIC_FLOOR } from '../lib/search-fusion.js';
 import { runMemorySearch } from '../memory/index.js';
 import {
   FEEDBACK_COLUMNS,
@@ -134,14 +134,18 @@ function memoryCandidate(
   };
 }
 
-/** One project's requirements and feedback items nearest the query's vector. */
+/**
+ * One project's requirements and feedback items nearest the query's vector. A hit under
+ * `ITEM_SEMANTIC_FLOOR` is left out.
+ */
 export async function itemArms(
   projectId: string,
   queryVec: number[],
   limit: number,
 ): Promise<{ requirements: Candidate[]; feedback: Candidate[] }> {
   const by = { projectId, vector: queryVec, model: env.EMBEDDINGS_MODEL, limit };
-  const near = (n: { similarity: number }[]) => n.filter((x) => x.similarity >= SEMANTIC_FLOOR);
+  const near = (n: { similarity: number }[]) =>
+    n.filter((x) => x.similarity >= ITEM_SEMANTIC_FLOOR);
   const [reqNear, fbNear] = (
     await Promise.all([
       nearestItems({ ...by, kind: 'requirement' }),

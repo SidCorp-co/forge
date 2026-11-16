@@ -30,9 +30,11 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { mintPat } from '../../src/credentials/pat.js';
 import { PAT_GRANT_EPOCH } from '../../src/credentials/pat-permissions.js';
 import { db } from '../../src/db/client.js';
+import { env } from '../../src/lib/env.js';
 import { api, type Body, userToken } from '../helpers/api.js';
 import {
   addProjectMember,
+  createTestFeedback,
   createTestIssue,
   createTestProject,
   createTestRunSession,
@@ -161,24 +163,44 @@ beforeAll(async () => {
 });
 
 /**
- * An issue whose memory copy sits at exactly `cosine` to `query`'s vector: the query's direction
- * mixed with one dimension it does not use. Its title and text share no word with the query, so only
- * the memory arm's dense read can find it.
+ * A vector at exactly `cosine` to `query`'s: the query's direction mixed with one dimension it does
+ * not use, picked from `seed`.
  */
-async function issueCopyAt(seq: number, query: string, cosine: number): Promise<string> {
+function vectorAt(query: string, cosine: number, seed: number): string {
   const q = modelLikeVector(query);
   const norm = Math.hypot(...q);
-  const free = q.findIndex((x, i) => i > 0 && i >= seq % 1000 && x === 0);
+  const free = q.findIndex((x, i) => i > 0 && i >= seed % 1000 && x === 0);
   const v = q.map((x) => (x / norm) * cosine);
   v[free] = Math.sqrt(1 - cosine * cosine);
+  return `[${v.join(',')}]`;
+}
+
+/**
+ * An issue whose memory copy sits at exactly `cosine` to `query`'s vector. Its title and text share
+ * no word with the query, so only the memory arm's dense read can find it.
+ */
+async function issueCopyAt(seq: number, query: string, cosine: number): Promise<string> {
   const issue = await createTestIssue(w.projectId, w.owner, seq, {
     status: 'open',
     createdAt: new Date(),
   });
   await db.execute(sql`
     INSERT INTO memories (project_id, source, source_ref, text_content, embedding)
-    VALUES (${w.projectId}, 'issue', ${issue.id}, ${`issue ${seq}`}, ${`[${v.join(',')}]`}::vector)`);
+    VALUES (${w.projectId}, 'issue', ${issue.id}, ${`issue ${seq}`}, ${vectorAt(query, cosine, seq)}::vector)`);
   return issue.key;
+}
+
+/**
+ * A feedback item whose stored vector sits at exactly `cosine` to `query`'s. Its title and body share
+ * no word with the query, so only the feedback arm's dense read can find it.
+ */
+async function feedbackAt(seq: number, query: string, cosine: number): Promise<string> {
+  const key = await createTestFeedback(w.projectId, w.owner, seq);
+  await db.execute(sql`
+    INSERT INTO item_embeddings (project_id, feedback_id, version, model, embedding, content_hash, status)
+    SELECT ${w.projectId}, id, 1, ${env.EMBEDDINGS_MODEL}, ${vectorAt(query, cosine, seq)}::vector, 'h', 'embedded'
+    FROM feedback WHERE project_id = ${w.projectId} AND fb_seq = ${seq}`);
+  return key;
 }
 
 async function find(query: Record<string, unknown>, token = w.token): Promise<FindResult> {
@@ -371,6 +393,34 @@ describe('criterion 4: a find with no hit is a gap', () => {
     const found = await find({ q: 'gobbet narwhal' });
     expect(found.gap).toBe(false);
     expect(flat(found).map((h) => h.key)).toContain(key);
+  });
+
+  it('answers nonsense with no hit although a short feedback item sits at 0.57 to it', async () => {
+    // feedback similar measured live: "zzqx flarn vobble" led FB-289 at 0.552, "lorem ipsum dolor"
+    // at 0.562; a narrow literal query at 0.57 is the keyword arm's to find, never the dense one's
+    await feedbackAt(1311, 'vrombit quazzle', 0.57);
+    const missed = await find({ q: 'vrombit quazzle' });
+    expect(
+      missed,
+      'a feedback item under ITEM_SEMANTIC_FLOOR counted as a match in the item arm',
+    ).toMatchObject({ gap: true, total: 0, groups: [] });
+  });
+
+  it('still finds a feedback item a real paraphrase leads at 0.64, as live ones did', async () => {
+    const key = await feedbackAt(1312, 'snorkel teapot', 0.64);
+    const found = await find({ q: 'snorkel teapot' });
+    expect(found.gap).toBe(false);
+    expect(flat(found).map((h) => h.key)).toContain(key);
+  });
+
+  it("finds a narrow literal query's feedback by its words, under the item floor", async () => {
+    // "run slots" led its feedback at 0.575 live: the keyword arm carries it, not the dense one
+    const key = await feedbackAt(1313, 'plover', 0.575);
+    await db.execute(sql`
+      UPDATE feedback SET title = 'plover cramp on the board' WHERE project_id = ${w.projectId} AND fb_seq = 1313`);
+    const hit = flat(await find({ q: 'plover' })).find((h) => h.key === key);
+    expect(hit, 'the feedback naming the query was not found').toBeDefined();
+    expect(hit?.match.arms).toEqual(['keyword']);
   });
 
   it('records the miss and shows it in the gaps read, most asked first', async () => {
