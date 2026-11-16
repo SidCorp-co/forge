@@ -6,6 +6,7 @@ vi.hoisted(() => {
   process.env.INTEGRATION_MASTER_KEY ??= Buffer.alloc(32, 5).toString('base64');
 });
 
+import { db } from '../../src/db/client.js';
 import { api, userToken } from '../helpers/api.js';
 import { rows } from '../helpers/factories.js';
 import { AgentWorld, agentBlock } from '../helpers/support-agent-world.js';
@@ -15,6 +16,7 @@ import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 // @direct-test-of packages/core/src/support/master-post.ts
 // @direct-test-of packages/core/src/support/read.ts
 // @direct-test-of packages/core/src/support/owner-ask.ts
+// @direct-test-of packages/core/src/support/technical-channel.ts
 // @direct-test-of packages/core/src/support/screen.ts
 // @direct-test-of packages/core/src/support/checks.ts
 // @direct-test-of packages/core/src/integrations/rocketchat/support-binding.ts
@@ -22,9 +24,9 @@ import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 // ISS-872 (owner trial 2026-11-02): a channel agent's group the product's users read took four
 // unasked top-level "Cần quyết định…" posts in five minutes, each a project question in internal
 // codes. A master posts top level only in a room the team reads, and into a users' room only into an
-// asker's thread; a question for the owner goes only to the binding's owner room; and a post into a
-// users' room holding an issue key, an MR or PR number, an environment variable name, a sha or a
-// credential word is refused by name, nothing posted. Order numbers and PO codes stay.
+// asker's thread; a question for the owner goes only to the project's technical channel (ISS-1246);
+// and a post into a users' room holding an issue key, an MR or PR number, an environment variable
+// name, a sha or a credential word is refused by name, nothing posted. Order numbers and PO codes stay.
 //
 // The world binds the agent over two groups: rid, read by users, and rid2, the owner's room.
 
@@ -285,11 +287,31 @@ describe("ISS-872: a post into a users' room holding an internal code is refused
   });
 });
 
-describe('ISS-872: a question for the owner goes only to the owner room', () => {
-  it('refuses ask_owner in the users room, posting nothing', async () => {
+describe('ISS-1246: a question for the owner goes only to the technical channel', () => {
+  const DM = 'D-alice';
+  /** Where the project document names the technical channel; absent, a direct message to the owner. */
+  const setChannel = (channel: Record<string, unknown> | null) =>
+    db.execute(
+      channel
+        ? sql`UPDATE project_config_documents
+                 SET document = jsonb_set(document, '{technicalChannel}', ${JSON.stringify(channel)}::jsonb),
+                     revision = revision + 1
+               WHERE project_id = ${w.projectId}`
+        : sql`UPDATE project_config_documents
+                 SET document = document - 'technicalChannel', revision = revision + 1
+               WHERE project_id = ${w.projectId}`,
+    );
+  const asksRecorded = async () =>
+    (
+      await rows<{ n: number }>(sql`
+        SELECT count(*)::int AS n FROM support_actions
+         WHERE project_id = ${w.projectId}::uuid AND tool = 'ask_owner' AND kind = 'routed'`)
+    )[0]?.n ?? 0;
+
+  it("asks from a users room's thread in the technical channel alone, posting nothing in either group", async () => {
     let out: Record<string, unknown> = {};
     const before = allLines();
-    await w.hear(
+    const thread = await w.hear(
       () => chat.say(chat.bob, 'Có cần chủ dự án duyệt không?'),
       async (_t, act: Act, message) => {
         out = await act({
@@ -299,49 +321,45 @@ describe('ISS-872: a question for the owner goes only to the owner room', () => 
         });
       },
     );
-    expect(code(out), JSON.stringify(out)).toBe('SUPPORT_NOT_THE_OWNER_ROOM');
-    expect(JSON.stringify(out)).toContain(`read by the product's users`);
-    expect(JSON.stringify(out)).toContain(chat.rid2);
+    expect(out.isError, JSON.stringify(out)).toBe(false);
     expect(allLines()).toBe(before);
-    const [refused] = await rows<{ n: number }>(sql`
-      SELECT count(*)::int AS n FROM support_actions
-       WHERE project_id = ${w.projectId}::uuid AND tool = 'ask_owner' AND kind = 'routed'`);
-    expect(refused?.n).toBe(0);
+    expect(chat.linesIn(DM).map((l) => l.text)).toEqual([
+      expect.stringContaining(
+        `| ask] from ${chat.rid}, thread ${thread.id}:\nAnh có đồng ý gửi lại đơn hôm nay không?`,
+      ),
+    ]);
+    expect(await asksRecorded()).toBe(1);
   });
 
-  it('asks in a thread of the owner room, and refuses its top level', async () => {
-    let top: Record<string, unknown> = {};
-    let asked: Record<string, unknown> = {};
-    const thread = await w.hear(
+  it('refuses by name, posting nothing, where the technical channel names no thread to post in', async () => {
+    await setChannel({ kind: 'thread' });
+    let out: Record<string, unknown> = {};
+    const before = allLines() + chat.linesIn(DM).length;
+    await w.hear(
       () => chat.sayIn(chat.rid2, chat.alice, 'Có việc gì cần tôi quyết không?'),
       async (_t, act: Act, message) => {
-        top = await act({
-          action: 'ask_owner',
-          rid: chat.rid2,
-          thread: 'top',
-          question: 'Gửi lại đơn hôm nay nhé?',
-        });
-        asked = await act({
+        out = await act({
           action: 'ask_owner',
           thread: message().thread,
-          question: 'Anh có đồng ý gửi lại đơn hôm nay không?',
+          question: 'Gửi lại đơn hôm nay nhé?',
         });
       },
     );
-    expect(code(top), JSON.stringify(top)).toBe('SUPPORT_NOT_THE_OWNER_ROOM');
-    expect(asked.isError, JSON.stringify(asked)).toBe(false);
-    expect(w.threadLines(chat.rid2, thread.id).map((l) => l.text)).toEqual([
-      '@alice Anh có đồng ý gửi lại đơn hôm nay không?',
-    ]);
+    await setChannel(null);
+    expect(code(out), JSON.stringify(out)).toBe('SUPPORT_TECHNICAL_CHANNEL_UNNAMED');
+    expect(JSON.stringify(out)).toContain('technicalChannel');
+    expect(allLines() + chat.linesIn(DM).length).toBe(before);
+    expect(await asksRecorded()).toBe(1);
   });
 
-  it('asks nothing where the binding names no owner room', async () => {
+  it('asks in the technical channel where the binding names no owner room, never in that room', async () => {
     const bare = await w.retarget({
       agent: { ...agentBlock([w.devTarget], chat.rid2), ownerRoom: undefined, readers: 'team' },
     });
     expect(bare.status, JSON.stringify(bare.body)).toBeLessThan(300);
     await w.settleWarm();
     let out: Record<string, unknown> = {};
+    const before = allLines();
     await w.hear(
       () => chat.say(chat.bob, 'Hỏi chủ dự án giúp tôi?'),
       async (_t, act: Act, message) => {
@@ -352,7 +370,8 @@ describe('ISS-872: a question for the owner goes only to the owner room', () => 
         });
       },
     );
-    expect(code(out), JSON.stringify(out)).toBe('SUPPORT_NOT_THE_OWNER_ROOM');
-    expect(JSON.stringify(out)).toContain('agent.ownerRoom');
+    expect(out.isError, JSON.stringify(out)).toBe(false);
+    expect(allLines()).toBe(before);
+    expect(chat.linesIn(DM).at(-1)?.text).toContain('Gửi lại đơn nhé?');
   });
 });

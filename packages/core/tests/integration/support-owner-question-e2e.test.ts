@@ -15,16 +15,19 @@ import { code } from '../helpers/support-channel.js';
 import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 
 // @direct-test-of packages/core/src/support/owner-ask.ts
+// @direct-test-of packages/core/src/support/owner-answer.ts
 //
 // ISS-871: a master's question to the owner goes through the channel, as the switched hand bot's
-// did. The master asks in Forge (POST /api/questions); the channel agent asks the owner in a thread
-// naming that question; the owner's next message there is recorded as the question's answer, as the
+// did. The master asks in Forge (POST /api/questions); the channel agent asks the owner in the
+// project's technical channel (ISS-1246), naming that question; his reply there is recorded as the question's answer, as the
 // owner's linked Forge account, through the questions door that wakes the master who asked. A
 // question that cannot take it is refused when asked; an answer that cannot be recorded is kept as a
 // refusal and told to the agent, and the question stays open.
 
 const w = new AgentWorld();
 let chat: StandInRocketChat;
+/** The project's technical channel: a direct message to the owner the binding names. */
+const DM = 'D-alice';
 let owner = '';
 let seq = 100;
 
@@ -54,7 +57,7 @@ const question = async (id: string) =>
     )
   )[0];
 
-/** The agent asks the owner in a new thread, naming `forgeQuestion`; the thread and the act's answer. */
+/** The agent asks the owner from a new thread, naming `forgeQuestion`; the thread and the act's answer. */
 async function agentAsks(forgeQuestion: string, text: string) {
   let out: Record<string, unknown> = {};
   const thread = await w.hear(
@@ -127,7 +130,7 @@ describe("ISS-871: a master's question asked of the owner through the channel", 
     const id = await masterAsks('Resend PO 1453 now?');
     const { thread, out } = await agentAsks(id, 'can the master resend PO 1453?');
     expect(out, JSON.stringify(out)).toMatchObject({ isError: false, forgeQuestion: id });
-    const answer = await w.hear(() => chat.say(chat.alice, 'yes', thread));
+    const answer = await w.hear(() => chat.sayIn(DM, chat.alice, 'yes'));
     expect(answer.message.answersYourQuestion).toContain('may it resend PO 1453');
     await expect
       .poll(async () =>
@@ -153,13 +156,13 @@ describe("ISS-871: a master's question asked of the owner through the channel", 
       INSERT INTO assistant_speaker_links (source, external_namespace, external_id, user_id, confirmed_via)
       VALUES ('rocketchat', ${namespaceFromServerUrl(chat.serverUrl)}, ${OWNER_ID}, ${w.ownerId}, 'channel_email_match')`);
     const id = await masterAsks('Resend PO 1460 now?');
-    const { thread } = await agentAsks(id, 'can the master resend PO 1460?');
+    await agentAsks(id, 'can the master resend PO 1460?');
     // words naming none of a choice's options are not guessed into one
-    await w.hear(() => chat.say(chat.alice, 'hmm, maybe later', thread));
+    await w.hear(() => chat.sayIn(DM, chat.alice, 'hmm, maybe later'));
     expect((await question(id))?.status).toBe('open');
-    // the owner's next message in the thread is the answer: a fresh ask, then the plain option
-    const again = await agentAsks(id, 'once more: can the master resend PO 1460?');
-    await w.hear(() => chat.say(chat.alice, 'Yes', again.thread));
+    // his reply in the channel is the answer: a fresh ask, then the plain option
+    await agentAsks(id, 'once more: can the master resend PO 1460?');
+    await w.hear(() => chat.sayIn(DM, chat.alice, 'Yes'));
     await expect.poll(async () => (await question(id))?.status).toBe('answered');
     expect((await question(id))?.steps.at(-1)).toMatchObject({
       chosenOptionId: 'yes',

@@ -33,6 +33,7 @@ import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 // @direct-test-of packages/core/src/support/owner-owed.ts
 // @direct-test-of packages/core/src/support/prompt.ts
 // @direct-test-of packages/core/src/support/owner-ask.ts
+// @direct-test-of packages/core/src/support/owner-answer.ts
 // @direct-test-of packages/core/src/support/screen.ts
 // @direct-test-of packages/core/src/integrations/rocketchat/project-room.ts
 //
@@ -40,10 +41,10 @@ import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 //
 // ISS-873 (owner, agenfold 2026-11-02): a run's parked question in a project whose rooms a channel
 // agent answers is never posted into a room by core. It is handed to the agent as a task in the
-// owner's room's record; the agent answers it from the record (an approved image on linked
-// feedback) and nothing is posted, or asks the owner once, in plain words with no code, inside the
-// owner's room's one thread for the day's questions — never at a room's top level. A code in a
-// team room's post is refused unless it is a reply inside a member's own thread.
+// agent's record; the agent answers it from the record (an approved image on linked feedback) and
+// nothing is posted, or asks the owner once, in plain words with no code, in the project's technical
+// channel alone (ISS-1246), his reply to its line there answering it. A code in a team room's post is
+// refused unless it is a reply inside a member's own thread.
 
 const w = new AgentWorld();
 let chat: StandInRocketChat;
@@ -183,51 +184,50 @@ describe('ISS-873: a parked question in a channel agent project posts nothing by
     expect([...chat.linesIn(chat.rid), ...chat.linesIn(chat.rid2)].length).toBe(before);
   });
 
-  it('asks the owner once, in plain words, inside the day thread; a second round shares it', async () => {
+  it('asks the owner once, in plain words, in the technical channel alone; his reply to its line there answers it', async () => {
+    const DM = 'D-alice';
+    const asks = () => chat.linesIn(DM).filter((l) => l.text.includes('| ask] from'));
+    const inGroups = [...chat.linesIn(chat.rid), ...chat.linesIn(chat.rid2)].length;
     const first = await parked('Should the banner rotate?');
     const outs: Record<string, unknown>[] = [];
     let thread1 = '';
     await handed(first.id, async (thread, act) => {
       thread1 = thread;
-      // a code is refused by name, and opens nothing
+      // a code is refused by name, and posts nothing
       outs.push(
         await act({
           action: 'ask_owner',
           thread,
           question: `ISS-${seq} is parked: pick option banner.rotate`,
-          opener: 'Câu hỏi hôm nay',
         }),
-      );
-      // no day thread yet, and no line to open it
-      outs.push(
-        await act({ action: 'ask_owner', thread, question: 'Banner có tự chuyển không anh?' }),
       );
       outs.push(
         await act({
           action: 'ask_owner',
           thread,
           question: 'Banner trên trang chủ có tự chuyển không anh?',
-          opener: 'Câu hỏi hôm nay cho anh',
         }),
       );
       // the same question again is not asked twice
       outs.push(
         await act({ action: 'ask_owner', thread, question: 'Banner có tự chuyển không anh?' }),
       );
+      // the owner's room's day thread is gone, and its opener with it, refused by its name
+      outs.push(
+        await act({ action: 'ask_owner', thread, question: 'Banner?', opener: 'Câu hỏi hôm nay' }),
+      );
     });
     expect(code(outs[0])).toBe('SUPPORT_INTERNAL_CODE');
-    expect(code(outs[1])).toBe('SUPPORT_DAY_THREAD_OPENER');
-    expect(outs[2]?.isError, JSON.stringify(outs[2])).toBe(false);
-    expect(code(outs[3])).toBe('SUPPORT_OWNER_ALREADY_ASKED');
-    const roots = topLevel().filter((l) => l.text === 'Câu hỏi hôm nay cho anh');
-    expect(roots).toHaveLength(1);
-    expect(topLevel().some((l) => l.text.includes('ISS-'))).toBe(false);
-    const day = roots[0]?.id ?? '';
-    expect(w.threadLines(chat.rid, day).map((l) => l.text)).toEqual([
-      '@alice Banner trên trang chủ có tự chuyển không anh?',
+    expect(outs[1]?.isError, JSON.stringify(outs[1])).toBe(false);
+    expect(code(outs[2])).toBe('SUPPORT_OWNER_ALREADY_ASKED');
+    expect(outs[3]?.isError, JSON.stringify(outs[3])).toBe(true);
+    expect(JSON.stringify(outs[3])).toContain('opener');
+    expect(asks().map((l) => l.text.split('\n').at(-1))).toEqual([
+      'Banner trên trang chủ có tự chuyển không anh?',
     ]);
+    expect(asks().some((l) => l.text.includes('banner.rotate'))).toBe(false);
 
-    // a second question the same day goes into the same thread, with no opener
+    // a second question asked the same way waits beside it
     const second = await parked('Does the menu stick to the top?');
     const more: Record<string, unknown>[] = [];
     await handed(second.id, async (thread, act) => {
@@ -236,40 +236,37 @@ describe('ISS-873: a parked question in a channel agent project posts nothing by
       );
     });
     expect(more[0]?.isError, JSON.stringify(more[0])).toBe(false);
-    expect(topLevel().filter((l) => l.text === 'Câu hỏi hôm nay cho anh')).toHaveLength(1);
-    expect(w.threadLines(chat.rid, day)).toHaveLength(2);
+    expect(asks()).toHaveLength(2);
+    // nothing was posted in either group, at the top level or in any thread
+    expect([...chat.linesIn(chat.rid), ...chat.linesIn(chat.rid2)].length).toBe(inGroups);
 
     // the same round is not handed again: no second task, no post
-    const lines = chat.linesIn(chat.rid).length;
+    const lines = chat.linesIn(DM).length;
     await drain(new Date());
     const [tasks] = await rows<{ n: number }>(sql`
       SELECT count(*)::int AS n FROM support_actions
        WHERE thread = ${thread1} AND kind = 'message_in' AND actor_kind = 'core'`);
     expect(tasks?.n).toBe(1);
-    expect(chat.linesIn(chat.rid).length).toBe(lines);
+    expect(chat.linesIn(DM).length).toBe(lines);
 
-    // the owner's answer in a thread holding two questions is recorded on none until the agent names it
-    let told = '';
-    let recorded: Record<string, unknown> = {};
-    const said = await w.hear(
-      () => chat.say(chat.alice, 'Có, cho tự chuyển', day),
-      async (turn, act, message) => {
-        told =
-          turn.messages.find((m) => m.from === 'forge' && m.text.includes('recorded on none'))
-            ?.text ?? '';
-        recorded = await act({
-          action: 'answer_question',
-          thread: thread1,
-          message: message().message ?? '',
-        });
-      },
-    );
-    expect(said.id).toBeTruthy();
-    expect(told).toContain('recorded on none');
-    expect(recorded.isError, JSON.stringify(recorded)).toBe(false);
-    const q1 = await question(first.id);
-    expect(q1?.status).toBe('answered');
-    expect(q1?.steps.at(-1)).toMatchObject({
+    // his message replying to neither of the two waiting is recorded on none, and each asker is told
+    await w.settleWarm();
+    const told = new Set<string>();
+    w.box.model = async (turn) => {
+      for (const m of turn.messages) {
+        if (m.from === 'forge' && m.text.includes('recorded on none')) told.add(m.thread);
+      }
+    };
+    await chat.sayIn(DM, chat.alice, 'Có');
+    await expect.poll(() => told.size, { timeout: 20_000 }).toBe(2);
+    expect((await question(first.id))?.status).toBe('open');
+    // his reply to the first ask's line answers it, reaching the thread it was asked from
+    const line = asks()[0]?.id ?? '';
+    const said = await w.hear(() => chat.sayIn(DM, chat.alice, 'Có, cho tự chuyển', line));
+    expect(said.message.thread).toBe(thread1);
+    expect(said.message.answersYourQuestion).toBe('Banner trên trang chủ có tự chuyển không anh?');
+    await expect.poll(async () => (await question(first.id))?.status).toBe('answered');
+    expect((await question(first.id))?.steps.at(-1)).toMatchObject({
       answerText: 'Có, cho tự chuyển',
       answeredBy: w.ownerId,
     });
