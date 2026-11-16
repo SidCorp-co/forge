@@ -92,6 +92,17 @@ describe("the pillar", () => {
     expect(release.textContent).toContain("No purpose");
   });
 
+  it("stacks on a phone: each module a block of its seven counts, each named, none behind a sideways scroll", async () => {
+    renderWithQuery(inWorkspace(<ModuleMapScreen projectId={MAP_PROJECT} slug="hop" />));
+    const stack = await screen.findByTestId("pillar-stack");
+    const blocks = within(stack).getAllByTestId("pillar-stack-row");
+    expect(blocks.map((b) => b.querySelector("a")?.textContent)).toEqual(["Execution", "Work & delivery", "Release & deploy", "Adapters"]);
+    const [execution] = blocks;
+    expect([...execution.querySelectorAll("dt")].map((d) => d.textContent)).toEqual(["Terms", "Rules", "Capabilities", "Requirements", "Decisions", "References", "Open issues"]);
+    expect(countIn(execution, "rule").getAttribute("href")).toBe("/projects/hop/modules/execution?type=rule");
+    expect(countIn(within(stack).getByTestId("pillar-stack-unplaced"), "requirement").textContent).toBe("97");
+  });
+
   it("shows the searches that found nothing, each searched again on a click", async () => {
     renderWithQuery(inWorkspace(<ModuleMapScreen projectId={MAP_PROJECT} slug="hop" />));
     fireEvent.click(await screen.findByTestId("find-gap-query"));
