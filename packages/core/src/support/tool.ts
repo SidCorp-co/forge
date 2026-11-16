@@ -82,9 +82,15 @@ const channelRidSchema = z
   );
 
 import type { Refusal } from '../lib/refusal.js';
-import { type ContextScopedMcpToolFactory, refusedAnswer, zodToMcpSchema } from '../lib/tool.js';
+import {
+  type ContextScopedMcpToolFactory,
+  refusedAnswer,
+  sourceOf,
+  zodToMcpSchema,
+} from '../lib/tool.js';
 import { markUntrusted } from '../lib/untrusted-text.js';
 import { permissionless } from '../permissions/index.js';
+import { SUPPORT_ACT_CARDS } from './act-cards.js';
 import { type SupportActInput, supportAct } from './acts.js';
 import type { ImageRead } from './images.js';
 import { refusalOf } from './refusals.js';
@@ -375,6 +381,9 @@ export const forgeSupportTool: ContextScopedMcpToolFactory = (ctx) => ({
   description: DESCRIPTION,
   inputSchema: zodToMcpSchema(inputSchema),
   actionRequests: ACTION_REQUESTS,
+  // when a room agent reaches for each act (ISS-1251): the room brief's map renders from the same cards
+  cards: SUPPORT_ACT_CARDS,
+  source: sourceOf(import.meta.url),
   permission: PERMISSION,
   handler: async (args) => {
     const parsed = inputSchema.safeParse(args);
