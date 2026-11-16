@@ -73,7 +73,7 @@ describe('masterWork under direct mode: the pass is told to build, not to dispat
       'Dispatch no runner role',
       // ISS-1243 item 22: subagents build, the master's session stays free for agents' asks;
       // ISS-1254: each in a tree of its own, never one tree shared
-      'hand every build part of the batch to general-purpose subagents, each in its own worktree and branch off the batch branch that you fold its commits into',
+      'hand every build part of the batch to general-purpose subagents, one worktree each, whose commits you fold into the batch branch',
       "so your own pane stays free for triage, for a room agent's ask (it goes first) and for the landing; only a change too small to brief is built here",
       // ISS-1050: "its own tests" read as the whole suite, which a master ran before every landing
       "Land through the project's own landing route once the batch builds (typecheck included) and the tests related to its changed files pass",
