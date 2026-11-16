@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.697] - 2026-11-16
+
+Feedback triage drafts no longer wait behind release follow-ups
+
+### Fixed
+
+- **A filed feedback item's steward triage takes the next run slot its project frees**, instead of waiting behind release follow-throughs. A draft for an item a person already routed is skipped as `triage_taken`.
+
 ## [0.4.0-dev.696] - 2026-11-16
 
 forge-dev agents change the forge-plugin repository directly through its own route

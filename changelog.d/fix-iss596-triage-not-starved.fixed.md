@@ -1,1 +1,0 @@
-**A filed feedback item's steward triage takes the next run slot its project frees**, instead of waiting behind release follow-throughs. A draft for an item a person already routed is skipped as `triage_taken`.
