@@ -78,7 +78,7 @@ export async function searchRecords(
   const home = principal.boundProjectId ?? (visible.length === 1 ? visible[0] : undefined);
   const [first] = visible;
   if (!first) return { results: [] };
-  const { fused } = await runFind({
+  const { kept } = await runFind({
     projectId: home ?? first,
     projectIds: visible,
     query: { q: query.trim(), type: [...SEARCHED], limit: PER_SEARCH },
@@ -87,13 +87,13 @@ export async function searchRecords(
     recordsGap: home !== undefined,
   });
   const slugs = await slugsOf([
-    ...new Set(fused.flatMap((c) => (c.projectId ? [c.projectId] : []))),
+    ...new Set(kept.flatMap((c) => (c.projectId ? [c.projectId] : []))),
   ]);
   const shown = async (kind: Kind, projectId: string, title: string) =>
     (await egressShown(projectId, SURFACE[kind], { title }, `${kind} title`)).title;
   const results: SearchResult[] = [];
-  for (const c of fused) {
-    if (!(SEARCHED as readonly string[]).includes(c.type)) continue;
+  // the hits the door's filter over these types keeps, in its order: no other is a candidate here
+  for (const c of kept) {
     const type = c.type as (typeof SEARCHED)[number];
     const id = fetchIdOf(type, c.ref);
     const slug = c.projectId ? (slugs.get(c.projectId) ?? '') : '';

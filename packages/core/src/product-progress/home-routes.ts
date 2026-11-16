@@ -152,11 +152,10 @@ meHomeRoutes.get(
         'home-find',
       ),
     );
-    const items = found.flatMap((f) => f.items);
     const total = found.reduce((n, f) => n + f.total, 0);
     const response: HomeFindResponse = {
       q,
-      items: rankFound(q, items),
+      items: rankFound(found.flatMap((f) => f.found)),
       total,
       truncated: total > HOME_FIND_LIMIT,
     };

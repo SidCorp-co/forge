@@ -93,7 +93,7 @@ export interface HomeFoundItem {
 	standing: HomeFoundStanding;
 }
 
-/** `GET /api/me/home/find?q=`: at most `HOME_FIND_LIMIT` items, by key first, then the find door's rank. */
+/** `GET /api/me/home/find?q=`: at most `HOME_FIND_LIMIT` items in the find door's rank, every project's merged by its fused score. */
 export interface HomeFindResponse {
 	q: string;
 	items: HomeFoundItem[];

@@ -14,20 +14,32 @@ import { carriersOf, type HomeProject, type HomeProjectReads } from './home-movi
 import { feedbackEnded, feedbackStage, issueStage } from './home-stage.js';
 
 /**
- * The project's issues and feedback items matching `q`, as a filter of the find door (ISS-1256): its
- * ranks, its key match and its glossary expansion. A home search spans projects, so a miss in one is
- * no gap of that project's.
+ * The project's issues and feedback items matching `q`, as a filter of the find door (ISS-1256): the
+ * hits its issue and feedback filter keeps, in its order, and how many of those types it found. A
+ * home search spans projects, so a miss in one is no gap of that project's.
  */
 async function matching(projectId: string, q: string, reader: ProjectReader) {
-  const { fused } = await runFind({
+  const { kept, result } = await runFind({
     projectId,
     projectIds: [projectId],
-    query: { q, type: ['issue', 'feedback'], limit: HOME_FIND_LIMIT },
+    query: { q, type: [...HOME_FIND_TYPES], limit: HOME_FIND_LIMIT },
     reader,
     askedBy: 'person',
     recordsGap: false,
+    filterOnly: true,
   });
-  return fused.filter((c) => c.type === 'issue' || c.type === 'feedback');
+  const total = result.facets.type
+    .filter((f) => (HOME_FIND_TYPES as readonly string[]).includes(f.value))
+    .reduce((n, f) => n + f.count, 0);
+  return { kept, total };
+}
+
+const HOME_FIND_TYPES = ['issue', 'feedback'] as const;
+
+/** A found item and the door's fused score it was found at, which orders it among every project's. */
+export interface HomeFound {
+  item: HomeFoundItem;
+  score: number;
 }
 
 function feedbackStanding(
@@ -68,33 +80,35 @@ export async function findIn(
   releases: ReleaseListResponse,
   q: string,
   reader: ProjectReader,
-): Promise<{ items: HomeFoundItem[]; total: number }> {
+): Promise<{ found: HomeFound[]; total: number }> {
   const of = { projectSlug: project.slug, projectName: project.name };
-  const found = await matching(project.id, q, reader);
+  const { kept, total } = await matching(project.id, q, reader);
   const feedbackById = new Map(part.allFeedback.map((s) => [s.id, s]));
-  const items = found.flatMap((c): HomeFoundItem[] => {
+  const found = kept.flatMap((c): HomeFound[] => {
     if (c.type === 'issue' && c.key) {
       const claimed = (c.native as IssueNative | undefined)?.releaseBatchRunId != null;
       const standing = issueStanding(c.key, c.status ?? '', claimed, part, releases);
-      return [{ kind: 'issue', key: c.key, title: c.title, ...of, standing }];
+      return [
+        { item: { kind: 'issue', key: c.key, title: c.title, ...of, standing }, score: c.score },
+      ];
     }
     const s = feedbackById.get(c.ref);
     if (c.type !== 'feedback' || !s) return [];
+    const standing = feedbackStanding(s, part, releases);
     return [
-      {
-        kind: 'feedback',
-        key: s.key,
-        title: s.title,
-        ...of,
-        standing: feedbackStanding(s, part, releases),
-      },
+      { item: { kind: 'feedback', key: s.key, title: s.title, ...of, standing }, score: c.score },
     ];
   });
-  return { items: items.slice(0, HOME_FIND_LIMIT), total: items.length };
+  return { found, total };
 }
 
-/** Every project's matches, an exact key first, at most `HOME_FIND_LIMIT`. */
-export function rankFound(q: string, found: readonly HomeFoundItem[]): HomeFoundItem[] {
-  const exact = (f: HomeFoundItem) => (f.key.toLowerCase() === q.toLowerCase() ? 0 : 1);
-  return [...found].sort((a, b) => exact(a) - exact(b)).slice(0, HOME_FIND_LIMIT);
+/**
+ * Every project's matches merged by the door's fused score, each project's in its own order, at most
+ * `HOME_FIND_LIMIT`: no order of the home's own.
+ */
+export function rankFound(found: readonly HomeFound[]): HomeFoundItem[] {
+  return [...found]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, HOME_FIND_LIMIT)
+    .map((f) => f.item);
 }
