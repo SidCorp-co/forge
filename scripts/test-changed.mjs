@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// A developer's run before a push (REQ-36 BC-7, BC-17): the typecheck and the DIRECT tests of what
-// this checkout changed against the branch it lands on, committed or not, in every package, and a
-// line for each thing it ran. The selection is `scripts/lib/direct-tests.mjs`'s. One thing widens
+// A developer's run before a push (REQ-36 BC-7, BC-17): the typecheck, verify's archmap check over
+// the touched code, and the DIRECT tests of what this checkout changed against the branch it lands
+// on, committed or not, in every package, and a line for each thing it ran. The selection is `scripts/lib/direct-tests.mjs`'s. One thing widens
 // it: a touched path `.forge/high-impact-paths.json` lists runs the direct core integration tests
 // too, as `--integration` does, printing the path and its reason (`lib/high-impact-paths.mjs`,
 // ISS-1061). A list that cannot be read, or holds an entry stale or malformed, stops the run.
@@ -25,6 +25,7 @@ import { join } from 'node:path';
 import { baseRef } from './lib/base-branch.mjs';
 import {
   describeChecks,
+  runArchmap,
   runDirectTests,
   runTypecheck,
   touchedBetween,
@@ -85,6 +86,11 @@ const direct = runDirectTests(ROOT, { touched, integration, narrow: true });
 // any test ran against the old build (ISS-587).
 if (direct.refusal) die(direct.refusal);
 ran.push(...direct.checks);
+// The architecture contracts over the touched code, as verify checks them at the landing; after the
+// tests, whose run has rebuilt the packages archmap's prerequisites name where they load them.
+const archmap = runArchmap(ROOT, touched);
+if (archmap.refusal) die(archmap.refusal);
+ran.push(...archmap.checks);
 
 const head = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).stdout.trim();
 const dirty =

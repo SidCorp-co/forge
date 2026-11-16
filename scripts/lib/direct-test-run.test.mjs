@@ -11,15 +11,18 @@ import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
+  archmapScope,
   check,
   describeChecks,
   notRun,
   owedBy,
   run,
+  runArchmap,
   runDirectTests,
   runSelection,
 } from './direct-test-run.mjs';
 import { stripComments } from './gate.mjs';
+import { CHECKS } from './verify-checks.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -251,6 +254,87 @@ describe('the run layer runs what the selection chose, and only that (REQ-36 BC-
       ['none', 'no test file is direct for any touched file'],
     ]);
     expect(out.untested).toEqual(['packages/core/src/untested.ts']);
+  });
+});
+
+describe("a builder's run checks the architecture contracts over what it touched", () => {
+  const VERIFY_ARCHMAP = CHECKS.find((c) => c.label === 'archmap').cmd;
+  let ready = '';
+  beforeAll(() => {
+    ready = mkdtempSync(join(tmpdir(), 'direct-test-run-archmap-'));
+    for (const dir of ['packages/core/node_modules', 'packages/web-v2/node_modules'])
+      mkdirSync(join(ready, dir), { recursive: true });
+    for (const file of [
+      'node_modules/dependency-cruiser/bin/dependency-cruise.mjs',
+      'packages/observability/dist/index.js',
+      'packages/contracts/dist/document-patch.js',
+    ]) {
+      mkdirSync(dirname(join(ready, file)), { recursive: true });
+      writeFileSync(join(ready, file), '');
+    }
+  });
+  afterAll(() => rmSync(ready, { recursive: true, force: true }));
+
+  it("runs verify's own archmap command over each touched code file still on disk", () => {
+    const { calls, exec } = recorder();
+    const out = runArchmap(
+      ready,
+      [
+        { path: 'packages/web-v2/src/features/a/page.tsx', change: 'changed' },
+        { path: 'packages/core/src/gone.ts', change: 'removed' },
+        { path: 'scripts/README.md', change: 'changed' },
+      ],
+      { exec },
+    );
+    expect(calls.map((c) => c.argv)).toEqual([
+      [...VERIFY_ARCHMAP, 'packages/web-v2/src/features/a/page.tsx'],
+    ]);
+    expect(out.checks.map((c) => [c.name, c.kind, c.result, c.files])).toEqual([
+      ['archmap', 'conformance', 'pass', ['packages/web-v2/src/features/a/page.tsx']],
+    ]);
+  });
+
+  it('a contract archmap finds broken is a red check', () => {
+    const { exec } = recorder({ fails: () => true });
+    const out = runArchmap(ready, touchedOf('packages/web-v2/src/features/a/page.tsx'), { exec });
+    expect(out.checks.map((c) => c.result)).toEqual(['fail']);
+  });
+
+  it('checks the whole tree where the manifest, its baseline or archmap itself is touched', () => {
+    for (const path of [
+      '.arch.json',
+      '.arch.baseline.json',
+      '.arch-tsconfig.json',
+      '.forge/archmap/src/cli.mjs',
+    ]) {
+      expect(archmapScope(touchedOf(path, 'packages/core/src/a.ts'))).toEqual({
+        whole: true,
+        paths: [],
+      });
+    }
+    const { calls, exec } = recorder();
+    runArchmap(ready, touchedOf('.arch.json'), { exec });
+    expect(calls.map((c) => c.argv)).toEqual([VERIFY_ARCHMAP]);
+  });
+
+  it('runs nothing where no code file and nothing archmap reads was touched', () => {
+    expect(archmapScope(touchedOf('docs/VISION.md', 'changelog.d/x.fixed.md'))).toBeNull();
+    const { calls, exec } = recorder();
+    expect(runArchmap(ready, touchedOf('docs/VISION.md'), { exec })).toEqual({
+      checks: [],
+      refusal: null,
+    });
+    expect(calls).toEqual([]);
+  });
+
+  it('a checkout archmap cannot run in is refused by name, never passed', () => {
+    const { calls, exec } = recorder();
+    const out = runArchmap(fixture, touchedOf('packages/core/src/a.ts'), { exec });
+    expect(calls).toEqual([]);
+    expect(out.checks).toEqual([]);
+    expect(out.refusal).toMatch(
+      /archmap cannot run in this checkout[\s\S]*pnpm install --frozen-lockfile/,
+    );
   });
 });
 

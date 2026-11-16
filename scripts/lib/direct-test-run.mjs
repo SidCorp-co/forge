@@ -19,6 +19,8 @@ import {
 } from './direct-tests.mjs';
 import { gitOut } from './gate.mjs';
 import { buildsOwed, rebuildPackages } from './package-builds.mjs';
+import { absentPrerequisites, remedyLines } from './prerequisite.mjs';
+import { CHECKS } from './verify-checks.mjs';
 
 /**
  * One check a run made: what it was and of which kind, where, the command, the files it ran, how it
@@ -124,6 +126,60 @@ export function runTypecheck(root, { baseRef, touched }) {
     );
   }
   return checks;
+}
+
+/** verify's archmap check: the one invocation and the prerequisites both run (`verify-checks.mjs:CHECKS`). */
+const ARCHMAP = CHECKS.find((c) => c.label === 'archmap');
+/** A touched path that can move a verdict anywhere in the tree: the manifest, its baseline and resolution map, archmap itself. */
+const ARCHMAP_WHOLE =
+  /^(?:\.arch\.json|\.arch\.baseline\.json|\.arch-tsconfig\.json|\.forge\/archmap\/.*)$/;
+const CODE = /\.(?:[cm]?[jt]s|[jt]sx)$/;
+
+/**
+ * What archmap checks for a change: the whole tree where its manifest or archmap itself is touched,
+ * otherwise each touched code file still on disk, whose own imports are where a new edge is written.
+ * `null` where the change touched neither.
+ */
+export function archmapScope(touched) {
+  if (touched.some((t) => ARCHMAP_WHOLE.test(t.path))) return { whole: true, paths: [] };
+  const paths = touched
+    .filter((t) => t.change !== 'removed' && CODE.test(t.path))
+    .map((t) => t.path);
+  return paths.length ? { whole: false, paths } : null;
+}
+
+/**
+ * The architecture contracts over what a change touched (`.arch.json`), with verify's own archmap
+ * command, so a builder sees a contract it broke before the landing's `pnpm verify` does. A
+ * checkout archmap cannot run in is refused by name, never passed.
+ */
+export function runArchmap(root, touched, { exec = run } = {}) {
+  const scope = archmapScope(touched);
+  if (!scope) return { checks: [], refusal: null };
+  const missing = absentPrerequisites(root, ARCHMAP.needs);
+  if (missing.length) {
+    return {
+      checks: [],
+      refusal: `archmap cannot run in this checkout, so the architecture contracts were not checked:\n${remedyLines(missing).join('\n')}`,
+    };
+  }
+  const argv = [...ARCHMAP.cmd, ...scope.paths];
+  const r = exec(argv, root);
+  return {
+    checks: [
+      check({
+        name: 'archmap',
+        kind: 'conformance',
+        scope: scope.whole ? 'relations, whole tree' : 'relations',
+        command: show(argv),
+        files: scope.paths,
+        result: r.ok ? 'pass' : 'fail',
+        startedAt: r.startedAt,
+        durationMs: r.durationMs,
+      }),
+    ],
+    refusal: null,
+  };
 }
 
 /**
