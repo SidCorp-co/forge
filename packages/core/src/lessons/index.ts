@@ -6,6 +6,7 @@ export {
 } from './anchors.js';
 export { recordApplied, recordAppliedFromText } from './applied.js';
 export {
+  gistOf,
   LESSONS_MAP_MAX_CHARS,
   type LessonAudience,
   lessonNamedIn,

@@ -3,7 +3,12 @@
 // records (ISS-1251 §3's read signal, `run-context`), so a module tree can say how often agents read
 // a node. An id naming nothing the reader reads is refused by name, never answered empty.
 
-import { FIND_TYPES, type FindOpened, type FindType } from '@forge/contracts/find';
+import {
+  FIND_ORG_REF_PREFIX,
+  FIND_TYPES,
+  type FindOpened,
+  type FindType,
+} from '@forge/contracts/find';
 import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
@@ -21,6 +26,7 @@ import { issueDisplayIds } from '../issues/index.js';
 import { doorCatalog } from '../lib/door-catalog.js';
 import { refuser } from '../lib/refusal.js';
 import type { Found } from '../run-context/index.js';
+import { knowledgeTitle } from './arms-knowledge.js';
 import type { Candidate } from './candidate.js';
 import { moduleTree, placementsOf, relationsOf } from './model-reads.js';
 import { fuseArms, hitOf } from './rank.js';
@@ -35,7 +41,7 @@ export function parseHitId(id: string): { type: FindType; ref: string } {
   const at = id.indexOf(':');
   const type = id.slice(0, at) as FindType;
   const ref = id.slice(at + 1);
-  const uuid = ref.startsWith('org:') ? ref.slice(4) : ref;
+  const uuid = ref.startsWith(FIND_ORG_REF_PREFIX) ? ref.slice(FIND_ORG_REF_PREFIX.length) : ref;
   const refOk = type === 'capability' ? ref.length > 0 : UUID.test(uuid);
   if (at < 1 || !FIND_TYPES.includes(type) || !refOk) {
     throw refuse(
@@ -58,12 +64,17 @@ interface Loaded {
 type Loader = (ref: string, projectIds: readonly string[]) => Promise<Loaded | null>;
 
 const knowledgeLoader: Loader = async (ref, projectIds) => {
-  if (ref.startsWith('org:')) {
+  if (ref.startsWith(FIND_ORG_REF_PREFIX)) {
     const [row] = await db
       .select({ entry: orgKnowledgeEntries })
       .from(orgKnowledgeEntries)
       .innerJoin(projects, eq(projects.orgId, orgKnowledgeEntries.orgId))
-      .where(and(eq(orgKnowledgeEntries.id, ref.slice(4)), inArray(projects.id, [...projectIds])))
+      .where(
+        and(
+          eq(orgKnowledgeEntries.id, ref.slice(FIND_ORG_REF_PREFIX.length)),
+          inArray(projects.id, [...projectIds]),
+        ),
+      )
       .limit(1);
     if (!row) return null;
     const e = row.entry;
@@ -88,7 +99,7 @@ const knowledgeLoader: Loader = async (ref, projectIds) => {
   return {
     candidate: {
       key: e.slug,
-      title: e.title,
+      title: knowledgeTitle(e),
       text: e.body,
       projectId: e.projectId,
       status: e.archivedAt ? 'retired' : 'in force',

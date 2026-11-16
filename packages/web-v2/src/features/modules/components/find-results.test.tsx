@@ -10,9 +10,49 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { type Command, CommandPalette } from "@/design";
-import { FIND_CHIA_SLOT, FIND_NOTHING, MAP_PROJECT } from "@/test/module-map";
+import type { FindResult } from "@forge/contracts/find";
+import { FIND_CHIA_SLOT, FIND_NOTHING, MAP_PROJECT, RUN_SLOTS_HIT } from "@/test/module-map";
 import { type Call, fakeCore, renderWithQuery } from "@/test/render";
 import { FindResults } from "./find-results";
+
+// a lesson, named by its gist, beside a requirement in delivery, as core answers them
+const LESSON_HIT = {
+  ...RUN_SLOTS_HIT,
+  id: "lesson:l-104",
+  type: "lesson" as const,
+  ref: "l-104",
+  key: "lesson-104",
+  title: "A follow-through queued under the old budget keeps its not-before time after the deploy",
+  status: "in force",
+  path: ["Unplaced", "Lessons"] as [string, string],
+  match: { arms: ["semantic" as const], alias: null },
+};
+const REQUIREMENT_HIT = {
+  ...LESSON_HIT,
+  id: "requirement:r-3",
+  type: "requirement" as const,
+  ref: "r-3",
+  key: "REQ-3",
+  title: "Runs share a box fairly",
+  status: "in_delivery",
+  path: ["Execution", "Requirements"] as [string, string],
+};
+const FIND_BUDGET: FindResult = {
+  ...FIND_CHIA_SLOT,
+  query: "budget",
+  expanded: [],
+  groups: [
+    { type: "lesson", label: "Lessons", hits: [LESSON_HIT] },
+    { type: "requirement", label: "Requirements", hits: [REQUIREMENT_HIT] },
+  ],
+  facets: {
+    ...FIND_CHIA_SLOT.facets,
+    status: [
+      { value: "in force", label: "in force", count: 1 },
+      { value: "in_delivery", label: "in_delivery", count: 1 },
+    ],
+  },
+};
 
 const push = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push }) }));
@@ -29,7 +69,10 @@ const palette = (query: string) =>
 beforeEach(() => {
   push.mockClear();
   calls = fakeCore((c) => {
-    if (c.method === "POST" && c.path === `/projects/${MAP_PROJECT}/find`) return { body: (c.body as { q: string }).q === "blorp" ? FIND_NOTHING : FIND_CHIA_SLOT };
+    if (c.method === "POST" && c.path === `/projects/${MAP_PROJECT}/find`) {
+      const q = (c.body as { q: string }).q;
+      return { body: q === "blorp" ? FIND_NOTHING : q === "budget" ? FIND_BUDGET : FIND_CHIA_SLOT };
+    }
     if (c.path.startsWith(`/projects/${MAP_PROJECT}/find/open`)) return { body: { hit: {}, url: "/projects/hop/issues/ISS-1255", text: "" } };
     return undefined;
   });
@@ -75,6 +118,17 @@ describe("the ⌘K search", () => {
     fireEvent.click(within(facets).getAllByTestId("find-facet-module")[0]);
     await waitFor(() => expect(calls.at(-1)?.body).toEqual({ q: "chia slot", module: ["execution"] }));
     expect(within(facets).getAllByTestId("find-facet-module")[0]?.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("names a lesson by its gist and a status by its words, never a slug or a stored code", async () => {
+    palette("budget");
+    const [lesson, requirement] = await screen.findAllByTestId("find-hit");
+    expect(lesson?.textContent).toContain("A follow-through queued under the old budget");
+    expect(lesson?.textContent).not.toContain("lesson-104");
+    expect(requirement?.textContent).toContain("REQ-3 Runs share a box fairly");
+    expect(within(requirement).getByTestId("find-hit-path").textContent).toBe("Execution › Requirements · In delivery");
+    const facets = await screen.findByTestId("find-facets");
+    expect(within(facets).getAllByTestId("find-facet-status").map((b) => b.textContent)).toEqual(["in force 1", "In delivery 1"]);
   });
 
   it("reads a search with no hit as a gap", async () => {

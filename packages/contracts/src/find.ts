@@ -42,6 +42,15 @@ export const FIND_TYPE_LABELS: Record<FindType, string> = {
 /** The path's first step for a hit no module holds; the pillar's Unplaced row. */
 export const FIND_UNPLACED = "Unplaced";
 
+/**
+ * The path's first step for an org ruling: its org's, every project's alike, so no module of one
+ * project can hold it and it is never that project's Unplaced (the pillar counts it in no row).
+ */
+export const FIND_ORG = "Org";
+
+/** The prefix of an org ruling's ref (`org:<id>`), beside a project entry's bare id. */
+export const FIND_ORG_REF_PREFIX = "org:";
+
 /** How a hit was found: a keyword arm, a vector arm, or a glossary alias the query named. */
 export const FIND_MATCH_ARMS = ["keyword", "semantic", "alias"] as const;
 export type FindMatchArm = (typeof FIND_MATCH_ARMS)[number];
@@ -69,8 +78,9 @@ const freeList = z
 
 /**
  * A find, as `POST /api/projects/:id/find` takes it in its body and `forge_find` in its arguments.
- * `module` takes module slugs, or `unplaced` for hits no module holds; `status` takes the statuses
- * the facets answer. `conversation` searches one room's transcript, which its own fence decides.
+ * `module` takes module slugs, `unplaced` for hits no module holds, or `org` for the org's rulings;
+ * `status` takes the statuses the facets answer. `conversation` searches one room's transcript,
+ * which its own fence decides.
  */
 export const findQuerySchema = z.strictObject({
 	q: z.string().trim().min(1).max(FIND_QUERY_MAX),
@@ -89,6 +99,9 @@ export type FindQuery = z.infer<typeof findQuerySchema>;
 
 /** The module filter's value for hits no module holds. */
 export const FIND_UNPLACED_FILTER = "unplaced";
+
+/** The module filter's value for the org's rulings. */
+export const FIND_ORG_FILTER = "org";
 
 /**
  * The module a hit is placed in: `slug` and `name` are its business module (the root of its module

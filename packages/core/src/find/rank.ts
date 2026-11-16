@@ -3,6 +3,9 @@
 // and an agent's find read this one order.
 
 import {
+  FIND_ORG,
+  FIND_ORG_FILTER,
+  FIND_ORG_REF_PREFIX,
   FIND_TYPE_LABELS,
   FIND_TYPES,
   FIND_UNPLACED,
@@ -77,6 +80,17 @@ const excerptOf = (text: string) => {
   return flat.length > EXCERPT ? `${flat.slice(0, EXCERPT - 1)}…` : flat;
 };
 
+/**
+ * The row of the map a hit stands in, as the path's first step and the module facet read it: its
+ * business module; the org for an org ruling, which no module of a project holds; else Unplaced, the
+ * pillar's row for a project record no module holds, so the two count the same records.
+ */
+export function rowOf(hit: Pick<FindHit, 'module' | 'ref'>): { value: string; label: string } {
+  if (hit.module) return { value: hit.module.slug, label: hit.module.name };
+  if (hit.ref.startsWith(FIND_ORG_REF_PREFIX)) return { value: FIND_ORG_FILTER, label: FIND_ORG };
+  return { value: FIND_UNPLACED_FILTER, label: FIND_UNPLACED };
+}
+
 /** One fused candidate as the door answers it. */
 export function hitOf(c: Fused, ctx: ShapeContext): FindHit {
   const label = ctx.placements.get(c.id);
@@ -91,7 +105,7 @@ export function hitOf(c: Fused, ctx: ShapeContext): FindHit {
     projectSlug: c.projectId ? (ctx.projectSlugs.get(c.projectId) ?? null) : null,
     module,
     status: c.status,
-    path: [module?.name ?? FIND_UNPLACED, FIND_TYPE_LABELS[c.type]],
+    path: [rowOf({ module, ref: c.ref }).label, FIND_TYPE_LABELS[c.type]],
     match: { arms: c.arms, alias: c.matchedAlias },
     score: c.score,
     open: ctx.openPath(c.id),
@@ -113,7 +127,7 @@ function facet(
   return [...counts.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
 }
 
-const moduleValue = (h: FindHit) => h.module?.slug ?? FIND_UNPLACED_FILTER;
+const moduleValue = (h: FindHit) => rowOf(h).value;
 
 /** The fused hits filtered, faceted over all of them, cut to `limit`, and grouped by type. */
 export function shapeResult(
@@ -124,7 +138,7 @@ export function shapeResult(
   const all = fused.map((c) => hitOf(c, ctx));
   const facets = {
     type: facet(all, (h) => ({ value: h.type, label: FIND_TYPE_LABELS[h.type] })),
-    module: facet(all, (h) => ({ value: moduleValue(h), label: h.module?.name ?? FIND_UNPLACED })),
+    module: facet(all, rowOf),
     status: facet(all, (h) => (h.status ? { value: h.status, label: h.status } : null)),
   };
   const kept = all

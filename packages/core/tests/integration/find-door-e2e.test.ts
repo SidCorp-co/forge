@@ -134,6 +134,18 @@ beforeAll(async () => {
   await db.execute(sql`
     INSERT INTO knowledge_relations (project_id, from_entry_id, kind, to_type, to_ref, written_agency)
     VALUES (${w.projectId}, ${rule}, 'governs', 'capability', 'run declare', 'agent')`);
+  // the org's ruling on the same subject: every project's, so no project's module or Unplaced row
+  await db.execute(sql`
+    INSERT INTO org_knowledge_entries (org_id, slug, title, body, injection)
+    VALUES ((SELECT org_id FROM projects WHERE id = ${w.projectId}), 'tuesday-trains',
+            'Trains leave on Tuesday', 'Every release train of the org leaves on a Tuesday.', 'always')`);
+  // a lesson's own title is its number; its gist is the sentence it is read by
+  await knowledge(
+    'lesson',
+    'lesson-7',
+    'L-7',
+    'Keep empty states to one or two words. Test them served.',
+  );
   const issue = await createTestIssue(w.projectId, owner.id, 1245, {
     status: 'open',
     createdAt: new Date(),
@@ -282,6 +294,37 @@ describe('criterion 4: a capability hit is pathed where the module map places it
     // the map's Capabilities branch holds the same card under the same module
     const branch = await api(w.token, 'GET', `/api/projects/${w.projectId}/modules/execution/map`);
     expect(JSON.stringify(branch.body)).toContain(card);
+  });
+});
+
+describe('criterion 4: a hit reads as the map reads it', () => {
+  it("counts the project's unplaced rules as the pillar does, the org's ruling in a row of its own", async () => {
+    const found = await find({ q: 'release train tuesday slot', type: ['rule'] });
+    const byKey = new Map(flat(found).map((h) => [h.key, h]));
+    expect(byKey.get('tuesday-trains')?.path).toEqual(['Org', 'Rules']);
+    expect(byKey.get('release-slot')?.path).toEqual(['Unplaced', 'Rules']);
+    const pillar = await api(w.token, 'GET', `/api/projects/${w.projectId}/modules/map`);
+    const unplacedRules = (pillar.body as { unplaced: { counts: { rule: number } } }).unplaced
+      .counts.rule;
+    const facet = found.facets.module.find((f) => f.value === 'unplaced');
+    expect(facet?.count, "search's Unplaced rules differ from the pillar's").toBe(unplacedRules);
+    expect(found.facets.module).toContainEqual({ value: 'org', label: 'Org', count: 1 });
+  });
+
+  it('names a lesson by its gist, on the find and on its open', async () => {
+    const [lesson] = flat(await find({ q: 'empty states words', type: ['lesson'] }));
+    expect(lesson).toMatchObject({
+      key: 'lesson-7',
+      title: 'Keep empty states to one or two words.',
+    });
+    const res = await api(
+      w.token,
+      'GET',
+      `/api/projects/${w.projectId}/find/open?id=${encodeURIComponent(lesson?.id ?? '')}`,
+    );
+    expect((res.body as unknown as FindOpened).hit.title).toBe(
+      'Keep empty states to one or two words.',
+    );
   });
 });
 

@@ -6,18 +6,19 @@
 import type { FindFacet, FindHit, FindResult } from "@forge/contracts/find";
 import { useState } from "react";
 import { PaletteGroup, PaletteItem, showToast, useDebounced } from "@/design";
-import { useCopy } from "@/lib/i18n/interface-language";
+import { useCopy, useLabel } from "@/lib/i18n/interface-language";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 import { useRouter } from "@/lib/navigation/router";
 import { cn } from "@/lib/utils/cn";
-import { FIND_FACETS, type FindFacetName, type FindFilters, findApi, NO_FILTERS, toggleFilter, walkHref } from "../find";
+import { FIND_FACETS, type FindFacetName, type FindFilters, findApi, findStatusLabel, hitHeading, NO_FILTERS, toggleFilter, walkHref } from "../find";
 import { useFind } from "../hooks";
 
 const typeLabel = (t: Copy, type: string) => t(`modules.type.${type}` as ProductCopyKey);
 
 function Facets({ result, filters, onToggle }: { result: FindResult; filters: FindFilters; onToggle: (f: FindFacetName, v: string) => void }) {
   const t = useCopy();
-  const label = (f: FindFacetName, x: FindFacet) => (f === "type" ? typeLabel(t, x.value) : x.label);
+  const word = useLabel();
+  const label = (f: FindFacetName, x: FindFacet) => (f === "type" ? typeLabel(t, x.value) : f === "status" ? findStatusLabel(word, x.value) : x.label);
   return (
     <div className="sticky top-0 z-10 flex flex-wrap gap-x-4 gap-y-1.5 border-b border-line-subtle bg-surface px-3 py-2 text-12" aria-label={t("modules.find.filters")} data-testid="find-facets">
       {FIND_FACETS.map((f) =>
@@ -47,13 +48,14 @@ function Facets({ result, filters, onToggle }: { result: FindResult; filters: Fi
 }
 
 function HitLine({ hit, t }: { hit: FindHit; t: Copy }) {
+  const word = useLabel();
   const where = [hit.path[0], hit.path[1]].join(" › ");
   return (
     <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-0.5">
-      <span className="min-w-0 flex-1 truncate font-medium max-md:basis-full">{hit.key && !hit.title.startsWith(hit.key) ? `${hit.key} ${hit.title}` : hit.title}</span>
+      <span className="min-w-0 flex-1 truncate font-medium max-md:basis-full">{hitHeading(hit)}</span>
       <span className="text-12 text-muted" data-testid="find-hit-path">
         {where}
-        {hit.status ? ` · ${hit.status}` : ""}
+        {hit.status ? ` · ${findStatusLabel(word, hit.status, hit.type)}` : ""}
       </span>
       {hit.match.alias ? <span className="basis-full text-12 text-subtle">{t("modules.find.alias", { alias: hit.match.alias })}</span> : null}
     </span>

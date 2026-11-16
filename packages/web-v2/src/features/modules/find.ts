@@ -3,9 +3,10 @@
 // query it sends, the facets it toggles, and where opening a hit walks, so a change to the contract
 // changes this file alone.
 
-import { FIND_UNPLACED_FILTER, type FindGapsView, type FindHit, type FindOpened, type FindResult } from "@forge/contracts/find";
+import { FIND_ORG_REF_PREFIX, FIND_UNPLACED_FILTER, type FindGapsView, type FindHit, type FindOpened, type FindResult, type FindType } from "@forge/contracts/find";
 import { MODULE_MAP_BRANCHES, type ModuleMapBranch } from "@forge/contracts/module-map";
 import { apiClient } from "@/lib/api/client";
+import { LABEL_GROUPS, type LabelGroup } from "@/lib/i18n/labels";
 import { nodeIdOf } from "./module-tree";
 import { treeHref } from "./pillar";
 
@@ -45,12 +46,38 @@ const isMapBranch = (t: string): t is ModuleMapBranch => (MODULE_MAP_BRANCHES as
 
 /**
  * Where opening a hit walks on the map: a record of a tree branch opens its module's tree with it
- * selected (Unplaced where no module holds it); anything else (an issue, a lesson, a conversation)
- * has no node, so null, and the hit opens where core says it is read. A requirement's node is named
+ * selected (Unplaced where no module holds it); anything else (an issue, a lesson, a conversation, an
+ * org ruling, which no project's tree holds) has no node, so null, and the hit opens where core says
+ * it is read. A requirement's node is named
  * by its key (`REQ-3`), as the tree names it, not by its row id.
  */
 export function walkHref(slug: string, hit: FindHit): string | null {
-  if (!isMapBranch(hit.type)) return null;
+  if (!isMapBranch(hit.type) || hit.ref.startsWith(FIND_ORG_REF_PREFIX)) return null;
   const ref = hit.type === "requirement" ? (hit.key ?? hit.ref) : hit.ref;
   return treeHref(slug, hit.module?.slug ?? FIND_UNPLACED_FILTER, hit.type, nodeIdOf(hit.type, ref));
+}
+
+/** The types whose key is what a person calls the record (`ISS-12`, `REQ-3`, `FB-7`); any other key is a slug or an id. */
+const SAID_KEYS: ReadonlySet<FindType> = new Set(["issue", "requirement", "feedback"]);
+
+/** A hit's line as a person reads it: its key where people say it, then its title. */
+export function hitHeading(hit: FindHit): string {
+  return hit.key && SAID_KEYS.has(hit.type) && !hit.title.startsWith(hit.key) ? `${hit.key} ${hit.title}` : hit.title;
+}
+
+/** The contract vocabulary each type's status is a value of. */
+const STATUS_GROUPS: Partial<Record<FindType, LabelGroup>> = { issue: "issueStatus", requirement: "requirementState", feedback: "feedbackPhase" };
+
+/**
+ * A status as a person reads it (`in_delivery` → In delivery), never its stored code: read in its
+ * type's vocabulary, or on a facet, which counts every type, in the first vocabulary holding it. A
+ * work step (`in_progress:test`) reads as its status. A status no vocabulary holds is already words
+ * (`in force`, `recheck owed`).
+ */
+export function findStatusLabel(label: (group: LabelGroup, value: string) => string, value: string, type?: FindType): string {
+  const owner = type ? STATUS_GROUPS[type] : undefined;
+  const groups = owner ? [owner] : Object.values(STATUS_GROUPS);
+  const status = value.split(":")[0] ?? value;
+  const group = groups.find((g) => status in LABEL_GROUPS[g]);
+  return group ? label(group, status) : value.replace(/_/g, " ");
 }

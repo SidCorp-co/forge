@@ -4,6 +4,7 @@
 // the one knowledge recall: the knowledge search route and `forge_knowledge search` read it through
 // `recall-filter.ts`, and a retired, superseded or withdrawn entry is never one of its hits.
 
+import { FIND_ORG_REF_PREFIX } from '@forge/contracts/find';
 import {
   type KnowledgeHit,
   keywordOrgRecall,
@@ -12,6 +13,7 @@ import {
   searchKnowledge,
   semanticOrgRecall,
 } from '../knowledge/index.js';
+import { gistOf } from '../lessons/index.js';
 import { fuseHybrid } from '../lib/search-fusion.js';
 import { type Candidate, hitId } from './candidate.js';
 
@@ -56,16 +58,23 @@ export async function semanticKnowledge(
 
 const TYPE_OF_KIND = { glossary: 'term', rule: 'rule', lesson: 'lesson' } as const;
 
+/**
+ * The title a knowledge hit is read by: a lesson's own is only its number (`L-104`), so it is named by
+ * its gist, the first sentence the lessons map names it by; every other entry by its title.
+ */
+export const knowledgeTitle = (e: { kind: string; title: string; body: string }) =>
+  e.kind === 'lesson' ? gistOf(e.body) || e.title : e.title;
+
 /** A knowledge hit as the door ranks it. */
 export function knowledgeCandidate(h: KnowledgeRecallHit, arm: Candidate['arm']): Candidate {
   const org = h.origin === 'org';
   const type = org ? 'rule' : (TYPE_OF_KIND[h.kind as keyof typeof TYPE_OF_KIND] ?? 'knowledge');
   return {
-    id: hitId(type, org ? `org:${h.id}` : h.id),
+    id: hitId(type, org ? `${FIND_ORG_REF_PREFIX}${h.id}` : h.id),
     type,
-    ref: org ? `org:${h.id}` : h.id,
+    ref: org ? `${FIND_ORG_REF_PREFIX}${h.id}` : h.id,
     key: h.slug,
-    title: h.title,
+    title: org ? h.title : knowledgeTitle(h),
     text: h.body,
     projectId: org ? null : h.projectId,
     status: h.recheckDue ? 'recheck owed' : 'in force',
