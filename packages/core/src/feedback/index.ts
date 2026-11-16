@@ -5,6 +5,7 @@ export {
   attachToFiled,
   feedbackAttachmentOf,
 } from './attachments.js';
+export { FEEDBACK_REST_CARDS } from './cards.js';
 export { feedbackTriageRecord } from './checklist-record.js';
 export { meetRoomConfirmWaits, type RoomMessage, setConfirmWait } from './confirm-wait.js';
 export type { ConfirmWaitRequest } from './confirm-wait-facts.js';
