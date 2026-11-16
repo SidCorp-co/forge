@@ -59,6 +59,7 @@ describe('REQ-77 BC-12, ISS-1246: an agent asks the owner in the technical chann
     )[0]?.n ?? 0;
 
   it('posts the question in the technical channel alone; only the owner’s reply there answers it, to the session and the issue', async () => {
+    const restart = 'May I restart the worker during business hours?';
     let asked: Record<string, unknown> = {};
     const before = threadLinesNow('');
     const thread = await w.hear(
@@ -74,11 +75,9 @@ describe('REQ-77 BC-12, ISS-1246: an agent asks the owner in the technical chann
     );
     expect(asked.isError, JSON.stringify(asked)).toBe(false);
     expect(asked).toMatchObject({ mentioned: false, record: w.issueKey });
-    // ISS-1246: posted in the project's technical channel and in no other room, the asker's included
-    const line = askLine('May I restart the worker during business hours?');
-    // ISS-1249: the project's name, then the agent's words; where it came from is the record's alone
-    expect(line.text).toBe(await askedAs('May I restart the worker during business hours?'));
-    expect([chat.rid, thread.id].filter((id) => line.text.includes(id))).toEqual([]);
+    // ISS-1246, ISS-1249: in the technical channel alone, the project's name then the agent's words
+    const line = askLine(restart);
+    expect(line.text).toBe(`${w.projectName} asks: ${restart}`);
     expect(threadLinesNow('')).toBe(before);
     const [routed] = await rows<{ output: { rid: string; channel: string } }>(sql`
       SELECT output FROM support_actions
@@ -234,14 +233,6 @@ describe('REQ-77 BC-12, ISS-1246: an agent asks the owner in the technical chann
     expect(JSON.stringify(none)).toContain('names no owner');
   });
 });
-
-/** The whole line an ask of `question` is posted as: the project's name, the lead, the words. */
-async function askedAs(question: string): Promise<string> {
-  const [p] = await rows<{ name: string }>(
-    sql`SELECT name FROM projects WHERE id = ${w.projectId}::uuid`,
-  );
-  return `${p?.name} asks: ${question}`;
-}
 
 /** How many lines the bot has posted in all, for a before and after. */
 function threadLinesNow(_thread: string): number {

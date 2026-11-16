@@ -107,9 +107,7 @@ describe('ISS-1243 item 23: what waits on the owner, raised by the agent once pe
     const dm = chat.linesIn('D-alice').filter((l) => l.text.includes('size M'));
     expect(dm).toHaveLength(1);
     // ISS-1249: a plain lead naming the project, and neither the room's nor the owed- thread's id
-    const project = (
-      await rows<{ name: string }>(sql`SELECT name FROM projects WHERE id = ${w.projectId}::uuid`)
-    )[0]?.name;
+    const project = w.projectName;
     expect(dm[0]?.text).toBe(
       `${project} xin duyệt: Anh ơi, run hỏi: ship rule in size M trước khi sync catalog không? Em đề xuất: có.`,
     );

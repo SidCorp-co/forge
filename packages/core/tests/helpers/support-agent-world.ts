@@ -38,6 +38,8 @@ export class AgentWorld extends ChannelWorld {
   home = '';
   issueKey = '';
   issueId = '';
+  /** The project's name as its people know it, which a line in its technical channel opens with. */
+  readonly projectName = 'Catalog';
 
   /** The world started, bound as a channel agent over both groups, and its records seeded. */
   async openAgent(): Promise<void> {
@@ -54,6 +56,10 @@ export class AgentWorld extends ChannelWorld {
         },
       },
     });
+    // a factory project's name carries its id's hex, which no screened line may (ISS-1249)
+    await rows(
+      sql`UPDATE projects SET name = ${this.projectName} WHERE id = ${this.projectId}::uuid`,
+    );
     await this.bindTarget({
       rids: [this.stand.rid, this.stand.rid2],
       agent: agentBlock([this.devTarget], this.stand.rid),

@@ -186,9 +186,7 @@ describe('ISS-873: a parked question in a channel agent project posts nothing by
 
   it('asks the owner once, in plain words, in the technical channel alone; his reply to its line there answers it', async () => {
     const DM = 'D-alice';
-    const project = (
-      await rows<{ name: string }>(sql`SELECT name FROM projects WHERE id = ${w.projectId}::uuid`)
-    )[0]?.name;
+    const project = w.projectName;
     const asks = () => chat.linesIn(DM).filter((l) => l.text.startsWith(`${project} hỏi: `));
     const inGroups = [...chat.linesIn(chat.rid), ...chat.linesIn(chat.rid2)].length;
     const first = await parked('Should the banner rotate?');
