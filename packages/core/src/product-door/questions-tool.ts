@@ -3,13 +3,19 @@
 // a reply). Every action calls what its REST route calls, including who may answer with a token
 // (`questions/answer-door.ts`).
 
+import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
 import { QUESTIONS_TOOL_ACTIONS } from '@forge/contracts/mcp-product';
 import { QUESTION_STATUSES } from '@forge/contracts/question-machine';
 import { z } from 'zod';
 import { postIssueComment } from '../comments/index.js';
 import { readIssueForecast } from '../forecast/index.js';
 import { findIssueById, issueDisplayIds, resolveIssueRouteRef } from '../issues/index.js';
-import { type ContextScopedMcpToolFactory, type McpContext, zodToMcpSchema } from '../lib/tool.js';
+import {
+  type ContextScopedMcpToolFactory,
+  type McpContext,
+  sourceOf,
+  zodToMcpSchema,
+} from '../lib/tool.js';
 import { need, readingArgument } from '../lib/tool-args.js';
 import { byRule, onArg, onResolved } from '../permissions/index.js';
 import {
@@ -60,6 +66,96 @@ const DESCRIPTION = `Questions waiting on a person, the person's answer to one, 
 - action=get { projectId, questionId }: one question with every round, and \`progress\`: the issue it parks, whether work on it is running, and when it is likely done once answered.
 - action=answer { projectId, questionId, round, optionId | text, note?, stillWaits? }: ${ANSWER_SHAPE}. Answer only with what the person told you in this conversation, in their words; never answer on your own reading of the question, its recommendation or the code, and when they have not said, ask them. The answer is theirs, recorded with this token and this client: it answers a question a person owes, within what they could answer signed in, and is refused PERMISSION_FORBIDDEN naming the permission an option takes that they do not hold. A question blocked on another agent is that agent's to answer: QUESTION_BLOCKED_ON_AGENT. QUESTION_NOT_OPEN: it is already answered. QUESTION_ROUND_STALE: get it again and show them the new round.
 - action=ask { projectId, issue, body, parentId? }: raise your own question on an issue, as a question comment the agent working it owes a reply. To question a requirement or report a problem, use Feedback or the requirement instead: an issue is delivery work, and a question there is about that work.`;
+
+/**
+ * When a person's client reaches for the questions (ISS-1251), from the answer door's refusals and
+ * the defects that shaped it (ISS-540, ISS-1003, ISS-869, ISS-257, FB-181).
+ */
+const CARDS = {
+  list: {
+    purpose:
+      'Lists the questions owed an answer in a project, or on one issue, each with its options.',
+    situations: [
+      {
+        when: 'a person asks what is being asked of them or of the project, or why an issue sits waiting for information',
+        do: 'list the open questions (issue narrows to one issue) and put each with its prompt, its options and the recommended one',
+      },
+    ],
+    practice: [
+      'It lists every open question in the project, whoever owes it; what waits on the person themself is project.needs_you.',
+      'Page with nextCursor while hasMore; a locked option is one the person may not choose.',
+    ],
+    example: { projectId: '<project uuid>', issue: 'ISS-12' },
+    audience: ['person'],
+    changed: { on: '2026-11-16', by: 'ISS-1251' },
+  },
+  get: {
+    purpose: 'Reads one question with every round, and the progress of the issue it parks.',
+    situations: [
+      {
+        when: 'a person is about to answer a question, or asks what happens to the work once they do',
+        do: 'get it and show the latest round’s prompt and options, and progress: whether work runs and when it is likely done once answered',
+      },
+      {
+        when: 'an answer was refused QUESTION_ROUND_STALE',
+        do: 'get it again and show the person the new round before they answer',
+      },
+    ],
+    practice: ['Answer the round get shows last; an earlier round is history.'],
+    example: { projectId: '<project uuid>', questionId: '<question uuid>' },
+    audience: ['person'],
+    changed: { on: '2026-11-16', by: 'ISS-1251' },
+  },
+  answer: {
+    purpose: 'Records the answer a person gave you to a question they owe, as their own word.',
+    situations: [
+      {
+        when: 'the person you work for has told you, in this conversation, their answer to a question they owe',
+        do: 'answer with the round you showed them and their option or their words as text; a note carries their why',
+      },
+      {
+        when: 'the person rules the issue must keep waiting after the answer, behind other work',
+        do: 'answer with stillWaits { reason, blockedBy? }, so the answer does not send it back to work',
+      },
+    ],
+    practice: [
+      'The answer is recorded as the person’s, with this token and client; you answer only what they owe.',
+      'QUESTION_BLOCKED_ON_AGENT is another agent’s to answer; QUESTION_NOT_OPEN is already answered: read it, do not retry.',
+    ],
+    example: {
+      projectId: '<project uuid>',
+      questionId: '<question uuid>',
+      round: 1,
+      optionId: '<option id>',
+      note: 'as said in our call: keep it to the web app first',
+    },
+    // FB-181 (an agent credential answered a questionnaire addressed to a person) and answer-door.ts's
+    // QUESTION_TOKEN_NOT_OWN / QUESTION_OWED_BY_PERSON, written so an answer is the word of whoever owes it
+    redFlag:
+      'Answering with the recommended option, or your own reading of the question, before the person has said: it is recorded as their word. Ask them and wait.',
+    audience: ['person'],
+    changed: { on: '2026-11-16', by: 'ISS-1251' },
+  },
+  ask: {
+    purpose: 'Raises a person’s own question on an issue, owed a reply by the agent working it.',
+    situations: [
+      {
+        when: 'a person following an issue wants to ask the agent building it something about that work',
+        do: 'ask on the issue in their words; the agent working it owes a reply in its thread',
+        watch:
+          'a doubt about what is wanted goes to the requirement, and a problem a user hit to Feedback, not to an issue',
+      },
+    ],
+    practice: ['Pass parentId to reply under the comment it is about, so the thread stays one.'],
+    example: {
+      projectId: '<project uuid>',
+      issue: 'ISS-12',
+      body: 'Does this change the export for existing users too?',
+    },
+    audience: ['person'],
+    changed: { on: '2026-11-16', by: 'ISS-1251' },
+  },
+} satisfies Record<(typeof QUESTIONS_TOOL_ACTIONS)[number], CapabilityCardBody>;
 
 function page(i: Input) {
   return { limit: i.limit ?? 50, cursor: i.cursor };
@@ -195,6 +291,8 @@ export const forgeQuestionsTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_questions',
   description: DESCRIPTION,
   inputSchema: zodToMcpSchema(input),
+  cards: CARDS,
+  source: sourceOf(import.meta.url),
   reach: 'project',
   route: ['/api/questions', '/api/issues'],
   grant: {

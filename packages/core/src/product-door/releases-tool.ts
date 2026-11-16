@@ -2,6 +2,7 @@
 // the two acts taken on one — naming it, and deciding the approval it waits on. Every action
 // calls the service its REST route calls (`release-batch/version-routes.ts`, `release-page/routes.ts`).
 
+import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
 import { RELEASES_TOOL_ACTIONS } from '@forge/contracts/mcp-product';
 import { ReleaseNamingSchema } from '@forge/contracts/release-notes';
 import { RELEASE_STATES, type ReleaseState, type ReleaseSummary } from '@forge/contracts/releases';
@@ -9,7 +10,12 @@ import { z } from 'zod';
 import { readDraftReleaseForecast } from '../forecast/index.js';
 import { egressAs } from '../lib/data-egress.js';
 import { RefusalError } from '../lib/refusal.js';
-import { type ContextScopedMcpToolFactory, type McpContext, zodToMcpSchema } from '../lib/tool.js';
+import {
+  type ContextScopedMcpToolFactory,
+  type McpContext,
+  sourceOf,
+  zodToMcpSchema,
+} from '../lib/tool.js';
 import { need } from '../lib/tool-args.js';
 import { bodyRefusal } from '../middleware/zod-validator.js';
 import { byRule, holds, onArg, requireDeclaredOn } from '../permissions/index.js';
@@ -60,6 +66,120 @@ const DESCRIPTION = `A project's releases: what shipped, what is drafted, what w
 - action=page { projectId, version, view? }: the release page a reader reads (user view, or developer for the technical notes).
 - action=name { projectId, version, name, summary }: name a drafted or cut release. Needs project admin, as cutting does.
 - action=decide { projectId, version, decision: approve | return, reason?, carry? }: decide the approval request the release run is waiting on, or, on a project that declares no production and so cuts no run, the drafted release itself. It needs releases.approve on the project, whoever holds it, and an approval is judged by the release approval checklist (refused CHECKLIST_INCOMPLETE naming the gap). An approval may carry unproven criteria by the approver's word: \`carry: [{ issue: "ISS-n", n, why }]\` or \`carry: { all: true, why }\`; each carried criterion is recorded on the approval and stays owed after the release, one not carried still refuses, and one proven or not on the release is refused RELEASE_CARRY_PROVEN or RELEASE_CARRY_UNKNOWN. A return must say why and carries nothing. Read the release (get) before you decide, and decide only when the person asked you to.`;
+
+/**
+ * When a product role reaches for the releases (ISS-1251), from how releases were read and decided
+ * over MCP and the defects that shaped the acts (ISS-914, ISS-869, ISS-1189, ISS-1187, ISS-535, ISS-590).
+ */
+const CARDS = {
+  list: {
+    purpose:
+      'Lists a project’s releases newest first: what shipped, the draft, and whom each waits on.',
+    situations: [
+      {
+        when: 'a person asks what shipped lately, what is live, or what the next release holds and when',
+        do: 'list and answer from each release’s state, issue count and progress; the draft’s progress says when it is likely out',
+      },
+      {
+        when: 'a person asks what release waits on them',
+        do: 'list with state awaiting_approval and read whom each waits on',
+      },
+    ],
+    practice: [
+      'A release’s issues and proof are releases.get’s; say a date only as the progress gives it.',
+    ],
+    example: { projectId: '<project uuid>', state: 'shipped', limit: 5 },
+    audience: ['person'],
+    changed: { on: '2026-11-16', by: 'ISS-1251' },
+  },
+  get: {
+    purpose:
+      'Reads one release in full: what users get, its issues and proof, what blocks it, its approval.',
+    situations: [
+      {
+        when: 'a person asks what a release brings, which issues it carries, or why it does not go out',
+        do: 'get it by version and answer from its notes, its issues with their proof, and what stands in the way',
+      },
+      {
+        when: 'you are asked to approve or return a release',
+        do: 'get it first and show the person what it carries and what is unproven before they decide',
+      },
+      {
+        // ISS-1189: the bot said no release record existed while the release list held the shipped one
+        when: 'another answer (the bot’s, a status line) says a release has no record or shipped nothing',
+        do: 'get that version and say what its record holds',
+      },
+    ],
+    practice: [
+      'Read the version a person names; project.status sends a release without its issue list.',
+    ],
+    example: { projectId: '<project uuid>', version: '0.3.0' },
+    audience: ['person'],
+    changed: { on: '2026-11-16', by: 'ISS-1251' },
+  },
+  page: {
+    purpose:
+      'Reads the release page as a reader reads it: user notes, or the developer’s technical ones.',
+    situations: [
+      {
+        when: 'a person wants to read or pass on what a release does, in the words users get',
+        do: 'read the page with the user view; developer adds the technical notes',
+      },
+    ],
+    practice: ['The page is written for its reader; for proof and blockers read releases.get.'],
+    example: { projectId: '<project uuid>', version: '0.3.0', view: 'user' },
+    audience: ['person'],
+    changed: { on: '2026-11-16', by: 'ISS-1251' },
+  },
+  name: {
+    purpose: 'Names a drafted or cut release and says in a few sentences what it brings.',
+    situations: [
+      {
+        when: 'a project admin asks you to name a release, or its page says it waits on its naming',
+        do: 'read releases.get, then name it in a few words with two or three sentences on what users get',
+        watch:
+          'it needs project admin, as cutting does; a person without it is refused, so say who can',
+      },
+    ],
+    practice: ['Name what users get, not the issue list or the version.'],
+    example: {
+      projectId: '<project uuid>',
+      version: '0.3.0',
+      name: 'Faster checkout',
+      summary: 'Checkout takes one page instead of three. Saved cards fill themselves in.',
+    },
+    audience: ['person'],
+    changed: { on: '2026-11-16', by: 'ISS-1251' },
+  },
+  decide: {
+    purpose: 'Approves or returns the release a person is asked to approve, as their decision.',
+    situations: [
+      {
+        when: 'the person who approves releases tells you to approve or return one',
+        do: 'read releases.get, then decide with their reason in their words; a return must say why',
+      },
+      {
+        // ISS-914: releases.decide approve was refused CHECKLIST_INCOMPLETE on 481 unproven criteria
+        when: 'an approval is refused CHECKLIST_INCOMPLETE on criteria not proven, and the person accepts shipping them unproven',
+        do: 'decide approve again with carry naming each criterion and their why, or { all: true, why } when they said all',
+        watch:
+          'each carried criterion stays owed after the release; a proven or unknown one is refused by name',
+      },
+    ],
+    practice: [
+      'Decide only when the person asked you to; it needs releases.approve on the project.',
+      'On a project with no production the drafted release itself is what is decided.',
+    ],
+    example: {
+      projectId: '<project uuid>',
+      version: '0.3.0',
+      decision: 'approve',
+      reason: 'Checked the notes with the team; ship it.',
+    },
+    audience: ['person'],
+    changed: { on: '2026-11-16', by: 'ISS-1251' },
+  },
+} satisfies Record<(typeof RELEASES_TOOL_ACTIONS)[number], CapabilityCardBody>;
 
 async function viewerFactsOf(ctx: McpContext, projectId: string): Promise<ViewerFacts> {
   const access = await readAccess(ctx, projectId);
@@ -198,6 +318,8 @@ export const forgeReleasesProductTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_releases',
   description: DESCRIPTION,
   inputSchema: zodToMcpSchema(input),
+  cards: CARDS,
+  source: sourceOf(import.meta.url),
   reach: 'project',
   route: '/api/projects',
   grant: {
