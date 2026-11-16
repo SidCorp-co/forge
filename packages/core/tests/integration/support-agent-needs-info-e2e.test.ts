@@ -9,6 +9,7 @@ vi.hoisted(() => {
 
 import { db } from '../../src/db/client.js';
 import type { QuestionOption } from '../../src/db/schema-questions.js';
+import { ROOM_AGENT_GUIDE } from '../../src/guides/room-agent-guide.js';
 import {
   addProjectMember,
   createTestIssue,
@@ -19,6 +20,7 @@ import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 import { refusalCodes, SupportWorld, type Turn } from '../helpers/support-world.js';
 
 /**
+ * @direct-test-of packages/core/src/guides/room-agent-guide.ts
  * @direct-test-of packages/core/src/support/ops-waiting.ts
  * @direct-test-of packages/core/src/support/ops-reads.ts
  * @direct-test-of packages/core/src/support/tool.ts
@@ -229,8 +231,11 @@ describe('ISS-877: a channel agent reads what a parked issue waits on, and from 
     const { forgeSupportTool } = await import('../../src/support/tool.js');
     const tool = forgeSupportTool({} as Parameters<typeof forgeSupportTool>[0]);
     expect(tool.description).toContain("a parked issue's `waiting` says who owes what");
-    // the brief the session was opened with points at it, one clause and no more
-    const briefed = w.box.turns.map((t) => t.text).join('\n');
+    // the brief the session was opened with names the room agent's guide, which points at it, one
+    // clause and no more (ISS-1251: the brief is a map, its detail the guide)
+    const opened = w.box.turns.map((t) => t.text).join('\n');
+    expect(opened).toContain('support.guide {}');
+    const briefed = `${opened}\n${ROOM_AGENT_GUIDE.body}`;
     expect(briefed).toContain(
       "support.issues (a parked issue's `waiting`: who owes it, the open question and its options;",
     );
