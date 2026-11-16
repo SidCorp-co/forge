@@ -1,14 +1,16 @@
 /**
  * What the capabilities page reads beside a project's door use (ISS-1251 §7): the reports this
  * project's agents filed on a door (`forge-door/door-report.ts`, one feedback item per door and verdict
- * under `door:<verdict>:<door>`, each report an occurrence) and the live lessons anchored to a card
- * (`card:<id>`, `lessons/anchors.ts`). Door use, piles and the cards themselves are `door-use.ts` and
- * `piles.ts`'s; this read counts only what those leave out, over logs Forge already keeps.
+ * under `door:<verdict>:<door>`, each report an occurrence), the live lessons anchored to a card
+ * (`card:<id>`, `lessons/anchors.ts`) and each card's freshness (`lessons/card-freshness.ts`). Door
+ * use, piles and the cards themselves are `door-use.ts` and `piles.ts`'s; this read answers only what
+ * those leave out, over records Forge already keeps.
  */
 
 import {
   type CapabilitiesView,
   type CapabilityFeedbackRow,
+  type CapabilityFreshnessRow,
   type CapabilityLessonRow,
   capabilitiesQuerySchema,
 } from '@forge/contracts/capabilities';
@@ -17,6 +19,7 @@ import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../db/client.js';
+import { type CardFreshness, cardFreshness } from '../lessons/index.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requiresOnParam } from '../permissions/index.js';
@@ -98,21 +101,43 @@ async function lessonRows(projectId: string): Promise<CapabilityLessonRow[]> {
   }));
 }
 
+/**
+ * A card's freshness as this project may read it: the re-check and the scenarios' outcomes (cards are
+ * Forge's, shared by every project), and only the deltas this project's own lessons proposed.
+ */
+export function freshnessFor(
+  projectId: string,
+  rows: readonly CardFreshness[],
+): CapabilityFreshnessRow[] {
+  return rows
+    .map((r) => ({
+      card: r.cardId,
+      recheckOwed: r.recheckOwed ? { since: r.recheckOwed.since } : null,
+      scenarios: r.scenarios.map((s) => ({ name: s.name, passed: s.passed, at: s.at })),
+      proposed: r.proposedDeltas
+        .filter((d) => d.projectId === projectId)
+        .map((d) => ({ field: d.field, text: d.text })),
+    }))
+    .filter((r) => r.recheckOwed || r.scenarios.length > 0 || r.proposed.length > 0);
+}
+
 export async function readCapabilities(
   projectId: string,
   days: number,
   now: Date = new Date(),
 ): Promise<CapabilitiesView> {
   const since = new Date(now.getTime() - days * DAY_MS);
-  const [reports, lessons] = await Promise.all([
+  const [reports, lessons, freshness] = await Promise.all([
     reportRows(projectId, since),
     lessonRows(projectId),
+    cardFreshness(),
   ]);
   return {
     projectId,
     window: { days, since: since.toISOString(), until: now.toISOString() },
     feedback: tallyReports(reports),
     lessons,
+    freshness: freshnessFor(projectId, freshness),
     limits: CAPABILITIES_LIMITS,
   };
 }

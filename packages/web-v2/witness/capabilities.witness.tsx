@@ -89,6 +89,10 @@ const EXTRA: CapabilitiesView = {
   window: USE.window,
   feedback: [{ door: "support.reply", reports: 2, byVerdict: { unclear: 2 }, lastAt: "2026-11-15T00:00:00Z" }],
   lessons: [{ card: "memory.search", number: 7, sentence: "Search memory before designing a fix", status: "approved", invalid: true, invalidBy: "a landing touched memory search", applied: 3, lastAppliedAt: null }],
+  freshness: [
+    { card: "memory.search", recheckOwed: { since: "2026-11-16T02:00:00Z" }, scenarios: [], proposed: [] },
+    { card: "support.reply", recheckOwed: null, scenarios: [{ name: "a stranger writes", passed: true, at: "2026-11-16T02:00:00Z" }, { name: "a member returns", passed: false, at: "2026-11-16T02:00:00Z" }], proposed: [{ field: "redFlag", text: "Replying before reading the member" }] },
+  ],
   limits: [],
 };
 

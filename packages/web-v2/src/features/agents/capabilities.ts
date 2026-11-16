@@ -3,7 +3,7 @@
 // it. A door no agent called over the window is never neutral: it stands "unused", which the page reads
 // as teach better, redesign or delete (design §5).
 
-import type { CapabilitiesView, CapabilityFeedbackRow, CapabilityLessonRow } from "@forge/contracts/capabilities";
+import type { CapabilitiesView, CapabilityFeedbackRow, CapabilityFreshnessRow, CapabilityLessonRow } from "@forge/contracts/capabilities";
 import type { DoorUseRow, PileRow } from "@forge/contracts/door-use";
 import type { LegendTone } from "@/design";
 
@@ -47,11 +47,12 @@ export interface CapDoor {
   standing: CapStanding;
   feedback: CapabilityFeedbackRow | null;
   lessons: CapabilityLessonRow[];
+  freshness: CapabilityFreshnessRow | null;
 }
 
-export function standingOf(row: DoorUseRow, feedback: CapabilityFeedbackRow | null, lessons: readonly CapabilityLessonRow[]): CapStanding {
+export function standingOf(row: DoorUseRow, feedback: CapabilityFeedbackRow | null, lessons: readonly CapabilityLessonRow[], freshness: CapabilityFreshnessRow | null = null): CapStanding {
   if (row.calls === 0) return "unused";
-  if (lessons.some((l) => l.invalid)) return "recheck";
+  if (freshness?.recheckOwed || lessons.some((l) => l.invalid)) return "recheck";
   if (row.refused * MISUSE_SHARE >= row.calls || (feedback?.reports ?? 0) > 0) return "misused";
   if (!row.card) return "untaught";
   return "inUse";
@@ -60,12 +61,14 @@ export function standingOf(row: DoorUseRow, feedback: CapabilityFeedbackRow | nu
 /** Every door joined with its reports and card lessons, each read where it stands. */
 export function capDoorsOf(doors: readonly DoorUseRow[], extra: CapabilitiesView | undefined): CapDoor[] {
   const feedback = new Map((extra?.feedback ?? []).map((f) => [f.door, f]));
+  const fresh = new Map((extra?.freshness ?? []).map((f) => [f.card, f]));
   const lessons = new Map<string, CapabilityLessonRow[]>();
   for (const l of extra?.lessons ?? []) lessons.set(l.card, [...(lessons.get(l.card) ?? []), l]);
   return doors.map((row) => {
     const f = feedback.get(row.door) ?? null;
     const ls = lessons.get(row.door) ?? [];
-    return { row, standing: standingOf(row, f, ls), feedback: f, lessons: ls };
+    const fr = fresh.get(row.door) ?? null;
+    return { row, standing: standingOf(row, f, ls, fr), feedback: f, lessons: ls, freshness: fr };
   });
 }
 

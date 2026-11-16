@@ -2,7 +2,7 @@
 // and verdict, add a door's verdicts together, and drop a key that is no door report.
 
 import { describe, expect, it } from 'vitest';
-import { doorReportKey, tallyReports } from './capabilities.js';
+import { doorReportKey, freshnessFor, tallyReports } from './capabilities.js';
 
 describe('a door report key', () => {
   it('reads the door and verdict, a REST door with its spaces and colons kept', () => {
@@ -45,5 +45,52 @@ describe('the door report tally', () => {
         lastAt: '2026-11-14T01:00:00.000Z',
       },
     ]);
+  });
+});
+
+describe("a card's freshness as a project reads it", () => {
+  const at = '2026-11-16T01:00:00.000Z';
+  const delta = (projectId: string | null, text: string) => ({
+    id: text,
+    field: 'redFlag' as const,
+    op: 'add' as const,
+    text,
+    replaces: null,
+    fromLesson: 'L-1',
+    projectId,
+    at,
+  });
+
+  it('keeps the re-check and the scenarios, and only the deltas this project proposed', () => {
+    const rows = freshnessFor('p1', [
+      {
+        cardId: 'support.member',
+        recheckOwed: { since: at, by: 'ISS-75 changed card:support.member' },
+        scenarios: [
+          { name: 'stranger writes', passed: false, change: 'L-3 fold', reason: 'r', at },
+        ],
+        proposedDeltas: [delta('p1', 'ours'), delta('p2', 'theirs'), delta(null, 'nobody')],
+      },
+    ]);
+    expect(rows).toEqual([
+      {
+        card: 'support.member',
+        recheckOwed: { since: at },
+        scenarios: [{ name: 'stranger writes', passed: false, at }],
+        proposed: [{ field: 'redFlag', text: 'ours' }],
+      },
+    ]);
+  });
+
+  it('leaves out a card with nothing left to say for this project', () => {
+    const rows = freshnessFor('p1', [
+      {
+        cardId: 'support.rule',
+        recheckOwed: null,
+        scenarios: [],
+        proposedDeltas: [delta('p2', 'theirs')],
+      },
+    ]);
+    expect(rows).toEqual([]);
   });
 });

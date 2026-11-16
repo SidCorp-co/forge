@@ -45,8 +45,10 @@ describe("where a door stands", () => {
     expect(standingOf(door({ calls: 0, byAgent: {} }), report, [lesson({ invalid: true })])).toBe("unused");
   });
 
-  it("owes a re-check where a landing touched one of its card's lessons", () => {
+  it("owes a re-check where a landing touched one of its card's lessons, or its card", () => {
     expect(standingOf(door(), null, [lesson(), lesson({ number: 8, invalid: true })])).toBe("recheck");
+    expect(standingOf(door(), null, [], { card: "support.member", recheckOwed: { since: "2026-11-16T00:00:00.000Z" }, scenarios: [], proposed: [] })).toBe("recheck");
+    expect(standingOf(door(), null, [], { card: "support.member", recheckOwed: null, scenarios: [], proposed: [] })).toBe("inUse");
   });
 
   it("is used badly at a quarter of its calls refused, or one report; just under a quarter is not", () => {
@@ -66,6 +68,7 @@ describe("where a door stands", () => {
       window: { days: 30, since: "", until: "" },
       feedback: [report],
       lessons: [lesson()],
+      freshness: [],
       limits: [],
     });
     expect(doors.map((d) => [d.row.door, d.standing, d.lessons.length])).toEqual([

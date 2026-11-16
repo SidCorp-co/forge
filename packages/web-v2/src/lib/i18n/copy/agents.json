@@ -477,6 +477,12 @@
     "agents.cap.why.unused": "Uncalled for 30 days",
     "agents.tab.capabilities": "Capabilities",
     "agents.cap.inMap": "In map",
-    "agents.cap.bySituation": "By situation only"
+    "agents.cap.bySituation": "By situation only",
+    "agents.cap.recheckSince": "Owed since {date}",
+    "agents.cap.recheckClear": "Not owed",
+    "agents.cap.scenariosPass": "{n} of {total} pass",
+    "agents.cap.scenariosUnrun": "Not replayed",
+    "agents.cap.scenariosNone": "None written",
+    "agents.cap.lesson.folded": "Awaiting code"
   }
 }

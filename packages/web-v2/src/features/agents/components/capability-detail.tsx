@@ -88,9 +88,16 @@ function Reports({ d }: { d: CapDoor }) {
 
 function Lessons({ d }: { d: CapDoor }) {
   const t = useCopy();
-  if (d.lessons.length === 0) return <FactsEmpty>{t("agents.cap.noLessons")}</FactsEmpty>;
+  const proposed = d.freshness?.proposed ?? [];
+  if (d.lessons.length === 0 && proposed.length === 0) return <FactsEmpty>{t("agents.cap.noLessons")}</FactsEmpty>;
   return (
     <ul className="grid gap-2" data-testid="cap-lessons">
+      {proposed.map((p) => (
+        <li key={`${p.field}:${p.text}`} className="flex items-start gap-2 text-13 text-fg">
+          <span className="min-w-0 flex-1">{p.text}</span>
+          <StatusChip tone="run" label={t("agents.cap.lesson.folded")} />
+        </li>
+      ))}
       {d.lessons.map((l) => (
         <li key={l.number} className="flex items-start gap-2 text-13 text-fg">
           <span className="min-w-0 flex-1">{l.sentence}</span>
@@ -105,6 +112,16 @@ function Lessons({ d }: { d: CapDoor }) {
   );
 }
 
+function Scenarios({ d }: { d: CapDoor }) {
+  const t = useCopy();
+  const runs = d.freshness?.scenarios ?? [];
+  if (runs.length > 0) {
+    const passed = runs.filter((r) => r.passed).length;
+    return <StatusChip tone={passed === runs.length ? "ready" : "err"} label={t("agents.cap.scenariosPass", { n: passed, total: runs.length })} reason={runs.filter((r) => !r.passed).map((r) => r.name).join(" · ") || null} />;
+  }
+  return <span className="text-subtle">{(d.row.card?.scenarios.length ?? 0) > 0 ? t("agents.cap.scenariosUnrun") : t("agents.cap.scenariosNone")}</span>;
+}
+
 function CardFreshness({ d }: { d: CapDoor }) {
   const t = useCopy();
   const time = useTimeFormat();
@@ -112,10 +129,16 @@ function CardFreshness({ d }: { d: CapDoor }) {
   return (
     <div className="grid" data-testid="cap-card">
       <Fact label={t("agents.cap.changed")}>{card?.changed ? <span title={card.changed.by}>{time.date(card.changed.on)}</span> : <NotYet />}</Fact>
-      <Fact label={t("agents.cap.recheck")}>
-        <NotYet />
+      <Fact label={t("agents.cap.recheck")} testId="cap-recheck">
+        {d.freshness?.recheckOwed ? (
+          <StatusChip tone="blocked" label={t("agents.cap.recheckSince", { date: time.date(d.freshness.recheckOwed.since) })} />
+        ) : (
+          t("agents.cap.recheckClear")
+        )}
       </Fact>
-      <Fact label={t("agents.cap.scenarios")}>{card && card.scenarios.length > 0 ? <span className="tabular-nums">{card.scenarios.length}</span> : <NotYet />}</Fact>
+      <Fact label={t("agents.cap.scenarios")} testId="cap-scenarios">
+        <Scenarios d={d} />
+      </Fact>
       <Fact label={t("agents.cap.door")}>
         <MonoTag>{d.row.door}</MonoTag>
       </Fact>

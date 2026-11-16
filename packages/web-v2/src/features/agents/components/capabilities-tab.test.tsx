@@ -81,6 +81,7 @@ const extra: CapabilitiesView = {
   window: use.window,
   feedback: [{ door: "issues.create", reports: 1, byVerdict: { unclear: 1 }, lastAt: "2026-11-15T00:00:00.000Z" }],
   lessons: [],
+  freshness: [{ card: "support.member", recheckOwed: null, scenarios: [{ name: "a stranger writes", passed: true, at: "2026-11-16T00:00:00.000Z" }, { name: "a member returns", passed: false, at: "2026-11-16T00:00:00.000Z" }], proposed: [{ field: "redFlag", text: "Replying before reading the member" }] }],
   limits: [],
 };
 
@@ -156,6 +157,9 @@ describe("Agents / Capabilities", () => {
     expect(calls).toContain("Bot5");
     expect(calls).toContain("Master1");
     expect(within(detail).getByText("Misses").parentElement?.textContent).toContain("Not yet");
+    expect(within(detail).getByTestId("cap-scenarios").textContent).toContain("1 of 2 pass");
+    expect(within(detail).getByTestId("cap-recheck").textContent).toContain("Not owed");
+    expect(within(detail).getByTestId("cap-lessons").textContent).toContain("Replying before reading the member");
   });
 
   it("marks a pile over its cap Over, and one within it not", () => {

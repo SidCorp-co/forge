@@ -39,11 +39,24 @@ export interface CapabilityLessonRow {
 	lastAppliedAt: string | null;
 }
 
+/** How fresh a card is: a re-check a landing owes it, its scenarios' last replays, and lessons folded into it not yet in its code. */
+export interface CapabilityFreshnessRow {
+	card: string;
+	/** Since a landing touched its door or a lesson on it, until the steward re-checks it. */
+	recheckOwed: { since: string } | null;
+	/** The last replay of each of its scenarios. */
+	scenarios: { name: string; passed: boolean; at: string }[];
+	/** The deltas this project's lessons folded into it that its code does not carry yet. */
+	proposed: { field: "situation" | "bestPractice" | "redFlag"; text: string }[];
+}
+
 export interface CapabilitiesView {
 	projectId: string;
 	window: { days: number; since: string; until: string };
 	feedback: CapabilityFeedbackRow[];
 	lessons: CapabilityLessonRow[];
+	/** Only the cards with something to say: a re-check owed, a scenario replayed or a delta proposed. */
+	freshness: CapabilityFreshnessRow[];
 	/** What these reads cannot tell, so a gap is never read as "nobody did it". */
 	limits: string[];
 }
