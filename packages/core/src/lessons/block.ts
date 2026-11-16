@@ -4,10 +4,12 @@
  * gist, so an agent knows which to open in full; never the whole sentence. An agent reads the ones its
  * work needs by retrieval, from project knowledge (`knowledge/lesson-entries.ts`), so a held, rejected
  * or proposed lesson is never named here. The map has a hard character budget,
- * `LESSONS_MAP_MAX_CHARS`: the lessons nearest this agent's work come first, and past the budget the
- * rest are counted and the door that lists them is named, so a project with five hundred lessons costs
- * every prompt what one with five does. A map that cannot name them all is a pile the steward folds
- * (`lessonsMapOverflow`), never a reason to cut a line.
+ * `LESSONS_MAP_MAX_CHARS`, and past it the map merges rather than cuts (ISS-1251): every lesson is
+ * named by its slug under the situation it applies in, the nearest given their gist as the budget
+ * allows; where even the slugs do not fit, the farthest situations are said as a count, and past
+ * that folded into one count with the door that lists them, so a project with five hundred lessons
+ * costs every prompt what one with five does. A lesson the map could only count is a pile the
+ * steward folds (`lessonsMapOverflow`).
  */
 
 import type { LessonItemKind } from '@forge/contracts/lessons';
@@ -86,9 +88,12 @@ const lineOf = (e: LessonEntry) => `- ${e.slug}: ${gistOf(e.sentence)}`;
 /** The heading over the lessons that apply in one situation, said once for all of them. */
 const headingOf = (e: LessonEntry) => `When ${whenOf(e)}:`;
 
-/** Whether a composed text's map named this lesson (`prompt/carried.ts` records what reached a run). */
+/**
+ * Whether a composed text's map named this lesson, with its gist or among its situation's slugs
+ * (`prompt/carried.ts` records what reached a run).
+ */
 export const lessonNamedIn = (text: string, slug: string) =>
-  new RegExp(`(^|\\n)- ${slug}: `).test(text);
+  new RegExp(`(^|\\n)(- ${slug}: |- also (?:[^\\n]*, )?${slug}(?:,|\\n|$))`).test(text);
 
 /** The narrower a lesson's scope, the likelier it governs this work; the newest first within one. */
 const SCOPE_RANK = { area: 0, item_kind: 1, project: 2 } as const;
@@ -96,13 +101,54 @@ const byReach = (a: LessonEntry, b: LessonEntry) =>
   SCOPE_RANK[a.meta.scope.kind] - SCOPE_RANK[b.meta.scope.kind] || b.meta.number - a.meta.number;
 
 /** The lessons in reach order, gathered under their situation's heading where its first one falls. */
-function grouped(reach: readonly LessonEntry[]): LessonEntry[] {
+function grouped(reach: readonly LessonEntry[]): LessonEntry[][] {
   const groups = new Map<string, LessonEntry[]>();
   for (const e of reach) {
     const key = headingOf(e);
     groups.set(key, [...(groups.get(key) ?? []), e]);
   }
-  return [...groups.values()].flat();
+  return [...groups.values()];
+}
+
+/**
+ * How one situation is said: its first `named` lessons by slug, the first `gists` of them with their
+ * gist, and the rest counted under it; a situation naming none is only counted, or folded into the
+ * map's closing count.
+ */
+type Said = { named: number; gists: number } | 'counted' | 'folded';
+
+/** One situation as the map says it. */
+function groupLines(group: readonly LessonEntry[], said: Said): string[] {
+  const heading = headingOf(group[0] as LessonEntry);
+  if (said === 'folded') return [];
+  const count = (n: number) => `${n} ${n === 1 ? 'lesson' : 'lessons'}`;
+  if (said === 'counted') return [`${heading.slice(0, -1)}: ${count(group.length)}`];
+  const slugs = group.slice(said.gists, said.named).map((e) => e.slug);
+  const rest = group.length - said.named;
+  return [
+    heading,
+    ...group.slice(0, said.gists).map(lineOf),
+    ...(slugs.length > 0 ? [`- also ${slugs.join(', ')}`] : []),
+    ...(rest > 0 ? [`- and ${rest} more`] : []),
+  ];
+}
+
+/** The map's index: each situation as said, and the list door where any lesson is not named. */
+function indexOf(
+  groups: readonly LessonEntry[][],
+  said: readonly Said[],
+  audience: LessonAudience,
+) {
+  const folded = groups.reduce((n, g, i) => n + (said[i] === 'folded' ? g.length : 0), 0);
+  const unnamed = groups.some((g, i) => {
+    const s = said[i] as Said;
+    return typeof s === 'string' || s.named < g.length;
+  });
+  const closing =
+    folded > 0 ? moreLine(folded, audience) : unnamed ? `Every lesson: ${audience.list}` : '';
+  return [...groups.flatMap((g, i) => groupLines(g, said[i] as Said)), closing]
+    .filter(Boolean)
+    .join('\n');
 }
 
 /** The map's text, or null where no lesson reaches this audience. Never longer than the budget. */
@@ -111,32 +157,43 @@ export function lessonsMapText(
   audience: LessonAudience,
   depth: 2 | 3,
 ): string | null {
-  const reach = grouped(lessonsFor(entries, audience).sort(byReach));
-  if (reach.length === 0) return null;
+  const groups = grouped(lessonsFor(entries, audience).sort(byReach));
+  if (groups.length === 0) return null;
   // the frame is said in as few words as carry the three doors, so the budget goes to the lessons
   const head = [
     `${'#'.repeat(depth)} Lessons`,
     `Read first each that fits your work: ${audience.fetch}.`,
   ].join('\n');
   const tail = `End with \`Lessons applied: L-3, L-7\`. Raise one that conflicts or cannot apply (${audience.raise}) and go on without it.`;
-  // the map's frame, then as many lessons as fit beside the line that counts the rest, each heading
-  // said once, over the first lesson it governs
-  const frame = head.length + tail.length + 4;
-  const lines: string[] = [];
-  let shown = 0;
-  let heading = '';
-  for (const e of reach) {
-    const own = headingOf(e) === heading ? [lineOf(e)] : [headingOf(e), lineOf(e)];
-    const more = moreLine(reach.length - shown - 1, audience);
-    // the count line, where one is due, sits on a line of its own after the last lesson
-    const index = [...lines, ...own, ...(more ? [more] : [])].join('\n');
-    if (frame + index.length > LESSONS_MAP_MAX_CHARS) break;
-    lines.push(...own);
-    heading = headingOf(e);
-    shown += 1;
+  const textOf = (said: readonly Said[]) =>
+    `${head}\n\n${indexOf(groups, said, audience)}\n\n${tail}`;
+  const said: Said[] = groups.map(() => 'folded');
+  /** Takes `next` for situation `i` where the map still fits its budget with it. */
+  const tried = (i: number, next: Said) => {
+    const was = said[i] as Said;
+    said[i] = next;
+    if (textOf(said).length <= LESSONS_MAP_MAX_CHARS) return true;
+    said[i] = was;
+    return false;
+  };
+  // the map merges, never cuts (ISS-1251): each lesson is named by slug in reach order while the
+  // budget holds, the situations left are counted, and those that no count fits are folded into one
+  const at = (i: number) => said[i] as { named: number; gists: number };
+  named: for (const [i, group] of groups.entries()) {
+    for (let n = 1; n <= group.length; n += 1) {
+      if (!tried(i, { named: n, gists: 0 })) break named;
+    }
   }
-  const index = [...lines, moreLine(reach.length - shown, audience)].filter(Boolean).join('\n');
-  const text = `${head}\n\n${index}\n\n${tail}`;
+  for (const i of groups.keys()) if (said[i] === 'folded' && !tried(i, 'counted')) break;
+  // every lesson named, the nearest are given their gist, in reach order, while the budget holds
+  if (groups.every((g, i) => typeof said[i] !== 'string' && at(i).named === g.length)) {
+    gists: for (const [i, group] of groups.entries()) {
+      for (let k = 1; k <= group.length; k += 1) {
+        if (!tried(i, { named: group.length, gists: k })) break gists;
+      }
+    }
+  }
+  const text = textOf(said);
   if (text.length > LESSONS_MAP_MAX_CHARS) {
     throw new Error(
       `lessons: the map for this audience takes ${text.length} characters, over its budget of ${LESSONS_MAP_MAX_CHARS}: its fetch, list or raise door is too long`,
@@ -145,7 +202,7 @@ export function lessonsMapText(
   return text;
 }
 
-/** The count of the lessons the map could not name, and where to list them; empty where it named all. */
+/** The count of the lessons the map folded, and where to list them; empty where it folded none. */
 function moreLine(rest: number, audience: LessonAudience): string {
   if (rest <= 0) return '';
   return `${rest} more ${rest === 1 ? 'lesson' : 'lessons'}, nearer other work: ${audience.list}`;

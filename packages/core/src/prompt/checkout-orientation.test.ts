@@ -411,10 +411,9 @@ describe('the orientation core serves reads the rules from the knowledge store',
     expect(full.length - bare.length).toBeLessThanOrEqual(
       LESSONS_MAP_MAX_CHARS + GUIDE_INDEX_MAX_CHARS + 4,
     );
-    expect(full).toContain(
-      'When any work:\n- lesson-500: Lesson sentence number 500, which is long',
-    );
-    expect(full).toMatch(/\d+ more lessons, nearer other work: `GET …\/knowledge\?kind=lesson/);
+    // past the budget the lessons are merged, never cut: named by slug, the rest counted (ISS-1251)
+    expect(full).toContain('When any work:\n- also lesson-500, lesson-499, ');
+    expect(full).toMatch(/- and \d+ more\nEvery lesson: `GET …\/knowledge\?kind=lesson/);
     expect(full).toMatch(
       /- and \d+ more: `forge-runner api projects\/p-1\/knowledge\?injection=on_demand`/,
     );
