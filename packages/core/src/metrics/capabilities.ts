@@ -1,0 +1,133 @@
+/**
+ * What the capabilities page reads beside a project's door use (ISS-1251 §7): the reports this
+ * project's agents filed on a door (`forge-door/door-report.ts`, one feedback item per door and verdict
+ * under `door:<verdict>:<door>`, each report an occurrence) and the live lessons anchored to a card
+ * (`card:<id>`, `lessons/anchors.ts`). Door use, piles and the cards themselves are `door-use.ts` and
+ * `piles.ts`'s; this read counts only what those leave out, over logs Forge already keeps.
+ */
+
+import {
+  type CapabilitiesView,
+  type CapabilityFeedbackRow,
+  type CapabilityLessonRow,
+  capabilitiesQuerySchema,
+} from '@forge/contracts/capabilities';
+import { DOOR_REPORT_VERDICTS, type DoorReportVerdict } from '@forge/contracts/door-use';
+import { sql } from 'drizzle-orm';
+import { Hono } from 'hono';
+import { z } from 'zod';
+import { db } from '../db/client.js';
+import type { AuthVars } from '../middleware/auth.js';
+import { zValidator } from '../middleware/zod-validator.js';
+import { requiresOnParam } from '../permissions/index.js';
+
+const DAY_MS = 86_400_000;
+
+export const CAPABILITIES_LIMITS = [
+  'A door report counts for this project where its reporter named the project it was in.',
+  'Only a card id of letters, digits, dots and dashes can anchor a lesson, so a REST door holds none.',
+];
+
+const KEY = /^door:([a-z_]+):(.+)$/;
+
+/** A report's signal key as its door and verdict, or null where it is no door report. */
+export function doorReportKey(key: string): { door: string; verdict: DoorReportVerdict } | null {
+  const m = KEY.exec(key);
+  const verdict = m?.[1] as DoorReportVerdict | undefined;
+  if (!m?.[2] || !verdict || !DOOR_REPORT_VERDICTS.includes(verdict)) return null;
+  return { door: m[2], verdict };
+}
+
+type ReportRow = { key: string; n: number; last_at: Date | string };
+
+const iso = (at: Date | string) => (at instanceof Date ? at : new Date(at)).toISOString();
+
+/** Each door's reports from `rows` (one per signal key), most reported first. */
+export function tallyReports(rows: readonly ReportRow[]): CapabilityFeedbackRow[] {
+  const doors = new Map<string, CapabilityFeedbackRow>();
+  for (const r of rows) {
+    const read = doorReportKey(r.key);
+    if (!read) continue;
+    const row = doors.get(read.door) ?? { door: read.door, reports: 0, byVerdict: {}, lastAt: '' };
+    row.reports += r.n;
+    row.byVerdict[read.verdict] = (row.byVerdict[read.verdict] ?? 0) + r.n;
+    const last = iso(r.last_at);
+    if (last > row.lastAt) row.lastAt = last;
+    doors.set(read.door, row);
+  }
+  return [...doors.values()].sort((a, b) => b.reports - a.reports || a.door.localeCompare(b.door));
+}
+
+async function reportRows(projectId: string, since: Date): Promise<ReportRow[]> {
+  return (await db.execute(sql`
+    SELECT f.signal_key AS key, count(o.id)::int AS n, max(o.created_at) AS last_at
+    FROM feedback f JOIN feedback_occurrences o ON o.feedback_id = f.id
+    WHERE f.signal_key LIKE 'door:%' AND o.source_project_id = ${projectId}::uuid
+      AND o.created_at >= ${since.toISOString()}::timestamptz
+    GROUP BY 1`)) as unknown as ReportRow[];
+}
+
+type LessonRow = {
+  card: string;
+  number: number;
+  sentence: string;
+  status: CapabilityLessonRow['status'];
+  invalid_by: string | null;
+  invalid: boolean;
+  applied: number;
+  last_applied_at: Date | string | null;
+};
+
+async function lessonRows(projectId: string): Promise<CapabilityLessonRow[]> {
+  const rows = (await db.execute(sql`
+    SELECT substr(l.anchor, 6) AS card, l.number, l.sentence, l.status, l.invalid_by,
+      (l.invalid_at IS NOT NULL) AS invalid, l.applied_count AS applied, l.last_applied_at
+    FROM lessons l
+    WHERE l.project_id = ${projectId}::uuid AND l.anchor LIKE 'card:%'
+      AND l.status IN ('proposed', 'approved', 'held')
+    ORDER BY 1, l.number`)) as unknown as LessonRow[];
+  return rows.map((r) => ({
+    card: r.card,
+    number: r.number,
+    sentence: r.sentence,
+    status: r.status,
+    invalid: r.invalid,
+    invalidBy: r.invalid_by,
+    applied: r.applied,
+    lastAppliedAt: r.last_applied_at === null ? null : iso(r.last_applied_at),
+  }));
+}
+
+export async function readCapabilities(
+  projectId: string,
+  days: number,
+  now: Date = new Date(),
+): Promise<CapabilitiesView> {
+  const since = new Date(now.getTime() - days * DAY_MS);
+  const [reports, lessons] = await Promise.all([
+    reportRows(projectId, since),
+    lessonRows(projectId),
+  ]);
+  return {
+    projectId,
+    window: { days, since: since.toISOString(), until: now.toISOString() },
+    feedback: tallyReports(reports),
+    lessons,
+    limits: CAPABILITIES_LIMITS,
+  };
+}
+
+/** Mounted by `routes.ts:projectMetricsRoutes`, under its sign-in and verified-email guard. */
+export const capabilitiesRoutes = new Hono<{ Variables: AuthVars }>();
+
+/** The door reports and card lessons the capabilities page shows beside `/metrics/doors` (ISS-1251 §7). */
+capabilitiesRoutes.get(
+  '/:id/metrics/capabilities',
+  zValidator('param', z.object({ id: z.uuid() })),
+  requiresOnParam('project.read', 'id'),
+  zValidator('query', capabilitiesQuerySchema),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    return c.json(await readCapabilities(id, c.req.valid('query').days));
+  },
+);
