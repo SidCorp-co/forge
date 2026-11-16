@@ -32,6 +32,7 @@ const card = (purpose: string, audience: CapabilityCard["audience"]): Capability
 });
 const door = (id: string, over: Partial<DoorUseRow>): DoorUseRow => ({
   door: id,
+  name: id,
   surface: "mcp",
   summary: null,
   feature: "forge_support",
@@ -42,6 +43,8 @@ const door = (id: string, over: Partial<DoorUseRow>): DoorUseRow => ({
   calls: 0,
   refused: 0,
   refusedBy: {},
+  misses: 0,
+  missedBy: {},
   byAgent: {},
   lastAt: null,
   ...over,
@@ -49,10 +52,11 @@ const door = (id: string, over: Partial<DoorUseRow>): DoorUseRow => ({
 const DOORS: DoorUseRow[] = [
   door("issues.update", { summary: "Changes an issue's fields", card: card("Changes an issue's fields", ["master", "run"]), tiers: { master: 0, run: 1 }, calls: 41, refused: 2, refusedBy: { not_found: 2 }, byAgent: { box: 30, checkout: 11 }, lastAt: "2026-11-16T03:00:00Z" }),
   door("memory.search", { summary: "Finds what agents learned", card: card("Finds what agents learned before", ["master", "run", "bot"]), tiers: { master: 0, run: 0, bot: 1 }, calls: 37, byAgent: { "session:master": 20, checkout: 17 } }),
-  door("support.reply", { summary: "Answers in a room", card: card("Answers someone in a room", ["bot"]), tiers: { bot: 0 }, calls: 12, refused: 5, refusedBy: { SUPPORT_ACT_DENIED: 5 }, byAgent: { "room:support": 12 } }),
+  door("support.reply", { summary: "Answers in a room", card: card("Answers someone in a room", ["bot"]), tiers: { bot: 0 }, calls: 12, refused: 5, refusedBy: { SUPPORT_MESSAGE_UNKNOWN: 3, SUPPORT_NOT_REPEATED: 2 }, misses: 2, missedBy: { "room:support": 2 }, byAgent: { "room:support": 12 } }),
   door("issues.comment", { summary: "Comments on an issue", calls: 9, byAgent: { box: 9 } }),
   door("support.member", { summary: "Records who a member is", card: card("Records who a member is", ["bot"]), tiers: { bot: 0 }, calls: 0 }),
-  door("support.rule", { summary: "Keeps a rule for the room", calls: 0 }),
+  door("support.rule", { summary: "rule { thread, text }", calls: 0 }),
+  door("support.requirements", { summary: "requirements { project }", calls: 3, byAgent: { "room:operations": 3 } }),
   door("releases.record", { summary: "Records a release", calls: 0 }),
   door("POST /api/projects/:id/debts", { surface: "rest", feature: "/api/projects/:id/debts", calls: 3, byAgent: { box: 3 } }),
   door("PUT /api/projects/:id/policy", { surface: "rest", feature: "/api/projects/:id/policy", calls: 0 }),
@@ -65,14 +69,19 @@ const USE: DoorUseView = {
   projectId: P,
   window: { days: 30, since: "2026-10-17T00:00:00Z", until: "2026-11-16T00:00:00Z" },
   doors: DOORS,
-  totals: { doors: DOORS.length, neverUsed: DOORS.filter((d) => d.calls === 0).length, calls: DOORS.reduce((n, d) => n + d.calls, 0), taught: DOORS.filter((d) => d.card).length },
+  totals: { doors: DOORS.length, neverUsed: DOORS.filter((d) => d.calls === 0).length, calls: DOORS.reduce((n, d) => n + d.calls, 0), taught: DOORS.filter((d) => d.card).length, misses: 2 },
   days,
   unmatched: [],
   reads: [
     { agent: "session:master", kind: "knowledge", how: "get", reaches: 14, entries: 6, top: [] },
     { agent: "checkout", kind: "memory", how: "search", reaches: 9, entries: 9, top: [] },
+    { agent: "room:support", kind: "capability", how: "prompt", reaches: 24, entries: 12, top: [] },
+    { agent: "room:support", kind: "knowledge", how: "search", reaches: 5, entries: 3, top: [] },
   ],
-  lessonsApplied: [{ lesson: "L-7", agent: "agent-account", applications: 3 }],
+  lessonsApplied: [
+    { lesson: "L-7", agent: "agent-account", applications: 3 },
+    { lesson: "L-9", agent: "room:support", applications: 2 },
+  ],
   limits: [],
 };
 const PILES: PilesView = {

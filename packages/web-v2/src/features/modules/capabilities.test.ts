@@ -13,6 +13,7 @@ const card = { id: "support.member", owner: "support", purpose: "Records who a m
 
 const door = (over: Partial<DoorUseRow> = {}): DoorUseRow => ({
   door: "support.member",
+  name: over.door ?? "support.member",
   surface: "mcp",
   summary: "records who a member is",
   feature: "forge_support",
@@ -23,6 +24,8 @@ const door = (over: Partial<DoorUseRow> = {}): DoorUseRow => ({
   calls: 8,
   refused: 0,
   refusedBy: {},
+  misses: 0,
+  missedBy: {},
   byAgent: { "room:support": 8 },
   lastAt: "2026-11-15T00:00:00.000Z",
   ...over,

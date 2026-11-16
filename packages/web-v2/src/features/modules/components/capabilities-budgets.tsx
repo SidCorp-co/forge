@@ -6,7 +6,7 @@
 import type { DoorUseView, PileRow, PilesView } from "@forge/contracts/door-use";
 import { CountSection, ProgressBar, RowItem, RowList, StatusChip } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { callerOf, pilesOf } from "../capabilities";
+import { agentLabelKey, callerOf, pilesOf } from "../capabilities";
 
 function usePileName() {
   const t = useCopy();
@@ -89,7 +89,7 @@ export function CapabilityReading({ use }: { use: DoorUseView }) {
             <RowItem
               key={`${l.lesson}:${l.agent}`}
               title={l.lesson}
-              facts={[t(l.agent === "person" ? "modules.cap.person" : "modules.cap.agent")]}
+              facts={[t(agentLabelKey(l.agent))]}
               trailing={<span className="text-13 tabular-nums text-fg">{l.applications}</span>}
             />
           ))}

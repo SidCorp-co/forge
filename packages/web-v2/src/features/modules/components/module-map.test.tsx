@@ -179,8 +179,8 @@ describe("a module's tree and its rail", () => {
           body: {
             projectId: MAP_PROJECT,
             window: { days: 30, since: "", until: "" },
-            doors: ["run.declare", "issues.update"].map((door) => ({ door, surface: "mcp", summary: door === "run.declare" ? "Declares a run" : "Changes an issue", feature: "x", card: null, tiers: {}, twins: [], viaTwins: 0, calls: 2, refused: 0, refusedBy: {}, byAgent: {}, lastAt: null })),
-            totals: { doors: 2, neverUsed: 0, calls: 4, taught: 0 },
+            doors: ["run.declare", "issues.update"].map((door) => ({ door, name: door, surface: "mcp", summary: door === "run.declare" ? "Declares a run" : "Changes an issue", feature: "x", card: null, tiers: {}, twins: [], viaTwins: 0, calls: 2, refused: 0, refusedBy: {}, misses: 0, missedBy: {}, byAgent: {}, lastAt: null })),
+            totals: { doors: 2, neverUsed: 0, calls: 4, taught: 0, misses: 0 },
             days: [],
             unmatched: [],
             reads: [],
@@ -192,7 +192,17 @@ describe("a module's tree and its rail", () => {
     });
     renderWithQuery(inWorkspace(<ModuleTreeScreen projectId={MAP_PROJECT} slug="hop" moduleSlug="execution" />));
     const doors = await screen.findAllByTestId("cap-door");
-    expect(doors.map((d) => d.textContent)).toEqual([expect.stringContaining("Declares a run")]);
+    expect(doors.map((d) => d.textContent)).toEqual([expect.stringContaining("run.declare")]);
+  });
+
+  it("titles the map's Capabilities view Capabilities, and its pillar Modules (ISS-1251 c7)", async () => {
+    at("/projects/hop/modules?view=capabilities");
+    const { unmount } = renderWithQuery(inWorkspace(<ModuleMapScreen projectId={MAP_PROJECT} slug="hop" />));
+    expect((await screen.findByRole("heading", { level: 1 })).textContent).toBe("Capabilities");
+    unmount();
+    at("/projects/hop/modules");
+    renderWithQuery(inWorkspace(<ModuleMapScreen projectId={MAP_PROJECT} slug="hop" />));
+    expect((await screen.findByRole("heading", { level: 1 })).textContent).toBe("Modules");
   });
 
   it("lists the Unplaced items in the same branches", async () => {

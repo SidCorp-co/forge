@@ -78,10 +78,19 @@ export function standingCounts(doors: readonly CapDoor[]): Record<CapStanding, n
   return out;
 }
 
-/** What a door is called on the page: its card's purpose, its guide's line, else its route. */
+/**
+ * What a door is called on the page: its card's purpose, else the door as an agent knows it
+ * (`support.requirements`, a route), never a fragment of its guide's text.
+ */
 export function doorTitle(row: DoorUseRow): { text: string; mono: boolean } {
-  const text = row.card?.purpose ?? row.summary;
-  return text ? { text, mono: false } : { text: row.door, mono: true };
+  return row.card ? { text: row.card.purpose, mono: false } : { text: row.name, mono: true };
+}
+
+/** Who named a door missed or applied a lesson, read as the callers the page counts. */
+export function agentLabelKey(agent: string): "modules.cap.agent" | `modules.cap.caller.${Exclude<CapCaller, "other"> | "person"}` {
+  if (agent === "person") return "modules.cap.caller.person";
+  const caller = callerOf(agent);
+  return caller === "other" ? "modules.cap.agent" : `modules.cap.caller.${caller}`;
 }
 
 /** A refusal code as words: `SUPPORT_ACT_DENIED` reads "Support act denied", `not_found` "Not found". */

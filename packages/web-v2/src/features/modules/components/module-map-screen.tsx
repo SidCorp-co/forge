@@ -81,7 +81,8 @@ export function ModuleMapScreen({ projectId, slug }: { projectId: string; slug: 
   const [view, setView] = useUrlChoice<MapView>("view", MAP_VIEWS, "pillar");
   return (
     <div className="grid min-h-full content-start bg-app" data-testid="module-map">
-      <PageTitle>{t("modules.title")}</PageTitle>
+      {/* the title names the view it shows: the Capabilities view is the capabilities page */}
+      <PageTitle>{t(view === "capabilities" ? "modules.view.capabilities" : "modules.title")}</PageTitle>
       <div className="flex flex-wrap items-center gap-3 border-b border-line-subtle bg-surface px-5 py-2.5 max-md:px-3" aria-label={t("modules.views")}>
         <SegmentedControl options={MAP_VIEWS.map((v) => ({ value: v, label: t(`modules.view.${v}`) }))} value={view} onChange={setView} />
         <MapSearch />

@@ -1,11 +1,12 @@
 // One door opened in its drawer (ISS-1251 §7): its teaching, who called it, its refusals by code, the
-// reports agents filed on it, the lessons on its card, when the card last changed and its scenarios. A
-// signal Forge does not record yet reads "Not yet", never 0, so a gap is never read as "none".
+// misses agents' own audits named on it, the reports agents filed on it, the lessons on its card, when
+// the card last changed and its scenarios. A card no ledger dates reads "Not yet", never a date.
 
 import { DOOR_REPORT_VERDICTS } from "@forge/contracts/door-use";
 import { Fact, FactsEmpty, MonoTag, Section, StatusChip } from "@/design";
+import type { Copy } from "@/lib/i18n/product-copy";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
-import { CAP_CALLERS, type CapDoor, callsByCaller, codeWords } from "../capabilities";
+import { agentLabelKey, CAP_CALLERS, type CapDoor, callsByCaller, codeWords } from "../capabilities";
 
 function NotYet() {
   const t = useCopy();
@@ -40,6 +41,16 @@ function Teaching({ d }: { d: CapDoor }) {
   );
 }
 
+/** Counts by agent kind as the callers a reader knows, one figure per caller: `Bot 3 · Run 1`. */
+function byLabel(by: Record<string, number>, t: Copy): string {
+  const sums = new Map<string, number>();
+  for (const [agent, n] of Object.entries(by)) {
+    const label = t(agentLabelKey(agent));
+    sums.set(label, (sums.get(label) ?? 0) + n);
+  }
+  return [...sums].map(([label, n]) => `${label} ${n}`).join(" · ");
+}
+
 function Calls({ d }: { d: CapDoor }) {
   const t = useCopy();
   const by = callsByCaller(d.row.byAgent);
@@ -64,8 +75,10 @@ function Calls({ d }: { d: CapDoor }) {
           </span>
         )}
       </Fact>
-      <Fact label={t("modules.cap.misses")}>
-        <NotYet />
+      <Fact label={t("modules.cap.misses")} testId="cap-misses">
+        <span className="tabular-nums" title={byLabel(d.row.missedBy, t) || undefined}>
+          {d.row.misses}
+        </span>
       </Fact>
     </div>
   );
@@ -140,7 +153,7 @@ function CardFreshness({ d }: { d: CapDoor }) {
         <Scenarios d={d} />
       </Fact>
       <Fact label={t("modules.cap.door")}>
-        <MonoTag>{d.row.door}</MonoTag>
+        <MonoTag>{d.row.name}</MonoTag>
       </Fact>
     </div>
   );

@@ -2,7 +2,8 @@
 // overview, then the project's piles and reading, then the doors by where they stand; on one module's
 // page it lists that module's doors alone. A door no agent called reads "Teach better / redesign /
 // delete", never as a neutral row; a pile over its cap reads "Over"; a door opens in a drawer on its
-// teaching, use and reports, and a signal Forge does not record yet reads "Not yet", never 0.
+// teaching, use, misses and reports. The page is titled by the view it shows, and a door with no card
+// reads as an agent knows it, never a fragment of its guide.
 //
 // @direct-test-of packages/web-v2/src/features/modules/components/capabilities-band.tsx
 // @direct-test-of packages/web-v2/src/features/modules/components/capabilities-budgets.tsx
@@ -36,6 +37,7 @@ const card = {
 
 const door = (over: Partial<DoorUseRow>): DoorUseRow => ({
   door: "support.member",
+  name: over.door ?? "support.member",
   surface: "mcp",
   summary: "records who a member is",
   feature: "forge_support",
@@ -46,6 +48,8 @@ const door = (over: Partial<DoorUseRow>): DoorUseRow => ({
   calls: 6,
   refused: 0,
   refusedBy: {},
+  misses: 0,
+  missedBy: {},
   byAgent: { "room:support": 5, "session:master": 1 },
   lastAt: "2026-11-15T00:00:00.000Z",
   ...over,
@@ -57,15 +61,18 @@ const use: DoorUseView = {
   projectId: P,
   window: { days: 30, since: "2026-10-17T00:00:00.000Z", until: "2026-11-16T00:00:00.000Z" },
   doors: [
-    door({}),
-    door({ door: "support.rule", summary: "keeps a rule for the room", card: null, calls: 0, refused: 0, byAgent: {}, lastAt: null }),
+    door({ misses: 3, missedBy: { "room:support": 2, "room:agent": 1 } }),
+    door({ door: "support.rule", summary: "rule { thread, text }", card: null, calls: 0, refused: 0, byAgent: {}, lastAt: null }),
     door({ door: "issues.create", summary: "files an issue", calls: 4, refused: 2, refusedBy: { SUPPORT_ACT_DENIED: 2 }, byAgent: { box: 4 } }),
   ],
-  totals: { doors: 3, neverUsed: 1, calls: 10, taught: 2 },
+  totals: { doors: 3, neverUsed: 1, calls: 10, taught: 2, misses: 3 },
   days,
   unmatched: [],
   reads: [{ agent: "session:master", kind: "knowledge", how: "get", reaches: 3, entries: 2, top: [] }],
-  lessonsApplied: [{ lesson: "L-7", agent: "agent-account", applications: 2 }],
+  lessonsApplied: [
+    { lesson: "L-7", agent: "agent-account", applications: 2 },
+    { lesson: "L-9", agent: "room:support", applications: 1 },
+  ],
   limits: [],
 };
 
@@ -148,10 +155,17 @@ describe("the Capabilities branch", () => {
     const detail = open(rowOf("misused"));
     expect(within(detail).getByTestId("cap-refusal-codes").textContent).toContain("Support act denied");
     expect(within(detail).getByTestId("cap-reports").textContent).toContain("Unclear1");
-    expect(within(detail).getAllByTestId("cap-not-yet").length).toBeGreaterThan(0);
+    expect(within(detail).getByTestId("cap-misses").textContent).toBe("Misses0");
   });
 
-  it("opens a taught door on its situations, its callers by audience, and misses not yet recorded", () => {
+  it("reads a door with no card as an agent knows it, never a fragment of its guide", () => {
+    tab();
+    const unused = rowOf("unused");
+    expect(unused.textContent).toContain("support.rule");
+    expect(unused.textContent).not.toContain("rule { thread, text }");
+  });
+
+  it("opens a taught door on its situations, its callers by audience, and the misses agents named", () => {
     tab();
     const detail = open(rowOf("inUse"));
     expect(within(detail).getByTestId("cap-teaching").textContent).toContain("Someone writes you have no record of");
@@ -159,10 +173,20 @@ describe("the Capabilities branch", () => {
     const calls = within(detail).getByTestId("cap-calls").textContent ?? "";
     expect(calls).toContain("Bot5");
     expect(calls).toContain("Master1");
-    expect(within(detail).getByText("Misses").parentElement?.textContent).toContain("Not yet");
+    const misses = within(detail).getByTestId("cap-misses");
+    expect(misses.textContent).toBe("Misses3");
+    expect(misses.querySelector("[title]")?.getAttribute("title")).toBe("Bot 3");
     expect(within(detail).getByTestId("cap-scenarios").textContent).toContain("1 of 2 pass");
     expect(within(detail).getByTestId("cap-recheck").textContent).toContain("Not owed");
     expect(within(detail).getByTestId("cap-lessons").textContent).toContain("Replying before reading the member");
+  });
+
+  it("names who applied each lesson as the callers the page counts, a room agent as Bot", () => {
+    tab();
+    fireEvent.click(within(screen.getByTestId("cap-applied")).getByRole("button"));
+    const rows = screen.getAllByRole("listitem").map((r) => r.textContent ?? "");
+    expect(rows.find((r) => r.includes("L-9"))).toContain("Bot");
+    expect(rows.find((r) => r.includes("L-7"))).toContain("Agent");
   });
 
   it("marks a pile over its cap Over, and one within it not", () => {
