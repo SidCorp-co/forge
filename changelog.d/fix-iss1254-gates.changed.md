@@ -1,0 +1,1 @@
+**A shape changed in one package is typechecked where it is imported.** The typecheck follows tsconfig paths imports too, verify checks every consumer, and rebuilding contracts never leaves its dist missing.

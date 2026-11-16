@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { enterHermeticEnv } from './api-contract/hermetic-env.js';
@@ -184,9 +184,17 @@ async function numbered(
 const numberedApi = await numbered(API_ARTIFACT, 'openapi', api.document, INFO_VERSION);
 const numberedMcp = await numbered(MCP_ARTIFACT, 'mcp-tools', mcp.document, TOP_VERSION);
 
+// each artifact is written beside itself and renamed over the old one, so a reader at the same time
+// (a checker, a test, core serving it) reads it whole, old or new, never missing or half-written (ISS-1254)
+function replace(file: string, text: string): void {
+  const staged = join(out, `.${file}.${process.pid}.tmp`);
+  writeFileSync(staged, text);
+  renameSync(staged, join(out, file));
+}
+
 mkdirSync(out, { recursive: true });
-writeFileSync(join(out, API_ARTIFACT), canonicalJson(numberedApi.document));
-writeFileSync(join(out, MCP_ARTIFACT), canonicalJson(numberedMcp.document));
+replace(API_ARTIFACT, canonicalJson(numberedApi.document));
+replace(MCP_ARTIFACT, canonicalJson(numberedMcp.document));
 console.log(
   `api-contract: ${api.operations} operation(s) · ${mcp.tools} tool(s) written to ${out}, numbered after ${base.basis} (${base.rev.slice(0, 12)})`,
 );

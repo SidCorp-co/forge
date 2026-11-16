@@ -72,7 +72,7 @@ passed, because the external record of what shipped belonged to none of them.
 | API contracts | `check-api-contracts` — `conformance` | whether `packages/core/contracts/forge-api.openapi.json` and `forge-mcp.tools.json` are byte for byte what the generator writes from the running app, naming each route (`METHOD /path`) or tool that was added, removed or changed and the JSON pointer where it differs; whether every mounted route and served tool is describable at all — one the generator cannot describe is its refusal, never an omission; and whether each artifact's semver version is the one its change since the base owes, which the generator derives with the differ an interface upload is measured by (oasdiff, and a JSON Schema differ for the tools) | whether a route's contract is GOOD — a response schema, a missing validator, a description; and whether the differ's breaking/additive classification is right, which is the differ's |
 | pattern catalog | `check-pattern-catalog` — `lang-check` | whether every page under `docs/patterns/` (REQ-36 BC-3, BC-4) names its change kind, the issue that introduced it, a `## Reference` of tracked files, a `## Test shape` naming a tracked reference test, and a numbered `## Review checklist`; whether the index links every page; whether every change kind `.forge/conformance.json` declares has a page; and whether `packages/contracts/src/pattern-catalog.ts`, the catalog core reads to tell a catalogued pattern from a new one, is what the pages say (`--write` regenerates it) | whether a reference is a GOOD one, or a checklist line the right one — that is the new-pattern reviewer's; module shape, which is `relations`' and which the core-module page points at rather than restates |
 | costs | `check-honest-costs` — `lang-check` | whether `docs/VISION.md` and every `docs/proposals/*.md` price what adopting them costs; and whether every file directly under `docs/proposals/` opens with a `**Removed when:**` line naming at least one issue key, the issue whose landing change deletes the file (`docs/proposals/destination/` is exempt) | whether the price stated is honest, or whether the named issue really carries the condition — that is review's |
-| relations | `archmap check` + `check-module-boundaries` + `check-module-shape` + `check-root-dependencies` — `archmap` | which requirement or workflow step every core module, web-v2 feature and runner crate serves (`check-module-shape`'s trace); which module may depend on which: archmap's contracts, and pattern v2's context direction, kind direction, runtime cycles between modules, face-only access, adapter ports and read models' declared reads over `packages/core/src`, generated from `packages/core/src/modules.json`; which module may write which table, and where a database call, a refusal and the global `fetch` may be written (`check-module-shape`); and which package a root consumer may reach — only one its own manifest declares (`check-root-dependencies`) | how a file is formatted; a status written outside the kernel, which the database refuses (`forge_kernel_status_guard`) |
+| relations | `archmap check` + `check-module-boundaries` + `check-module-shape` + `check-root-dependencies` — `archmap`; `tc-changed --consumers` — `pnpm verify` | which requirement or workflow step every core module, web-v2 feature and runner crate serves (`check-module-shape`'s trace); which module may depend on which: archmap's contracts, and pattern v2's context direction, kind direction, runtime cycles between modules, face-only access, adapter ports and read models' declared reads over `packages/core/src`, generated from `packages/core/src/modules.json`; which module may write which table, and where a database call, a refusal and the global `fetch` may be written (`check-module-shape`); and which package a root consumer may reach — only one its own manifest declares (`check-root-dependencies`); and whether every package importing a changed one still typechecks against it (`tc-changed --consumers`, below) | how a file is formatted; a status written outside the kernel, which the database refuses (`forge_kernel_status_guard`) |
 | slot rule | `check-run-slots` — `conformance` | whether how many subagents a project may run is worked out anywhere but `packages/core/src/devices/run-slots.ts:slotsFor`, called only by `packages/core/src/devices/run-slots-read.ts`, and whether the box's size (`maxSubagents`, `max_subagents`) is named outside the files `scripts/lib/run-slots-fence.mjs:SIZE_HOLDERS` lists with a reason (ISS-1245: the prose caps it replaced drifted because each master carried its own) | what the rule answers, which `packages/core/src/devices/run-slots.test.ts` holds |
 | reachability | `check-test-reachability` — `conformance` | whether every tracked test file is collected, and whether a skipped suite says why | what a test asserts once it runs |
 | outside reads | `check-outside-reads` — `conformance` | whether a test reading a file outside its package by path declares it with `@direct-test-of`, so the direct selection runs it on a change to that file alone, and whether the `changes` filter of the ci.yml job running the test matches the declared path, so `main` does too | a read the source does not spell from values it can evaluate; reads inside the test's own package; Rust tests |
@@ -370,13 +370,22 @@ Four contracts:
    with `VERIFY_CONCURRENCY`. Why 6 and not more was measured, and the measurement lives at the
    thing it decided: the rationale on `verify.mjs:runAll`.
 
-**The typecheck is not a verify check** (since 2026-10-10). `merge-check` runs `tc-changed` and
-then `verify`, so verify's own `core typecheck` checked core twice on every dev merge. Types are
-`tc-changed` inside `test:changed` and `merge-check`: each touched package and each package importing
-one, under its `tsconfig.json` (the source) and its `tsconfig.test.json` where it has one (source and
-tests), so a type error confined to a test file is red before the merge (ISS-754,
-`lib/tc-check.mjs`). Both configs and not the test one alone, because the test config takes in
-test-only global declarations a source file could lean on. `pnpm typecheck` and
+**The typecheck is `tc-changed`'s, and verify runs its consumers' half.** `merge-check` runs
+`tc-changed` and then `verify`, so verify's own whole-package typecheck, checking core twice on every
+dev merge, left it on 2026-10-10. Types are `tc-changed` inside `test:changed` and `merge-check`:
+each touched package and each package importing one, under its `tsconfig.json` (the source) and its
+`tsconfig.test.json` where it has one (source and tests), so a type error confined to a test file is
+red before the merge (ISS-754, `lib/tc-check.mjs`). Both configs and not the test one alone, because
+the test config takes in test-only global declarations a source file could lean on. A package
+imports another by its manifest **or by a tsconfig `paths` entry into it**
+(`lib/tc-check.mjs:workspacePackages`): `@forge/contracts` and web-v2 read `@forge/core/public` and
+`@forge/core/admin-types` that way, with no manifest naming core, and a selection read off manifests
+alone typechecked core by itself when that surface changed. Planted 2026-11-16: `bucketStart`
+renamed on core's `AdminAdoptionBucket`, core's reader updated, went green there while web-v2's
+adoption panel no longer compiled (ISS-1254). verify's `consumer types` check runs
+`tc-changed --consumers`: only the packages importing what changed, the half of a shape change its
+author's own package does not see, red naming the consumer's file. After `merge-check`'s own run it
+reads the same incremental build info, about three seconds. `pnpm typecheck` and
 `pnpm typecheck:test` run each config over a whole package, and CI's `core` and `web` jobs run both.
 The web's `vite build` checks no types and runs no lint.
 
@@ -1140,6 +1149,13 @@ to source). Before any selected test runs, `lib/package-builds.mjs` rebuilds eac
 none older than its source. A build that fails or leaves its dist short is refused
 `PACKAGE_BUILD_STALE`, naming the package, its dist, the first file that does not match, the
 collections that load it and the command; no test runs, and both entrypoints exit 2 (ISS-587).
+A rebuild never takes dist away from a reader: contracts' build emits into a staging directory
+inside dist and renames each file over its old one (`packages/contracts/scripts/publish-dist.mjs`),
+so a test importing contracts while another run rebuilds it reads each module whole, old or new. Its
+build removed dist first, and one builder's tests failed mid-import while another rebuilt
+(ISS-1254); `lib/contracts-dist-publish.test.mjs` reads every module in a second process through 15
+rebuilds and holds the old shape to going red under the same reader. `contracts:generate` writes
+each artifact beside itself and renames it into place the same way.
 `pnpm verify` loads the same two builds (`VERIFY_LOADS_BUILT`), so the merge check rebuilds whichever
 of them its tests did not before verify starts, refused the same way: a change selecting no core test
 otherwise sent verify to a missing dist (ISS-679). A checkout pnpm never installed — no
