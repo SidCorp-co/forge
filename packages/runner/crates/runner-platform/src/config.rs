@@ -276,10 +276,18 @@ pub fn subagents_for_cores(cores: usize) -> u32 {
 
 impl RunnerSettings {
     /// The `max_subagents` this box declares to core: its config's, or one sized to its cores. A
-    /// box whose OS cannot say how many cores it has is sized at the floor of 1, and says so.
+    /// box whose OS cannot say how many cores it has is sized at the floor of 1, and says so. A
+    /// named value outside the 1..=[`MAX_SUBAGENTS`] core takes is clamped into it, with a warning,
+    /// so it never makes every master registration on the box refused.
     pub fn max_subagents(&self) -> u32 {
         if let Some(n) = self.max_subagents {
-            return n;
+            let clamped = n.clamp(1, MAX_SUBAGENTS);
+            if clamped != n {
+                tracing::warn!(
+                    "`max_subagents = {n}` under [runner] is outside the 1..={MAX_SUBAGENTS} core takes, so this box declares {clamped}"
+                );
+            }
+            return clamped;
         }
         match std::thread::available_parallelism() {
             Ok(cores) => subagents_for_cores(cores.get()),
@@ -534,6 +542,16 @@ mod tests {
         assert!(!toml::to_string(&unset).unwrap().contains("max_subagents"));
         assert!(unset.runner.max_subagents() >= 1);
         use super::{subagents_for_cores, MAX_SUBAGENTS};
+        // core takes 1..=MAX_SUBAGENTS: a named value outside it is clamped, not sent to be refused
+        for (named, declared) in [(0, 1), (100, MAX_SUBAGENTS), (8, 8)] {
+            let cfg: Config =
+                toml::from_str(&format!("[runner]\nmax_subagents = {named}\n")).unwrap();
+            assert_eq!(
+                cfg.runner.max_subagents(),
+                declared,
+                "max_subagents = {named}"
+            );
+        }
         assert_eq!(subagents_for_cores(1), 1);
         assert_eq!(subagents_for_cores(7), 1);
         assert_eq!(subagents_for_cores(8), 2);
