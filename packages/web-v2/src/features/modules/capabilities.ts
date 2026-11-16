@@ -22,15 +22,19 @@ export const CAP_STANDING_TONE: Record<CapStanding, LegendTone> = {
 /** A door refused on a quarter of its calls or more is used badly. */
 const MISUSE_SHARE = 4;
 
-/** Who called, as the audiences a card teaches; a box credential is shared by its master and its runs. */
+/**
+ * Who called, as the audiences a card teaches. A box credential's call counts under the session it was
+ * made in where core could name one (ISS-1251); one it could not stays the box's, master's and runs'
+ * alike, so it reads as the box and never as a run.
+ */
 export const CAP_CALLERS = ["bot", "master", "run", "box", "other"] as const;
 export type CapCaller = (typeof CAP_CALLERS)[number];
 
 export function callerOf(agent: string): CapCaller {
   if (agent.startsWith("room:")) return "bot";
   if (agent === "session:master") return "master";
-  if (agent === "checkout" || agent === "session:run_session" || agent === "session:pipeline") return "run";
-  if (agent === "box") return "box";
+  if (agent === "session:run_session" || agent === "session:pipeline") return "run";
+  if (agent === "box" || agent === "checkout") return "box";
   return "other";
 }
 

@@ -159,7 +159,7 @@ import {
   roomSettleWriter,
 } from './requirements/index.js';
 import { mountRoutes } from './route-registry.js';
-import { provideRunContextDomainPorts } from './run-context-ports.js';
+import { provideRunContextDomainPorts, sessionOfAct } from './run-context-ports.js';
 import { bootstrapRunnerAdapters, deviceProjectIds } from './runners/index.js';
 import { provideSandboxPorts } from './sandbox/index.js';
 import { startTimers, stopTimers } from './schedules/index.js';
@@ -199,6 +199,7 @@ provideVisibleProjects(findVisibleProjectIds);
 provideEphemeralPublisher(publishEphemeralFrame);
 provideCredentialsPorts({
   tokenChanged: (change) => emitEvent(db, 'credential.tokenChanged', change),
+  actSessionOf: sessionOfAct,
 });
 providePermissionPorts();
 provideWorkPorts();

@@ -86,8 +86,8 @@ describe("where a door stands", () => {
 });
 
 describe("who called", () => {
-  it("reads a room as the bot, a master session as the master, a checkout and a run session as a run", () => {
-    expect(["room:support", "session:master", "checkout", "session:run_session", "box", "person"].map(callerOf)).toEqual(["bot", "master", "run", "run", "box", "other"]);
+  it("reads a room as the bot, a master session as the master, a run session as a run, and a box credential no session was named for as the box", () => {
+    expect(["room:support", "session:master", "checkout", "session:run_session", "box", "person"].map(callerOf)).toEqual(["bot", "master", "box", "run", "box", "other"]);
     expect(callsByCaller({ "room:support": 2, "room:operations": 1, steward: 4 })).toEqual({ bot: 3, master: 0, run: 0, box: 0, other: 4 });
   });
 

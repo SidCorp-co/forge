@@ -33,7 +33,7 @@ const DAY_MS = 86_400_000;
 export const DOOR_USE_LIMITS = [
   'A REST read is logged nowhere, so a door here is an MCP action or a REST write; what a read returned is under reads.',
   'reads holds what a box session read through knowledge, memory and agreement routes; an MCP read of knowledge is not recorded there.',
-  'A box credential is shared by its master and the runs it starts, so their REST writes count under box; their reads are told apart under session:<kind>.',
+  'A box credential is shared by its master and the runs it starts, so its REST writes and reads count under the session they were made in (session:master, session:run_session): the run the call names (x-forge-run), else the box’s one live session in the project; a write naming none on a box running several counts under checkout or box.',
   'A call counts for this project where it named the project, or its credential is fenced to this project alone.',
   'A refusal is counted by the code it answered with; one logged before refusal codes were kept (ISS-1251) reads by its outcome (forbidden, not_found, error), and one a door answered rather than threw was logged ok.',
   "Misses are the capabilities an agent's own audit named as ones it should have reached for: a room agent's support.audit, a master's or run's audit.self, the steward's done call. A master or run counts under the role it audited as, since one box credential serves both.",
@@ -47,7 +47,10 @@ const sessionAgent = (session: SQL) =>
     'session:' || (SELECT s.kind FROM agent_sessions s WHERE s.id = ${session}),
     'session')`;
 
-/** Who called, read off the token: its name's prefix, a turn token by its session, else its holder's kind. */
+/**
+ * Who called: the session a box credential's act was made in where one was named (ISS-1251), else
+ * read off the token: its name's prefix, a turn token by its session, else its holder's kind.
+ */
 function tokenAgent(): SQL {
   const turn = sql`(CASE WHEN t.name LIKE ${`${SESSION_TURN_TOKEN_PREFIX}%`}
     THEN substr(t.name, ${SESSION_TURN_TOKEN_PREFIX.length + 1}) END)`;
@@ -59,7 +62,8 @@ function tokenAgent(): SQL {
       ? sql`WHEN t.name LIKE ${`${prefix}%`} THEN COALESCE(${room}, ${holder})`
       : sql`WHEN t.name LIKE ${`${prefix}%`} THEN ${holder}`,
   );
-  return sql`CASE ${sql.join(named, sql` `)}
+  return sql`CASE WHEN a.agent_session_id IS NOT NULL THEN ${sessionAgent(sql`a.agent_session_id`)}
+    ${sql.join(named, sql` `)}
     WHEN u.kind = 'agent' THEN 'agent-account' ELSE 'person' END`;
 }
 

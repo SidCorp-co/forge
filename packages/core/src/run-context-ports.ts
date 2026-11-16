@@ -72,6 +72,16 @@ async function runOfCall(caller: RunCaller): Promise<CallRun> {
   return { ok: true, sessionId: agentSessionId, issueIds };
 }
 
+/**
+ * The session a box credential's act was made in, named as its reads are (ISS-1251): the credentials
+ * module keeps it on the act, so a master's acts and a run's are told apart though one credential
+ * serves both. Null where no one session can be named.
+ */
+export async function sessionOfAct(caller: RunCaller): Promise<string | null> {
+  const run = await runOfCall(caller);
+  return run.ok ? run.sessionId : null;
+}
+
 /** Records the rules and lessons a declared run's checkout orientation carries, as it opens. */
 export function recordOrientationCarried(run: {
   projectId: string;

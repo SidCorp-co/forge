@@ -77,6 +77,12 @@ export const mcpAuditLog = pgTable(
     resultCode: text('result_code').notNull(),
     /** The code a refused call answered with (ISS-1251, migration 0672); null where it ended ok. */
     refusalCode: text('refusal_code'),
+    /**
+     * The session a box credential's act was made in (ISS-1251, migration 0675), named as a box's reads
+     * are: the run the call names, a session's own turn token, else the box's one live session in the
+     * project; null where none could be named, and for every act not made on a box credential.
+     */
+    agentSessionId: uuid('agent_session_id'),
     requestId: text('request_id'),
     ip: text('ip'),
     userAgent: text('user_agent'),

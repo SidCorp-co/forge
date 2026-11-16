@@ -15,6 +15,8 @@
  * @direct-test-of packages/core/src/forge-door/tool.ts
  * @direct-test-of packages/core/src/run-context-ports.ts
  * @direct-test-of packages/core/src/run-context/hook.ts
+ * @direct-test-of packages/core/src/middleware/pat-act-record.ts
+ * @direct-test-of packages/core/src/credentials/mcp-audit.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -29,6 +31,8 @@ vi.hoisted(() => {
 import { mintPat } from '../../src/credentials/pat.js';
 import { PAT_GRANT_EPOCH } from '../../src/credentials/pat-permissions.js';
 import { db } from '../../src/db/client.js';
+import { withKernelMarker } from '../../src/db/kernel-marker.js';
+import { backgroundSettled } from '../../src/lib/background.js';
 import { doorCatalog, doorNames } from '../../src/lib/door-catalog.js';
 import { buildPipelinePreambleStructured } from '../../src/prompt/system.js';
 import { api, type Body, userToken } from '../helpers/api.js';
@@ -41,6 +45,7 @@ import {
   createTestUser,
   rows,
 } from '../helpers/factories.js';
+import { pairTestBox } from '../helpers/paired-box.js';
 
 const w = { owner: '', agent: '', project: '', other: '', home: '', device: '', session: '' };
 const t = { owner: '', agent: '', box: '', turn: '', agentToken: '', boxToken: '' };
@@ -227,6 +232,44 @@ describe('what each agent kind read is told apart by its session', () => {
         top: [{ ref: 'door-use-guide', reaches: 1 }],
       }),
     );
+  });
+});
+
+describe("a box credential's writes count under the session they were made in (ISS-1251 c3)", () => {
+  it('tells a master’s write from a run’s on the one checkout credential both hold, as their reads are', async () => {
+    const project = (await createTestProject(w.owner)).id;
+    await addProjectMember(project, w.agent);
+    const { deviceId, paneToken } = await pairTestBox(project, {
+      pairedBy: w.owner,
+      actsAs: w.agent,
+    });
+    const masterRun = await createTestRunSession(project, deviceId, new Date(), null);
+    await db.execute(
+      sql`UPDATE agent_sessions SET kind = 'master' WHERE pipeline_run_id = ${masterRun}`,
+    );
+    const runId = await createTestRunSession(project, deviceId, new Date(), null);
+    const [run] = await rows<{ id: string }>(
+      sql`SELECT id FROM agent_sessions WHERE pipeline_run_id = ${runId}`,
+    );
+    const write = (headers?: Record<string, string>) =>
+      api(paneToken as string, 'POST', `/api/projects/${project}/lessons/applied`, {}, headers);
+    // the run names itself; the master names nothing, and with two sessions live nothing is guessed
+    expect((await write({ 'x-forge-run': run?.id as string })).status).toBe(400);
+    expect((await write()).status).toBe(400);
+    await withKernelMarker(db, (tx) =>
+      tx.execute(sql`UPDATE agent_sessions SET status = 'completed' WHERE id = ${run?.id}`),
+    );
+    // the run over, the master is the box's one live session in the project
+    expect((await write()).status).toBe(400);
+    await backgroundSettled();
+    const res = await api(t.owner, 'GET', `/api/projects/${project}/metrics/doors`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(
+      door(res.body as unknown as DoorUseView, 'POST /api/projects/:id/lessons/applied'),
+    ).toMatchObject({
+      calls: 3,
+      byAgent: { 'session:run_session': 1, 'session:master': 1, checkout: 1 },
+    });
   });
 });
 

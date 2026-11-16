@@ -24,6 +24,11 @@ interface AuditRow {
    * answer's body where it is only known once the body is read; null where it ended ok.
    */
   refusalCode?: string | null | Promise<string | null>;
+  /**
+   * The session a box credential's act was made in (ISS-1251): read off the work after the answer,
+   * so the request is never held for it; null where none was named or the act was on no box.
+   */
+  agentSessionId?: Promise<string | null>;
   requestId?: string | null;
   ip?: string | null;
   userAgent?: string | null;
@@ -99,6 +104,7 @@ export function writeMcpAudit(row: AuditRow): void {
         projectId: row.projectId ?? null,
         resultCode: row.resultCode,
         refusalCode: (await row.refusalCode) ?? null,
+        agentSessionId: (await row.agentSessionId) ?? null,
         requestId: row.requestId ?? null,
         ip: row.ip ?? null,
         userAgent: row.userAgent ?? null,
