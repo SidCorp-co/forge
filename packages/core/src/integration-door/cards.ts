@@ -6,6 +6,7 @@
 // and release runs on forge's issues.
 
 import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
+import { MONITORING_PROVIDER } from '../monitoring/index.js';
 
 const ISSUE = '6f1c2a0e-5b7d-4c1e-9a3f-2d8e4b6c7a10';
 
@@ -116,7 +117,7 @@ export const INTEGRATION_DOOR_REST_CARDS = {
           projectId: '0b8e6f4a-2c1d-4e3f-9a5b-7c6d8e9f0a1b',
           role: 'monitoring',
           target: {
-            provider: 'prometheus',
+            provider: MONITORING_PROVIDER,
             probe: [{ name: 'site', url: 'https://example.com/health', module: 'http_2xx' }],
           },
         },

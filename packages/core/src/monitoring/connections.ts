@@ -21,7 +21,8 @@ import {
 } from '../integrations/prometheus/index.js';
 import { listProjectHeads } from '../projects/index.js';
 
-const PROVIDER = 'prometheus';
+/** The one provider this module serves, so a reader outside it names it through here. */
+export const MONITORING_PROVIDER = 'prometheus';
 
 export interface ConnectionHeld {
   connectionId: string;
@@ -42,14 +43,14 @@ export async function connectionAdmitting(
 ): Promise<ConnectionHeld | null> {
   if (!(await connectionAdmits(connectionId, kind, token))) return null;
   const row = await findConnectionById(connectionId);
-  if (!row?.active || row.provider !== PROVIDER) return null;
+  if (!row?.active || row.provider !== MONITORING_PROVIDER) return null;
   const conn = monitoringConnectionOf(row);
   return conn ? { connectionId, conn } : null;
 }
 
 /** Every project bound to the connection with role `monitoring`, with what it watches. */
 export async function projectsBoundTo(connectionId: string): Promise<BoundProject[]> {
-  const pairs = (await listActiveBindingsForProvider(PROVIDER)).filter(
+  const pairs = (await listActiveBindingsForProvider(MONITORING_PROVIDER)).filter(
     (p) => p.connection.id === connectionId && p.binding.role === 'monitoring',
   );
   const heads = new Map(
@@ -68,9 +69,9 @@ export async function projectsBoundTo(connectionId: string): Promise<BoundProjec
 export async function bindingOfProject(
   projectId: string,
 ): Promise<(ConnectionHeld & { monitoring: MonitoringConfig }) | null> {
-  const [pair] = (await listActiveBindingsForProjectProvider(projectId, PROVIDER)).filter(
-    (p) => p.binding.role === 'monitoring',
-  );
+  const [pair] = (
+    await listActiveBindingsForProjectProvider(projectId, MONITORING_PROVIDER)
+  ).filter((p) => p.binding.role === 'monitoring');
   if (!pair) return null;
   const conn = monitoringConnectionOf(pair.connection);
   const watched = monitoringConfigSchema.safeParse(pair.binding.config ?? {});

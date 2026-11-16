@@ -5,5 +5,6 @@ export {
   readMonitoringConnection,
   rereadReadiness,
 } from './connection-admin.js';
+export { MONITORING_PROVIDER } from './connections.js';
 export { projectMonitoringRoutes } from './project-routes.js';
 export { monitoringDoorRoutes } from './routes.js';
