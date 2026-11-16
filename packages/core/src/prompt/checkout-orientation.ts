@@ -145,9 +145,15 @@ export async function servedCheckoutOrientation(projectId: string, slug: string)
       orgOnDemandSlugsOf(projectId),
       selectOnDemandSourcesFromKnowledge(projectId),
       readAgreements(projectId, null),
-      proposedSituations(projectId),
+      proposedSituationsOrUnknown(projectId),
     ]);
-    rules = { entries, lessons, guides: { project, org, sources }, agreements, proposed };
+    rules = {
+      entries,
+      lessons,
+      guides: { project, org, sources },
+      agreements,
+      ...(proposed ? { proposed } : {}),
+    };
   } catch (err) {
     logger.error(
       { err: (err as Error).message, projectId },
@@ -156,6 +162,24 @@ export async function servedCheckoutOrientation(projectId: string, slug: string)
     rules = { unreadable: true };
   }
   return checkoutOrientation(projectId, slug, rules);
+}
+
+/**
+ * The proposed situations, or none known where the card ledger cannot be read: the ledger is not
+ * the knowledge store, so its failure costs the table its proposed rows and never the project's rules.
+ */
+async function proposedSituationsOrUnknown(
+  projectId: string,
+): Promise<Map<string, string[]> | undefined> {
+  try {
+    return await proposedSituations(projectId);
+  } catch (err) {
+    logger.error(
+      { err: (err as Error).message, projectId },
+      'checkout orientation: the card ledger is unreadable, so no proposed situation is shown and the rules are served',
+    );
+    return undefined;
+  }
 }
 
 /** The situations this project's lessons folded into the orientation's cards, by card id. */

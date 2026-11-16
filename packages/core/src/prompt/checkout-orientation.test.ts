@@ -119,6 +119,23 @@ describe('the orientation core serves reads the rules from the knowledge store',
     freshness.read.mockReset().mockResolvedValue([]);
   });
 
+  // ISS-1251: the card ledger is read beside the knowledge store; its failure loses the proposed
+  // rows of the affordances table, never the project's rules
+  it('serves the rules when only the card ledger cannot be read', async () => {
+    store.read.mockResolvedValue(RULES.entries);
+    freshness.read.mockRejectedValue(new Error('card ledger down'));
+    const body = await servedCheckoutOrientation('p-1', 'forge');
+    expect(body).not.toContain('could not be read');
+    expect(body).toContain(RULES.entries[0]?.text as string);
+    expect(body).toBe(
+      checkoutOrientation('p-1', 'forge', {
+        ...RULES,
+        guides: { project: [], org: [], sources: {} },
+        agreements: INHERITED,
+      }),
+    );
+  });
+
   it("reads this project's always-applied entries", async () => {
     store.read.mockResolvedValue(RULES.entries);
     const body = await servedCheckoutOrientation('p-1', 'forge');
