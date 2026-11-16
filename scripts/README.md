@@ -698,11 +698,11 @@ test the builder never touched (ISS-1254). A list of route paths, MCP doors, tim
 outbox events, guides or core modules written in test code goes stale the day one is added, and
 either fails a stranger or passes while covering less than it names. The registries are declared in
 `.forge/conformance.json` `checkers["hand-kept-inventories"]` and read from their source (the
-OpenAPI contract, `MCP_TOOL_NAMES`, `timer-registry.ts`, the report-query descriptors,
+OpenAPI contract, `MCP_TOOL_NAMES`, `packages/core/src/timer-registry.ts`, the report-query descriptors,
 `OUTBOX_EVENT_TYPES`, `GUIDE_SLUGS`, `modules.json`). An array literal in test code is refused
 `HAND_KEPT_INVENTORY <file>:<line>` when `min` of its strings, and half of them, are one registry's
 names. A classification a person decides stays a table keyed by those names that fails by name on a
-new one (`credential-inputs.fixture.ts`); a Record is not read. Allowances name a file and registry
+new one (`packages/core/src/middleware/credential-inputs.fixture.ts`); a Record is not read. Allowances name a file and registry
 with `why` and `endsWhen`, and one that covers no list is refused as stale.
 
 ## check-root-dependencies.mjs — a root consumer reaches only what its manifest declares
