@@ -19,6 +19,7 @@ import { actionCatalog, findActions } from './action-catalog.js';
 import { cardsOf, describedCard, withCard } from './cards.js';
 import { carded, catalogOf, mcpDoors, servedDoorCatalog } from './door-catalog.js';
 import { mcpTools } from './server.js';
+import { UNCARDED_DOORS } from './uncarded-doors.js';
 
 const catalog = actionCatalog(mcpTools({ principal: { userId: 'cards-test' } } as never));
 
@@ -302,7 +303,7 @@ describe('a Tier-0 map merges a family of acts into one line', () => {
 
   // ISS-1251 c5 (master, 2026-11-16): every audience's map names capabilities, never routes, and
   // every card it teaches is on it or behind its last line's count and the door that finds it
-  it.each(['bot', 'master', 'run'] as const)(
+  it.each(['bot', 'master', 'run', 'person'] as const)(
     'reaches every card the %s is taught through its family line or its name, within its cap',
     (audience) => {
       const doors = servedDoorCatalog().doors;
@@ -364,10 +365,45 @@ describe('a Tier-0 map merges a family of acts into one line', () => {
     expect(carded.filter((n, i) => carded.indexOf(n) !== i)).toEqual([]);
   });
 
-  it('gives every card the room agent is taught a family, so none takes lines of its own', () => {
+  it('gives every card a family, so none takes lines of its own on any map', () => {
     const loose = servedDoorCatalog()
-      .doors.filter((d) => d.card?.audience.includes('bot') && !d.card.family)
+      .doors.filter((d) => d.card && !d.card.family)
       .map((d) => d.id);
     expect(loose).toEqual([]);
+  });
+});
+
+// ISS-1251 c1: every door an agent reaches for carries one card, with the wrong way it was used and
+// a worked call; a REST write no agent reaches for is declared with why (`uncarded-doors.ts`)
+describe('every agent-facing door is carded whole', () => {
+  const doors = servedDoorCatalog().doors;
+  const declared = Object.values(UNCARDED_DOORS).flat();
+
+  it('cards every MCP action, and every REST write it does not declare', () => {
+    const bare = doors
+      .filter((d) => !d.card && (d.surface === 'mcp' || !declared.includes(d.id)))
+      .map((d) => `${d.surface} ${d.id}`);
+    expect(bare, 'carry a card beside the door, or declare it in mcp/uncarded-doors.ts').toEqual(
+      [],
+    );
+  });
+
+  it('declares only served REST writes that carry no card, each once', () => {
+    const served = new Map(doors.map((d) => [d.id, d]));
+    const wrong = declared.filter(
+      (id, i) =>
+        declared.indexOf(id) !== i || served.get(id)?.surface !== 'rest' || served.get(id)?.card,
+    );
+    expect(wrong, 'a declared door that is carded, twinned, gone or declared twice').toEqual([]);
+  });
+
+  it('gives every card a red flag and a worked example', () => {
+    const thin = doors
+      .filter((d) => d.card && (!d.card.redFlag || d.card.example === undefined))
+      .map(
+        (d) =>
+          `${d.id}${d.card?.redFlag ? '' : ' redFlag'}${d.card?.example === undefined ? ' example' : ''}`,
+      );
+    expect(thin).toEqual([]);
   });
 });

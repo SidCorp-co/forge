@@ -1,6 +1,7 @@
-// The capability cards of the support doors a project's master calls over REST (ISS-1251), beside
-// their routes (`routes.ts`, `master-ask-routes.ts`, `channel-routes.ts`), keyed by the door as the
-// published contract lists it and built into the door catalog by `mcp/rest-cards.ts`. A room
+// The capability cards of the support doors a project's master or run calls over REST (ISS-1251),
+// beside their routes (`routes.ts`, `master-ask-routes.ts`, `channel-routes.ts`, `run-reads.ts`),
+// keyed by the door as the published contract lists it and built into the door catalog by
+// `mcp/rest-cards.ts`. A room
 // session's own acts are forge_support's (`act-cards.ts`), so their REST twins carry no card here.
 // Written from the dispatch guide's account of telling a room what came of it, and from the calls
 // these doors took on forge between 2026-10-17 and 2026-11-16.
@@ -167,5 +168,25 @@ export const SUPPORT_REST_CARDS = {
     redFlag: 'Recording the process stopped before anyone stopped it.',
     family: 'rooms',
     audience: ['person'],
+  },
+  // run-reads.ts (ISS-707): a run read production through whatever credential its box held
+  'POST /api/projects/:id/ops-reads/:name': {
+    purpose:
+      'Runs a production read the project declares, for the run you are, and keeps it on your issue.',
+    situations: [
+      {
+        when: 'the issue you work needs production logs or data to find or prove its cause',
+        do: 'run a read the project declares by its name, with your run’s id as run and its parameters as args',
+      },
+    ],
+    practice: [
+      'What it printed comes back scrubbed, and the read is kept on your issue as ops.read.',
+      'A run that is not live in this project, or a read it does not declare, is refused by name.',
+    ],
+    example: { run: '3f2b9c1e-7a4d-4e8b-9c2f-1a6d5e4b3c2a', args: { code: 'RIV-68493' } },
+    redFlag:
+      'Reading production through a credential on your box instead of a read the project declares.',
+    family: 'issue-work',
+    audience: ['run'],
   },
 } satisfies Record<string, CapabilityCardBody>;

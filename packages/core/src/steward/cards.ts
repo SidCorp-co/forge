@@ -52,6 +52,7 @@ export const STEWARD_REST_CARDS = {
     // act as (STEWARD_ACT_UNKNOWN): an issue's event or a comment id sent as the act's
     redFlag:
       'Undoing by an id that is not a steward act’s (an event’s, a comment’s): read the acts first.',
+    family: 'steward',
     audience: ['master'],
   },
 } satisfies Record<string, CapabilityCardBody>;
