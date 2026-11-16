@@ -7,9 +7,13 @@
 import type { CapabilityCard, CapabilityCardBody } from '@forge/contracts/capability-cards';
 import { ISSUE_REST_CARDS } from '../issues/index.js';
 import { card } from '../prompt/index.js';
+import { RELEASE_REST_CARDS } from '../release-batch/index.js';
 
 /** One module's cards, each owned by that module. */
 const ownedBy = (owner: string, cards: Readonly<Record<string, CapabilityCardBody>>) =>
   Object.entries(cards).map(([id, body]) => card(id, owner, body));
 
-export const REST_CARDS: readonly CapabilityCard[] = [...ownedBy('issues', ISSUE_REST_CARDS)];
+export const REST_CARDS: readonly CapabilityCard[] = [
+  ...ownedBy('issues', ISSUE_REST_CARDS),
+  ...ownedBy('release-batch', RELEASE_REST_CARDS),
+];
