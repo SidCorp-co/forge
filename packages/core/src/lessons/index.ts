@@ -10,6 +10,7 @@ export {
 } from './block.js';
 export { type ConfusionSettlement, decideConfusion, raiseConfusion } from './confusions.js';
 export { registerLessonCorrections } from './consumers.js';
+export { type ThreadPost, threadLines } from './correction-thread.js';
 export { type CorrectionInput, recordCorrection } from './corrections.js';
 export {
   approveLesson,

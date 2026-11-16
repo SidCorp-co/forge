@@ -39,6 +39,7 @@ import {
   rejectCorrections,
   retireLesson,
   retirementsDue,
+  threadLines,
 } from '../lessons/index.js';
 import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
@@ -67,6 +68,16 @@ const GROUP_TOKENS_PER_CORRECTION = 75;
 export const groupingBudget = (corrections: number): number =>
   GROUP_BASE_TOKENS + corrections * GROUP_TOKENS_PER_CORRECTION;
 const CHECK_TITLE_CHARS = 120;
+/** How much of each thread post the grouping reads, over a window of up to sixty corrections. */
+const GROUP_THREAD_CHARS = 280;
+
+/** One correction as the grouping reads it: what was wrong, then the thread it was said in, where there is one. */
+function correctionLine(c: GatherCorrection): string {
+  const head = `- ${c.id} [${c.source}, ${c.itemKind} ${c.itemKey}, area ${c.areaId ?? 'none'}]: ${c.reason}`;
+  return c.thread?.length
+    ? `${head}\n  thread, oldest first, the last post the correction itself:\n${threadLines(c.thread, GROUP_THREAD_CHARS, '    ')}`
+    : head;
+}
 
 // a list the model leaves out is empty, and a key it leaves out is null: an answer that omits what
 // it has nothing to say about is still read, never dropped whole as unreadable (ISS-867)
@@ -110,16 +121,12 @@ export function groupingPrompt(input: {
     `Every proposal says what it is about in ${ABOUT_WORDS}`,
     'Corrections on different items make the same point when one general mistake lies behind them: the same rule missed, the same kind of check skipped, the same wording or habit corrected. Say that general rule, not the item.',
     'Leave a correction alone when nothing else makes its point; it waits for a second one.',
+    "Before you draft from a correction that carries its thread, read the thread: the person's words answer the posts before them, so the lesson is about what those posts are about (a product's own messages, a record, a step), never by default about the assistant's own reply.",
+    `Where the corrections are a person's ruling, the \`sentence\` quotes their words, short, in their language ("…"), and says what it applies to. Where the thread leaves the reading open, the sentence says so ("reading unsure: …") rather than guessing; better still, leave the group for a correction that settles it.`,
     `Lessons:\n${input.lessons.map((l) => `- ${lessonKey(l.number)} (${l.status}, ${l.scope}): ${l.sentence}`).join('\n') || '(none)'}`,
-    `Corrections:\n${markUntrusted(
-      input.corrections
-        .map(
-          (c) =>
-            `- ${c.id} [${c.source}, ${c.itemKind} ${c.itemKey}, area ${c.areaId ?? 'none'}]: ${c.reason}`,
-        )
-        .join('\n'),
-      { source: 'the corrections people said' },
-    )}`,
+    `Corrections:\n${markUntrusted(input.corrections.map(correctionLine).join('\n'), {
+      source: 'the corrections people said',
+    })}`,
   ].join('\n\n');
 }
 

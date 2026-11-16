@@ -20,6 +20,7 @@ import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../db/client.js';
 import { corrections, lessonConfusions, lessons } from '../db/schema-lessons.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
+import { type ThreadPost, threadBefore } from './correction-thread.js';
 
 const DAY_MS = 86_400_000;
 /**
@@ -45,7 +46,13 @@ export interface GatherCorrection {
   itemKey: string;
   areaId: string | null;
   reason: string;
+  /** For a correction said in a chat or a room: the reply and the posts it answers, oldest first (ISS-1251). */
+  thread?: ThreadPost[];
 }
+
+/** The posts a grouping reads around each chat or room correction: fewer than capture reads, over a whole window. */
+export const GATHER_THREAD_POSTS = 4;
+const THREADED_SOURCES = new Set(['chat', 'room']);
 
 export interface GatherLesson {
   number: number;
@@ -67,6 +74,8 @@ export async function gatherInput(
         itemKey: corrections.itemKey,
         areaId: corrections.areaId,
         reason: corrections.reason,
+        itemId: corrections.itemId,
+        sourceRef: corrections.sourceRef,
       })
       .from(corrections)
       .where(
@@ -92,8 +101,15 @@ export async function gatherInput(
         and(eq(lessons.projectId, projectId), inArray(lessons.status, ['proposed', 'approved'])),
       ),
   ]);
+  const threaded = await Promise.all(
+    open.reverse().map(async ({ itemId, sourceRef, ...c }) => {
+      if (!THREADED_SOURCES.has(c.source)) return c;
+      const thread = await threadBefore(itemId, sourceRef, GATHER_THREAD_POSTS);
+      return thread.length > 0 ? { ...c, thread } : c;
+    }),
+  );
   return {
-    corrections: open.reverse(),
+    corrections: threaded,
     lessons: live.map((l) => ({
       number: l.number,
       sentence: l.sentence,
