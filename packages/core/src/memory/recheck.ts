@@ -2,8 +2,9 @@
 // (`curation.recheckWhen`). When a landing touches a path, route or config key it names, or a rule it
 // names is rewritten, the memory is flagged with the release flag every reader already shows
 // (`staleSince`, `supersededBy`, `staleReason`; `needsCheck` `flagged`), naming the change and the
-// anchor it met. The next agent confirms it (`verify`), rewrites it (a write clears the flag) or
-// retires it. An entry whose `endsWhen` the change meets has ended, and is retired (endings.ts). A landing also flags the project's knowledge and its org's rules the same way
+// anchor it met. A flagged memory is out of service (REQ-89 r3 BC-5, ISS-1251): kept and listed as
+// `flagged`, but search and recall serve it to no agent (`search-service.ts:withholdOutOfService`).
+// The next agent confirms it (`verify`), rewrites it (a write clears the flag) or retires it. An entry whose `endsWhen` the change meets has ended, and is retired (endings.ts). A landing also flags the project's knowledge and its org's rules the same way
 // (`knowledge/recheck.ts`).
 
 import { MEMORY_AUTHORED_SOURCES } from '@forge/contracts/memory';

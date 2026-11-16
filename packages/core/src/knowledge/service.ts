@@ -7,7 +7,7 @@ import type { knowledgeInjectionEnum, knowledgeKindEnum } from './entry-input.js
 import { lessonOwnedRefusal, notALessonEntry } from './lesson-entries.js';
 import { orgAlwaysInjectOf, orgEntryForProject, orgOnDemandSourcesOf } from './org-knowledge.js';
 import type { ReadWhenCondition } from './read-when.js';
-import { recheckDueOf } from './recheck.js';
+import { entryInService, recheckDueOf } from './recheck.js';
 
 const MAX_RESPONSE_CHARS = 38_000;
 
@@ -35,6 +35,8 @@ export interface KnowledgeListRow extends KnowledgeProvenance {
   orderIndex: number;
   updatedAt: Date;
   readWhen: ReadWhenCondition | null;
+  /** The re-check a change flagged on it: out of service, served to no agent, until confirmed or rewritten. */
+  recheckDue: RecheckDue | null;
 }
 
 export interface ListKnowledgeResult {
@@ -112,6 +114,7 @@ export async function listKnowledgeEntries(
       scope: knowledgeEntries.scope,
       recheckWhen: knowledgeEntries.recheckWhen,
       type: knowledgeEntries.entryType,
+      metadata: knowledgeEntries.metadata,
       total: sql<number>`count(*) over ()`.mapWith(Number),
     })
     .from(knowledgeEntries)
@@ -120,9 +123,10 @@ export async function listKnowledgeEntries(
     .limit(MAX_LIST_ROWS);
 
   const total = fetched[0]?.total ?? 0;
-  const rows: KnowledgeListRow[] = fetched.map(({ total: _total, ...row }) => ({
+  const rows: KnowledgeListRow[] = fetched.map(({ total: _total, metadata, ...row }) => ({
     ...row,
     readWhen: (row.readWhen as ReadWhenCondition | null) ?? null,
+    recheckDue: recheckDueOf((metadata as Record<string, unknown> | null)?.recheckDue),
   }));
 
   const kept = trimToResponseCap(rows);
@@ -324,6 +328,8 @@ async function projectAlwaysInject(projectId: string): Promise<AlwaysInjectFact[
         isNull(knowledgeEntries.archivedAt),
         // a lesson is named in its own scoped map (`lessons/block.ts`), never carried as a rule
         ne(knowledgeEntries.kind, 'lesson'),
+        // out of service until re-checked (REQ-89 r3 BC-5): no prompt carries it
+        entryInService,
       ),
     )
     .orderBy(asc(knowledgeEntries.orderIndex), asc(knowledgeEntries.slug));
@@ -358,6 +364,7 @@ export async function selectOnDemandSlugsFromKnowledge(projectId: string): Promi
         isNull(knowledgeEntries.archivedAt),
         // the lessons map names the approved lessons, so the guide index does not name them twice
         notALessonEntry,
+        entryInService,
       ),
     )
     .orderBy(asc(knowledgeEntries.orderIndex), asc(knowledgeEntries.slug));
@@ -381,6 +388,7 @@ export async function selectOnDemandSourcesFromKnowledge(
           eq(knowledgeEntries.injection, 'on_demand'),
           isNull(knowledgeEntries.archivedAt),
           notALessonEntry,
+          entryInService,
         ),
       ),
     orgOnDemandSourcesOf(projectId),

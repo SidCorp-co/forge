@@ -394,6 +394,53 @@ describe('BC-5: a change meeting what an entry names flags it', () => {
     row = ((await entries('&limit=200')).body.items as Body[]).find((r) => r.id === named.body.id);
     expect(row?.flagged).toBeNull();
   });
+
+  it('serves no agent what a change took out of service, lists it, and serves it again once rewritten', async () => {
+    const memoryRecall = () =>
+      api(w.token, 'POST', '/api/memory/search', {
+        projectId: w.projectId,
+        query: 'indexer skips the embed call when the text did not change',
+        topK: 5,
+      });
+    const knowledgeRecall = async () => {
+      const res = await api(w.token, 'POST', `/api/projects/${w.projectId}/knowledge/search`, {
+        query:
+          'how the indexer embeds a memory once per distinct text, vectors kept for unchanged text',
+      });
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return (res.body.knowledge as Body[]).map((h) => h.slug);
+    };
+    const withheld = await memoryRecall();
+    expect(withheld.status, JSON.stringify(withheld.body)).toBe(200);
+    expect((withheld.body.hits as Body[]).map((h) => h.id)).not.toContain(noteId);
+    expect(withheld.body.withheldForRecheck).toBeGreaterThanOrEqual(1);
+    const outOfService = await knowledgeRecall();
+    expect(outOfService).not.toContain('indexer-guide');
+    expect(outOfService).not.toContain('indexer-ruling');
+    // where the next agent finds it to confirm or rewrite: the list, with the re-check owed on it
+    const listed = await api(w.token, 'GET', `/api/projects/${w.projectId}/knowledge`);
+    const guideRow = (listed.body.rows as Body[]).find((e) => e.slug === 'indexer-guide');
+    expect(guideRow?.recheckDue).toMatchObject({ by: 'ISS-41' });
+
+    await write({
+      source: 'note',
+      sourceRef: 'gotcha/indexer-skip',
+      textContent: 'The indexer skips the embed call when the text did not change, as after ISS-41',
+      ...CURATED,
+    });
+    await putKnowledge('indexer-guide', {
+      kind: 'guide',
+      title: 'How the indexer embeds',
+      body: 'The indexer embeds a memory once per distinct text',
+      type: 'fact',
+      source: 'packages/core/src/memory/indexer.ts:indexMemory',
+      scope: 'memory writes',
+      recheckWhen: 'the indexer changes',
+    });
+    const served = await memoryRecall();
+    expect((served.body.hits as Body[]).map((h) => h.id)).toContain(noteId);
+    expect(await knowledgeRecall()).toContain('indexer-guide');
+  });
 });
 
 describe('BC-5: a temporary entry is retired when what ends it happens', () => {

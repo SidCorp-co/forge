@@ -96,8 +96,14 @@ interface MemorySearchResult {
   rerankHoldout?: true;
   /** True when rows carrying `via` were appended after the ranked hits. */
   expanded: boolean;
-  /** How many retrieved hits were moved below the fresh ones because they carry `staleSince` or `staleRefs`. Absent when none were. */
+  /** How many retrieved hits were moved below the fresh ones because they name a record that no longer resolves (`staleRefs`). Absent when none were. */
   demotedStale?: number;
+  /**
+   * How many retrieved entries were withheld because a change took them out of service (`staleSince`,
+   * REQ-89 r3 BC-5): kept, readable at `GET /api/memory/entries` as `flagged`, served to no agent until
+   * someone confirms, rewrites or retires them. Absent when none were.
+   */
+  withheldForRecheck?: number;
   /** How many retrieved entries were folded into the entry answering their subject (its `duplicates`). Absent when none were. */
   duplicatesFolded?: number;
 }
@@ -109,6 +115,7 @@ interface SearchOutcome {
   rerankHoldout?: true;
   expanded: boolean;
   demotedStale?: number;
+  withheldForRecheck?: number;
 }
 
 /**
@@ -130,14 +137,23 @@ async function onePerSubject(
   }
 }
 
-/** Flagged by a release, or naming a record that no longer resolves. */
-const readsStale = (h: MemoryHit) => h.stale || (h.staleRefs?.length ?? 0) > 0;
+/** Naming a record that no longer resolves: still served, below the fresh hits. */
+const readsStale = (h: MemoryHit) => (h.staleRefs?.length ?? 0) > 0;
 
 function demoteStale(hits: MemoryHit[]): { hits: MemoryHit[]; demoted: number } {
   const fresh = hits.filter((h) => !readsStale(h));
   if (fresh.length === hits.length) return { hits, demoted: 0 };
   const stale = hits.filter(readsStale);
   return { hits: [...fresh, ...stale], demoted: stale.length };
+}
+
+/**
+ * An entry a change took out of service (`staleSince`: a landing met its re-check condition, a release
+ * contradicted it, or its unobservable ending went unchecked) is withheld, never served (REQ-89 r3 BC-5).
+ */
+function withholdOutOfService(hits: MemoryHit[]): { hits: MemoryHit[]; withheld: number } {
+  const served = hits.filter((h) => !h.stale);
+  return { hits: served, withheld: hits.length - served.length };
 }
 
 /**
@@ -267,8 +283,11 @@ export async function runMemorySearch(input: RunMemorySearchInput): Promise<Memo
   // a subject held twice takes one slot: the pool is wider than topK so the slot it frees is filled
   const retrieved = await retrieve(input, willRerank ? rerankPoolSize(topK) : clampTopK(topK * 2));
   const subjects = await onePerSubject(input.projectId, retrieved.hits);
-  let hits = subjects.hits;
+  // withheld before the cut to topK, so the slots it frees go to entries in service
+  const service = withholdOutOfService(subjects.hits);
+  let hits = service.hits;
   const outcome: SearchOutcome = { reranked: false, expanded: false };
+  if (service.withheld > 0) outcome.withheldForRecheck = service.withheld;
   if (holdout) outcome.rerankHoldout = true;
 
   if (willRerank && retrieved.resolved === 'hybrid') {
@@ -322,6 +341,7 @@ export async function runMemorySearch(input: RunMemorySearchInput): Promise<Memo
     ...(outcome.rerankHoldout ? { rerankHoldout: true as const } : {}),
     expanded: outcome.expanded,
     ...(outcome.demotedStale ? { demotedStale: outcome.demotedStale } : {}),
+    ...(outcome.withheldForRecheck ? { withheldForRecheck: outcome.withheldForRecheck } : {}),
     ...(subjects.folded > 0 ? { duplicatesFolded: subjects.folded } : {}),
   };
 }

@@ -7,7 +7,7 @@ import { identifierTsQuery } from '../db/schema-types.js';
 import { clampTopK } from '../lib/search-fusion.js';
 import { anyWordQuery } from './any-word.js';
 import { notAWithdrawnLesson } from './lesson-entries.js';
-import { recheckDueOf } from './recheck.js';
+import { entryInService, recheckDueOf } from './recheck.js';
 
 export interface KnowledgeHit extends KnowledgeProvenance {
   id: string;
@@ -57,6 +57,8 @@ function baseWhere(projectId: string | readonly string[]) {
       : inArray(knowledgeEntries.projectId, [...projectId]),
     isNull(knowledgeEntries.archivedAt),
     notAWithdrawnLesson,
+    // an entry a change took out of service is never retrieved; it stays readable by its slug
+    entryInService,
   ];
 }
 
