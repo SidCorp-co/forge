@@ -68,7 +68,11 @@ const use: DoorUseView = {
   totals: { doors: 3, neverUsed: 1, calls: 10, taught: 2, misses: 3 },
   days,
   unmatched: [],
-  reads: [{ agent: "session:master", kind: "knowledge", how: "get", reaches: 3, entries: 2, top: [] }],
+  reads: [
+    { agent: "session:master", kind: "knowledge", how: "get", reaches: 3, entries: 2, top: [] },
+    { agent: "session:pipeline", kind: "rule", how: "prompt", reaches: 9, entries: 4, top: [] },
+    { agent: "session:run_session", kind: "rule", how: "prompt", reaches: 5, entries: 4, top: [] },
+  ],
   lessonsApplied: [
     { lesson: "L-7", agent: "agent-account", applications: 2 },
     { lesson: "L-9", agent: "room:support", applications: 1 },
@@ -187,6 +191,15 @@ describe("the Capabilities branch", () => {
     const rows = screen.getAllByRole("listitem").map((r) => r.textContent ?? "");
     expect(rows.find((r) => r.includes("L-9"))).toContain("Bot");
     expect(rows.find((r) => r.includes("L-7"))).toContain("Agent");
+  });
+
+  it("names each Read row apart: a pipeline's job session is not a declared run (dev.701: two rows read Run · Rules)", () => {
+    tab();
+    fireEvent.click(within(screen.getByTestId("cap-reads")).getByRole("button"));
+    const titles = screen.getAllByRole("listitem").map((r) => r.textContent ?? "").filter((r) => r.includes("Rules"));
+    expect(titles).toHaveLength(2);
+    expect(titles.some((r) => r.startsWith("Pipeline run · Rules"))).toBe(true);
+    expect(titles.some((r) => r.startsWith("Run · Rules"))).toBe(true);
   });
 
   it("marks a pile over its cap Over, and one within it not", () => {

@@ -79,6 +79,7 @@
     "modules.cap.pile.tier0_map": "Map",
     "modules.cap.project": "Project",
     "modules.cap.read": "Read",
+    "modules.cap.reader.pipeline": "Pipeline run",
     "modules.cap.recheck": "Re-check",
     "modules.cap.recheckClear": "Not owed",
     "modules.cap.recheckSince": "Owed since {date}",

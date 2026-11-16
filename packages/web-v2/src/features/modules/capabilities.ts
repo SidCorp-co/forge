@@ -7,8 +7,11 @@ import type { CapabilitiesView, CapabilityFeedbackRow, CapabilityFreshnessRow, C
 import type { DoorUseRow, PileRow } from "@forge/contracts/door-use";
 import type { LegendTone } from "@/design";
 
-/** Where a door stands, the order the page lists them in: what asks for a decision first. */
-export const CAP_STANDINGS = ["unused", "recheck", "misused", "untaught", "inUse"] as const;
+/**
+ * Where a door stands, the order the page lists them in: what asks for a decision first. A card owing
+ * a re-check stands there whether or not it was called, so the count says every card that owes one.
+ */
+export const CAP_STANDINGS = ["recheck", "unused", "misused", "untaught", "inUse"] as const;
 export type CapStanding = (typeof CAP_STANDINGS)[number];
 
 export const CAP_STANDING_TONE: Record<CapStanding, LegendTone> = {
@@ -55,8 +58,9 @@ export interface CapDoor {
 }
 
 export function standingOf(row: DoorUseRow, feedback: CapabilityFeedbackRow | null, lessons: readonly CapabilityLessonRow[], freshness: CapabilityFreshnessRow | null = null): CapStanding {
-  if (row.calls === 0) return "unused";
+  // dev.701: support.member owed a re-check and read only as unused, so the count said 3 of 7
   if (freshness?.recheckOwed || lessons.some((l) => l.invalid)) return "recheck";
+  if (row.calls === 0) return "unused";
   if (row.refused * MISUSE_SHARE >= row.calls || (feedback?.reports ?? 0) > 0) return "misused";
   if (!row.card) return "untaught";
   return "inUse";
@@ -88,6 +92,14 @@ export function standingCounts(doors: readonly CapDoor[]): Record<CapStanding, n
  */
 export function doorTitle(row: DoorUseRow): { text: string; mono: boolean } {
   return row.card ? { text: row.card.purpose, mono: false } : { text: row.name, mono: true };
+}
+
+/**
+ * Who read, as a Read row names it: a pipeline's job session apart from a run a master declared,
+ * which the callers' count both reads as a run, so no two rows carry one label.
+ */
+export function readerLabelKey(agent: string): "modules.cap.reader.pipeline" | `modules.cap.caller.${CapCaller}` {
+  return agent === "session:pipeline" ? "modules.cap.reader.pipeline" : `modules.cap.caller.${callerOf(agent)}`;
 }
 
 /** Who named a door missed or applied a lesson, read as the callers the page counts. */

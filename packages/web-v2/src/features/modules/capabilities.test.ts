@@ -1,5 +1,6 @@
-// ISS-1251 §5, §7: a door no agent called over the window stands unused whatever else it has, never
-// neutral; a landing that touched a card's lesson owes it a re-check; a door refused on a quarter of
+// ISS-1251 §5, §7: a landing that touched a card or its lesson owes it a re-check, whether or not it
+// was called, so every card owing one is counted there; a door no agent called otherwise stands
+// unused, never neutral; a door refused on a quarter of
 // its calls, or reported, is used badly; a called door with no card is untaught. Callers read as the
 // audiences a card teaches.
 
@@ -46,8 +47,14 @@ const lesson = (over: Partial<CapabilityLessonRow> = {}): CapabilityLessonRow =>
 const report = { door: "support.member", reports: 1, byVerdict: { unclear: 1 }, lastAt: "2026-11-15T00:00:00.000Z" };
 
 describe("where a door stands", () => {
-  it("is unused at zero calls, even taught, reported and with an invalid lesson", () => {
-    expect(standingOf(door({ calls: 0, byAgent: {} }), report, [lesson({ invalid: true })])).toBe("unused");
+  it("is unused at zero calls, even taught and reported", () => {
+    expect(standingOf(door({ calls: 0, byAgent: {} }), report, [lesson()])).toBe("unused");
+  });
+
+  it("owes a re-check at zero calls too, so the re-check count holds every card owing one (dev.701: 3 of 7)", () => {
+    const owed = { card: "support.member", recheckOwed: { since: "2026-11-16T00:00:00.000Z" }, scenarios: [], proposed: [] };
+    expect(standingOf(door({ calls: 0, byAgent: {} }), report, [lesson({ invalid: true })])).toBe("recheck");
+    expect(standingOf(door({ calls: 0, byAgent: {} }), null, [], owed)).toBe("recheck");
   });
 
   it("owes a re-check where a landing touched one of its card's lessons, or its card", () => {
