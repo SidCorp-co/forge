@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.691] - 2026-11-16
+
+Owner asks read as plain questions, without internal ids
+
+### Fixed
+
+- **An agent's question to the owner now reads as a plain question.** It opens with the project's name and the agent's words, with no room or thread id before it.
+
 ## [0.4.0-dev.690] - 2026-11-16
 
 Room agents ask the owner in the project's one technical channel
