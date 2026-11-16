@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.693] - 2026-11-16
+
+Parallel builders get their own worktrees and safer shared contracts
+
+### Changed
+
+- **Each parallel builder now works in a worktree of its own, and tests read what a registry registers.** A new route, door or query needs no hand edit to a test list; a classification fails naming what to add.
+- **A shape changed in one package is typechecked where it is imported.** The typecheck follows tsconfig paths imports too, verify checks every consumer, and rebuilding contracts never leaves its dist missing.
+
 ## [0.4.0-dev.692] - 2026-11-16
 
 Room agents know who asks, read their guide, and audit each reply
