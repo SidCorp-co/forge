@@ -95,6 +95,8 @@ Each entry body is a Markdown document containing:
 - ISS-YYY: <route or feature that maps to a node>
 ```
 
+<!-- forge:doors PUT /api/projects/:id/knowledge/:slug | POST /api/projects/:id/knowledge/search -->
+
 ## Common mistakes to avoid
 
 - Never add a `click` directive to Mermaid nodes (breaks `securityLevel:strict`).

@@ -9,6 +9,7 @@ import { skills } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
 import { hashSkillBody } from './hash.js';
 import { parseManifest } from './parse-manifest.js';
+import { withRenderedDoors } from './rendered-doors.js';
 
 interface SeedChange {
   name: string;
@@ -115,6 +116,14 @@ async function collectSkillFiles(skillDir: string): Promise<SkillFile[]> {
   return files;
 }
 
+/**
+ * The SKILL.md a builtin skill is seeded and hashed as: line endings normalised, and the doors it
+ * names rendered from their cards (ISS-1251), so a card change re-seeds it as an edit of it does.
+ */
+export function seededSkillMd(raw: Buffer | string, skill: string): string {
+  return withRenderedDoors(raw.toString().replace(/\r\n/g, '\n'), skill);
+}
+
 export async function seedBuiltinSkills(db: Db, options: SeedOptions = {}): Promise<SeedResult> {
   const root = options.skillsRoot ?? defaultSkillsRoot();
 
@@ -144,7 +153,7 @@ export async function seedBuiltinSkills(db: Db, options: SeedOptions = {}): Prom
     // checkout (Windows with core.autocrlf) does not produce a different hash
     // from Linux CI, which would otherwise look like a content change on every
     // boot and bump `version` spuriously.
-    const rawText = raw.toString('utf8').replace(/\r\n/g, '\n');
+    const rawText = seededSkillMd(raw, entry.name);
     const { frontmatter, body } = parseManifest(rawText);
 
     const name = frontmatter.name;

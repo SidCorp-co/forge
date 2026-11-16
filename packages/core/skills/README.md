@@ -9,3 +9,7 @@ out of the tree, so an edit there is machine-local and never ships.
 
 Seeder is idempotent: a SKILL.md change bumps `content_hash`, which triggers an
 UPDATE with `version` incremented on next boot.
+
+A skill teaches no door in its own words: a line `<!-- forge:doors <door> | <door> -->` is replaced
+at seed by those doors' capability cards (`src/skills/rendered-doors.ts`), and the hash is taken over
+the rendered text, so a card change re-seeds every skill that names the door.
