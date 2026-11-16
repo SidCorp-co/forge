@@ -95,7 +95,14 @@ export function tallyDoors(
   const doors = new Map<string, DoorUseRow>(
     catalog.doors.map((d) => [
       d.id,
-      { door: d.id, surface: d.surface, summary: d.summary, feature: d.feature, ...EMPTY() },
+      {
+        door: d.id,
+        surface: d.surface,
+        summary: d.summary,
+        feature: d.feature,
+        card: d.card ?? null,
+        ...EMPTY(),
+      },
     ]),
   );
   const unmatched = new Map<string, number>();
@@ -195,6 +202,7 @@ export async function readDoorUse(
       doors: doors.length,
       neverUsed: doors.filter((d) => d.calls === 0).length,
       calls: doors.reduce((n, d) => n + d.calls, 0),
+      taught: doors.filter((d) => d.card !== null).length,
     },
     unmatched,
     reads,

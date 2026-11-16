@@ -1,6 +1,7 @@
 // The shape every agent tool has, whichever module holds it and whichever door serves it: the MCP
 // registry (`mcp/registry.ts`) and the chat assistant's toolsets both take these.
 
+import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
 import { z } from 'zod';
 import type { PatPermission, PatRoute } from '../credentials/pat-permissions.js';
 import { type TokenFence, tokenFence } from '../credentials/token-fence.js';
@@ -89,6 +90,8 @@ export interface McpTool {
    * accepts as written. The registry refuses a field the action's input does not take.
    */
   actionDescribe?: Readonly<Record<string, ActionDescribe>>;
+  /** Each action's capability card (ISS-1251): when to reach for it, how, and what goes wrong. */
+  cards?: Readonly<Record<string, CapabilityCardBody>>;
   handler: (args: Record<string, unknown>) => Promise<unknown>;
 }
 

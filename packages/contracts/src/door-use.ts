@@ -4,6 +4,7 @@
 // a door or a piece of teaching failed it, which becomes feedback on the feature that owns it.
 
 import { z } from "zod";
+import type { CapabilityCard } from "./capability-cards.js";
 import type { FeedbackKind } from "./feedback-terms.js";
 import { forgeFeedbackFromSchema } from "./forge-feedback.js";
 import type { RefusalStatuses } from "./refusal.js";
@@ -51,6 +52,8 @@ export interface DoorUseRow {
 	summary: string | null;
 	/** The feature that owns it: the MCP tool and its REST twin, or the route's first segments. */
 	feature: string;
+	/** Its capability card: what teaches an agent when to reach for it; null where none is written. */
+	card: CapabilityCard | null;
 	calls: number;
 	/** Calls that did not end `ok` (refused, forbidden, not found, failed). */
 	refused: number;
@@ -86,7 +89,7 @@ export interface DoorUseView {
 	/** Every door of the catalog (filtered by the query), the never-called ones included, most called first. */
 	doors: DoorUseRow[];
 	/** The catalog's size, and how many of its doors no agent called in the window. */
-	totals: { doors: number; neverUsed: number; calls: number };
+	totals: { doors: number; neverUsed: number; calls: number; taught: number };
 	/** Logged calls that name no door of the catalog (a retired tool, a route since removed), by name. */
 	unmatched: { door: string; calls: number }[];
 	reads: DoorReadRow[];

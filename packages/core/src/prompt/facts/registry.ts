@@ -5,6 +5,7 @@ import {
 } from '@forge/contracts/release-notes';
 import type { IssueStatus, JobType } from '../../db/schema.js';
 import { guideRef } from '../../guides/index.js';
+import { affordanceRows } from './affordance-cards.js';
 import { STEP_TOOL_REFERENCE_TEXT } from './drive-rules.js';
 
 type FactCategory = 'enum' | 'protocol' | 'format' | 'reference';
@@ -66,21 +67,7 @@ What counts as an issue, and where a note, a question or a done record usually g
 
 | When you need | Use | Watch for |
 |---|---|---|
-| Ordering between issues | Blocker known at create time → \`projects/<id>/issues -X POST\` with \`relations:[{ kind:'blocks', dependsOnId }]\`, committed before the issue dispatches. Both exist → \`issues/<dependent>/dependencies -X POST -d '{"dependsOnId":"<blocker>","kind":"blocks"}'\` (retract with \`validUntil\` in the past). | Only a \`blocks\` edge gates dispatch, never prose. An \`open\` issue whose edge is sent in a second call can dispatch in the gap |
-| A note or learning | \`memory -X POST\` (durable business logic → repo \`docs/\`) | |
-| A decision in force | a rule (\`projects/<id>/knowledge/<slug> -X PUT\`, kind rule) or a requirement | memory holds no decision in force and refuses one \`MEMORY_DECISION_NOT_MEMORY\` |
-| Work for later | an issue at \`draft\` | \`open\` triages and dispatches it |
-| Work to report | \`title\`, \`description\`, \`priority\`, \`category\`; a plan or criteria where you already have them | |
-| The project's policy (\`qa\`, intake, a status's model or permission profile) | GET \`projects/<id>/policy\`, then PUT the whole document with the \`baseRevision\` you read | A stale revision is refused by name, never merged |
-| The project document (environments, \`delivery\`, release, bindings' targets) | GET \`projects/<id>/config\`, then PUT \`{ baseRevision, document }\` | \`{ base, patch }\` is refused \`CONFIG_WRITE_SHAPE\`; a stale revision by name |
-| The project's own prose (build commands, a rule, a guide) | \`projects/<id>/knowledge/<slug> -X PUT\`, one entry per slug, \`injection\` deciding whether it reaches every prompt | \`projectFacts\` on the project config is refused by name |
-| Context before you design or fix | \`memory/search -X POST\` | |
-| A fix made by hand, outside the pipeline | mark it merged (\`issues/<id>/merge -X POST\`, naming where it landed), then move it to \`awaiting_release\` and close it while you hold it, each criterion it did not meet named in \`unmet\` with where it goes; the release record says when it is live (with no production environment, \`projects/<projectId>/release-records\`) | an unmet criterion with nowhere to go is refused \`CLOSE_CRITERION_UNPLACED\` |
-| An issue that turns out not to be work | a comment saying why, then \`needs_info\` where a person owes the requirement, or \`dropped\` | \`closed\` says its criteria were met in scope (\`CLOSE_REQUIRES_SHIPPED\`, \`DESIGN_NOT_DELIVERED\`) |
-| Design work (a workflow's states, steps or rules) | a design revision on that workflow, proposed for approval; an issue holding only design moves to \`closed\` once its revisions are approved (\`design_delivered\`) | a release skips a design-only issue (\`RELEASE_ALL_DESIGN_ONLY\`) |
-| A product finding: it changes what a user sees or should expect (a feature you noticed), or a user or owner reported it | Feedback, \`projects/<id>/feedback -X POST\`; its triage leads to a requirement, then an issue | a feature never starts as an issue an agent filed |
-| A technical defect of your own that stands alone: against an existing expectation, debt, code to simplify, contract typing (a missing index, an untyped route) | debt for the Audit, \`projects/<id>/debts -X POST\` with its evidence; an issue of its own (kind as \`category\`, module as primary label, \`Found in:\`) only for priority, a handoff or independent tracking (\`what-is-an-issue\`, *Where what you find goes*) | cleanup done inside the fix; a defect only mentioned in a comment |
-| A defect your fix needs, to bound its impact or prove itself | fix it there, and say so under \`Extra fixes:\`; out of reach, a comment on the issue that owns it, a \`blocks\` edge or \`needs_info\` | a defect nobody owns |
+${affordanceRows()}
 
 How to write the body of an issue: guide \`writing-an-issue\`.`;
 

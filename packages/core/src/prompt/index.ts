@@ -4,6 +4,7 @@ export {
   type OrientationRules,
   servedCheckoutOrientation,
 } from './checkout-orientation.js';
+export { AFFORDANCE_CARDS } from './facts/affordance-cards.js';
 export {
   buildPlatformInvariantSet,
   describeInvariantDelta,

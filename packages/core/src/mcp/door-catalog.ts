@@ -5,8 +5,10 @@
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import type { CapabilityCard } from '@forge/contracts/capability-cards';
 import { CONTRACTS_DIR } from '../api-contract/routes.js';
 import type { CatalogDoor, DoorCatalog } from '../lib/door-catalog.js';
+import { AFFORDANCE_CARDS } from '../prompt/index.js';
 import { actionCatalog, doorOf } from './action-catalog.js';
 import { mcpTools } from './server.js';
 
@@ -55,6 +57,7 @@ export function mcpDoors(): CatalogDoor[] {
     surface: 'mcp' as const,
     summary: e.summary,
     feature: twin.get(e.tool) ? `${e.tool} (${twin.get(e.tool)})` : e.tool,
+    ...(e.card ? { card: e.card } : {}),
   }));
 }
 
@@ -80,6 +83,22 @@ export function catalogOf(doors: readonly CatalogDoor[]): DoorCatalog {
   };
 }
 
+/** The doors with the REST cards written for them; a card for a door no source lists is refused by name. */
+export function carded(doors: CatalogDoor[], cards: readonly CapabilityCard[]): CatalogDoor[] {
+  const byId = new Map(cards.map((c) => [c.id, c]));
+  const out = doors.map((d) => {
+    const card = byId.get(d.id);
+    byId.delete(d.id);
+    return card ? { ...d, card } : d;
+  });
+  if (byId.size > 0) {
+    throw new Error(
+      `door catalog: a capability card names ${[...byId.keys()].join(', ')}, which no MCP action or REST write of this build is (mcp/door-catalog.ts)`,
+    );
+  }
+  return out;
+}
+
 let built: DoorCatalog | null = null;
 
 /** The catalog this build serves, read once: both sources are fixed for the life of the process. */
@@ -88,6 +107,6 @@ export function servedDoorCatalog(): DoorCatalog {
   const document = JSON.parse(
     readFileSync(resolve(CONTRACTS_DIR, 'forge-api.openapi.json'), 'utf8'),
   ) as OpenApi;
-  built = catalogOf([...mcpDoors(), ...restDoors(document)]);
+  built = catalogOf(carded([...mcpDoors(), ...restDoors(document)], AFFORDANCE_CARDS));
   return built;
 }

@@ -3,6 +3,7 @@
 // builds it and the composition root hands it here, so a read model or another door counts and checks
 // against it without importing the MCP door, and nobody keeps a list of doors by hand.
 
+import type { CapabilityCard } from '@forge/contracts/capability-cards';
 import type { DoorSurface } from '@forge/contracts/door-use';
 import { portSlot } from './port-slot.js';
 
@@ -15,6 +16,8 @@ export interface CatalogDoor {
   summary: string | null;
   /** The MCP tool and its REST twin, or the route's resource (`/api/projects/:id/feedback`). */
   feature: string;
+  /** What teaches the door: its capability card, where one is written (ISS-1251). */
+  card?: CapabilityCard;
 }
 
 export interface DoorCatalog {

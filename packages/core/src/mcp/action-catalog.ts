@@ -19,8 +19,10 @@
  * project (ISS-1033).
  */
 
+import type { CapabilityCard } from '@forge/contracts/capability-cards';
 import type { McpTool } from '../lib/tool.js';
 import { type DeclaredPermission, toolPermissionFor } from '../middleware/declared-permission.js';
+import { cardsOf, situationText, withCard } from './cards.js';
 import { listedSchema } from './listed-schema.js';
 
 type Schema = Record<string, unknown>;
@@ -43,6 +45,8 @@ export interface ActionEntry {
   example?: Readonly<Record<string, unknown>>;
   /** Where the schema of the document it writes resolves, where it writes one. */
   documentSchema?: string;
+  /** Its capability card, where its tool declares one (`mcp/cards.ts`). */
+  card?: CapabilityCard;
 }
 
 const SUMMARY_MAX = 140;
@@ -317,9 +321,10 @@ function entriesOf(tool: McpTool): ActionEntry[] {
       `mcp registry: ${tool.name} describes ${extra.join(', ')}, which it does not take (mcp/action-catalog.ts)`,
     );
   }
+  const cards = cardsOf(tool, [...actions]);
   return entriesWithoutPermission(tool).map((entry) => {
     const permission = toolPermissionFor(tool.permission, entry.action);
-    const described = describedEntry(tool, entry);
+    const described = withCard(describedEntry(tool, entry), cards.get(entry.action));
     return permission ? { ...described, permission } : described;
   });
 }
@@ -475,7 +480,10 @@ export function findActions(
     .map((entry) => {
       const id = wordsOf(entry.id);
       const shared = entry.guideOf === 'door';
-      const summary = shared ? [] : wordsOf(entry.summary);
+      const summary = [
+        ...(shared ? [] : wordsOf(entry.summary)),
+        ...wordsOf(situationText(entry.card)),
+      ];
       const guide = new Set(shared ? [] : wordsOf(entry.guide));
       let score = 0;
       for (const w of words) {

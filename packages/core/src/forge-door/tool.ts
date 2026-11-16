@@ -2,6 +2,7 @@
 // account into the project the instance names as Forge's home. A project's own feedback is
 // project_feedback. Every action calls what its REST twin under /api/forge/feedback calls.
 
+import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
 import {
   DOOR_REF_SHAPE,
   DOOR_REPORT_SHAPE,
@@ -150,6 +151,59 @@ const DESCRIPTION = [
   'FORGE_HOME_NOT_SET: this instance names no home project, and nothing was written. A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and writes nothing.',
 ].join(' ');
 
+/** When an agent reaches for this door's two filings (ISS-1251): a defect it met, or a door that failed it. */
+const CARDS = {
+  submit: {
+    purpose:
+      'Reports a defect or a want about Forge itself, as your own account, into Forge’s home project.',
+    situations: [
+      {
+        when: 'a Forge command, route, tool, guide or page did something wrong or less than it should',
+        do: 'submit it with the one place you met it as target, before you work around it',
+      },
+    ],
+    practice: [
+      'Name the one place it was met as target and what you ran and saw in body; a repeat of an open item adds an occurrence.',
+    ],
+    example: {
+      kind: 'bug',
+      title: 'The design door’s describe names no document schema',
+      target: { kind: 'tool', ref: 'forge_describe' },
+    },
+    redFlag:
+      'Working around a Forge defect in silence, so the next agent meets it again and nobody hears.',
+    audience: ['bot', 'master', 'run', 'person'],
+  },
+  door: {
+    purpose: 'Tells the feature that owns a door or a piece of teaching that it failed you.',
+    situations: [
+      {
+        when: 'you reached for a door and it did not do what you needed',
+        do: 'report it did_not_help, naming the door and what you were doing',
+      },
+      {
+        when: 'a guide, lesson or brief line left you guessing when or how to use something',
+        do: 'report it unclear, naming that teaching',
+      },
+      {
+        when: 'you looked for a door that does what you need and found none',
+        do: 'report it missing, naming the nearest door if there is one',
+      },
+    ],
+    practice: [
+      'Report at the moment it happens, in one call; the same door and verdict from another agent adds to the one item.',
+    ],
+    example: {
+      verdict: 'unclear',
+      door: 'guide:agent-setup',
+      what: 'It names the routes but not when to recall memory before a design.',
+    },
+    redFlag:
+      'Giving up on a door, or guessing around it, without saying so: the feature never learns it failed.',
+    audience: ['bot', 'master', 'run'],
+  },
+} satisfies Record<string, CapabilityCardBody>;
+
 const GRANT = {
   byAction: {
     submit: 'forge-feedback:write',
@@ -295,6 +349,7 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
   grant: GRANT,
   description: DESCRIPTION,
   inputSchema: zodToMcpSchema(inputSchema),
+  cards: CARDS,
   actionDescribe: {
     submit: {
       example: {
