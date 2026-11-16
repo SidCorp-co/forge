@@ -6,7 +6,8 @@ import { z } from "zod";
 
 /**
  * What reached a run: an always-applied rule, a knowledge entry, a lesson, a memory, or a working
- * agreement (REQ-90), whose `revision` is the `forge@<n>`, `project@<n>` or `config@<n>` it was given.
+ * agreement (REQ-90), whose `revision` is the `forge@<n>`, `project@<n>` or `config@<n>` it was given;
+ * or any other record a find hit opened (ISS-1256), whose `ref` is the hit's own.
  */
 export const RUN_CONTEXT_SOURCE_KINDS = [
 	"rule",
@@ -14,6 +15,14 @@ export const RUN_CONTEXT_SOURCE_KINDS = [
 	"lesson",
 	"memory",
 	"agreement",
+	// a find hit opened through the find door (ISS-1256), by the record type it is
+	"capability",
+	"requirement",
+	"decision",
+	"reference",
+	"issue",
+	"feedback",
+	"conversation",
 ] as const;
 export type RunContextSourceKind = (typeof RUN_CONTEXT_SOURCE_KINDS)[number];
 

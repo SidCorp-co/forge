@@ -7,7 +7,7 @@
 import type { RunContextHow, RunContextSource } from '@forge/contracts/run-context';
 import { db } from '../db/client.js';
 import { withoutQueryTiming } from '../db/query-timing.js';
-import { runContextReaches } from '../db/schema-run-context.js';
+import { findMisses, runContextReaches } from '../db/schema-run-context.js';
 import { background } from '../lib/background.js';
 import { reportFailure } from '../lib/error-tracking.js';
 import { logger } from '../lib/logger.js';
@@ -143,5 +143,25 @@ export function recordSessionReached(
   work.start(
     () => write({ ...subject, issueIds: [] }, how, sources),
     failed({ projectId: subject.projectId, sessionId: subject.sessionId, how }),
+  );
+}
+
+/**
+ * Records a find that matched nothing (ISS-1256): the gap a missing term or rule leaves, read back by
+ * the find door's gaps read. Never throws and never waits; a failed write is logged and counted.
+ */
+export function recordFindMiss(miss: {
+  projectId: string;
+  query: string;
+  askedBy: 'person' | 'agent';
+  userId: string | null;
+}): void {
+  const query = miss.query.trim().slice(0, 200);
+  if (!query) return;
+  work.start(
+    async () => {
+      await db.insert(findMisses).values({ ...miss, query });
+    },
+    failed({ projectId: miss.projectId, how: 'find-miss' }),
   );
 }

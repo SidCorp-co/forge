@@ -27,11 +27,20 @@ export interface AgreementFound {
   revision: string;
 }
 
+/** Any other record a find hit opened (ISS-1256), by the kind it is and its own ref. */
+export interface RecordFound {
+  kind: Exclude<RunContextSourceKind, 'rule' | 'knowledge' | 'lesson' | 'memory' | 'agreement'>;
+  ref: string;
+  /** Its text, digested as the revision it was read in. */
+  text: string;
+}
+
 /** What one read returned, as the recorder takes it. */
 export interface Found {
   knowledge?: readonly KnowledgeFound[];
   memory?: readonly MemoryFound[];
   agreements?: readonly AgreementFound[];
+  records?: readonly RecordFound[];
 }
 
 /** `sha256:<16 hex>` of the text a run was given: the revision where the read carried no timestamp. */
@@ -66,5 +75,10 @@ export function sourcesOf(found: Found): RunContextSource[] {
     ref: a.slug,
     revision: a.revision,
   }));
-  return [...knowledge, ...memory, ...agreements];
+  const records = (found.records ?? []).map((r) => ({
+    kind: r.kind,
+    ref: r.ref,
+    revision: digestOf(r.text),
+  }));
+  return [...knowledge, ...memory, ...agreements, ...records];
 }
