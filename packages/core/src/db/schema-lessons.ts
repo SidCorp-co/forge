@@ -78,7 +78,7 @@ export const lessons = pgTable(
       onDelete: 'set null',
     }),
     /**
-     * What it is about (0666, ISS-1251): `card:<id>`, `REQ-<n> BC-<m>` or `<path>[:<symbol>]`. Null on
+     * What it is about (0667, ISS-1251): `card:<id>`, `REQ-<n> BC-<m>` or `<path>[:<symbol>]`. Null on
      * a lesson drafted before, which the steward anchors from its record or lists as owing one.
      */
     anchor: text('anchor'),
@@ -289,7 +289,7 @@ export const lessonConfusions = pgTable(
   }),
 );
 
-// A capability card's freshness (0666, ISS-1251 §5, §7). Cards are Forge's own and live in code beside
+// A capability card's freshness (0667, ISS-1251 §5, §7). Cards are Forge's own and live in code beside
 // their doors, so these rows are keyed by the card's id and belong to no project:
 //  - a card owed a re-check since a landing touched what it describes, until the re-check clears it;
 //  - the last replay of each of its scenarios, by name;
