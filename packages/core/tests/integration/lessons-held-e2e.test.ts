@@ -6,6 +6,7 @@
 //
 // @direct-test-of packages/core/src/lessons/confusions.ts
 // @direct-test-of packages/core/src/lessons/gather.ts
+// @direct-test-of packages/core/src/run-context/read.ts
 // @direct-test-of packages/core/src/lessons/month.ts
 // @direct-test-of packages/core/src/development/needs-you-fold.ts
 // @direct-test-of packages/core/src/project-status/lead.ts
@@ -297,11 +298,12 @@ describe('the steward reaches every waiting item in turn, however many keep fail
 });
 
 describe('the steward retires an unused or superseded lesson with a reason, never deleting it (BC-7)', () => {
-  it('retires one unused for 30 days, and keeps one applied since', async () => {
+  it('retires one unused for 30 days, and keeps one applied since and one an agent opened by its slug', async () => {
     const n = await approved('Greet the patient by name.');
     const used = await approved('Greet the visitor by name.');
+    const opened = await approved('Greet the courier by name.');
     await rows(
-      sql`UPDATE lessons SET approved_at = now() - interval '31 days' WHERE project_id = ${w.projectId} AND number IN (${n}, ${used})`,
+      sql`UPDATE lessons SET approved_at = now() - interval '31 days' WHERE project_id = ${w.projectId} AND number IN (${n}, ${used}, ${opened})`,
     );
     ok(
       await say('member', 'POST', at('/lessons/applied'), {
@@ -309,6 +311,18 @@ describe('the steward retires an unused or superseded lesson with a reason, neve
         output: { kind: 'job', ref: 'job-greet' },
       }),
     );
+    // a run's knowledge get of `lesson-<n>` (ISS-1251): reaching for it is use, though no output named it
+    await rows(sql`
+      WITH run AS (
+        INSERT INTO pipeline_runs (project_id, kind, status, metadata)
+        VALUES (${w.projectId}, 'system', 'running', '{}'::jsonb) RETURNING id
+      ), session AS (
+        INSERT INTO agent_sessions (project_id, pipeline_run_id, kind, status)
+        SELECT ${w.projectId}, id, 'run_session', 'running' FROM run RETURNING id
+      )
+      INSERT INTO run_context_reaches (project_id, agent_session_id, kind, ref, how, created_at)
+      SELECT ${w.projectId}, id, 'lesson', ${`lesson-${opened}`}, 'get', now() - interval '2 days' FROM session
+      RETURNING id`);
     expect((await pass({})).retired).toBeGreaterThanOrEqual(1);
     const gone = await lesson(n);
     expect(gone).toMatchObject({
@@ -320,6 +334,7 @@ describe('the steward retires an unused or superseded lesson with a reason, neve
       actor_id: w.stewardId,
     });
     expect((await lesson(used)).status).toBe('approved');
+    expect((await lesson(opened)).status).toBe('approved');
     expect(await block({ produces: ['issue'], area: 'any' })).not.toContain(`L-${n} `);
   });
 

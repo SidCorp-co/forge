@@ -20,6 +20,8 @@ import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../db/client.js';
 import { corrections, lessonConfusions, lessons } from '../db/schema-lessons.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
+import { lessonEntrySlug } from '../knowledge/index.js';
+import { lastOpenedOf } from '../run-context/index.js';
 import { type ThreadPost, threadBefore } from './correction-thread.js';
 
 const DAY_MS = 86_400_000;
@@ -197,7 +199,8 @@ const replacing = alias(lessons, 'replacing');
 
 /**
  * Each approved lesson the steward now retires (BC-7): superseded by another, or neither applied,
- * nor approved in the last `LESSON_UNUSED_DAYS` days. A held lesson waits for its confusion.
+ * approved, nor opened by its slug in the last `LESSON_UNUSED_DAYS` days. A held lesson waits for its
+ * confusion.
  */
 export async function retirementsDue(projectId: string, now: Date): Promise<RetirementDue[]> {
   const cutoff = new Date(now.getTime() - LESSON_UNUSED_DAYS * DAY_MS);
@@ -214,11 +217,17 @@ export async function retirementsDue(projectId: string, now: Date): Promise<Reti
       ),
     )
     .orderBy(asc(lessons.number));
-  return due.map((d) => ({
-    number: d.number,
-    reason: d.supersededBy ? 'superseded' : 'unused',
-    supersededBy: d.supersededBy,
-  }));
+  // use renews (ISS-1251 §5): a lesson an agent opened by its slug inside the window is in use, though
+  // no `Lessons applied:` line named it; only one neither applied nor opened is retired as unused
+  const unused = due.filter((d) => !d.supersededBy).map((d) => lessonEntrySlug(d.number));
+  const opened = await lastOpenedOf(projectId, unused, cutoff);
+  return due
+    .filter((d) => d.supersededBy || !opened.has(lessonEntrySlug(d.number)))
+    .map((d) => ({
+      number: d.number,
+      reason: d.supersededBy ? 'superseded' : 'unused',
+      supersededBy: d.supersededBy,
+    }));
 }
 
 const scopeOf = (
