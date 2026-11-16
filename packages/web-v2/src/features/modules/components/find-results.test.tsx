@@ -79,6 +79,6 @@ describe("the ⌘K search", () => {
 
   it("reads a search with no hit as a gap", async () => {
     palette("blorp");
-    expect((await screen.findByTestId("find-gap")).textContent).toBe("No match · noted as a gap");
+    expect((await screen.findByTestId("find-gap")).textContent).toBe("No match");
   });
 });

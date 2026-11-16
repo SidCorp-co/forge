@@ -486,7 +486,8 @@ function mountRemainingRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   // retired by REQ-47 BC-8: each route answers where reports about Forge go now
   app.route('/api/agent-reports', agentReportsRetiredRoutes);
   app.route('/api/shares', shareOpenRoutes);
-  app.route('/api/projects', knowledgeRoutes).route('/api/projects', findRoutes);
+  app.route('/api/projects', knowledgeRoutes);
+  app.route('/api/projects', findRoutes);
   app.route('/api/projects', runContextRoutes);
   app.route('/api/projects', agreementRoutes);
   app.route('/api/skills', skillCrudRoutes);
