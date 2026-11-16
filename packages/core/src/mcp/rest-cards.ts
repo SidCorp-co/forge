@@ -8,11 +8,15 @@ import type { CapabilityCard, CapabilityCardBody } from '@forge/contracts/capabi
 import { CLEANUP_REST_CARDS } from '../cleanup/index.js';
 import { INTEGRATION_DOOR_REST_CARDS } from '../integration-door/index.js';
 import { ISSUE_REST_CARDS } from '../issues/index.js';
+import { KNOWLEDGE_REST_CARDS } from '../knowledge/index.js';
+import { MEMORY_REST_CARDS } from '../memory/index.js';
 import { MONITORING_REST_CARDS } from '../monitoring/index.js';
 import { card } from '../prompt/index.js';
 import { QUESTION_REST_CARDS } from '../questions/index.js';
 import { RELEASE_REST_CARDS } from '../release-batch/index.js';
 import { SCHEDULE_REST_CARDS } from '../schedules/index.js';
+import { STEWARD_REST_CARDS } from '../steward/index.js';
+import { STEWARD_NOTE_REST_CARDS } from '../steward-notes/index.js';
 
 /** One module's cards, each owned by that module. */
 const ownedBy = (owner: string, cards: Readonly<Record<string, CapabilityCardBody>>) =>
@@ -26,4 +30,8 @@ export const REST_CARDS: readonly CapabilityCard[] = [
   ...ownedBy('integration-door', INTEGRATION_DOOR_REST_CARDS),
   ...ownedBy('schedules', SCHEDULE_REST_CARDS),
   ...ownedBy('monitoring', MONITORING_REST_CARDS),
+  ...ownedBy('memory', MEMORY_REST_CARDS),
+  ...ownedBy('knowledge', KNOWLEDGE_REST_CARDS),
+  ...ownedBy('steward', STEWARD_REST_CARDS),
+  ...ownedBy('steward-notes', STEWARD_NOTE_REST_CARDS),
 ];

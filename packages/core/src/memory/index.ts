@@ -1,3 +1,4 @@
+export { MEMORY_REST_CARDS } from './cards.js';
 export { runConsolidationSweep } from './consolidation.js';
 export { runMemoryDecay } from './decay.js';
 export { runEmbeddingBackfill } from './embedding-backfill.js';

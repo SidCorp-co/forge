@@ -1,3 +1,4 @@
+export { KNOWLEDGE_REST_CARDS } from './cards.js';
 export { runKnowledgeEmbeddingBackfill } from './embedding-backfill.js';
 export {
   type DraftEmbedding,
