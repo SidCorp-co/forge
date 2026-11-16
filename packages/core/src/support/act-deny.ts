@@ -60,14 +60,16 @@ async function deploysProduction(projectId: string, target: string): Promise<boo
   );
 }
 
-/** The words a support-API tool goes by: its name, method, path and summary, where it is bound. */
+/**
+ * The words a support-API tool goes by: its name, method, path and summary, where it is bound. A
+ * binding that cannot be read throws through (`supportApisOf`): the gate fails closed rather than
+ * classify the tool by its name alone, which would let a DELETE tool past a data_deletion deny.
+ */
 async function toolWords(
   projectId: string,
   name: string,
 ): Promise<{ words: string; del: boolean }> {
-  const tool = await supportApisOf(projectId)
-    .then((apis) => apis.tools.find((t) => t.name === name) ?? null)
-    .catch(() => null);
+  const tool = (await supportApisOf(projectId)).tools.find((t) => t.name === name) ?? null;
   if (!tool) return { words: name, del: false };
   return {
     words: `${tool.name} ${tool.path} ${tool.summary}`,
