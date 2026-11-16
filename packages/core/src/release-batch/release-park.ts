@@ -6,6 +6,7 @@
 // of whether a run is parked, which the job kernel and the sweeps read through the pipeline port.
 
 import type { ActorAgency } from '@forge/contracts/permissions';
+import { LIVE_PIPELINE_RUN_STATUSES, type PipelineRunStatus } from '@forge/contracts/run-machine';
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
@@ -22,8 +23,6 @@ import { refuseRelease } from './refuse.js';
 export type ReleasePark =
   | { gate: 'approval'; runId: string; version: string; approvalId: string }
   | { gate: 'confirm'; runId: string; version: string; bindingId: string };
-
-const OPEN: ReadonlySet<string> = new Set(['running', 'paused']);
 
 /**
  * Where release run `runId` is parked on a person, or null where it is not: an open, unshipped,
@@ -43,7 +42,12 @@ export async function releaseRunParked(runId: string): Promise<ReleasePark | nul
     .from(pipelineRuns)
     .where(eq(pipelineRuns.id, runId))
     .limit(1);
-  if (!run?.version || run.releasedAt !== null || !OPEN.has(run.status)) return null;
+  if (
+    !run?.version ||
+    run.releasedAt !== null ||
+    !LIVE_PIPELINE_RUN_STATUSES.includes(run.status as PipelineRunStatus)
+  )
+    return null;
   if (readAbortStamp(run.metadata) !== null) return null;
   const [latest] = await db
     .select({ id: releaseApprovals.id, decision: releaseApprovals.decision })
