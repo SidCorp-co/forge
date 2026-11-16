@@ -47,6 +47,11 @@ export type DoorAgentKind = string;
 export interface DoorUseRow {
 	/** `<door>.<action>` for MCP, `METHOD /path` (the contract's template) for REST. */
 	door: string;
+	/**
+	 * The door as an agent knows it: an MCP action's own id (`support.member`), a carded REST door's
+	 * capability name (`issues.merge`, `lib/door-catalog.ts:doorNames`), else its route.
+	 */
+	name: string;
 	surface: DoorSurface;
 	/** One line: what the door is for, as its own guide says it (MCP), or null (REST). */
 	summary: string | null;
@@ -69,8 +74,18 @@ export interface DoorUseRow {
 	calls: number;
 	/** Calls that did not end `ok`, and a room act's refusals its room recorded. */
 	refused: number;
-	/** `refused` by code: the log's result code (forbidden, not_found, error) or a room act's refusal code. */
+	/**
+	 * `refused` by the code each refused call answered with (`SUPPORT_MESSAGE_UNKNOWN`); a call logged
+	 * before codes were kept reads by its outcome (forbidden, not_found, error).
+	 */
 	refusedBy: Record<string, number>;
+	/**
+	 * How often an agent's own audit named this door as one it should have reached for and did not
+	 * (`support.audit`'s `missed`); core infers none.
+	 */
+	misses: number;
+	/** `misses` by agent kind; a kind that named none is absent. */
+	missedBy: Record<DoorAgentKind, number>;
 	/** Calls by agent kind; a kind that made none is absent. */
 	byAgent: Record<DoorAgentKind, number>;
 	lastAt: string | null;
@@ -111,7 +126,13 @@ export interface DoorUseView {
 	/** Every door of the catalog (filtered by the query), the never-called ones included, most called first. */
 	doors: DoorUseRow[];
 	/** The catalog's size, and how many of its doors no agent called in the window. */
-	totals: { doors: number; neverUsed: number; calls: number; taught: number };
+	totals: {
+		doors: number;
+		neverUsed: number;
+		calls: number;
+		taught: number;
+		misses: number;
+	};
 	/** Every day of the window, a day with no call included. */
 	days: DoorUseDay[];
 	/** Logged calls that name no door of the catalog (a retired tool, a route since removed), by name. */
