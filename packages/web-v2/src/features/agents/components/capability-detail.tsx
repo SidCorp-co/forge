@@ -16,6 +16,7 @@ function Teaching({ d }: { d: CapDoor }) {
   const t = useCopy();
   const card = d.row.card;
   if (!card) return <FactsEmpty>{t("agents.cap.noTeaching")}</FactsEmpty>;
+  const inMap = card.audience.filter((a) => d.row.tiers[a] === 0);
   return (
     <div className="grid gap-2" data-testid="cap-teaching">
       <ul className="grid gap-1.5">
@@ -32,6 +33,9 @@ function Teaching({ d }: { d: CapDoor }) {
       </ul>
       {card.redFlag ? <Fact label={t("agents.cap.redFlag")}>{card.redFlag}</Fact> : null}
       <Fact label={t("agents.cap.audience")}>{card.audience.map((a) => t(`agents.cap.caller.${a}`)).join(" · ")}</Fact>
+      <Fact label={t("agents.cap.inMap")} testId="cap-in-map">
+        {inMap.length > 0 ? inMap.map((a) => t(`agents.cap.caller.${a}`)).join(" · ") : t("agents.cap.bySituation")}
+      </Fact>
     </div>
   );
 }
@@ -107,7 +111,7 @@ function CardFreshness({ d }: { d: CapDoor }) {
   const card = d.row.card;
   return (
     <div className="grid" data-testid="cap-card">
-      <Fact label={t("agents.cap.changed")}>{card?.changed ? `${time.date(card.changed.on)} · ${card.changed.by}` : <NotYet />}</Fact>
+      <Fact label={t("agents.cap.changed")}>{card?.changed ? <span title={card.changed.by}>{time.date(card.changed.on)}</span> : <NotYet />}</Fact>
       <Fact label={t("agents.cap.recheck")}>
         <NotYet />
       </Fact>

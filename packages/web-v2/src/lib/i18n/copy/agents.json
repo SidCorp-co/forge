@@ -475,6 +475,8 @@
     "agents.cap.why.recheck": "A landing touched its lessons",
     "agents.cap.why.untaught": "Called, with no card",
     "agents.cap.why.unused": "Uncalled for 30 days",
-    "agents.tab.capabilities": "Capabilities"
+    "agents.tab.capabilities": "Capabilities",
+    "agents.cap.inMap": "In map",
+    "agents.cap.bySituation": "By situation only"
   }
 }
