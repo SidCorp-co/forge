@@ -1,3 +1,4 @@
+import { capabilitiesQuerySchema } from '@forge/contracts/capabilities';
 import { doorUseQuerySchema } from '@forge/contracts/door-use';
 import { HEALTH_WINDOWS } from '@forge/contracts/project-health';
 import { Hono } from 'hono';
@@ -6,7 +7,7 @@ import { doorCatalog } from '../lib/door-catalog.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requiresOnParam } from '../permissions/index.js';
-import { capabilitiesRoutes } from './capabilities.js';
+import { readCapabilities } from './capabilities.js';
 import { readDoorUse } from './door-use.js';
 import { projectHealth } from './health.js';
 import { readPiles } from './piles.js';
@@ -21,7 +22,6 @@ import { BUCKETS, METRICS, runTimeseries } from './timeseries.js';
 export const projectMetricsRoutes = new Hono<{ Variables: AuthVars }>();
 
 projectMetricsRoutes.use('/:id/metrics/*', requireAuth(), assertEmailVerified());
-projectMetricsRoutes.route('/', capabilitiesRoutes);
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -99,4 +99,16 @@ projectMetricsRoutes.get(
   requiresOnParam('project.read', 'id'),
   noQuery,
   async (c) => c.json(await readPiles(c.req.valid('param').id, doorCatalog())),
+);
+
+/** The door reports and card lessons the capabilities page shows beside `/metrics/doors` (ISS-1251 §7). */
+projectMetricsRoutes.get(
+  '/:id/metrics/capabilities',
+  zValidator('param', idParamSchema),
+  requiresOnParam('project.read', 'id'),
+  zValidator('query', capabilitiesQuerySchema),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    return c.json(await readCapabilities(id, c.req.valid('query').days));
+  },
 );

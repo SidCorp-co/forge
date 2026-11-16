@@ -7,22 +7,16 @@
  * those leave out, over records Forge already keeps.
  */
 
-import {
-  type CapabilitiesView,
-  type CapabilityFeedbackRow,
-  type CapabilityFreshnessRow,
-  type CapabilityLessonRow,
-  capabilitiesQuerySchema,
+import type {
+  CapabilitiesView,
+  CapabilityFeedbackRow,
+  CapabilityFreshnessRow,
+  CapabilityLessonRow,
 } from '@forge/contracts/capabilities';
 import { DOOR_REPORT_VERDICTS, type DoorReportVerdict } from '@forge/contracts/door-use';
 import { sql } from 'drizzle-orm';
-import { Hono } from 'hono';
-import { z } from 'zod';
 import { db } from '../db/client.js';
 import { type CardFreshness, cardFreshness } from '../lessons/index.js';
-import type { AuthVars } from '../middleware/auth.js';
-import { zValidator } from '../middleware/zod-validator.js';
-import { requiresOnParam } from '../permissions/index.js';
 
 const DAY_MS = 86_400_000;
 
@@ -141,18 +135,3 @@ export async function readCapabilities(
     limits: CAPABILITIES_LIMITS,
   };
 }
-
-/** Mounted by `routes.ts:projectMetricsRoutes`, under its sign-in and verified-email guard. */
-export const capabilitiesRoutes = new Hono<{ Variables: AuthVars }>();
-
-/** The door reports and card lessons the capabilities page shows beside `/metrics/doors` (ISS-1251 §7). */
-capabilitiesRoutes.get(
-  '/:id/metrics/capabilities',
-  zValidator('param', z.object({ id: z.uuid() })),
-  requiresOnParam('project.read', 'id'),
-  zValidator('query', capabilitiesQuerySchema),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    return c.json(await readCapabilities(id, c.req.valid('query').days));
-  },
-);
