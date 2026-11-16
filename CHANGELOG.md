@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.703] - 2026-11-16
+
+Agents ask feedback reporters every question they need
+
+### Fixed
+
+- **Agents may ask a feedback reporter every question they need.** The clarify tool no longer tells them to wait while one question is open, and the check that guards against question limits now catches that wording.
+
 ## [0.4.0-dev.702] - 2026-11-16
 
 Followed releases suggest only real matches; a failed session start frees the run slot
