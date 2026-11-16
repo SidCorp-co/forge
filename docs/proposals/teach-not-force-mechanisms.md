@@ -11,7 +11,8 @@ rewrite or block its reply, or refuse a choice the project's policy leaves to it
 session, run, state, transition, evidence, retry, escalation), contract shapes and safety bars
 (secrets, credentials, leaks to a user) still refuse by name.
 
-ISS-1251 swept the live mechanisms. Builder D's inventory is the full list. These were converted
+ISS-1251 swept the live mechanisms. The full list, with every text read and each pile against its
+cap, is `docs/proposals/teaching-inventory.md`. These were converted
 in that batch:
 
 - the memory code-block refusal (now the `CODE_BLOCK_LONG` warning);
