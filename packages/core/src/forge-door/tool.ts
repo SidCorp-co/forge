@@ -3,6 +3,11 @@
 // project_feedback. Every action calls what its REST twin under /api/forge/feedback calls.
 
 import {
+  DOOR_REPORT_SHAPE,
+  DOOR_REPORT_VERDICTS,
+  doorReportRequestSchema,
+} from '@forge/contracts/door-use';
+import {
   type ForgeFeedbackRequest,
   forgeFeedbackRequestSchema,
   forgeFeedbackTargetSchema,
@@ -21,6 +26,7 @@ import {
 import { need } from '../lib/tool-args.js';
 import { byRule, permissionless } from '../permissions/index.js';
 import { findProjectIdBySlug } from '../projects/index.js';
+import { reportDoor } from './door-report.js';
 import {
   type Answer,
   type ForgeDoorCaller,
@@ -32,7 +38,7 @@ import {
   submitForgeFeedback,
 } from './service.js';
 
-const ACTIONS = ['submit', 'list', 'get', 'progress', 'verify', 'reopen', 'reply'] as const;
+const ACTIONS = ['submit', 'list', 'get', 'progress', 'verify', 'reopen', 'reply', 'door'] as const;
 export const FORGE_FEEDBACK_READ_ACTIONS: readonly string[] = ['list', 'get', 'progress'];
 
 // where it was met is ONE field, `target`, never the REST body's `whereSeen` beside other optional
@@ -61,6 +67,18 @@ const inputSchema = z.strictObject({
     .describe(
       'submit: the ONE place in Forge it was met — { kind: command, ref: "forge claim --next" }; kind is page (a web address), command, route (METHOD /path), tool (an MCP tool), guide, skill or other',
     ),
+  verdict: z
+    .enum(DOOR_REPORT_VERDICTS)
+    .optional()
+    .describe(
+      'door: did_not_help (it did not do what you needed), unclear (its teaching did not say when or how), missing (no door does it)',
+    ),
+  door: doorReportRequestSchema.shape.door.describe(
+    'door: the action, route or teaching it is about (`support.member`, `POST /api/projects/:id/feedback`, `guide:agent-setup`, `lesson:103`); for missing, the nearest door or none',
+  ),
+  what: doorReportRequestSchema.shape.what
+    .optional()
+    .describe('door: what you were doing, what you reached for, and what it did or lacked'),
 });
 
 type Input = z.infer<typeof inputSchema>;
@@ -127,6 +145,7 @@ const DESCRIPTION = [
   'get {feedback}: one item you reported (a member of the home project reads any, and an agent reporter’s master reads its items), with `told` — what its triage told you: the answer, the decline note, the clarification asked and the release its fix shipped in, each null until told — and `shipEvidence` once its work shipped: the violated criterion’s verdict on the running build and its clip. progress {feedback}: its progress block alone.',
   'verify {feedback, evidence} and reopen {feedback, evidence}: once its work shipped (phase resolved) and its progress waits on you, confirm the fix or reopen the item, as its reporter or, for an agent reporter, as the master of the project it reported from. evidence is what you ran against the shipped build and what you saw; an agent is refused FEEDBACK_EVIDENCE_REQUIRED without it, and FORGE_FEEDBACK_NOT_YOURS on an item another account filed.',
   'reply {feedback, evidence}: once the item stands on an answer, reply to it once, with what it leaves open; the item goes back to triage as a reopen does, and the next answer names your reply. A second reply to one answer is FEEDBACK_REPLY_SPENT, an item with no answer standing FEEDBACK_REPLY_NO_ANSWER.',
+  `door ${DOOR_REPORT_SHAPE}: when a door or a piece of teaching failed you, say so here, at the moment it happens: it is filed as feedback about Forge on the feature that owns that door, and a second agent meeting the same gap adds to the one item. Unknown doors are refused DOOR_REPORT_UNKNOWN_DOOR with the actions that door serves.`,
   'FORGE_HOME_NOT_SET: this instance names no home project, and nothing was written. A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and writes nothing.',
 ].join(' ');
 
@@ -139,6 +158,7 @@ const GRANT = {
     verify: 'forge-feedback:write',
     reopen: 'forge-feedback:write',
     reply: 'forge-feedback:write',
+    door: 'forge-feedback:write',
   },
 } as const;
 
@@ -206,8 +226,26 @@ async function progress(ctx: McpContext, input: Input) {
   return { key, title, phase, progress: one.value.progress };
 }
 
+/** A door report, judged by its own request: the flat input's other fields are not its. */
+async function door(ctx: McpContext, input: Input) {
+  const { verdict, door: ref, what, from } = input;
+  const parsed = doorReportRequestSchema.safeParse({ verdict, door: ref, what, from });
+  if (!parsed.success) {
+    return refusedAnswer(
+      parsed.error.issues.map((i) => ({
+        code: 'BAD_REQUEST',
+        path: `/${i.path.join('/')}`,
+        detail: `${i.message}; door takes ${DOOR_REPORT_SHAPE}`,
+      })),
+      'FORGE_FEEDBACK_REFUSED',
+    );
+  }
+  return out(await reportDoor(await callerOf(ctx), parsed.data, MCP_DOOR));
+}
+
 const HANDLERS = {
   submit,
+  door,
   list: async (ctx: McpContext) => out(await listOwnForgeFeedback(await callerOf(ctx), MCP_DOOR)),
   get: async (ctx: McpContext, input: Input) =>
     out(
@@ -275,6 +313,10 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
         "an item about Forge, filed as the caller's own into Forge's home project, which takes no permission there",
       ),
       list: permissionless('self', 'the items the caller reported'),
+      door: permissionless(
+        'self',
+        "a report that a door failed the caller, filed as the caller's own into Forge's home project",
+      ),
       get: byRule('forge-door/service.ts:getForgeFeedback', ITEM_ROW),
       progress: byRule('forge-door/service.ts:getForgeFeedback', ITEM_ROW),
       verify: byRule('forge-door/service.ts:settleForgeFeedback', ITEM_ROW),

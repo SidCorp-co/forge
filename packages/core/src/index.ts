@@ -65,6 +65,7 @@ import { provideKnowledgeDomainPorts } from './knowledge-ports.js';
 import { loadProjectAccess, provideProjectOrg, provideVisibleProjects } from './lib/authz.js';
 import { provideContractVersionReads } from './lib/contract-versions.js';
 import { provideDataPolicy } from './lib/data-egress.js';
+import { provideDoorCatalog } from './lib/door-catalog.js';
 import { coreDrain } from './lib/drain.js';
 import { env } from './lib/env.js';
 import { provideEphemeralPublisher } from './lib/ephemeral.js';
@@ -73,7 +74,7 @@ import { installFatalExit } from './lib/fatal-exit.js';
 import { logger } from './lib/logger.js';
 import { sourceCommit } from './lib/source-commit.js';
 import { provideWrittenLangPorts } from './lib/written-lang.js';
-import { CHAT_RECORD_VETS } from './mcp/index.js';
+import { CHAT_RECORD_VETS, servedDoorCatalog } from './mcp/index.js';
 import { registerMemoryReconcileWorker } from './memory/index.js';
 import { provideMemoryDomainPorts } from './memory-ports.js';
 import { provideMessageReads } from './messaging/reads.js';
@@ -260,6 +261,7 @@ provideReportPorts();
 provideStandingPorts();
 provideChatTools(CHAT_PROVIDED_TOOLS);
 provideHeldWriteVets(CHAT_RECORD_VETS);
+provideDoorCatalog({ doorCatalog: servedDoorCatalog });
 // the decisions the chat makes on the person's word (REQ-41 BC-25) are the ones their Needs you reads
 provideNeedsYouDecisionRead(async (projectId, userId) => {
   const access = await loadProjectAccess(projectId, userId);

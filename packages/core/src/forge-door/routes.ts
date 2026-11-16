@@ -1,3 +1,4 @@
+import { DOOR_REPORT_SHAPE, doorReportRequestSchema } from '@forge/contracts/door-use';
 import {
   FEEDBACK_CONFIRM_WAIT_SHAPE,
   feedbackConfirmWaitRequestSchema,
@@ -21,6 +22,7 @@ import {
   requiresNoPermission,
   requiresSelf,
 } from '../permissions/index.js';
+import { reportDoor } from './door-report.js';
 import {
   type Answer,
   claimForgeAnswers,
@@ -68,6 +70,19 @@ forgeFeedbackRoutes.post(
   strictBody(forgeFeedbackRequestSchema, FORGE_FEEDBACK_SHAPE),
   async (c) => {
     const out = await submitForgeFeedback(callerOf(c), c.req.valid('json'), REST_DOOR);
+    return answer(c, out, out.ok && out.value.created ? 201 : 200);
+  },
+);
+
+/** A door or a piece of teaching that failed the caller, filed as feedback on the feature that owns it (ISS-1251). */
+forgeFeedbackRoutes.post(
+  '/doors',
+  requiresSelf(
+    "a report that a door failed the caller, filed as the caller's own into Forge's home project",
+  ),
+  strictBody(doorReportRequestSchema, DOOR_REPORT_SHAPE),
+  async (c) => {
+    const out = await reportDoor(callerOf(c), c.req.valid('json'), REST_DOOR);
     return answer(c, out, out.ok && out.value.created ? 201 : 200);
   },
 );

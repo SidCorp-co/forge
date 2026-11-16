@@ -1,9 +1,12 @@
+import { doorUseQuerySchema } from '@forge/contracts/door-use';
 import { HEALTH_WINDOWS } from '@forge/contracts/project-health';
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { doorCatalog } from '../lib/door-catalog.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requiresOnParam } from '../permissions/index.js';
+import { readDoorUse } from './door-use.js';
 import { projectHealth } from './health.js';
 import { BUCKETS, METRICS, runTimeseries } from './timeseries.js';
 
@@ -64,5 +67,21 @@ projectMetricsRoutes.get(
   async (c) => {
     const { id } = c.req.valid('param');
     return c.json(await projectHealth(id, c.req.valid('query').days));
+  },
+);
+
+/**
+ * Which doors this project's agents used over the window and which they never reached for, by agent
+ * kind, with what they read and the lessons they applied (ISS-1251): the catalog is the denominator,
+ * so a door no agent called shows with 0.
+ */
+projectMetricsRoutes.get(
+  '/:id/metrics/doors',
+  zValidator('param', idParamSchema),
+  requiresOnParam('project.read', 'id'),
+  zValidator('query', doorUseQuerySchema),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    return c.json(await readDoorUse(id, c.req.valid('query'), doorCatalog()));
   },
 );

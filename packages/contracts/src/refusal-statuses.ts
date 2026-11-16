@@ -10,6 +10,7 @@ import { CHECK_RUN_REFUSAL_STATUSES } from "./check-runs.js";
 import { CHECKLIST_REFUSAL_STATUSES } from "./checklists.js";
 import { CONVERSATION_REFUSAL_STATUSES } from "./conversations.js";
 import { DEVICE_REFUSAL_STATUSES } from "./devices.js";
+import { DOOR_REPORT_REFUSAL_STATUSES } from "./door-use.js";
 import { ECOSYSTEM_REFUSAL_STATUSES } from "./ecosystem.js";
 import { FAST_LANE_REFUSAL_STATUSES } from "./fast-lane.js";
 import { FEEDBACK_SERVER_KEY_REFUSAL_STATUSES } from "./feedback-server-keys.js";
@@ -80,6 +81,7 @@ const DECLARED: ReadonlyArray<
 	CHECKLIST_REFUSAL_STATUSES,
 	CONVERSATION_REFUSAL_STATUSES,
 	DEVICE_REFUSAL_STATUSES,
+	DOOR_REPORT_REFUSAL_STATUSES,
 	ECOSYSTEM_REFUSAL_STATUSES,
 	FAST_LANE_REFUSAL_STATUSES,
 	FEEDBACK_SERVER_KEY_REFUSAL_STATUSES,

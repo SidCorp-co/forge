@@ -824,9 +824,16 @@
         "issues",
         "jobs",
         "jobEvents",
+        "lessonApplications",
+        "lessons",
+        "mcpAuditLog",
+        "personalAccessTokens",
         "queueSnapshots",
+        "runContextReaches",
         "runnerEvents",
-        "usageRecords"
+        "supportRooms",
+        "usageRecords",
+        "users"
       ],
       "serves": ["REQ-11"]
     },

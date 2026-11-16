@@ -140,6 +140,25 @@ const CORE_NAME_PREFIXES = [
   MCP_OAUTH_NAME_PREFIX,
 ];
 
+/**
+ * Who holds a token core mints, by its name's prefix: the agent kind a door's use is counted under
+ * (ISS-1251). A `turn:` token is a box session's, read further by its session; a token whose name
+ * has none of these is its holder's own.
+ */
+export const TOKEN_HOLDER_PREFIXES: readonly (readonly [prefix: string, holder: string])[] = [
+  [TURN_TOKEN_NAME_PREFIX, 'session'],
+  [TURN_DEFAULT_NAME_PREFIX, 'assistant'],
+  [AGREEMENT_NAME_PREFIX, 'assistant'],
+  [DEVICE_TOKEN_NAME_PREFIX, 'box'],
+  [WORKSPACE_TOKEN_NAME_PREFIX, 'checkout'],
+  [SCRIPT_READ_NAME_PREFIX, 'sandbox'],
+  [STEWARD_NAME_PREFIX, 'steward'],
+  [MCP_OAUTH_NAME_PREFIX, 'mcp-client'],
+];
+
+/** The prefix a box session's turn token is named with, before its session id. */
+export const SESSION_TURN_TOKEN_PREFIX = TURN_TOKEN_NAME_PREFIX;
+
 // a person's token named like a turn token would make their CLI writes read as written through the assistant
 export const coreTokenNamePrefixOf = (name: string): string | null =>
   CORE_NAME_PREFIXES.find((p) => name.startsWith(p)) ?? null;
