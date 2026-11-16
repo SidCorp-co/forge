@@ -50,7 +50,15 @@ export function provideStewardDomainPorts(
     landedChange: memoryIssueSide.landedChange,
     cardOf: async (cardId) => {
       const card = doorCatalog().doors.find((d) => d.card?.id === cardId)?.card;
-      return card ? { id: card.id, scenarios: card.scenarios } : null;
+      return card
+        ? {
+            id: card.id,
+            scenarios: card.scenarios,
+            situations: card.situations,
+            practice: card.practice,
+            ...(card.redFlag ? { redFlag: card.redFlag } : {}),
+          }
+        : null;
     },
     cardPaths: async (cardId) => cardPaths(cardId),
   });

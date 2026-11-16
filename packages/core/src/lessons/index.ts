@@ -15,13 +15,16 @@ export {
   restLessonDoors,
 } from './block.js';
 export {
+  applyCarriedDeltas,
   type CardFreshness,
   cardFreshness,
+  cardsWithProposedDeltas,
   markCardRecheckOwed,
   proposeCardDelta,
   recordScenarioRuns,
   settleCardRecheck,
 } from './card-freshness.js';
+export { LESSON_REST_CARDS } from './cards.js';
 export { type ConfusionSettlement, decideConfusion, raiseConfusion } from './confusions.js';
 export { registerLessonCorrections } from './consumers.js';
 export { type ThreadPost, threadLines } from './correction-thread.js';

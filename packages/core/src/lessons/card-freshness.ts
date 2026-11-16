@@ -9,7 +9,7 @@
 import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { cardDeltas, cardRechecks, cardScenarioRuns, lessons } from '../db/schema-lessons.js';
-import type { CardDelta } from './ports.js';
+import type { CardDelta, CardText } from './ports.js';
 
 /** Mark the card owed a re-check; touched again, it keeps its first `owedSince` and names the newest change. */
 export async function markCardRecheckOwed(cardId: string, by: string): Promise<void> {
@@ -45,6 +45,56 @@ export async function settleCardRecheck(cardId: string): Promise<boolean> {
     )
     .limit(1);
   return waiting ? false : clearCardRecheck(cardId);
+}
+
+/** A line as compared: case, spacing, an arrow's spelling, a leading "when" and end stops set aside. */
+const normal = (line: string) =>
+  line
+    .toLowerCase()
+    .replace(/->/g, '→')
+    .replace(/\s+/g, ' ')
+    .replace(/\s*→\s*/g, ' → ')
+    .trim()
+    .replace(/^when /, '')
+    .replace(/[.;:!]+$/, '');
+
+/** Each line a card's surfaces render: every situation ("when … → …" and its watch), practice line, red flag. */
+function cardLines(card: CardText): string[] {
+  return [
+    ...card.situations.flatMap((s) => [`${s.when} → ${s.do}`, ...(s.watch ? [s.watch] : [])]),
+    ...card.practice,
+    ...(card.redFlag ? [card.redFlag] : []),
+  ].map(normal);
+}
+
+/** The cards holding a delta this project's lessons proposed, not yet carried. */
+export async function cardsWithProposedDeltas(projectId: string): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ cardId: cardDeltas.cardId })
+    .from(cardDeltas)
+    .where(and(eq(cardDeltas.projectId, projectId), eq(cardDeltas.status, 'proposed')));
+  return rows.map((r) => r.cardId).sort();
+}
+
+/**
+ * The card's re-check of its proposed deltas: each whose line the card's current text carries is
+ * marked applied, which takes it off the card's surfaces; the rest stay proposed. How many were.
+ */
+export async function applyCarriedDeltas(card: CardText): Promise<number> {
+  const proposed = await db
+    .select({ id: cardDeltas.id, text: cardDeltas.text })
+    .from(cardDeltas)
+    .where(and(eq(cardDeltas.cardId, card.id), eq(cardDeltas.status, 'proposed')));
+  const lines = cardLines(card);
+  const carried = proposed
+    .filter((d) => {
+      const line = normal(d.text);
+      return line.length > 0 && lines.some((l) => l.includes(line));
+    })
+    .map((d) => d.id);
+  if (carried.length === 0) return 0;
+  await db.update(cardDeltas).set({ status: 'applied' }).where(inArray(cardDeltas.id, carried));
+  return carried.length;
 }
 
 /** Keep one delta a lesson folded into its card, proposed until the card's code carries it; its id. */

@@ -203,14 +203,25 @@ describe('a lesson that holds is folded into its card and retired (§4)', () => 
   const LINE =
     'When someone writes whom you have no record of → read the member record, then answer.';
 
-  /** The steward's pass with a card registry that carries `CARD`, and its scenarios. */
-  async function passWithCard(answers: Parameters<typeof pass>[0]) {
+  const BEFORE_FOLD = [
+    { when: 'someone asks about a member', do: 'answer from the member record' },
+  ];
+
+  /** The steward's pass with a card registry that carries `CARD`, its scenarios and its situations. */
+  async function passWithCard(answers: Parameters<typeof pass>[0], situations = BEFORE_FOLD) {
     const { lessonsPorts, provideLessonsPorts } = await import('../../src/lessons/index.js');
     const before = lessonsPorts();
     provideLessonsPorts({
       ...before,
       cardOf: async (id) =>
-        id === CARD ? { id, scenarios: ['asks-unknown-member', 'answers-known-member'] } : null,
+        id === CARD
+          ? {
+              id,
+              scenarios: ['asks-unknown-member', 'answers-known-member'],
+              situations,
+              practice: ['Read the member record before you answer.'],
+            }
+          : null,
     });
     try {
       return await pass(answers);
@@ -287,6 +298,29 @@ describe('a lesson that holds is folded into its card and retired (§4)', () => 
       passed: false,
       change: `L-${n} fold`,
     });
+  });
+
+  it('applies a proposed delta at the card’s re-check once its code carries the line, and not before', async () => {
+    const { cardFreshness } = await import('../../src/lessons/index.js');
+    const proposed = async () =>
+      ((await cardFreshness([CARD]))[0]?.proposedDeltas ?? []).map((d) => d.text);
+    expect(await proposed()).toContain(LINE);
+    expect((await passWithCard({})).deltasApplied).toBe(0);
+    expect(await proposed()).toContain(LINE);
+    const carried = [
+      ...BEFORE_FOLD,
+      {
+        when: 'someone writes whom you have no record of',
+        do: 'Read the member record, then answer',
+      },
+    ];
+    const tally = await passWithCard({}, carried);
+    expect(tally.deltasApplied).toBe(1);
+    expect(await proposed()).not.toContain(LINE);
+    const [row] = await rows<{ status: string }>(
+      sql`SELECT status FROM card_deltas WHERE card_id = ${CARD} AND text = ${LINE}`,
+    );
+    expect(row?.status).toBe('applied');
   });
 
   it('waits, never retiring, while no door carries the card it names', async () => {

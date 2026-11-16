@@ -397,6 +397,8 @@ export interface LessonsPassTally extends SettleTally, LifecycleTally {
   unclassified: number;
   /** Consolidation items opened for piles past their cap (one per pile; a standing one is not reopened). */
   consolidations: number;
+  /** Projects whose piles could not be read this pass (logged with why); their lessons still had their pass. */
+  pilesUnread: number;
   failed: number;
 }
 
@@ -440,7 +442,13 @@ async function passProject(projectId: string, now: Date, judges: Judges, tally: 
   await runLessonLifecycle(projectId, stewardId, judges, tally);
   tally.retired += await retireDue(projectId, stewardId, now);
   await fileChecks(projectId, stewardId, judges.classify, tally);
-  tally.consolidations += await openPileConsolidations(projectId, stewardId);
+  try {
+    tally.consolidations += await openPileConsolidations(projectId, stewardId);
+  } catch (err) {
+    // the piles are read beside the lessons, never in their way: a read that fails is named and counted
+    tally.pilesUnread += 1;
+    logger.error({ projectId, err }, 'steward: the piles could not be read; consolidation waits');
+  }
   await recordLessonsMonths(projectId, now);
 }
 
@@ -485,6 +493,7 @@ export async function runLessonsPass(
     checks: 0,
     unclassified: 0,
     consolidations: 0,
+    pilesUnread: 0,
     failed: 0,
     ...emptyLifecycleTally(),
   };

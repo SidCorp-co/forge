@@ -1,9 +1,10 @@
 // Budgets trigger consolidation, never a cut (ISS-1251 §5): once a pass, the steward reads each text
 // every prompt of the project carries against its cap, and opens one consolidation item for each pile
 // past it. What the project owns (its always-on knowledge, its lessons map) is one `simplify` debt on
-// its ledger for the cleanup run; what Forge ships (a Tier-0 map of cards, a skill's always-on part) is
-// Forge's feedback, a repeat from any project one occurrence. No pile is truncated here: the reads that
-// carry them keep counting what they cannot carry.
+// its ledger for the cleanup run; a skill's always-on part is Forge's feedback, a repeat from any
+// project one occurrence. A Tier-0 map is reported and raises nothing: it carries the most used cards
+// within its cap and reaches the rest through forge_find, which is its design, not an overflow. No
+// pile is truncated here: the reads that carry them keep counting what they cannot carry.
 
 import type { PileRow } from '@forge/contracts/door-use';
 import { LESSON_FOLD_AFTER_APPLIED } from '@forge/contracts/lessons';
@@ -25,12 +26,8 @@ const PROJECT_DETAIL: Record<'always_knowledge' | 'lessons_map', string> = {
   lessons_map: `A lesson that held ${LESSON_FOLD_AFTER_APPLIED} uses folds into its card as a proposed delta: carry the proposed deltas into the card's code. Two lessons that say one thing are reported as a conflict confusion (POST /api/projects/:id/lessons/<n>/confusions), which the steward settles; never cut the map.`,
 };
 
-const FORGE_DETAIL: Record<'tier0_map' | 'skill_always_on', string> = {
-  tier0_map:
-    'Merge the cards of this audience that teach one situation, or move a rarely used one to its tool description; never cut a card to fit the map.',
-  skill_always_on:
-    "Move what only some steps need from the skill's always-on description into the skill's body or a guide it names; never cut the description to fit.",
-};
+const SKILL_DETAIL =
+  "Move what only some steps need from the skill's always-on description into the skill's body or a guide it names; never cut the description to fit.";
 
 /** One consolidation item per pile past its cap; how many were opened (a standing item is not reopened). */
 export async function openPileConsolidations(
@@ -39,7 +36,8 @@ export async function openPileConsolidations(
 ): Promise<number> {
   const { piles } = await stewardPorts().piles(projectId);
   let opened = 0;
-  for (const p of piles.filter((x) => x.over)) {
+  // a Tier-0 map past its cap is its Tier-1 disclosure at work (forge_find), never an item
+  for (const p of piles.filter((x) => x.over && x.pile !== 'tier0_map')) {
     const read = `GET /api/projects/${projectId}/metrics/piles`;
     if (p.pile === 'always_knowledge' || p.pile === 'lessons_map') {
       const wrote = await recordForgeDebt({
@@ -66,8 +64,8 @@ export async function openPileConsolidations(
       request: {
         kind: 'change_request',
         title: cutAtWord(`Consolidate ${p.name}: past its cap`, TITLE_CHARS),
-        whereSeen: p.pile === 'tier0_map' ? `the Tier-0 ${p.name}` : `skill ${p.name}`,
-        body: [`In ${slug}, ${over(p)}.`, FORGE_DETAIL[p.pile], `Read it at ${read}.`].join('\n\n'),
+        whereSeen: `skill ${p.name}`,
+        body: [`In ${slug}, ${over(p)}.`, SKILL_DETAIL, `Read it at ${read}.`].join('\n\n'),
         signalKey: `pile/${p.pile}/${p.name}`,
       },
       source: { projectId, issueId: null, runId: null, clientVersion: null },

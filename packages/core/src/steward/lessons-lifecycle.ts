@@ -16,7 +16,9 @@ import { z } from 'zod';
 import { callFastModelObject } from '../integrations/llm/index.js';
 import {
   anchorLesson,
+  applyCarriedDeltas,
   type CardDelta,
+  cardsWithProposedDeltas,
   gatherInput,
   invalidatedLessons,
   type LessonActor,
@@ -178,6 +180,8 @@ export interface LifecycleTally {
   replayRefused: number;
   /** Cards whose re-check this pass finished: no lesson anchored on one still waits re-checking. */
   cardsRechecked: number;
+  /** Proposed card deltas the card's code now carries, marked applied. */
+  deltasApplied: number;
 }
 
 export const emptyLifecycleTally = (): LifecycleTally => ({
@@ -189,6 +193,7 @@ export const emptyLifecycleTally = (): LifecycleTally => ({
   foldWaiting: 0,
   replayRefused: 0,
   cardsRechecked: 0,
+  deltasApplied: 0,
 });
 
 export interface LifecycleJudges {
@@ -404,5 +409,17 @@ export async function runLessonLifecycle(
   const actor: LessonActor = { userId: stewardId, agency: 'agent' };
   await anchorOwed(projectId, actor, judges, tally);
   await recheckInvalid(projectId, actor, judges, tally);
+  await recheckCardDeltas(projectId, tally);
   await foldHolding(projectId, actor, judges, tally);
+}
+
+/**
+ * Each card holding a delta this project's lessons proposed is re-checked against its code: a delta
+ * whose line the card now reads is applied, and leaves the card's surfaces; the rest stay proposed.
+ */
+async function recheckCardDeltas(projectId: string, t: LifecycleTally) {
+  for (const id of await cardsWithProposedDeltas(projectId)) {
+    const card = await lessonsPorts().cardOf(id);
+    if (card) t.deltasApplied += await applyCarriedDeltas(card);
+  }
 }

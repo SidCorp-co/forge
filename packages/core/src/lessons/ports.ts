@@ -24,12 +24,22 @@ interface LessonsPorts {
     issueId: string,
   ): Promise<{ key: string; text: string; paths: string[] | null; why?: string } | null>;
   /**
-   * The capability card registry (ISS-1251 §1): a card by its id, with the names of its scenarios,
+   * The capability card registry (ISS-1251 §1): a card by its id, with the names of its scenarios and
+   * its current text,
    * or null where no door carries that card; and, where the registry knows them, the paths its door
    * lives in. Without paths, a card anchor is met by a landing naming the card.
    */
-  cardOf(cardId: string): Promise<{ id: string; scenarios: readonly string[] } | null>;
+  cardOf(cardId: string): Promise<CardText | null>;
   cardPaths?(cardId: string): Promise<readonly string[]>;
+}
+
+/** A card as its code holds it now: its scenarios' names, and the text its surfaces render. */
+export interface CardText {
+  id: string;
+  scenarios: readonly string[];
+  situations: readonly { when: string; do: string; watch?: string | undefined }[];
+  practice: readonly string[];
+  redFlag?: string;
 }
 
 /** One delta a lesson that holds adds to or changes in its card (ADD, UPDATE), never a rewrite. */
