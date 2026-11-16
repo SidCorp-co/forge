@@ -831,6 +831,7 @@
         "queueSnapshots",
         "runContextReaches",
         "runnerEvents",
+        "skills",
         "supportRooms",
         "usageRecords",
         "users"

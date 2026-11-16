@@ -151,3 +151,35 @@ export const DOOR_REPORT_REFUSAL_STATUSES = {
 	DOOR_REPORT_UNKNOWN_DOOR: 400,
 	DOOR_REPORT_DOOR_REQUIRED: 400,
 } as const satisfies RefusalStatuses<DoorReportRefusalCode>;
+
+/**
+ * The most characters a skill's always-on part (its description, which every session loads to
+ * decide whether to open the skill) takes: the limit Claude Code's skill loader holds it to.
+ */
+export const SKILL_ALWAYS_ON_MAX_CHARS = 1024;
+
+/** The learned and taught texts every prompt carries, each under its own cap (ISS-1251). */
+export const PILES = ["always_knowledge", "lessons_map", "skill_always_on"] as const;
+export type Pile = (typeof PILES)[number];
+
+/**
+ * One pile's size against its cap. A pile at its cap is consolidated (its items folded into the
+ * teaching that owns them, or retired), never cut: `over` says it is due.
+ */
+export interface PileRow {
+	pile: Pile;
+	/** The pile's own name: `always-on knowledge`, `lessons map (runs)`, or the skill's name. */
+	name: string;
+	/** Characters it takes in every prompt that carries it. */
+	size: number;
+	cap: number;
+	/** How many items it holds, and how many of them the prompt carries (the map names only as many as fit). */
+	items: number;
+	carried: number;
+	over: boolean;
+}
+
+export interface PilesView {
+	projectId: string;
+	piles: PileRow[];
+}

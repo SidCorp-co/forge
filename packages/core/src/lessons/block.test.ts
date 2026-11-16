@@ -89,6 +89,7 @@ describe('a prompt carries a map of the lessons, never their sentences (ISS-867,
         reach: 500,
         named,
         size: text.length,
+        cap: LESSONS_MAP_MAX_CHARS,
       });
     }
   });

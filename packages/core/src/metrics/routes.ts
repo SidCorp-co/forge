@@ -4,10 +4,11 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { doorCatalog } from '../lib/door-catalog.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requiresOnParam } from '../permissions/index.js';
 import { readDoorUse } from './door-use.js';
 import { projectHealth } from './health.js';
+import { readPiles } from './piles.js';
 import { BUCKETS, METRICS, runTimeseries } from './timeseries.js';
 
 /**
@@ -84,4 +85,16 @@ projectMetricsRoutes.get(
     const { id } = c.req.valid('param');
     return c.json(await readDoorUse(id, c.req.valid('query'), doorCatalog()));
   },
+);
+
+/**
+ * Each text every prompt of this project carries against its cap (ISS-1251): always-on knowledge,
+ * the lessons map and each skill's always-on part; a pile `over` its cap is due for consolidation.
+ */
+projectMetricsRoutes.get(
+  '/:id/metrics/piles',
+  zValidator('param', idParamSchema),
+  requiresOnParam('project.read', 'id'),
+  noQuery,
+  async (c) => c.json(await readPiles(c.req.valid('param').id)),
 );

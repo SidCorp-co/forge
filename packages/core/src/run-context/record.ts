@@ -128,3 +128,20 @@ export function recordCalled(
     );
   }, failed(context));
 }
+
+/**
+ * Records what a read returned to a session core already holds by name: a room's agent reading
+ * through its own acts, where no box credential's read names it (ISS-1251). Never throws and never
+ * waits; a failed write is logged and counted.
+ */
+export function recordSessionReached(
+  subject: { projectId: string; sessionId: string },
+  how: Exclude<RunContextHow, 'prompt'>,
+  sources: readonly RunContextSource[],
+): void {
+  if (sources.length === 0) return;
+  work.start(
+    () => write({ ...subject, issueIds: [] }, how, sources),
+    failed({ projectId: subject.projectId, sessionId: subject.sessionId, how }),
+  );
+}

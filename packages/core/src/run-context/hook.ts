@@ -1,5 +1,6 @@
-// The one call a read route makes to record what it returned (ISS-1065). Only a box's credential
-// reads in a run: a person's session or personal token reaches no run, so its reads record nothing.
+// The one call a read route makes to record what it returned (ISS-1065). Only a credential tied to a
+// box reads in a run: the box's own (a master's, a run's) or a session's turn token (a room's agent,
+// ISS-1251); a person's session or personal token reaches no run, so its reads record nothing.
 
 import { RUN_CONTEXT_RUN_HEADER, type RunContextHow } from '@forge/contracts/run-context';
 import type { Context } from 'hono';
@@ -24,7 +25,8 @@ export function recordReached(
   try {
     const sources = sourcesOf(found);
     const asked = c.req.header(RUN_CONTEXT_RUN_HEADER)?.trim() || null;
-    recordCalled({ deviceId, fence: fencedProjectIds(), projectId, asked }, how, sources);
+    const tokenId = c.get('patTokenId') ?? null;
+    recordCalled({ deviceId, fence: fencedProjectIds(), projectId, asked, tokenId }, how, sources);
   } catch (err) {
     failed({ projectId, deviceId, how })(err);
   }

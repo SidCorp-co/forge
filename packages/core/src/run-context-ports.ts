@@ -3,6 +3,7 @@
 // kernels that compose a run's prompt or open a declared run cannot import run-context. Each is
 // handed what it needs here, from the owners' faces.
 
+import { boxSessionOfToken } from './agent-sessions/index.js';
 import { declaredRunOfCall } from './devices/index.js';
 import { resolvePipelineContext } from './jobs/index.js';
 import { orientationCarried } from './prompt/index.js';
@@ -27,12 +28,15 @@ async function declaredIssuesOf(run: {
 }
 
 /**
- * The one run a box credential's read was made in. A run the call names (`x-forge-run`) must be one
- * declared on that box in the read's project; a call naming none is the box's one live session in
- * the project, and a box running several names none, since a guess would put one run's reads on
- * another's record.
+ * The one run a box credential's read was made in. A session's turn token is that session's alone,
+ * a room agent's included (ISS-1251), so its read is that session's and never the box's other runs'.
+ * A run the call names (`x-forge-run`) must be one declared on that box in the read's project; a
+ * call naming none is the box's one live session in the project, and a box running several names
+ * none, since a guess would put one run's reads on another's record.
  */
 async function runOfCall(caller: RunCaller): Promise<CallRun> {
+  const own = caller.tokenId ? await boxSessionOfToken(caller.tokenId) : null;
+  if (own) return { ok: true, sessionId: own, issueIds: [] };
   if (caller.asked) {
     const fence = caller.fence && caller.fence.length > 0 ? caller.fence : null;
     const declared = await declaredRunOfCall(
@@ -52,12 +56,12 @@ async function runOfCall(caller: RunCaller): Promise<CallRun> {
     }
     return { ok: true, sessionId: declared.sessionId, issueIds: declared.issueIds };
   }
-  const own = await resolvePipelineContext({
+  const live = await resolvePipelineContext({
     deviceId: caller.deviceId,
     boundProjectId: caller.projectId,
   });
-  if (!own.ok) return { ok: false, reason: own.detail };
-  const { agentSessionId, issueId } = own.context;
+  if (!live.ok) return { ok: false, reason: live.detail };
+  const { agentSessionId, issueId } = live.context;
   const issueIds = issueId
     ? [issueId]
     : await declaredIssuesOf({

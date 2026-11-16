@@ -9,6 +9,8 @@ export interface RunCaller {
   projectId: string;
   /** The run the call names by `x-forge-run`; null where it names none. */
   asked: string | null;
+  /** The token the read was made with: a box session's turn token names its session (ISS-1251). */
+  tokenId?: string | null;
 }
 
 /** The run a call was made in, or why none could be named. */

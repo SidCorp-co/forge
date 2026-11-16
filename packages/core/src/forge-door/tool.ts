@@ -3,6 +3,7 @@
 // project_feedback. Every action calls what its REST twin under /api/forge/feedback calls.
 
 import {
+  DOOR_REF_SHAPE,
   DOOR_REPORT_SHAPE,
   DOOR_REPORT_VERDICTS,
   doorReportRequestSchema,
@@ -145,7 +146,7 @@ const DESCRIPTION = [
   'get {feedback}: one item you reported (a member of the home project reads any, and an agent reporter’s master reads its items), with `told` — what its triage told you: the answer, the decline note, the clarification asked and the release its fix shipped in, each null until told — and `shipEvidence` once its work shipped: the violated criterion’s verdict on the running build and its clip. progress {feedback}: its progress block alone.',
   'verify {feedback, evidence} and reopen {feedback, evidence}: once its work shipped (phase resolved) and its progress waits on you, confirm the fix or reopen the item, as its reporter or, for an agent reporter, as the master of the project it reported from. evidence is what you ran against the shipped build and what you saw; an agent is refused FEEDBACK_EVIDENCE_REQUIRED without it, and FORGE_FEEDBACK_NOT_YOURS on an item another account filed.',
   'reply {feedback, evidence}: once the item stands on an answer, reply to it once, with what it leaves open; the item goes back to triage as a reopen does, and the next answer names your reply. A second reply to one answer is FEEDBACK_REPLY_SPENT, an item with no answer standing FEEDBACK_REPLY_NO_ANSWER.',
-  `door ${DOOR_REPORT_SHAPE}: when a door or a piece of teaching failed you, say so here, at the moment it happens: it is filed as feedback about Forge on the feature that owns that door, and a second agent meeting the same gap adds to the one item. Unknown doors are refused DOOR_REPORT_UNKNOWN_DOOR with the actions that door serves.`,
+  `door { verdict, door, what, from }: when a door or a piece of teaching failed you, say so here, at the moment it happens. verdict is ${DOOR_REPORT_VERDICTS.join(' | ')}; door names ${DOOR_REF_SHAPE} (for missing, the nearest door, or leave it out); what is what you were doing and what it did or lacked. It is filed as feedback about Forge on the feature that owns that door, and a second agent meeting the same gap adds to the one item. Unknown doors are refused DOOR_REPORT_UNKNOWN_DOOR with the actions that door serves.`,
   'FORGE_HOME_NOT_SET: this instance names no home project, and nothing was written. A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and writes nothing.',
 ].join(' ');
 

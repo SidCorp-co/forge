@@ -142,11 +142,11 @@ function moreLine(rest: number, audience: LessonAudience): string {
 export function lessonsMapOverflow(
   entries: readonly LessonEntry[],
   audience: LessonAudience,
-): { reach: number; named: number; size: number } {
+): { reach: number; named: number; size: number; cap: number } {
   const text = lessonsMapText(entries, audience, 2) ?? '';
   const reach = lessonsFor(entries, audience).length;
   const named = lessonsFor(entries, audience).filter((e) => lessonNamedIn(text, e.slug)).length;
-  return { reach, named, size: text.length };
+  return { reach, named, size: text.length, cap: LESSONS_MAP_MAX_CHARS };
 }
 
 /** The map for one project and audience, read now. */
