@@ -68,8 +68,8 @@ export { NavRail, isNavGroup, type NavEntry, type NavItem, type NavItemGroup } f
 export { RailButton } from "./patterns/rail-button";
 export { fixedHeight } from "./patterns/fixed-height";
 export { BottomTabBar, type BottomTabItem } from "./patterns/bottom-tab-bar";
-export { CommandPalette, type Command } from "./patterns/command-palette";
-export { PageCommandsProvider, usePageCommands, usePageCommandList, usePageCommandsOpener } from "./patterns/page-commands";
+export { CommandPalette, PaletteGroup, PaletteItem, type Command } from "./patterns/command-palette";
+export { PageCommandsProvider, usePageCommands, usePageCommandList, usePageCommandsOpener, usePaletteSearch } from "./patterns/page-commands";
 // the disclosure kit (REQ-11 BC-22): a screen's face is a name, a status and one next action; the rest opens on demand
 export { ExpandRows, ExpandRow } from "./patterns/expand-row";
 export { DetailDrawer } from "./patterns/detail-drawer";

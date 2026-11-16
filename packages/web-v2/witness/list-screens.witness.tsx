@@ -14,11 +14,11 @@ import { createRoot } from "react-dom/client";
 import { TopBarSlotProvider } from "@/design";
 import { ChannelsScreen } from "@/features/channels";
 import { FeedbackScreen } from "@/features/feedback/components/feedback-screen";
-import { ModulesScreen } from "@/features/modules";
+import { ModuleMapScreen } from "@/features/modules";
 import { RequirementsScreen } from "@/features/requirements/components/requirements-screen";
 import { ShellTopBar } from "@/features/shell/components/shell-top-bar";
 import { type ChromeScreen, gatherScreens } from "@/test/vi-chrome-screens";
-import { MODULE_QUERIES, MODULES_PROJECT } from "@/test/module-rollup";
+import { MAP_PROJECT, PILLAR } from "@/test/module-map";
 import { P as FB_P } from "@/test/vi-chrome-feedback";
 import { REQ_PROJECT, Seeded } from "@/test/vi-chrome-requirements";
 import { firstScreenWords } from "./first-screen";
@@ -44,7 +44,7 @@ const seed = (name: string): ReactNode => {
   return s.render();
 };
 
-const MP = MODULES_PROJECT;
+const MP = MAP_PROJECT;
 const CHANNELS = { channels: [{ rid: "GENERAL-rid-1", name: "Forge-Communicate", members: 0, rules: 0, commonIssues: 0 }, { rid: "r2", name: "hop-support", members: 12, rules: 3, commonIssues: 4 }] };
 
 interface Page {
@@ -58,7 +58,7 @@ const P = "/projects/hop";
 const PAGES: Page[] = [
   { name: "rail", path: P, pattern: "/projects/$slug", render: () => seed("Navigation rail · labelled") },
   { name: "integrations", path: "/integrations", pattern: "/integrations", render: () => seed("Integrations") },
-  { name: "modules", path: `${P}/modules`, render: () => <Seeded data={MODULE_QUERIES}><ModulesScreen projectId={MP} slug="hop" /></Seeded> },
+  { name: "modules", path: `${P}/modules`, render: () => <Seeded data={[[["issues", "standing", "modules", MP, "map"], PILLAR], [["find", MP, "gaps"], { projectId: MP, window: { days: 30, since: "" }, gaps: [] }]]}><ModuleMapScreen projectId={MP} slug="hop" /></Seeded> },
   { name: "requirements", path: `${P}/requirements`, render: () => <Seeded data={REQUIREMENTS_TITLED}><RequirementsScreen projectId={REQ_PROJECT} slug="hop" /></Seeded> },
   { name: "feedback", path: `${P}/feedback`, render: () => <Seeded data={FEEDBACK_TITLED}><FeedbackScreen projectId={FB_P} slug="hop" /></Seeded> },
   { name: "channels", path: `${P}/channels`, render: () => <Seeded data={[[["channels", MP], CHANNELS]]}><ChannelsScreen projectId={MP} slug="hop" /></Seeded> },

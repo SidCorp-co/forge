@@ -4,8 +4,7 @@
 // a record with its facts, so its first view is counted as a person meets it, never as an empty state.
 
 import type { ChannelView } from "@forge/contracts/support-channel";
-import type { ModuleDetail } from "@forge/contracts/modules";
-import { MODULE_ROLLUP } from "@/test/module-rollup";
+import { PILLAR, TREE } from "@/test/module-map";
 import { APPROVALS_READ } from "@/test/approvals-read";
 import { read as activityRead, FORGE, ADMINHUB, AHAPI, CATALOG, SILENT, QUIET, RECENT, LEDGER_NONE, ORG } from "@/test/activity.fixture";
 import { previewOf, ticketBody } from "@/test/previews";
@@ -27,31 +26,6 @@ const ME = { userId: "7b1d2c3e-0000-4000-8000-000000000001", name: "Lan" };
 const SIGNED_IN = { id: ME.userId, email: "lan@hop.example", name: "Lan", hasPassword: true, oauthProviders: [] };
 const ORGS = [{ id: ORG, slug: "hop", name: "Hop", isPersonal: false, role: "owner", createdAt: EARLIER }];
 const PREFS = { theme: "system", language: null, notifyOnMention: true, activeOrgId: ORG, updatedAt: null };
-
-// ── the project's modules: the home's three, each a whole rollup row; Patients a leaf with its detail ──
-const ROLLUP = {
-  ...MODULE_ROLLUP,
-  modules: MODULE_ROLLUP.modules.slice(0, 3).map((m, i) => {
-    const name = ["Patients", "Bookings", "Billing"][i] as string;
-    return { ...m, name, slug: name.toLowerCase(), path: name.toLowerCase(), standing: { ...m.standing, childCount: 0 } };
-  }),
-  couplings: [],
-};
-const PATIENTS = ROLLUP.modules[0] as (typeof ROLLUP.modules)[number];
-const MODULE_DETAIL: ModuleDetail = {
-  module: { id: PATIENTS.id, slug: "patients", name: "Patients", path: "patients", color: PATIENTS.color, description: "Patient records and merges.", parent: null, children: [] },
-  standing: PATIENTS.standing,
-  purpose: { available: true, value: { entrySlug: "patients", title: "Patients", summary: "Who a patient is, and one record per person.", body: "", bodyTruncated: false, updatedAt: EARLIER } },
-  keyPaths: { available: true, value: ["packages/core/src/patients"] },
-  couplings: [{ module: { id: "m2", slug: "bookings", name: "Bookings", path: "bookings" }, issueCount: 2, recentIssueKeys: ["ISS-42"] }],
-  landings: { total: 4, recent: [{ issueKey: "ISS-41", title: "Merge keeps the older record", landedAt: EARLIER, commitSha: null, target: "dev", landing: null, release: null, modulePath: "patients" }] },
-  activity: { days: Array.from({ length: 14 }, (_, i) => ({ date: new Date(Date.parse(AT) - (13 - i) * 86_400_000).toISOString().slice(0, 10), events: (i * 3) % 5 })), total: 28 },
-  issues: [],
-  feedback: [{ key: "FB-9", title: "Duplicate patients after import", phase: "planned" }],
-  contracts: { available: false, reason: "No contract names this module." },
-  owner: { available: false, reason: "No owner is recorded." },
-  issuesRead: { returned: 6, open: 3 },
-} as ModuleDetail;
 
 // ── a bound channel and its record ──
 const CHANNEL: ChannelView = {
@@ -277,9 +251,10 @@ export const REST_READS: [RegExp, () => unknown][] = [
   [/^\/projects\/[^/]+\/cleanup-reports$/, () => ({ reports: [] })],
   [/^\/projects\/health$/, () => [{ id: PROJECT, projectName: "Hop Clinic API", projectSlug: "hop", throughput: 12, totalActive: 9, statusDistribution: { open: 5, in_progress: 4 }, blockers: [], pendingEscalations: 0, avgCycleTimeDays: 2.4, liveRuns: 1, runnerCount: 2, spend24hUsd: 3.2 }]],
   [/^\/version$/, () => ({ version: "0.4.0-dev.600", sourceCommit: "a".repeat(40) })],
-  [/^\/projects\/[^/]+\/modules\/rollup$/, () => ROLLUP],
-  [/^\/projects\/[^/]+\/modules\/[^/]+\/detail$/, () => MODULE_DETAIL],
-  [/^\/projects\/[^/]+\/code-trace$/, () => ({ units: [], untraced: 0, total: 0 })],
+  // the project's module map (ISS-1256): the pillar, Execution's tree, the searches that found nothing
+  [/^\/projects\/[^/]+\/modules\/map$/, () => PILLAR],
+  [/^\/projects\/[^/]+\/modules\/[^/]+\/map$/, () => TREE],
+  [/^\/projects\/[^/]+\/find\/gaps$/, () => ({ projectId: PROJECT, window: { days: 30, since: EARLIER }, gaps: [{ query: "steward budget", searches: 3, firstAt: EARLIER, lastAt: AT, lastBy: "agent" }] })],
   [/^\/projects\/[^/]+\/support\/channels$/, () => ({ channels: [{ rid: "c1", name: "clinic-support", members: 3, rules: 1, commonIssues: 2 }, { rid: "c2", name: "billing-help", members: 2, rules: 0, commonIssues: 1 }] })],
   [/^\/projects\/[^/]+\/support\/channels\/[^/]+$/, () => ({ channel: CHANNEL })],
   [/^\/projects\/[^/]+\/contract-standing$/, () => CONTRACTS],

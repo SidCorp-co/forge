@@ -14,9 +14,9 @@ function usePileName() {
     if (p.pile === "skill_always_on") return p.name;
     if (p.pile === "tier0_map") {
       const audience = /\((bot|master|run)\)/.exec(p.name)?.[1] as "bot" | "master" | "run" | undefined;
-      return audience ? t("agents.cap.pile.mapOf", { who: t(`agents.cap.caller.${audience}`) }) : t("agents.cap.pile.tier0_map");
+      return audience ? t("modules.cap.pile.mapOf", { who: t(`modules.cap.caller.${audience}`) }) : t("modules.cap.pile.tier0_map");
     }
-    return t(`agents.cap.pile.${p.pile}`);
+    return t(`modules.cap.pile.${p.pile}`);
   };
 }
 
@@ -28,11 +28,11 @@ function PileLine({ p }: { p: PileRow }) {
       title={name}
       testId="cap-pile"
       rowKey={`${p.pile}:${p.name}`}
-      facts={[t("agents.cap.pile.size", { size: p.size, cap: p.cap }), ...(p.carried < p.items ? [t("agents.cap.pile.carried", { n: p.carried, of: p.items })] : [])]}
+      facts={[t("modules.cap.pile.size", { size: p.size, cap: p.cap }), ...(p.carried < p.items ? [t("modules.cap.pile.carried", { n: p.carried, of: p.items })] : [])]}
       trailing={
         <>
           <ProgressBar value={p.cap > 0 ? (p.size / p.cap) * 100 : 0} tone={p.over ? "red" : "accent"} className="w-28" />
-          {p.over ? <StatusChip tone="err" label={t("agents.cap.pile.over")} testId="cap-pile-over" /> : null}
+          {p.over ? <StatusChip tone="err" label={t("modules.cap.pile.over")} testId="cap-pile-over" /> : null}
         </>
       }
     />
@@ -45,16 +45,16 @@ export function CapabilityBudgets({ piles }: { piles: PilesView }) {
   const { prompt, skills } = pilesOf(piles.piles);
   const over = piles.piles.filter((p) => p.over).length;
   return (
-    <CountSection label={t("agents.cap.budgets")} count={over} unit={t("agents.cap.pile.overUnit")} holds={piles.piles.length} drawer testId="cap-budgets">
-      <RowList label={t("agents.cap.budgets")}>
+    <CountSection label={t("modules.cap.budgets")} count={over} unit={t("modules.cap.pile.overUnit")} holds={piles.piles.length} drawer testId="cap-budgets">
+      <RowList label={t("modules.cap.budgets")}>
         {prompt.map((p) => (
           <PileLine key={`${p.pile}:${p.name}`} p={p} />
         ))}
       </RowList>
       {skills.length > 0 ? (
         <>
-          <h3 className="pt-4 pb-1 text-13 font-semibold text-fg">{t("agents.cap.pile.skills")}</h3>
-          <RowList label={t("agents.cap.pile.skills")}>
+          <h3 className="pt-4 pb-1 text-13 font-semibold text-fg">{t("modules.cap.pile.skills")}</h3>
+          <RowList label={t("modules.cap.pile.skills")}>
             {skills.map((p) => (
               <PileLine key={p.name} p={p} />
             ))}
@@ -71,25 +71,25 @@ export function CapabilityReading({ use }: { use: DoorUseView }) {
   const applied = use.lessonsApplied.reduce((n, r) => n + r.applications, 0);
   return (
     <>
-      <CountSection label={t("agents.cap.read")} count={reaches} drawer testId="cap-reads">
-        <RowList label={t("agents.cap.read")}>
+      <CountSection label={t("modules.cap.read")} count={reaches} drawer testId="cap-reads">
+        <RowList label={t("modules.cap.read")}>
           {use.reads.map((r) => (
             <RowItem
               key={`${r.agent}:${r.kind}:${r.how}`}
-              title={`${t(`agents.cap.caller.${callerOf(r.agent)}`)} · ${t(`agents.cap.kind.${r.kind}`)}`}
-              facts={[t(`agents.cap.how.${r.how}`), t("agents.cap.entries", { n: r.entries })]}
+              title={`${t(`modules.cap.caller.${callerOf(r.agent)}`)} · ${t(`modules.cap.kind.${r.kind}`)}`}
+              facts={[t(`modules.cap.how.${r.how}`), t("modules.cap.entries", { n: r.entries })]}
               trailing={<span className="text-13 tabular-nums text-fg">{r.reaches}</span>}
             />
           ))}
         </RowList>
       </CountSection>
-      <CountSection label={t("agents.cap.applied")} count={applied} drawer testId="cap-applied">
-        <RowList label={t("agents.cap.applied")}>
+      <CountSection label={t("modules.cap.applied")} count={applied} drawer testId="cap-applied">
+        <RowList label={t("modules.cap.applied")}>
           {use.lessonsApplied.map((l) => (
             <RowItem
               key={`${l.lesson}:${l.agent}`}
               title={l.lesson}
-              facts={[t(l.agent === "person" ? "agents.cap.person" : "agents.cap.agent")]}
+              facts={[t(l.agent === "person" ? "modules.cap.person" : "modules.cap.agent")]}
               trailing={<span className="text-13 tabular-nums text-fg">{l.applications}</span>}
             />
           ))}

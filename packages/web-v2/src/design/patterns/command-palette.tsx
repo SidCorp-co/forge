@@ -1,5 +1,5 @@
 
-import { useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { Command as CommandPrimitive } from "cmdk";
 import {
   CommandDialog,
@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/command";
 import { Icon, type IconName } from "@/design/icons/icon";
 import { Kbd } from "@/design/primitives/kbd";
+import { cn } from "@/lib/utils/cn";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 
@@ -27,6 +28,31 @@ const GROUP_LABEL: Record<CommandGroup, ProductCopyKey> = {
   search: "shell.palette.results",
 };
 
+const GROUP_CLASS =
+  "p-0 **:[[cmdk-group-heading]]:px-3 **:[[cmdk-group-heading]]:pb-1 **:[[cmdk-group-heading]]:pt-1.5 **:[[cmdk-group-heading]]:font-mono **:[[cmdk-group-heading]]:text-11 **:[[cmdk-group-heading]]:font-semibold **:[[cmdk-group-heading]]:uppercase **:[[cmdk-group-heading]]:tracking-[0.10em] **:[[cmdk-group-heading]]:text-subtle";
+const ITEM_CLASS = "group gap-3 rounded-md px-3 py-2 text-sm text-fg data-selected:bg-accent-tint data-selected:text-accent-text";
+
+/** A group of a palette `search`'s results, headed like the commands' groups. */
+export function PaletteGroup({ heading, children, testId }: { heading: string; children: ReactNode; testId?: string }) {
+  return (
+    <CommandSection heading={heading} className={GROUP_CLASS} data-testid={testId}>
+      {children}
+    </CommandSection>
+  );
+}
+
+/**
+ * One result of a palette `search`. It carries the typed words as its keyword, so the commands'
+ * filter keeps it whatever it is titled: the search door, not the palette, decided it matched.
+ */
+export function PaletteItem({ value, query, onSelect, children, testId }: { value: string; query: string; onSelect: () => void; children: ReactNode; testId?: string }) {
+  return (
+    <CommandItem value={value} keywords={[query]} onSelect={onSelect} className={cn(ITEM_CLASS, "items-start")} data-testid={testId}>
+      {children}
+    </CommandItem>
+  );
+}
+
 export interface Command {
   label: string;
   icon: IconName;
@@ -40,6 +66,13 @@ interface CommandPaletteProps {
   open: boolean;
   onClose: () => void;
   commands: Command[];
+  /** What the palette opens searching; the caller keys the palette to open it again with another. */
+  initialQuery?: string;
+  /**
+   * The one search door's results for what is typed (ISS-1256), drawn above the commands. Its items
+   * carry the typed words as a keyword, so the commands' filter keeps them, and they lead.
+   */
+  search?: (query: string, close: () => void) => ReactNode;
 }
 
 function matches(_value: string, search: string, keywords?: string[]): number {
@@ -48,8 +81,9 @@ function matches(_value: string, search: string, keywords?: string[]): number {
   return keywords?.some((k) => k.toLowerCase().includes(q)) ? 1 : 0;
 }
 
-export function CommandPalette({ open, onClose, commands }: CommandPaletteProps) {
-  const [query, setQuery] = useState("");
+export function CommandPalette({ open, onClose, commands, initialQuery = "", search }: CommandPaletteProps) {
+  const [query, setQuery] = useState(initialQuery);
+  const searching = Boolean(search) && query.trim().length > 0;
   const t = useCopy();
 
   const sections = useMemo(() => {
@@ -95,14 +129,15 @@ export function CommandPalette({ open, onClose, commands }: CommandPaletteProps)
           />
           <Kbd>{t("common.key.esc")}</Kbd>
         </div>
-        <CommandList label={t("shell.palette.list")} className="max-h-[360px] p-1.5">
-          <CommandEmpty className="fg-body-sm px-3 py-6 text-center">{t("shell.palette.empty")}</CommandEmpty>
+        <CommandList label={t("shell.palette.list")} className={searching ? "max-h-[min(520px,65vh)] p-1.5" : "max-h-[360px] p-1.5"}>
+          {searching ? null : <CommandEmpty className="fg-body-sm px-3 py-6 text-center">{t("shell.palette.empty")}</CommandEmpty>}
+          {searching && search ? search(query, onClose) : null}
           {sections.map((section, si) => (
             <div key={section.group}>
-              {si > 0 && <CommandSeparator className="mx-0 my-1 bg-line-subtle" />}
+              {si > 0 || searching ? <CommandSeparator className="mx-0 my-1 bg-line-subtle" /> : null}
               <CommandSection
                 heading={t(GROUP_LABEL[section.group])}
-                className="p-0 **:[[cmdk-group-heading]]:px-3 **:[[cmdk-group-heading]]:pb-1 **:[[cmdk-group-heading]]:pt-1.5 **:[[cmdk-group-heading]]:font-mono **:[[cmdk-group-heading]]:text-11 **:[[cmdk-group-heading]]:font-semibold **:[[cmdk-group-heading]]:uppercase **:[[cmdk-group-heading]]:tracking-[0.10em] **:[[cmdk-group-heading]]:text-subtle"
+                className={GROUP_CLASS}
               >
                 {section.items.map(({ cmd, idx }) => (
                   <CommandItem
@@ -110,7 +145,7 @@ export function CommandPalette({ open, onClose, commands }: CommandPaletteProps)
                     value={`${section.group}:${idx}:${cmd.label}`}
                     keywords={[cmd.label, cmd.keywords ?? ""]}
                     onSelect={() => run(cmd)}
-                    className="group gap-3 rounded-md px-3 py-2 text-sm text-fg data-selected:bg-accent-tint data-selected:text-accent-text"
+                    className={ITEM_CLASS}
                   >
                     <Icon name={cmd.icon} size={17} className="text-subtle group-data-[selected=true]:text-accent" />
                     <span className="flex-1 truncate">{cmd.label}</span>

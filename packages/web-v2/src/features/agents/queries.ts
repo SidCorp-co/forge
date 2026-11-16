@@ -1,7 +1,7 @@
 // The agents feature's reads: the runs read model's key factory and its queryOptions. Every key sits
 // under `runs-standing`, so a write that moves a run invalidates them all (lib/ws/event-router.ts).
 import { readOf } from "@/lib/api/query-kit";
-import { capabilitiesApi, runsApi } from "./api";
+import { runsApi } from "./api";
 import type { RunStandingScope } from "./types";
 
 const RUNS_POLL_MS = 20_000;
@@ -46,21 +46,4 @@ export const nowQueries = {
   live: (projectId: string | undefined) => readOf(runKeys.standing(projectId, "live"), () => runsApi.standing(projectId as string, "live")),
   recent: (projectId: string | undefined) => readOf(runKeys.recent(projectId), () => runsApi.recent(projectId as string)),
   rooms: (projectId: string | undefined) => readOf(runKeys.roomTurns(projectId), () => runsApi.roomTurns(projectId as string)),
-};
-
-/** How long the capabilities page looks back: a door unused this long is due a decision (ISS-1251 §5). */
-export const CAP_WINDOW_DAYS = 30;
-
-export const capabilityKeys = {
-  all: (projectId: string | undefined) => ["capabilities", projectId] as const,
-  doors: (projectId: string | undefined) => [...capabilityKeys.all(projectId), "doors", CAP_WINDOW_DAYS] as const,
-  piles: (projectId: string | undefined) => [...capabilityKeys.all(projectId), "piles"] as const,
-  extra: (projectId: string | undefined) => [...capabilityKeys.all(projectId), "extra", CAP_WINDOW_DAYS] as const,
-};
-
-/** Counts over logs, read again a minute later at most: nothing on the page moves by the second. */
-export const capabilityQueries = {
-  doors: (projectId: string | undefined) => readOf(capabilityKeys.doors(projectId), () => capabilitiesApi.doors(projectId as string, CAP_WINDOW_DAYS), 60_000),
-  piles: (projectId: string | undefined) => readOf(capabilityKeys.piles(projectId), () => capabilitiesApi.piles(projectId as string), 60_000),
-  extra: (projectId: string | undefined) => readOf(capabilityKeys.extra(projectId), () => capabilitiesApi.extra(projectId as string, CAP_WINDOW_DAYS), 60_000),
 };

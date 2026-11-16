@@ -1,14 +1,16 @@
 
+import { useEffect } from "react";
 import { PageTitle, Tabs, useUrlTab } from "@/design";
 import { SessionsScreen } from "@/features/sessions";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { agentsListHref } from "@/lib/routes/agents";
+import { capabilitiesHref } from "@/lib/routes/modules";
+import { useRouter } from "@/lib/navigation/router";
 import { useLocationSearch } from "@/lib/utils/use-location-search";
 import { useStuckRuns } from "../hooks";
-import { CapabilitiesTab } from "./capabilities-tab";
 import { type AgentsAccess, RunsList } from "./runs-list";
 
-const AGENTS_TABS = ["runs", "sessions", "capabilities"] as const;
+const AGENTS_TABS = ["runs", "sessions"] as const;
 type AgentsTab = (typeof AGENTS_TABS)[number];
 
 export function AgentsScreen({ access }: { access: AgentsAccess }) {
@@ -16,13 +18,19 @@ export function AgentsScreen({ access }: { access: AgentsAccess }) {
   const TABS = [
     { value: "runs", label: t("agents.tab.runs") },
     { value: "sessions", label: t("agents.tab.sessions") },
-    { value: "capabilities", label: t("agents.tab.capabilities") },
   ];
   const [urlTab, setTab] = useUrlTab(AGENTS_TABS);
   const params = new URLSearchParams(useLocationSearch());
   // `?issue=` names whose sessions to list, so a link carrying only it lands on that tab.
   const issueId = params.get("issue");
   const tab: AgentsTab = issueId && !params.has("tab") ? "sessions" : urlTab;
+  // ISS-1256: the capabilities page is the module map's Capabilities branch; a link kept from the old tab lands there
+  const moved = params.get("tab") === "capabilities";
+  const router = useRouter();
+  useEffect(() => {
+    if (moved) router.replace(capabilitiesHref(access.slug));
+  }, [moved, router, access.slug]);
+  if (moved) return null;
 
   return (
     <div className="grid min-h-full content-start bg-app" data-testid="agents-screen">
@@ -32,7 +40,6 @@ export function AgentsScreen({ access }: { access: AgentsAccess }) {
       </div>
       {tab === "runs" ? <RunsList access={access} /> : null}
       {tab === "sessions" ? <SessionsTab projectId={access.projectId} slug={access.slug} issueId={issueId} /> : null}
-      {tab === "capabilities" ? <CapabilitiesTab projectId={access.projectId} /> : null}
     </div>
   );
 }

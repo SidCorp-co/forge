@@ -1,8 +1,9 @@
-// Agents / Capabilities (ISS-1251 §7): every door Forge gives this project's agents, read at a glance
-// first (calls, taught share, unused doors, piles over their cap, and calls against refusals per day),
-// then what the project's prompts carry against their caps and what agents read, then the doors by
-// where they stand. A door opens in a side drawer on its teaching, use, reports, lessons and card. The
-// tab lives in the Agents screen (no new screen, design README "Screens").
+// The module map's Capabilities branch (ISS-1251 §7, ISS-1256): every door Forge gives this project's
+// agents, read at a glance first (calls, taught share, unused doors, piles over their cap, and calls
+// against refusals per day), then what the project's prompts carry against their caps and what agents
+// read, then the doors by where they stand. A door opens in a side drawer on its teaching, use,
+// reports, lessons and card. It is one page, drawn across every module on the map's landing and for
+// one module on its page, where only the doors its tree places there are listed.
 
 import type { CapabilitiesView } from "@forge/contracts/capabilities";
 import { DOOR_SURFACES } from "@forge/contracts/door-use";
@@ -25,7 +26,7 @@ const OPEN_UP_TO = 50;
 export function DoorStanding({ d }: { d: CapDoor }) {
   const t = useCopy();
   const s = d.standing;
-  return <StatusChip tone={CAP_STANDING_TONE[s]} label={t(`agents.cap.chip.${s}`)} reason={t(`agents.cap.why.${s}`)} testId="cap-standing" />;
+  return <StatusChip tone={CAP_STANDING_TONE[s]} label={t(`modules.cap.chip.${s}`)} reason={t(`modules.cap.why.${s}`)} testId="cap-standing" />;
 }
 
 function DoorLine({ d }: { d: CapDoor }) {
@@ -35,7 +36,7 @@ function DoorLine({ d }: { d: CapDoor }) {
     <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 py-1.5">
       <span className={cn("min-w-0 flex-1 truncate max-md:basis-full", title.mono && "font-mono text-12-5 text-fg")}>{title.text}</span>
       <span className="flex-none text-12 tabular-nums text-muted" data-testid="cap-calls-count">
-        {t("agents.cap.calls", { n: d.row.calls })}
+        {t("modules.cap.calls", { n: d.row.calls })}
       </span>
       <DoorStanding d={d} />
     </span>
@@ -45,7 +46,7 @@ function DoorLine({ d }: { d: CapDoor }) {
 /** The doors of one standing, one line each, each opening in a drawer. */
 export function DoorGroup({ standing, doors }: { standing: CapStanding; doors: readonly CapDoor[] }) {
   const t = useCopy();
-  const label = t(`agents.cap.standing.${standing}`);
+  const label = t(`modules.cap.standing.${standing}`);
   return (
     <CountSection label={label} count={doors.length} defaultOpen={doors.length <= OPEN_UP_TO} testId={`cap-group-${standing}`}>
       <ExpandRows label={label} className="-ml-7">
@@ -71,11 +72,11 @@ function DoorList({ doors }: { doors: readonly CapDoor[] }) {
   return (
     <>
       <ListToolbar testId="cap-toolbar">
-        <SegmentedControl options={SURFACES.map((s) => ({ value: s, label: t(`agents.cap.surface.${s}`), count: count(s) }))} value={surface} onChange={setSurface} />
-        <ListSearch noun={t("agents.cap.noun")} value={text} onChange={(q) => setParams({ q: q || null })} />
+        <SegmentedControl options={SURFACES.map((s) => ({ value: s, label: t(`modules.cap.surface.${s}`), count: count(s) }))} value={surface} onChange={setSurface} />
+        <ListSearch noun={t("modules.cap.noun")} value={text} onChange={(q) => setParams({ q: q || null })} />
       </ListToolbar>
-      {shown.length === 0 ? <p className="px-5 py-6 text-13 text-muted">{t("agents.cap.empty")}</p> : null}
-      <div className="px-5" aria-label={t("agents.cap.listLabel")}>
+      {shown.length === 0 ? <p className="px-5 py-6 text-13 text-muted">{t("modules.cap.empty")}</p> : null}
+      <div className="px-5" aria-label={t("modules.cap.listLabel")}>
         {CAP_STANDINGS.map((s) => {
           const rows = shown.filter((d) => d.standing === s);
           return rows.length > 0 ? <DoorGroup key={s} standing={s} doors={rows} /> : null;
@@ -85,23 +86,28 @@ function DoorList({ doors }: { doors: readonly CapDoor[] }) {
   );
 }
 
-export function CapabilitiesTab({ projectId }: { projectId: string }) {
+export function CapabilitiesBranch({ projectId, only }: { projectId: string; /** One module's doors; every door where absent. */ only?: ReadonlySet<string> }) {
   const t = useCopy();
   const use = useDoorUse(projectId);
   const piles = usePiles(projectId).data;
   // the reports and card lessons refine where a door stands; the list never waits on them
   const extra: CapabilitiesView | undefined = useCapabilityExtra(projectId).data;
   return (
-    <QueryBoundary query={use} loadingLabel={t("agents.cap.loading")} height="50vh" retry="always">
+    <QueryBoundary query={use} loadingLabel={t("modules.cap.loading")} height="50vh" retry="always">
       {(u) => {
-        const doors = capDoorsOf(u.doors, extra);
+        const doors = capDoorsOf(only ? u.doors.filter((d) => only.has(d.door)) : u.doors, extra);
         return (
-          <div className="grid min-h-full grid-cols-1 content-start bg-app" data-testid="capabilities-tab">
-            <CapabilitiesBand use={u} counts={standingCounts(doors)} over={piles ? piles.piles.filter((p) => p.over).length : null} />
-            <div className="px-5 py-2" aria-label={t("agents.cap.project")} data-testid="cap-project">
-              {piles ? <CapabilityBudgets piles={piles} /> : null}
-              <CapabilityReading use={u} />
-            </div>
+          <div className="grid min-h-full grid-cols-1 content-start bg-app" data-testid="capabilities-branch">
+            {/* the band, the piles and the reading are the project's whole prompt: one module's page lists its doors alone */}
+            {only ? null : (
+              <>
+                <CapabilitiesBand use={u} counts={standingCounts(doors)} over={piles ? piles.piles.filter((p) => p.over).length : null} />
+                <div className="px-5 py-2" aria-label={t("modules.cap.project")} data-testid="cap-project">
+                  {piles ? <CapabilityBudgets piles={piles} /> : null}
+                  <CapabilityReading use={u} />
+                </div>
+              </>
+            )}
             <DoorList doors={doors} />
           </div>
         );

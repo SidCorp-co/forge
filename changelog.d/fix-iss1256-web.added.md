@@ -1,0 +1,1 @@
+**The Modules screen is the module map.** Counts per module open its tree; picking an item shows its relations, re-check and reads. ⌘K searches every record and walks to it. Capabilities moved here from Agents.

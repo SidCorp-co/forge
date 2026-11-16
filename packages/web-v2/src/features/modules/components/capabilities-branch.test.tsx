@@ -1,14 +1,14 @@
-// Agents / Capabilities (ISS-1251 §7): the tab opens on its overview, then the project's piles and
-// reading, then the doors by where they stand. A door no agent called reads "Teach better / redesign /
+// The map's Capabilities branch (ISS-1251 §7, ISS-1256): across every module it opens on its
+// overview, then the project's piles and reading, then the doors by where they stand; on one module's
+// page it lists that module's doors alone. A door no agent called reads "Teach better / redesign /
 // delete", never as a neutral row; a pile over its cap reads "Over"; a door opens in a drawer on its
 // teaching, use and reports, and a signal Forge does not record yet reads "Not yet", never 0.
 //
-// @direct-test-of packages/web-v2/src/features/agents/components/capabilities-band.tsx
-// @direct-test-of packages/web-v2/src/features/agents/components/capabilities-budgets.tsx
-// @direct-test-of packages/web-v2/src/features/agents/components/capability-detail.tsx
-// @direct-test-of packages/web-v2/src/features/agents/components/agents-screen.tsx
-// @direct-test-of packages/web-v2/src/features/agents/queries.ts
-// @direct-test-of packages/web-v2/src/features/agents/api.ts
+// @direct-test-of packages/web-v2/src/features/modules/components/capabilities-band.tsx
+// @direct-test-of packages/web-v2/src/features/modules/components/capabilities-budgets.tsx
+// @direct-test-of packages/web-v2/src/features/modules/components/capability-detail.tsx
+// @direct-test-of packages/web-v2/src/features/modules/hooks.ts
+// @direct-test-of packages/web-v2/src/features/modules/api.ts
 
 import type { CapabilitiesView } from "@forge/contracts/capabilities";
 import type { CapabilityCard } from "@forge/contracts/capability-cards";
@@ -17,8 +17,8 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { rawKeysOnFace } from "@/test/screen-face";
 import { Seeded } from "@/test/vi-chrome-requirements";
-import { capabilityKeys } from "../queries";
-import { CapabilitiesTab } from "./capabilities-tab";
+import { capabilityKeys } from "../hooks";
+import { CapabilitiesBranch } from "./capabilities-branch";
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
@@ -88,7 +88,7 @@ const extra: CapabilitiesView = {
   limits: [],
 };
 
-const tab = () =>
+const tab = (only?: ReadonlySet<string>) =>
   render(
     <Seeded
       data={[
@@ -97,7 +97,7 @@ const tab = () =>
         [capabilityKeys.extra(P), extra],
       ]}
     >
-      <CapabilitiesTab projectId={P} />
+      <CapabilitiesBranch projectId={P} only={only} />
     </Seeded>,
   );
 
@@ -118,7 +118,7 @@ const open = (row: HTMLElement) => {
 
 beforeEach(() => window.history.replaceState(null, "", "/"));
 
-describe("Agents / Capabilities", () => {
+describe("the Capabilities branch", () => {
   it("opens on its figures, the doors by standing and calls against refusals per day", () => {
     tab();
     const band = screen.getByTestId("capabilities-band");
@@ -174,6 +174,13 @@ describe("Agents / Capabilities", () => {
     const within_ = rows.find((r) => r.textContent?.includes("Map · Bot"));
     expect(over && within(over).getByTestId("cap-pile-over").textContent).toBe("Over");
     expect(within_ && within(within_).queryByTestId("cap-pile-over")).toBeNull();
+  });
+
+  it("lists on one module's page only the doors its tree places there, without the project-wide band", () => {
+    tab(new Set(["support.member"]));
+    expect(screen.getAllByTestId("cap-door").map((r) => r.getAttribute("data-standing"))).toEqual(["inUse"]);
+    expect(screen.queryByTestId("capabilities-band")).toBeNull();
+    expect(screen.queryByTestId("cap-project")).toBeNull();
   });
 
   it("names no issue key or sha on its face", () => {

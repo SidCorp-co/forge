@@ -1,6 +1,6 @@
-// Agents / Capabilities witnessed in the workspace shell (ISS-1251 §7): the tab opens on its overview
-// (figures, doors by standing, calls against refusals per day), the project's budgets and reading one
-// line each, then the doors by standing; a door no agent called reads "Teach better / redesign /
+// The module map's Capabilities branch witnessed in the workspace shell (ISS-1251 §7, ISS-1256): it
+// opens on its overview (figures, doors by standing, calls against refusals per day), the project's
+// budgets and reading one line each, then the doors by standing; a door no agent called reads "Teach better / redesign /
 // delete"; a door opens in a drawer; at 390 px nothing scrolls sideways. Each stage prints its words.
 //
 //   pnpm --filter web-v2 witness witness/capabilities.witness.tsx --out <dir>
@@ -11,7 +11,7 @@ import type { DoorUseRow, DoorUseView, PilesView } from "@forge/contracts/door-u
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
 import { BottomTabBar, TopBarSlotProvider } from "@/design";
-import { AgentsScreen } from "@/features/agents";
+import { ModuleMapScreen } from "@/features/modules";
 import { ShellTopBar } from "@/features/shell/components/shell-top-bar";
 import { bottomTabItems } from "@/features/shell/nav-model";
 import { firstScreenWords } from "./first-screen";
@@ -101,8 +101,8 @@ const EXTRA: CapabilitiesView = {
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
 window.sessionStorage.clear();
-// the Agents screen reads its tab off the address, as a shared link opens it
-window.history.replaceState(null, "", `${window.location.pathname}?tab=capabilities`);
+// the map reads its view off the address, as a shared link opens it
+window.history.replaceState(null, "", `${window.location.pathname}?view=capabilities`);
 window.fetch = async (input: RequestInfo | URL) => {
   const path = new URL(String(input), "http://forge.test").pathname.replace(/^\/api/, "");
   if (path === `/projects/${P}/metrics/doors`) return json(USE);
@@ -116,7 +116,7 @@ const phone = window.innerWidth < 768;
 const noop = () => {};
 
 createRoot(document.getElementById("root") as HTMLElement).render(
-  <InRouter at="/projects/hop/agents?tab=capabilities" pattern="/projects/$slug/agents">
+  <InRouter at="/projects/hop/modules?view=capabilities" pattern="/projects/$slug/modules">
     <QueryClientProvider client={client}>
       <TopBarSlotProvider>
         <div className="flex h-dvh overflow-hidden bg-shell" data-shell>
@@ -125,7 +125,7 @@ createRoot(document.getElementById("root") as HTMLElement).render(
             <ShellTopBar chatOpen={false} onToggleChat={noop} />
             <main className="min-h-0 flex-1 overflow-y-auto bg-app pb-[calc(56px+env(safe-area-inset-bottom))] window-md:pb-0" data-witness="main">
               <div className="flex min-h-full min-w-0 flex-col">
-                <AgentsScreen access={{ projectId: P, slug: "hop", canWrite: true }} />
+                <ModuleMapScreen projectId={P} slug="hop" />
               </div>
             </main>
           </div>

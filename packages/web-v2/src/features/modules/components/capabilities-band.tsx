@@ -29,24 +29,24 @@ export function CapabilitiesBand({ use, counts, over }: CapabilitiesBandProps) {
   const { doors, taught, calls, neverUsed } = use.totals;
   return (
     <OverviewBand
-      label={t("agents.cap.band.label")}
+      label={t("modules.cap.band.label")}
       testId="capabilities-band"
       figures={[
-        { key: "calls", value: calls, label: t("agents.cap.band.callsIn", { n: use.window.days }) },
-        { key: "taught", value: `${taught}/${doors}`, label: t("agents.cap.band.taught"), ring: doors > 0 ? taught / doors : 0 },
-        { key: "unused", value: neverUsed, label: t("agents.cap.band.unused") },
-        { key: "over", value: over ?? "–", label: t("agents.cap.band.over") },
+        { key: "calls", value: calls, label: t("modules.cap.band.callsIn", { n: use.window.days }) },
+        { key: "taught", value: `${taught}/${doors}`, label: t("modules.cap.band.taught"), ring: doors > 0 ? taught / doors : 0 },
+        { key: "unused", value: neverUsed, label: t("modules.cap.band.unused") },
+        { key: "over", value: over ?? "–", label: t("modules.cap.band.over") },
       ]}
-      flow={CAP_STANDINGS.map((s) => ({ key: s, label: t(`agents.cap.standing.${s}`), count: counts[s], tone: CAP_STANDING_TONE[s] }))}
+      flow={CAP_STANDINGS.map((s) => ({ key: s, label: t(`modules.cap.standing.${s}`), count: counts[s], tone: CAP_STANDING_TONE[s] }))}
       chart={
         <BarChartFigure
-          title={t("agents.cap.band.chart")}
+          title={t("modules.cap.band.chart")}
           testId="capabilities-band-chart"
           rows={bars}
-          series={SERIES.map((s) => ({ key: s, label: t(`agents.cap.band.${s}`), fill: toneFill(TONES[s]) }))}
-          tipOf={(d) => [d.label, `${t("agents.cap.band.calls")} ${d.calls}`, `${t("agents.cap.band.refused")} ${d.refused}`]}
-          emptyText={t("agents.cap.band.none")}
-          reader={{ head: [t("agents.band.day"), t("agents.cap.band.calls"), t("agents.cap.band.refused")], rows: bars.map((d) => [d.label, d.calls, d.refused]) }}
+          series={SERIES.map((s) => ({ key: s, label: t(`modules.cap.band.${s}`), fill: toneFill(TONES[s]) }))}
+          tipOf={(d) => [d.label, `${t("modules.cap.band.calls")} ${d.calls}`, `${t("modules.cap.band.refused")} ${d.refused}`]}
+          emptyText={t("modules.cap.band.none")}
+          reader={{ head: [t("agents.band.day"), t("modules.cap.band.calls"), t("modules.cap.band.refused")], rows: bars.map((d) => [d.label, d.calls, d.refused]) }}
         />
       }
     />

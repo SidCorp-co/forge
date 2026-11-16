@@ -42,6 +42,7 @@ import {
   useRailProjectData,
 } from "@/features/shell";
 import { CurrentProjectProvider } from "@/features/projects/current-project";
+import { FindResults } from "@/features/modules";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import type { ProjectListItem } from "@/features/projects";
 import type { ChatDockApi } from "@/features/chat-dock";
@@ -163,6 +164,7 @@ function ShellContext({
   tourRelease,
   dock,
   openPalette,
+  searchPalette,
   children,
 }: {
   project: Parameters<typeof CurrentProjectProvider>[0]["project"];
@@ -170,6 +172,7 @@ function ShellContext({
   tourRelease: TourRelease;
   dock: ChatDockApi;
   openPalette: () => void;
+  searchPalette: (query: string) => void;
   children: React.ReactNode;
 }) {
   return (
@@ -178,7 +181,9 @@ function ShellContext({
           <ChatDockProvider value={dock}>
             <MockupFeedback>
               <TopBarSlotProvider>
-                <PageCommandsProvider openPalette={openPalette}>{children}</PageCommandsProvider>
+                <PageCommandsProvider openPalette={openPalette} searchPalette={searchPalette}>
+                  {children}
+                </PageCommandsProvider>
               </TopBarSlotProvider>
             </MockupFeedback>
           </ChatDockProvider>
@@ -212,6 +217,8 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const slug = activeSlug(pathname);
 
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // a search opened from a page (the map's bar, a code anchor) opens a fresh palette on its words
+  const [paletteSearch, setPaletteSearch] = useState({ seed: 0, query: "" });
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const sidebarBellRef = useRef<HTMLButtonElement>(null);
   const drawerBellRef = useRef<HTMLButtonElement>(null);
@@ -235,6 +242,10 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   }
 
   const openPalette = () => setPaletteOpen(true);
+  const searchPalette = (query: string) => {
+    setPaletteSearch((p) => ({ seed: p.seed + 1, query }));
+    setPaletteOpen(true);
+  };
   const toggleBell = (anchor: typeof sidebarBellRef) => {
     setBellAnchor(anchor);
     setNotificationsOpen((o) => !o);
@@ -246,7 +257,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   if (signInStopped) return <SignInStopped />;
 
   return (
-    <ShellContext project={railProject} projectRef={railRef} tourRelease={tourRelease} dock={dock} openPalette={openPalette}>
+    <ShellContext project={railProject} projectRef={railRef} tourRelease={tourRelease} dock={dock} openPalette={openPalette} searchPalette={searchPalette}>
     <div className="flex h-dvh overflow-hidden bg-shell" data-print="frame" data-shell>
       <div className="hidden h-full md:block" data-testid="desktop-sidebar" data-print="chrome">
         <WorkspaceSidebar
@@ -327,6 +338,9 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
       </div>
 
       <WorkspacePalette
+        key={paletteSearch.seed}
+        initialQuery={paletteSearch.query}
+        searchIn={railProject ? { id: railProject.id, slug: railProject.slug } : null}
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
         dock={dock}
@@ -342,8 +356,13 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** The ⌘K palette, built inside the interface language so its entries and its toasts read in it. */
+/**
+ * The ⌘K palette, built inside the interface language so its entries and its toasts read in it. In a
+ * project it is also the one search door (ISS-1256): what is typed is found over every record type.
+ */
 function WorkspacePalette({
+  initialQuery,
+  searchIn,
   open,
   onClose,
   dock,
@@ -354,6 +373,8 @@ function WorkspacePalette({
   pinnedViews,
   recents,
 }: {
+  initialQuery: string;
+  searchIn: { id: string; slug: string } | null;
   open: boolean;
   onClose: () => void;
   dock: ChatDockApi;
@@ -385,7 +406,8 @@ function WorkspacePalette({
     [router, slug, activeProjectName, scopedProjects, recents, pinnedViews, pinnedIds, toast, newChat, language],
   );
   const commands = useMemo(() => [...pageCommands, ...workspaceCommands], [pageCommands, workspaceCommands]);
-  return <CommandPalette open={open} onClose={onClose} commands={commands} />;
+  const search = searchIn ? (query: string, close: () => void) => <FindResults projectId={searchIn.id} slug={searchIn.slug} query={query} onClose={close} /> : undefined;
+  return <CommandPalette open={open} onClose={onClose} commands={commands} initialQuery={initialQuery} search={search} />;
 }
 
 export const Route = createFileRoute("/_workspace")({ component: WorkspaceLayout, pendingComponent: WorkspaceLoading });

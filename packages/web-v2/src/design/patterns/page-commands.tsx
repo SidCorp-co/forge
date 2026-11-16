@@ -11,11 +11,12 @@ interface PageCommandsStore {
   add: (id: symbol, read: () => Command[]) => void;
   remove: (id: symbol) => void;
   openPalette: (() => void) | null;
+  searchPalette: ((query: string) => void) | null;
 }
 
 const PageCommandsContext = createContext<PageCommandsStore | null>(null);
 
-export function PageCommandsProvider({ openPalette, children }: { openPalette?: () => void; children: ReactNode }) {
+export function PageCommandsProvider({ openPalette, searchPalette, children }: { openPalette?: () => void; searchPalette?: (query: string) => void; children: ReactNode }) {
   const [sources, setSources] = useState<ReadonlyMap<symbol, () => Command[]>>(() => new Map());
   // made once: a screen's registration depends on these, so a new pair each draw would re-register forever
   const [acts] = useState(() => ({
@@ -27,7 +28,7 @@ export function PageCommandsProvider({ openPalette, children }: { openPalette?: 
         return next;
       }),
   }));
-  const store: PageCommandsStore = { sources, ...acts, openPalette: openPalette ?? null };
+  const store: PageCommandsStore = { sources, ...acts, openPalette: openPalette ?? null, searchPalette: searchPalette ?? null };
   return <PageCommandsContext value={store}>{children}</PageCommandsContext>;
 }
 
@@ -63,4 +64,9 @@ export function usePageCommandList(): Command[] {
 export function usePageCommandsOpener(): (() => void) | null {
   const store = use(PageCommandsContext);
   return store && store.sources.size > 0 ? store.openPalette : null;
+}
+
+/** Opens the palette searching `query` (the one find door, ISS-1256); null outside a workspace. */
+export function usePaletteSearch(): ((query: string) => void) | null {
+  return use(PageCommandsContext)?.searchPalette ?? null;
 }
