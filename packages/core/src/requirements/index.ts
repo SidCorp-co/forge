@@ -51,6 +51,7 @@ export {
 } from './judge-run-secrets.js';
 export { drawKeptPreview, type KeptPreviewAbout, liveCriteriaOf } from './kept-preview.js';
 export { listRowsOf, requirementStandingsOf } from './list-rows.js';
+export { setRequirementModule } from './module-field.js';
 export type { ProposeDuplicate } from './near-duplicate.js';
 export { owedBreakdowns } from './owed-breakdowns.js';
 export { owedRequirementRevisions } from './owed-revisions.js';

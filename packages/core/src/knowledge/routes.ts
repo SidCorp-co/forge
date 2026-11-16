@@ -151,7 +151,8 @@ knowledgeRoutes.put(
     const { id, slug } = c.req.valid('param');
     const body = c.req.valid('json');
 
-    return c.json(await upsertKnowledgeEntry({ projectId: id, slug, ...body }));
+    const writer = { userId: c.get('userId'), agency: c.get('agency') ?? 'human' };
+    return c.json(await upsertKnowledgeEntry({ projectId: id, slug, ...body }, writer));
   },
 );
 

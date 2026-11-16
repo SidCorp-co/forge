@@ -13,6 +13,11 @@ export const capabilitiesQuerySchema = z.strictObject({
 		.min(DOOR_USE_DAYS.min)
 		.max(DOOR_USE_DAYS.max)
 		.default(DOOR_USE_DAYS.default),
+	/**
+	 * A module, by slug or path (ISS-1256): the read narrowed to the cards of that module's subtree,
+	 * the module map's Capabilities branch. Absent, every card.
+	 */
+	module: z.string().trim().min(1).max(128).optional(),
 });
 export type CapabilitiesQuery = z.infer<typeof capabilitiesQuerySchema>;
 
@@ -57,6 +62,11 @@ export interface CapabilitiesView {
 	lessons: CapabilityLessonRow[];
 	/** Only the cards with something to say: a re-check owed, a scenario replayed or a delta proposed. */
 	freshness: CapabilityFreshnessRow[];
+	/**
+	 * The module asked (ISS-1256), by path, and the card ids it holds, which every list above is
+	 * narrowed to; null where no module was asked.
+	 */
+	module: { path: string; cards: string[] } | null;
 	/** What these reads cannot tell, so a gap is never read as "nobody did it". */
 	limits: string[];
 }

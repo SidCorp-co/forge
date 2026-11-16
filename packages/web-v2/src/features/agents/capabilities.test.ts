@@ -71,6 +71,7 @@ describe("where a door stands", () => {
       feedback: [report],
       lessons: [lesson()],
       freshness: [],
+      module: null,
       limits: [],
     });
     expect(doors.map((d) => [d.row.door, d.standing, d.lessons.length])).toEqual([

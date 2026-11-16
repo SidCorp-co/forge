@@ -144,6 +144,7 @@ import {
   voidStewardDecisionsOnMove,
   withdrawParkQuestions,
 } from './questions/index.js';
+import { setReferenceModule } from './references/index.js';
 import {
   approvalRequired,
   approvalsOfRuns,
@@ -172,6 +173,7 @@ import {
   requirementOfIssue,
   rowIn as requirementRowIn,
   requirementStatesOf,
+  setRequirementModule,
   tracedCodesOf,
   traceWordingsOf,
 } from './requirements/index.js';
@@ -441,7 +443,7 @@ export function provideWorkPorts(): void {
       latestRunsOfIssues(projectId, issueIds, { userId: viewer.userId }),
   });
 
-  provideLabelPorts({ listFeedbackAs });
+  provideLabelPorts({ listFeedbackAs, setRequirementModule, setReferenceModule });
 
   provideOnboardingPorts({ runWaitingOf });
 

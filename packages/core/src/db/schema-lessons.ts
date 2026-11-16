@@ -87,7 +87,7 @@ export const lessons = pgTable(
     invalidBy: text('invalid_by'),
     /**
      * The module it belongs to (ISS-1256): a module label of the same project, written only by the
-     * placement door an agent calls (`labels/module-map-place.ts`); null where nobody placed it.
+     * placement door an agent calls (`labels/module-map-write.ts`); null where nobody placed it.
      */
     moduleId: uuid('module_id'),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

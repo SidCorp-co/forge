@@ -1365,6 +1365,128 @@
       }
     },
     {
+      "description": "The module map: every business module is a pillar holding its terms, rules, capabilities, requirements, decisions and reference sources. Agents write it; core infers nothing. get {projectId, module}: one module's tree, each node with its relations, re-check and reads, and the issues in flight. pillar {projectId}: one row per business module with a count per type and its open issues, and the Unplaced row. place {projectId, type, ref, module}: set the module a record belongs to (null takes it out). relate {projectId, kind, from, to}: write one relation of the five kinds; any other kind is refused MODULE_MAP_RELATION_KIND_UNKNOWN. unrelate {projectId, relationId}: remove one relation. A term itself is written as a knowledge entry of kind glossary (`module`, `term: { aliases: { vi, code, industry }, namedBy: { who, quote } }`, `anchor`).",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "get",
+              "pillar",
+              "place",
+              "relate",
+              "unrelate"
+            ],
+            "type": "string"
+          },
+          "from": {
+            "additionalProperties": false,
+            "description": "relate: { type: term | rule, ref: slug }",
+            "properties": {
+              "ref": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "ref"
+            ],
+            "type": "object"
+          },
+          "kind": {
+            "description": "relate: belongs_to, used_in, governs, from or anchored_at",
+            "type": "string"
+          },
+          "module": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "get: the module by slug or path; place: the module to place in, null to take out"
+          },
+          "projectId": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          },
+          "ref": {
+            "description": "place: the record (slug, REQ-n, decision id, source id, ISS-n, L-n)",
+            "type": "string"
+          },
+          "relationId": {
+            "description": "unrelate: the relation id the tree shows",
+            "type": "string"
+          },
+          "to": {
+            "additionalProperties": false,
+            "description": "relate: { type, ref }: a rule, capability, REQ-n[ BC-m], decision id, module slug or file.ts:symbol",
+            "properties": {
+              "ref": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "ref"
+            ],
+            "type": "object"
+          },
+          "type": {
+            "description": "place: term, rule, knowledge, requirement, decision, reference, issue or lesson",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "projectId"
+        ],
+        "type": "object"
+      },
+      "name": "forge_module",
+      "x-forge-permission": {
+        "get": {
+          "on": {
+            "arg": "projectId"
+          },
+          "permission": "project.read"
+        },
+        "pillar": {
+          "on": {
+            "arg": "projectId"
+          },
+          "permission": "project.read"
+        },
+        "place": {
+          "on": {
+            "arg": "projectId"
+          },
+          "permission": "project.write"
+        },
+        "relate": {
+          "on": {
+            "arg": "projectId"
+          },
+          "permission": "project.write"
+        },
+        "unrelate": {
+          "on": {
+            "arg": "projectId"
+          },
+          "permission": "project.write"
+        }
+      }
+    },
+    {
       "description": "How one project stands, what waits on you and what was decided, read as the dashboard, Needs you and the Forge bot read them.\n- status { projectId, days? }: how the project stands now: what is stuck, the decisions waiting on you, what shipped, work in flight, what members owe, requirements proven, the next release, what is late and the roadmap. Read it first for status, progress or what to do next.\n- needs_you { projectId, limit? }: only the decisions waiting on you, each with its question, the recommended answer and why; `notDecisions` counts what else your Needs you list holds.\n- decisions { projectId, days?, limit? }: the decisions recorded in the project, newest first, each on its issue, requirement, design or feedback item with the reason, who decided and when.",
       "inputSchema": {
         "additionalProperties": false,

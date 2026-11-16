@@ -8,15 +8,19 @@
 // and no search or recall returns it (`entryInService`). The next agent or the Audit confirms, rewrites
 // or retires it; a rewrite clears the flag and puts it back in service. A decision in force (a rule, an
 // org ruling, an agreement) is not learned text: it stays served while flagged, showing its
-// `recheckDue`, since only a person retires it.
+// `recheckDue`, since only a person retires it. A term (a glossary entry) is a name a person gave, not
+// learned text: it stays served while flagged too, showing its `recheckDue` (ISS-1256). The code
+// anchors an entry is `anchored_at` on the module map (`knowledge_relations`) are weighed with the
+// paths its own `recheckWhen` and `source` name, by this one re-check (ISS-1256 freshness).
 
 import type { RecheckDue } from '@forge/contracts/knowledge';
-import { and, eq, isNotNull, isNull, or, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { knowledgeEntries, orgKnowledgeEntries, projects } from '../db/schema.js';
+import { anchorsByEntry } from './module-fields.js';
 
 /** A project entry in service: no re-check owed on it, or a rule, which a flag never withholds. */
-export const entryInService = sql`(${knowledgeEntries.metadata}->'recheckDue' IS NULL OR ${knowledgeEntries.kind} = 'rule')`;
+export const entryInService = sql`(${knowledgeEntries.metadata}->'recheckDue' IS NULL OR ${knowledgeEntries.kind} IN ('rule', 'glossary'))`;
 
 /** What an entry names that a change can meet. */
 export interface Anchors {
@@ -133,6 +137,7 @@ export async function flagKnowledgeForChange(
   at: string = new Date().toISOString(),
 ): Promise<number> {
   let flagged = 0;
+  const mapAnchors = await anchorsByEntry(projectId);
   const own = await db
     .select({
       id: knowledgeEntries.id,
@@ -145,14 +150,19 @@ export async function flagKnowledgeForChange(
       and(
         eq(knowledgeEntries.projectId, projectId),
         isNull(knowledgeEntries.archivedAt),
-        or(isNotNull(knowledgeEntries.recheckWhen), isNotNull(knowledgeEntries.source)),
+        or(
+          isNotNull(knowledgeEntries.recheckWhen),
+          isNotNull(knowledgeEntries.source),
+          mapAnchors.size > 0 ? inArray(knowledgeEntries.id, [...mapAnchors.keys()]) : undefined,
+        ),
       ),
     );
   // the rule rewritten is the change itself, never a reader of it
   const rewritten = (slug: string) => change.rules.includes(slug);
   for (const row of own) {
     if (rewritten(row.slug)) continue;
-    const matched = anchorsMet(anchorsOf(row.recheckWhen, row.source), change);
+    const anchors = anchorsOf(row.recheckWhen, row.source, ...(mapAnchors.get(row.id) ?? []));
+    const matched = anchorsMet(anchors, change);
     if (matched.length === 0) continue;
     await db
       .update(knowledgeEntries)

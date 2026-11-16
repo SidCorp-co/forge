@@ -1,4 +1,5 @@
 import type { LabelRefusalCode } from '@forge/contracts/labels';
+import { modulePlacementSchema, moduleRelationWriteSchema } from '@forge/contracts/module-map';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod';
 import { labelKinds } from '../db/schema.js';
@@ -9,7 +10,11 @@ import { gatedRoutes } from '../middleware/gated-routes.js';
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requireDeclared, requiresOnParam, requiresOnResolved } from '../permissions/index.js';
+import { recordReached } from '../run-context/index.js';
 import { moduleDetailOf } from './module-detail-read.js';
+import { knowledgeReadIn } from './module-map-reach.js';
+import { readModulePillar, readModuleTree } from './module-map-read.js';
+import { placeRecord, relate, unrelate } from './module-map-write.js';
 import { DEFAULT_ACTIVE_WITHIN_DAYS } from './module-rollup.js';
 import {
   assertDemotionIsLegal,
@@ -147,6 +152,58 @@ labelProjectRoutes.get(
     return c.json(await moduleDetailOf(projectId, module, viewerOf(c)));
   },
 );
+// The module map (ISS-1256): the pillar, one module's tree (an agent's read of it is a read of each
+// term and rule it carries), the placement of a record in a module and the relations between them.
+labelProjectRoutes.get(
+  '/:id/modules/map',
+  zValidator('param', idParamSchema),
+  requiresOnParam('project.read', 'id'),
+  noQuery,
+  async (c) => c.json(await readModulePillar(c.req.valid('param').id)),
+);
+
+labelProjectRoutes.get(
+  '/:id/modules/:module/map',
+  zValidator('param', moduleDetailParamSchema),
+  requiresOnParam('project.read', 'id'),
+  noQuery,
+  async (c) => {
+    const { id: projectId, module } = c.req.valid('param');
+    const tree = await readModuleTree(projectId, module);
+    recordReached(c, projectId, 'get', { knowledge: knowledgeReadIn(tree) });
+    return c.json(tree);
+  },
+);
+
+labelProjectRoutes.put(
+  '/:id/modules/placements',
+  zValidator('param', idParamSchema),
+  requiresOnParam('project.write', 'id'),
+  zValidator('json', modulePlacementSchema),
+  async (c) => c.json(await placeRecord(c.req.valid('param').id, c.req.valid('json'))),
+);
+
+labelProjectRoutes.post(
+  '/:id/modules/relations',
+  zValidator('param', idParamSchema),
+  requiresOnParam('project.write', 'id'),
+  zValidator('json', moduleRelationWriteSchema),
+  async (c) => {
+    const writer = { userId: c.get('userId'), agency: c.get('agency') ?? 'human' };
+    return c.json(await relate(c.req.valid('param').id, c.req.valid('json'), writer), 201);
+  },
+);
+
+labelProjectRoutes.delete(
+  '/:id/modules/relations/:relationId',
+  zValidator('param', z.object({ id: z.uuid(), relationId: z.string().min(1).max(64) })),
+  requiresOnParam('project.write', 'id'),
+  async (c) => {
+    const { id, relationId } = c.req.valid('param');
+    return c.json(await unrelate(id, relationId));
+  },
+);
+
 export const labelRoutes = new Hono<{ Variables: AuthVars }>();
 labelRoutes.use('*', requireAuth(), assertEmailVerified());
 

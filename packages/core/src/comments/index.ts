@@ -4,6 +4,7 @@ export { listDecisionsAs } from './entity-read.js';
 export { recordFeedbackDecisionIn, recordRequirementDecisionIn } from './entity-service.js';
 export { postIssueComment } from './issue-comment.js';
 export { commentsSince, recentCommentBodies, recentIssueNotes } from './memory-reads.js';
+export { setDecisionModule } from './module-field.js';
 export { latestIssueCommentWith, postIssueNotice, postIssueNoticeOnce } from './notices.js';
 export { provideCommentPorts } from './ports.js';
 export { noteReviewOnIssue, registerReviewNotes } from './review-note.js';

@@ -1,4 +1,5 @@
 import type { AgreementsView } from '@forge/contracts/agreements';
+import type { ModuleMapLine } from '@forge/contracts/module-map';
 import { agreementsMapText, readAgreements, restatedRules } from '../agreements/index.js';
 import {
   type AlwaysInjectFact,
@@ -9,7 +10,9 @@ import {
   selectOnDemandSlugsFromKnowledge,
   selectOnDemandSourcesFromKnowledge,
 } from '../knowledge/index.js';
+import { moduleMapLines } from '../labels/index.js';
 import { cardFreshness, lessonsMapText, restLessonDoors } from '../lessons/index.js';
+import { moduleLinesText } from '../lib/door-catalog.js';
 import { logger } from '../lib/logger.js';
 import { AFFORDANCE_CARDS } from './facts/affordance-cards.js';
 import { guideIndexText } from './facts/guide-index.js';
@@ -46,6 +49,8 @@ export type OrientationRules =
        * code does not carry yet (ISS-1251), shown in the table as proposed.
        */
       proposed?: ReadonlyMap<string, readonly string[]>;
+      /** The project's module lines, one per business module (ISS-1256), its master's Tier-0 map of them. */
+      modules?: readonly ModuleMapLine[];
     }
   | { unreadable: true };
 
@@ -127,7 +132,14 @@ server in \`.mcp.json\` carries only what neither covers, and its instructions n
 - **Before you write or tune this project's pipeline skills**, read the \`forge-skills\` MCP prompt.
 
 ${operatingAffordancesText('unreadable' in rules ? undefined : rules.proposed)}
-${projectRules ? `\n${projectRules.trimEnd()}\n` : ''}`;
+${modulesBlock(rules)}${projectRules ? `\n${projectRules.trimEnd()}\n` : ''}`;
+}
+
+/** The module lines, as their own block after the affordances; nothing where the project has none. */
+function modulesBlock(rules: OrientationRules): string {
+  if ('unreadable' in rules || !rules.modules) return '';
+  const text = moduleLinesText(rules.modules, 'master');
+  return text ? `\n${text}\n` : '';
 }
 
 /**
@@ -138,21 +150,24 @@ ${projectRules ? `\n${projectRules.trimEnd()}\n` : ''}`;
 export async function servedCheckoutOrientation(projectId: string, slug: string): Promise<string> {
   let rules: OrientationRules;
   try {
-    const [entries, lessons, project, org, sources, agreements, proposed] = await Promise.all([
-      selectAlwaysInjectFromKnowledge(projectId),
-      selectLessonEntries(projectId),
-      selectOnDemandSlugsFromKnowledge(projectId),
-      orgOnDemandSlugsOf(projectId),
-      selectOnDemandSourcesFromKnowledge(projectId),
-      readAgreements(projectId, null),
-      proposedSituationsOrUnknown(projectId),
-    ]);
+    const [entries, lessons, project, org, sources, agreements, proposed, modules] =
+      await Promise.all([
+        selectAlwaysInjectFromKnowledge(projectId),
+        selectLessonEntries(projectId),
+        selectOnDemandSlugsFromKnowledge(projectId),
+        orgOnDemandSlugsOf(projectId),
+        selectOnDemandSourcesFromKnowledge(projectId),
+        readAgreements(projectId, null),
+        proposedSituationsOrUnknown(projectId),
+        moduleMapLines(projectId),
+      ]);
     rules = {
       entries,
       lessons,
       guides: { project, org, sources },
       agreements,
       ...(proposed ? { proposed } : {}),
+      modules,
     };
   } catch (err) {
     logger.error(

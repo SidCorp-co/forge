@@ -3,8 +3,9 @@
 // by this project's calls over thirty days, as many whole blocks as the run map's budget holds. A door's detail is its card, read on its first use; the map
 // is the only always-on teaching of the doors a run acts through.
 
+import { moduleMapLines } from '../labels/index.js';
 import { cardFreshness } from '../lessons/index.js';
-import { doorCallsOf, doorCatalog, tier0Map } from '../lib/door-catalog.js';
+import { doorCallsOf, doorCatalog, moduleLinesText, tier0Map } from '../lib/door-catalog.js';
 
 /** By card id, the situations this project's lessons folded into a card its code does not carry yet. */
 async function proposedOf(projectId: string): Promise<Map<string, string[]>> {
@@ -21,9 +22,14 @@ async function proposedOf(projectId: string): Promise<Map<string, string[]>> {
 }
 
 export async function runDoorMap(projectId: string): Promise<string> {
-  const [calls, proposed] = await Promise.all([doorCallsOf(projectId, 30), proposedOf(projectId)]);
+  const [calls, proposed, modules] = await Promise.all([
+    doorCallsOf(projectId, 30),
+    proposedOf(projectId),
+    moduleMapLines(projectId),
+  ]);
   const map = tier0Map(doorCatalog().doors, 'run', proposed, calls);
+  const moduleText = moduleLinesText(modules, 'run');
   return `## Your map
 When you meet one of these, use the door it names; before its first use, read its card (\`guides/doors.md?door=<the door>\`).
-${map.text}`;
+${map.text}${moduleText ? `\n\n${moduleText}` : ''}`;
 }

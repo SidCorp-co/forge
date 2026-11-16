@@ -109,6 +109,7 @@ projectMetricsRoutes.get(
   zValidator('query', capabilitiesQuerySchema),
   async (c) => {
     const { id } = c.req.valid('param');
-    return c.json(await readCapabilities(id, c.req.valid('query').days));
+    const { days, module } = c.req.valid('query');
+    return c.json(await readCapabilities(id, days, new Date(), module));
   },
 );

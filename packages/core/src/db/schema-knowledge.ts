@@ -86,7 +86,7 @@ export const knowledgeEntries = pgTable(
     metadata: jsonb('metadata').notNull().default({}),
     /**
      * The module it belongs to (ISS-1256): a module label of the same project, written only by the
-     * placement door an agent calls (`labels/module-map-place.ts`); null where nobody placed it.
+     * placement door an agent calls (`labels/module-map-write.ts`); null where nobody placed it.
      */
     moduleId: uuid('module_id'),
     /**
@@ -166,16 +166,8 @@ export const knowledgeRelations = pgTable(
       'knowledge_relations_agency_chk',
       sql`${t.writtenAgency} IN ('human', 'agent')`,
     ),
-    toRefChk: check(
-      'knowledge_relations_to_ref_chk',
-      sql`length(${t.toRef}) BETWEEN 1 AND 512`,
-    ),
-    edgeUq: uniqueIndex('knowledge_relations_edge_uq').on(
-      t.fromEntryId,
-      t.kind,
-      t.toType,
-      t.toRef,
-    ),
+    toRefChk: check('knowledge_relations_to_ref_chk', sql`length(${t.toRef}) BETWEEN 1 AND 512`),
+    edgeUq: uniqueIndex('knowledge_relations_edge_uq').on(t.fromEntryId, t.kind, t.toType, t.toRef),
     projectIdx: index('knowledge_relations_project_idx').on(t.projectId, t.toType, t.toRef),
   }),
 );

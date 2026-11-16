@@ -28,6 +28,8 @@ export interface KnowledgePorts {
   reembedRequirement(requirementId: string): Promise<ItemEmbeddingStatus | null>;
   /** Re-embeds a feedback item from its stored text; null when it is gone or redacted. */
   reembedFeedback(feedbackId: string): Promise<ItemEmbeddingStatus | null>;
+  /** The module label a slug names in the project (ISS-1256); refused by name where none does. */
+  moduleIdOf(projectId: string, slug: string): Promise<string>;
 }
 
 const slot = portSlot<KnowledgePorts>('knowledge', 'provideKnowledgePorts');

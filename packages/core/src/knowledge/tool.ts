@@ -38,6 +38,9 @@ const inputSchema = z
     recheckWhen: z.string().max(KNOWLEDGE_RECHECK_WHEN_MAX).optional(),
     type: z.enum(CURATED_ENTRY_TYPES).optional(),
     replaces: z.string().min(1).max(512).optional(),
+    module: z.string().min(1).max(128).nullable().optional(),
+    term: z.unknown().optional(),
+    anchor: z.string().min(1).max(600).optional(),
     kindFilter: z.enum(knowledgeKindEnum).optional(),
     injectionFilter: z.enum(knowledgeInjectionEnum).optional(),
     query: z.string().min(1).max(4000).optional(),
@@ -70,7 +73,7 @@ const actions: Record<Input['action'], (input: Input, reader: ProjectReader) => 
       const title = required(input.title, 'title', 'upsert');
       const body = required(input.body, 'body', 'upsert');
       const { projectId, kind, injection, confidence, authoredBy, orderIndex, metadata } = input;
-      const { source, entryScope, recheckWhen, type, replaces } = input;
+      const { source, entryScope, recheckWhen, type, replaces, module, term, anchor } = input;
       return upsertKnowledgeEntry(
         upsertKnowledgeInputSchema.parse({
           projectId,
@@ -88,6 +91,9 @@ const actions: Record<Input['action'], (input: Input, reader: ProjectReader) => 
           recheckWhen,
           type,
           replaces,
+          module,
+          term,
+          anchor,
         }),
       );
     },

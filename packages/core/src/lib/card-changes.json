@@ -447,7 +447,7 @@
   "PUT /api/projects/:id/knowledge/:slug": {
     "hash": "a099cffec1e11c75",
     "on": "2026-11-16",
-    "by": "ISS-1251"
+    "by": "ISS-1256"
   },
   "PUT /api/projects/:id/policy": {
     "hash": "fd4729b76bfe9f67",
@@ -783,6 +783,26 @@
     "hash": "a891485f23cd9113",
     "on": "2026-11-16",
     "by": "ISS-1251"
+  },
+  "module.get": {
+    "hash": "ab955300af76633d",
+    "on": "2026-11-16",
+    "by": "ISS-1256"
+  },
+  "module.place": {
+    "hash": "5277ffcbd62c4a2c",
+    "on": "2026-11-16",
+    "by": "ISS-1256"
+  },
+  "module.relate": {
+    "hash": "00b2b017a4b59095",
+    "on": "2026-11-16",
+    "by": "ISS-1256"
+  },
+  "module.unrelate": {
+    "hash": "bc6f723614691074",
+    "on": "2026-11-16",
+    "by": "ISS-1256"
   },
   "project.decisions": {
     "hash": "b369d32557a3ae05",

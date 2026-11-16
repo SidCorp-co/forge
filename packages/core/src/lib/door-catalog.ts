@@ -11,6 +11,7 @@ import {
 } from '@forge/contracts/capability-cards';
 import { CARD_FAMILIES } from '@forge/contracts/card-families';
 import type { DoorSurface } from '@forge/contracts/door-use';
+import { type ModuleMapLine, TIER0_MODULE_LINES_MAX_CHARS } from '@forge/contracts/module-map';
 import { portSlot } from './port-slot.js';
 
 /** One door: what it is called, where it is served, what it is for and the feature that owns it. */
@@ -248,4 +249,28 @@ export function cardText(door: CatalogDoor, depth = 3): string {
   ]
     .filter((p): p is string => p !== null)
     .join('\n\n');
+}
+
+/**
+ * The module lines of a Tier-0 map (ISS-1256): one line per business module, as `moduleMapLines`
+ * ranks them, naming the door that reads its tree (Tier 1) — the REST read for a master and its runs,
+ * which work over REST, `module.get` for every other audience — as many whole lines as
+ * `TIER0_MODULE_LINES_MAX_CHARS` holds. Empty where the project has no module yet.
+ */
+export function moduleLinesText(lines: readonly ModuleMapLine[], audience: CardAudience): string {
+  if (lines.length === 0) return '';
+  const door = (slug: string) =>
+    audience === 'master' || audience === 'run'
+      ? `GET /api/projects/:id/modules/${slug}/map`
+      : `module.get ${slug}`;
+  const out: string[] = [];
+  let size = 0;
+  for (const l of lines) {
+    const purpose = l.description ? `: ${l.description.split('\n')[0]?.slice(0, 90)}` : '';
+    const line = `- ${l.name} (\`${l.slug}\`)${purpose}; ${l.terms} terms, ${l.rules} rules, ${l.openIssues} open → ${door(l.slug)}`;
+    if (size + line.length + 1 > TIER0_MODULE_LINES_MAX_CHARS) continue;
+    size += line.length + 1;
+    out.push(line);
+  }
+  return `### Modules\nBefore you work in a module, read its tree (its terms, rules, capabilities and requirements); when a person names a thing or an owner decides, write the term or rule under its module.\n${out.join('\n')}`;
 }

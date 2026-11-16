@@ -205,6 +205,7 @@ export { recordIssueMerge } from './merge-record.js';
 export { overIssueStampSkip, promotionStampSkip } from './merge-stamp-skip.js';
 export { mergeNotRecorded } from './merged-at.js';
 export { runMarkedRequestHeadBackfillOnce } from './merged-head-backfill.js';
+export { setIssuePrimaryModule } from './module-field.js';
 export {
   filingAnsweredBy,
   filingsMarked,

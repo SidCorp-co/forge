@@ -77,8 +77,7 @@ export const requirements = pgTable(
     acceptedAt: timestamp('accepted_at', { withTimezone: true }),
     // the step its author was last told of (`requirements/step-notice.ts`, REQ-34 BC-21); null until first read
     toldStep: text('told_step', { enum: REQUIREMENT_STATES }),
-    // A contract request from another project (E2, 0410): that project and the contract it asks for;
-    // only this project agrees it
+    // A contract request from another project (E2, 0410), which only this project agrees
     requestedByProjectId: uuid('requested_by_project_id').references(() => projects.id, {
       onDelete: 'set null',
     }),
@@ -93,11 +92,7 @@ export const requirements = pgTable(
       onDelete: 'set null',
     }),
     proposedShortName: text('proposed_short_name'),
-    /**
-     * The module it belongs to (ISS-1256): a module label of the same project, written only by the
-     * placement door an agent calls (`labels/module-map-place.ts`); null where nobody placed it.
-     */
-    moduleId: uuid('module_id'),
+    moduleId: uuid('module_id'), // ISS-1256: its module label, set by the placement door alone
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

@@ -12,6 +12,7 @@ import {
   type UpsertKnowledgeResult,
 } from './entry-input.js';
 import { lessonOwnedRefusal } from './lesson-entries.js';
+import { applyEntryMapFields, judgeEntryMapFields, type MapWriter } from './module-fields.js';
 import { knowledgePort } from './ports.js';
 import { entryProvenanceRefusal, owesProvenance, provenanceOf } from './provenance.js';
 import { parseReadWhen, type ReadWhenCondition, readWhenRefusal } from './read-when.js';
@@ -21,8 +22,9 @@ import { retireReplaced, subjectHeldRefusal } from './subject-held.js';
 
 export async function upsertKnowledgeEntry(
   input: UpsertKnowledgeInput,
+  writer?: MapWriter,
 ): Promise<UpsertKnowledgeResult> {
-  const [row] = await upsertKnowledgeEntries([input]);
+  const [row] = await upsertKnowledgeEntries([input], writer);
   if (!row) throw new Error('knowledge.service: upsert returned no row');
   return row;
 }
@@ -103,6 +105,8 @@ const baseSet = (degraded: boolean) => ({
     ? sql`CASE WHEN ${knowledgeEntries.body} = excluded.body AND ${knowledgeEntries.title} = excluded.title THEN ${knowledgeEntries.embedding} ELSE excluded.embedding END`
     : sql`excluded.embedding`,
   metadata: sql`excluded.metadata`,
+  // a term's aliases are a glossary entry's: a rewrite to another kind drops them (ISS-1256)
+  term: sql`CASE WHEN excluded.kind = 'glossary' THEN ${knowledgeEntries.term} ELSE NULL END`,
   source: sql`excluded.source`,
   scope: sql`excluded.scope`,
   recheckWhen: sql`excluded.recheck_when`,
@@ -172,6 +176,7 @@ async function writeEntries(
  */
 export async function upsertKnowledgeEntries(
   inputs: UpsertKnowledgeInput[],
+  writer?: MapWriter,
 ): Promise<UpsertKnowledgeResult[]> {
   if (inputs.length === 0) return [];
   const entries = lastPerKey(inputs);
@@ -192,10 +197,22 @@ export async function upsertKnowledgeEntries(
     const unsourced = entryProvenanceRefusal(entry);
     if (unsourced) throw unsourced;
   }
+  const mapFields = new Map<string, Awaited<ReturnType<typeof judgeEntryMapFields>>>();
+  for (const entry of entries) {
+    mapFields.set(entryKey(entry), await judgeEntryMapFields(entry.projectId, entry.kind, entry));
+  }
   const embedded = await embedEntries(entries);
   const held = await subjectHeldRefusal(entries, embedded.vectors);
   if (held) throw held;
   const rows = await writeEntries(entries, embedded);
+  for (const row of rows) {
+    await applyEntryMapFields(
+      row.projectId,
+      row.id,
+      mapFields.get(entryKey(row)) ?? null,
+      writer ?? { userId: null, agency: 'agent' },
+    );
+  }
   const replaced = await retireReplaced(entries);
   await recheckForRules(rulesOf(entries));
   const idByKey = new Map(rows.map((r) => [entryKey(r), r.id]));

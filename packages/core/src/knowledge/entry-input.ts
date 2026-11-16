@@ -89,6 +89,15 @@ export const upsertKnowledgeInputSchema = z.object({
    * `KNOWLEDGE_SUBJECT_HELD` unless it names that entry here.
    */
   replaces: slugSchema.optional(),
+  /**
+   * The module map (ISS-1256): the module the entry belongs to, by its slug (`null` takes it out of
+   * every module; absent leaves it); a glossary entry's `term` (aliases, who named it), judged by
+   * `module-fields.ts:termOf` so a wrong shape is refused by name; and a code anchor
+   * (`file.ts:symbol`) the entry is `anchored_at`, which a landing touching it flags for re-check.
+   */
+  module: z.string().trim().min(1).max(128).nullable().optional(),
+  term: z.unknown().optional(),
+  anchor: z.string().trim().min(1).max(600).optional(),
 });
 
 export type UpsertKnowledgeInput = z.infer<typeof upsertKnowledgeInputSchema>;

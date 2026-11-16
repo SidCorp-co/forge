@@ -8,6 +8,7 @@ import {
   RELEASES_TOOL_READS,
 } from '@forge/contracts/mcp-product';
 import type { McpToolName } from '@forge/contracts/mcp-tools';
+import { MODULE_TOOL_READS } from '@forge/contracts/module-map';
 import { REFERENCES_TOOL_READS } from '@forge/contracts/references';
 import type { MiddlewareHandler } from 'hono';
 import { ECOSYSTEM_READS } from '../ecosystem/index.js';
@@ -64,6 +65,7 @@ const READ_ACTIONS = {
   forge_bot: new Set<string>(BOT_TOOL_READS),
   forge_project: new Set<string>(PROJECT_TOOL_READS),
   forge_references: new Set<string>(REFERENCES_TOOL_READS),
+  forge_module: new Set<string>(MODULE_TOOL_READS),
 } satisfies Record<McpToolName, ReadonlySet<string>>;
 
 /** The action a tool takes when the call names none — its schema's own default. */

@@ -95,6 +95,7 @@ const EXTRA: CapabilitiesView = {
     { card: "memory.search", recheckOwed: { since: "2026-11-16T02:00:00Z" }, scenarios: [], proposed: [] },
     { card: "support.reply", recheckOwed: null, scenarios: [{ name: "a stranger writes", passed: true, at: "2026-11-16T02:00:00Z" }, { name: "a member returns", passed: false, at: "2026-11-16T02:00:00Z" }], proposed: [{ field: "redFlag", text: "Replying before reading the member" }] },
   ],
+  module: null,
   limits: [],
 };
 

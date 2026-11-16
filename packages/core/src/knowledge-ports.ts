@@ -4,6 +4,7 @@
 
 import { embedFeedback } from './feedback/index.js';
 import { provideKnowledgePorts } from './knowledge/index.js';
+import { moduleBySlug } from './labels/index.js';
 import { flagMemoriesForChange, runMemorySearch } from './memory/index.js';
 import { embedRequirementHead } from './requirements/index.js';
 
@@ -13,5 +14,6 @@ export function provideKnowledgeDomainPorts(): void {
     flagMemoryRecheck: (projectId, change) => flagMemoriesForChange(projectId, change),
     reembedRequirement: embedRequirementHead,
     reembedFeedback: embedFeedback,
+    moduleIdOf: async (projectId, slug) => (await moduleBySlug(projectId, slug)).id,
   });
 }

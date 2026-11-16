@@ -17,6 +17,8 @@ vi.mock('../agreements/index.js', async (actual) => ({
   ...(await actual<typeof import('../agreements/index.js')>()),
   readAgreements: agreements.read,
 }));
+const moduleLines = vi.hoisted(() => ({ read: vi.fn() }));
+vi.mock('../labels/index.js', () => ({ moduleMapLines: moduleLines.read }));
 vi.mock('../knowledge/index.js', () => ({
   selectAlwaysInjectFromKnowledge: store.read,
   selectLessonEntries: store.lessons,
@@ -55,6 +57,30 @@ const INHERITED = resolveAgreements({
 
 beforeEach(() => {
   agreements.read.mockResolvedValue(INHERITED);
+  moduleLines.read.mockResolvedValue([]);
+});
+
+describe("the master's map carries one line per module (ISS-1256)", () => {
+  it('names each module and the REST read of its tree, and says nothing where the project has none', () => {
+    const lines = [
+      {
+        slug: 'execution',
+        name: 'Execution',
+        description: 'agent, run, master',
+        terms: 2,
+        rules: 1,
+        openIssues: 3,
+      },
+    ];
+    const body = checkoutOrientation('p-1', 'forge', { ...RULES, modules: lines });
+    expect(body).toContain('### Modules');
+    expect(body).toContain(
+      '- Execution (`execution`): agent, run, master; 2 terms, 1 rules, 3 open → GET /api/projects/:id/modules/execution/map',
+    );
+    expect(checkoutOrientation('p-1', 'forge', { ...RULES, modules: [] })).not.toContain(
+      '### Modules',
+    );
+  });
 });
 
 describe('core serves the orientation a box writes into a checkout', () => {

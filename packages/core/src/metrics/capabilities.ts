@@ -16,6 +16,7 @@ import type {
 import { DOOR_REPORT_VERDICTS, type DoorReportVerdict } from '@forge/contracts/door-use';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { capabilitiesIn } from '../labels/index.js';
 import { type CardFreshness, cardFreshness } from '../lessons/index.js';
 
 const DAY_MS = 86_400_000;
@@ -119,19 +120,25 @@ export async function readCapabilities(
   projectId: string,
   days: number,
   now: Date = new Date(),
+  module?: string,
 ): Promise<CapabilitiesView> {
   const since = new Date(now.getTime() - days * DAY_MS);
-  const [reports, lessons, freshness] = await Promise.all([
+  const [reports, lessons, freshness, held] = await Promise.all([
     reportRows(projectId, since),
     lessonRows(projectId),
     cardFreshness(),
+    module ? capabilitiesIn(projectId, module) : Promise.resolve(null),
   ]);
+  // the module map's Capabilities branch (ISS-1256): every list narrowed to the module's own cards
+  const cards = held ? new Set(held.cards) : null;
+  const inModule = (card: string) => cards === null || cards.has(card);
   return {
     projectId,
     window: { days, since: since.toISOString(), until: now.toISOString() },
-    feedback: tallyReports(reports),
-    lessons,
-    freshness: freshnessFor(projectId, freshness),
+    feedback: tallyReports(reports).filter((r) => inModule(r.door)),
+    lessons: lessons.filter((l) => inModule(l.card)),
+    freshness: freshnessFor(projectId, freshness).filter((f) => inModule(f.card)),
+    module: held ? { path: held.module, cards: held.cards } : null,
     limits: CAPABILITIES_LIMITS,
   };
 }

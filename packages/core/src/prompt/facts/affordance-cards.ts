@@ -57,8 +57,13 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     situations: [
       {
         when: 'A decision in force',
-        do: 'a rule (`projects/<id>/knowledge/<slug> -X PUT`, kind rule) or a requirement',
+        do: 'a rule (`projects/<id>/knowledge/<slug> -X PUT`, kind rule, `module` its module slug) or a requirement',
         watch: 'memory holds no decision in force and refuses one `MEMORY_DECISION_NOT_MEMORY`',
+      },
+      {
+        when: 'A person names a thing (a term)',
+        do: '`projects/<id>/knowledge/<slug> -X PUT`, kind glossary, with `module`, `term` (`aliases` vi, code, industry; `namedBy` quoting who named it) and `anchor` (`file.ts:symbol`)',
+        watch: '`term` on another kind is refused `MODULE_MAP_TERM_NOT_GLOSSARY`',
       },
       {
         when: "The project's own prose (build commands, a rule, a guide)",

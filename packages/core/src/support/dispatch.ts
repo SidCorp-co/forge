@@ -25,7 +25,9 @@ import {
 import { db } from '../db/client.js';
 import { forgeReads } from '../integrations/index.js';
 import { type BoundSupportTool, supportApisOf } from '../integrations/support-api/index.js';
+import { moduleMapLines } from '../labels/index.js';
 import { resolveSessionRepoPathForDevice } from '../lib/device-pool.js';
+import { moduleLinesText } from '../lib/door-catalog.js';
 import { logger } from '../lib/logger.js';
 import { RefusalError } from '../lib/refusal.js';
 import { buildBaseOf, buildKeyOf } from './build.js';
@@ -146,6 +148,7 @@ async function briefOf(
     tools,
     config,
     channel: await briefChannel(room),
+    modules: moduleLinesText(await moduleMapLines(room.projectId), 'bot'),
   });
 }
 
@@ -169,6 +172,7 @@ async function agentBriefOf(
     tools,
     config,
     channel: records.join('\n\n') || null,
+    modules: moduleLinesText(await moduleMapLines(room.projectId), 'bot'),
     opening: agentOpening({
       projectName,
       product: config?.product ?? null,

@@ -6,6 +6,7 @@
 import type { McpToolName } from '@forge/contracts/mcp-tools';
 import { forgeChannelTool, forgeEcosystemTool } from '../ecosystem/tool.js';
 import { forgeFeedbackTool } from '../forge-door/index.js';
+import { forgeModuleTool } from '../labels/tool.js';
 import type { ContextScopedMcpToolFactory } from '../lib/tool.js';
 import {
   forgeBotTool,
@@ -59,4 +60,6 @@ export const MCP_TOOLS = {
   forge_project: (ctx) => forgeProjectTool(ctx),
   // The sources a project learns from first (ISS-1252): search, add, propose, cite, signals.
   forge_references: (ctx) => forgeReferencesTool(ctx),
+  // The module map (ISS-1256): a module's tree, the pillar, and the placements and relations agents write.
+  forge_module: (ctx) => forgeModuleTool(ctx),
 } satisfies Record<McpToolName, ContextScopedMcpToolFactory>;

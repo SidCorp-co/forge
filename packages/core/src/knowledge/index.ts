@@ -22,6 +22,14 @@ export {
   selectLessonEntries,
   setLessonEntryInjection,
 } from './lesson-entries.js';
+export {
+  codeAnchorOf,
+  entryForMap,
+  type MapWriter,
+  removeKnowledgeRelation,
+  setKnowledgeModule,
+  writeKnowledgeRelation,
+} from './module-fields.js';
 export { orgKnowledgeCreatedAt, orgOnDemandSlugsOf } from './org-knowledge.js';
 export { orgKnowledgeRoutes } from './org-knowledge-routes.js';
 export { provideKnowledgePorts } from './ports.js';

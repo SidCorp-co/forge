@@ -68,6 +68,7 @@ export {
   lessonsThatHold,
   unanchoredLessons,
 } from './lifecycle-reads.js';
+export { setLessonModule } from './module-field.js';
 export {
   type LessonsMonth,
   lessonsMonth,

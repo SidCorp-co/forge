@@ -45,7 +45,8 @@ export const MODULE_MAP_PLACEABLE_TYPES = [
 	"issue",
 	"lesson",
 ] as const;
-export type ModuleMapPlaceableType = (typeof MODULE_MAP_PLACEABLE_TYPES)[number];
+export type ModuleMapPlaceableType =
+	(typeof MODULE_MAP_PLACEABLE_TYPES)[number];
 
 /** The five relation kinds; there is no generic "related" kind. */
 export const MODULE_RELATION_KINDS = [
@@ -173,6 +174,9 @@ export const MODULE_MAP_REFUSAL_CODES = [
 	"MODULE_MAP_ORG_REFERENCE",
 ] as const;
 export type ModuleMapRefusalCode = (typeof MODULE_MAP_REFUSAL_CODES)[number];
+
+/** The read actions of `forge_module`; every other action writes. */
+export const MODULE_TOOL_READS = ["get", "pillar"] as const;
 
 /** The window agents' reads of a node are counted over. */
 export const MODULE_MAP_READS_WINDOW_DAYS = 30;
