@@ -6,6 +6,8 @@ vi.hoisted(() => {
   process.env.INTEGRATION_MASTER_KEY ??= Buffer.alloc(32, 5).toString('base64');
 });
 
+import { settleOwnerAnswer } from '../../src/support/owner-answer.js';
+import { insertAction } from '../../src/support/store.js';
 import { rows } from '../helpers/factories.js';
 import { AgentWorld, agentBlock, dave, OWNER_ID, zed } from '../helpers/support-agent-world.js';
 import { carol, code } from '../helpers/support-channel.js';
@@ -296,6 +298,61 @@ describe('REQ-77 BC-12, ISS-1246: an agent asks the owner in the technical chann
     expect(answer.message.thread).toBe(thread.id);
     expect(answer.message.answersYourQuestion).toBe('May I flush the cache?');
     expect(await takenAnywhere('thanks')).toBe(0);
+  });
+
+  it("takes the owner's reply in the project's thread of the shared operations room, and nobody else's or another thread's", async () => {
+    // an ask as askOwner records it where the technical channel is the shared room's project thread
+    const OPS = 'GRPshared-ops';
+    const PROJECT_THREAD = 'TprojThread1';
+    const question = 'May I rotate the mail relay key tonight?';
+    let thread = '';
+    await w.hear(
+      () => chat.say(chat.bob, '@supportbot can the relay key be rotated?'),
+      async (_t, _act, message) => {
+        thread = message().thread;
+      },
+    );
+    const [room] = await rows<{ id: string; project_id: string }>(sql`
+      SELECT id, project_id FROM support_rooms WHERE rid = ${chat.rid} AND kind = 'agent'`);
+    await insertAction({
+      roomId: String(room?.id),
+      projectId: String(room?.project_id),
+      conversationId: null,
+      thread,
+      kind: 'routed',
+      actorKind: 'session',
+      tool: 'ask_owner',
+      input: { question, record: null, issueId: null },
+      output: {
+        owner: OWNER_ID,
+        mentioned: true,
+        channel: 'thread',
+        rid: OPS,
+        thread: PROJECT_THREAD,
+        messageId: 'm-ops-ask',
+      },
+      externalId: 'm-ops-ask',
+    });
+    const alice = { key: OWNER_ID, label: 'alice' };
+    const reply = (id: string, at: string, author: typeof alice) =>
+      settleOwnerAnswer({
+        rid: OPS,
+        thread: at,
+        message: { id, text: 'rotate it after 22:00', replyTo: null },
+        author,
+      });
+    // his message in another project's thread of that room, and bob's in this one, answer nothing
+    expect(await reply('m-ops-1', 'TotherProject', alice)).toBe(false);
+    expect(await reply('m-ops-2', PROJECT_THREAD, { key: chat.bob.userId, label: 'bob' })).toBe(
+      false,
+    );
+    // his reply in the project's thread reaches the asker's thread, marked the answer
+    const answer = await w.hear(async () => {
+      expect(await reply('m-ops-3', PROJECT_THREAD, alice)).toBe(true);
+      return 'm-ops-3';
+    });
+    expect(answer.message.thread).toBe(thread);
+    expect(answer.message.answersYourQuestion).toBe(question);
   });
 
   it('refuses by name, posting nothing, a question with no owner, an unknown issue, or a record that is no issue', async () => {
