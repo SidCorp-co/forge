@@ -7,6 +7,7 @@ import type { MergedHead } from "./landing-artifacts.js";
 import type { LessonEventPayloads } from "./lessons.js";
 import type { MachineEntity, StateOf } from "./machines.js";
 import type { StewardEventPayloads } from "./steward.js";
+import type { ReplySubject } from "./support-reply-audit.js";
 
 export const OUTBOX_EVENT_TYPES = [
 	"issue.created",
@@ -74,6 +75,7 @@ export const OUTBOX_EVENT_TYPES = [
 	"release.held",
 	"decision.settled",
 	"support.masterAsked",
+	"support.replyStored",
 ] as const;
 export type OutboxEventType = (typeof OUTBOX_EVENT_TYPES)[number];
 
@@ -526,6 +528,19 @@ export interface OutboxEventPayloads
 		projectId: string;
 		roomId: string;
 		thread: string;
+	};
+	/**
+	 * A room's line was stored on its thread's conversation (ISS-1250): a reply the agent posted, a
+	 * line core wrote in its place, or the note of a silence it kept. Its reader judges it against the
+	 * one rubric, off the post's path (`support/reply-audit/`).
+	 */
+	"support.replyStored": {
+		projectId: string;
+		roomId: string;
+		conversationId: string;
+		/** The stored conversation message: the line, or the silence's note. */
+		messageId: string;
+		subject: ReplySubject;
 	};
 	/** A person answered the last question holding an item's value check; the intake assistant drafts it again (REQ-65 BC-3). */
 	"intake.answered": {

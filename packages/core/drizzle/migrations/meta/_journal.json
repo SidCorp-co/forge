@@ -4194,6 +4194,13 @@
       "when": 1839801600000,
       "tag": "0658_a_box_declares_its_subagent_slots",
       "breakpoints": true
+    },
+    {
+      "idx": 659,
+      "version": "7",
+      "when": 1839888000000,
+      "tag": "0659_a_room_line_is_judged_after_it_is_sent",
+      "breakpoints": true
     }
   ]
 }

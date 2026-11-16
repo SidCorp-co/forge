@@ -60,6 +60,7 @@ export { ownerSignInCallbackRoutes } from './owner-routes.js';
 import { mountMasterAskRoutes } from './master-ask-routes.js';
 import { mountPromiseRoutes } from './promise-routes.js';
 import { supportRoomsOf } from './read.js';
+import { mountReplyVerdictRoutes } from './reply-audit/index.js';
 import { mountRoutingRoutes } from './routing-routes.js';
 import { act, SESSION_ONLY } from './session-door.js';
 import { supportTurnsOf } from './turns.js';
@@ -472,6 +473,7 @@ mountPromiseRoutes(supportRoutes);
 mountMasterAskRoutes(supportRoutes);
 mountRoutingRoutes(supportRoutes);
 mountOwnerRoutes(supportRoutes);
+mountReplyVerdictRoutes(supportRoutes);
 
 const SUPPORT_READ = requiresOnParam('project.read', 'id');
 

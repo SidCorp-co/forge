@@ -49,6 +49,7 @@ import { roleOfRoom } from './ops-role.js';
 import { projectsInScope } from './ops-scope.js';
 import { ownViewOf } from './owner-git.js';
 import { agentOpening, coldThreads, roomMessages, supportBrief } from './prompt.js';
+import { roomLessonsNews } from './reply-audit/lessons-news.js';
 import { roomWithSession, type SessionRow, sessionOf, sessionToHand } from './room-session.js';
 import { agentMarkerOf } from './rooms.js';
 import { openSessionTurn } from './session-turns.js';
@@ -283,8 +284,12 @@ export async function handTurn(
   if (!project) throw new Error(`support: room ${room.id}'s project ${room.projectId} is gone`);
   const parts: string[] = [];
   const followed = await followedCheckouts(room, client.deviceId);
-  if (await startsCold(session, client, room.projectId)) {
+  const cold = await startsCold(session, client, room.projectId);
+  // the project's lessons about chat replies, on a cold turn and whenever they changed (ISS-1250)
+  const lessons = 'warmUp' in body && !cold ? null : await roomLessonsNews(room, cold);
+  if (cold) {
     parts.push(await briefOf(room, project.name, followed));
+    if (lessons) parts.push(lessons);
     // a channel agent re-reads every group it answers, each thread naming its channel
     const rooms = room.kind === 'agent' ? await roomsOfSession(session.id) : [room];
     for (const r of rooms) {
@@ -295,7 +300,10 @@ export async function handTurn(
   } else if (!('warmUp' in body)) {
     // a warm session reads the channel record again when it changed since it was told (BC-41)
     const news = await channelNews(room);
-    if (news) parts.push(news, ...('messages' in body ? ['New messages:'] : []));
+    if (news || lessons) {
+      parts.push(...[news, lessons].filter((p): p is string => p !== null));
+      if ('messages' in body) parts.push('New messages:');
+    }
   }
   parts.push('messages' in body ? body.messages : 'direct' in body ? body.direct : body.warmUp);
   // the turn is opened, and the token read or minted, once the turn holds the session: a hand-over
