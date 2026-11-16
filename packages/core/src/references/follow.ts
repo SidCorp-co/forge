@@ -5,12 +5,7 @@
 // joined by its signal key so a second read files nothing again; every other release is kept on the
 // source's timeline and posts nothing. A spent rate limit ends the pass by name, never retried.
 
-import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
-import {
-  githubRepoOf,
-  referenceSignalKey,
-} from '@forge/contracts/references';
-import { requirementKey } from '@forge/contracts/requirements';
+import { githubRepoOf, referenceSignalKey } from '@forge/contracts/references';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { resolveProjectHandle } from '../conversations/index.js';
 import { db } from '../db/client.js';
@@ -21,18 +16,15 @@ import {
   type FollowedRelease,
   readFollowedRepo,
 } from '../integrations/github/index.js';
-import { listIssues, listModulesForIssues } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { listOrgProjects } from '../orgs/index.js';
-import { listRowsOf } from '../requirements/index.js';
 import { freshReleases, matchRelease, type OpenItem } from './match.js';
+import { openItemsOf } from './open-items.js';
 import { orgOfProject, type SourceRow, sourceIn } from './read.js';
 
 /** Reads a repository's releases: the GitHub port, or a fixture in a test. */
 export type ReleaseReader = (repo: string, etag: string | null) => Promise<FollowedRead>;
 
-const OPEN_ITEMS = 500;
-const OPEN_REQUIREMENT_STATUSES = new Set(['draft', 'agreed', 'in_delivery']);
 const NOTES_CHARS = 1500;
 const TITLE_CHARS = 200;
 
@@ -44,35 +36,6 @@ export interface FollowOutcome {
   /** Why it failed, or when GitHub's limit resets. */
   said?: string;
   resetsAt?: string | null;
-}
-
-/** A project's open issues and requirements, each with its module labels or area. */
-export async function openItemsOf(projectId: string): Promise<OpenItem[]> {
-  const listed = await listIssues(
-    projectId,
-    { statusNot: ISSUE_TERMINAL_STATUSES },
-    { sort: 'priority:asc', limit: OPEN_ITEMS, offset: 0 },
-  );
-  const issueRows = listed.ok ? listed.rows : [];
-  const modules = await listModulesForIssues(issueRows.map((r) => r.id));
-  const issues: OpenItem[] = issueRows.map((r) => ({
-    kind: 'issue',
-    id: r.id,
-    ref: `ISS-${r.issSeq}`,
-    title: r.title,
-    areas: (modules.get(r.id) ?? []).map((m) => m.name),
-  }));
-  const { rows, areas } = await listRowsOf(projectId);
-  const requirements: OpenItem[] = rows
-    .filter((r) => OPEN_REQUIREMENT_STATUSES.has(r.status))
-    .map((r) => ({
-      kind: 'requirement',
-      id: r.id,
-      ref: requirementKey(r.reqSeq),
-      title: r.title,
-      areas: r.areaId && areas.get(r.areaId) ? [areas.get(r.areaId) as string] : [],
-    }));
-  return [...issues, ...requirements];
 }
 
 function ideaBody(source: SourceRow, release: FollowedRelease, item: OpenItem, terms: string[]) {

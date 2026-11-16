@@ -62,6 +62,7 @@ import {
 } from './issues/index.js';
 import { recordSecretResolve, rememberHandedOut, resolvePipelineContext } from './jobs/index.js';
 import { provideKnowledgeDomainPorts } from './knowledge-ports.js';
+import { provideLessonDomainPorts } from './lessons-ports.js';
 import { loadProjectAccess, provideProjectOrg, provideVisibleProjects } from './lib/authz.js';
 import { provideContractVersionReads } from './lib/contract-versions.js';
 import { provideDataPolicy } from './lib/data-egress.js';
@@ -332,6 +333,7 @@ provideAgreementReplay((request) => Promise.resolve(app.fetch(request)));
 provideSandboxPorts({ restFetch: (request) => Promise.resolve(app.fetch(request)) });
 // a steward act calls each door through this app as the project's steward account (REQ-48 BC-12)
 provideStewardDomainPorts((request) => Promise.resolve(app.fetch(request)));
+provideLessonDomainPorts();
 
 app.use(
   '*',

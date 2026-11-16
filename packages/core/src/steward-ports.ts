@@ -1,17 +1,14 @@
 // The ports of the domains a steward act reaches through, filled once at boot by the process entry
 // (ADR 0008): the steward calls each door through this app as the project's steward account, wakes
 // a master over the socket and reads whom that master acts as (REQ-48 BC-12, ISS-607); a suggestion
-// reads whether its project's steward is held; a mockup's correction is read through the mockup's
-// own view, never its table, and a room writer's Forge user through the room (REQ-50 BC-1); and a
-// release's page reads who names it through the steward's addressee (ISS-590).
+// reads whether its project's steward is held; and a release's page reads who names it through the
+// steward's addressee (ISS-590). What a lesson reads (a mockup, a room writer, a card) is wired
+// beside it in `lessons-ports.ts`, so neither file coordinates every module a steward touches.
 
 import { masterTakesWait } from './development/index.js';
-import { provideLessonsPorts } from './lessons/index.js';
-import { cardPaths, doorCatalog } from './lib/door-catalog.js';
+import { doorCatalog } from './lib/door-catalog.js';
 import { masterAccountsOf } from './master-accounts.js';
-import { memoryIssueSide } from './memory-issue-reads.js';
 import { readPiles } from './metrics/index.js';
-import { getMockupAs } from './mockups/index.js';
 import {
   holdingReleaseOf,
   masterTakesReleaseAct,
@@ -22,7 +19,6 @@ import {
 import { provideReleasePagePorts } from './release-page/index.js';
 import { heldStewardOf, provideStewardPorts, releaseNamerOf } from './steward/index.js';
 import { provideSuggestionsPorts } from './suggestions/index.js';
-import { roomWriterUserId } from './support/index.js';
 import { wakeMastersForSteward } from './ws/index.js';
 
 export function provideStewardDomainPorts(
@@ -43,23 +39,4 @@ export function provideStewardDomainPorts(
   });
   provideSuggestionsPorts({ stewardOf: heldStewardOf });
   provideReleasePagePorts({ releaseNamer: releaseNamerOf });
-  provideLessonsPorts({
-    mockupOf: async (projectId, mockupId, viewer) =>
-      (await getMockupAs(viewer, projectId, mockupId)) ?? null,
-    roomWriterOf: roomWriterUserId,
-    landedChange: memoryIssueSide.landedChange,
-    cardOf: async (cardId) => {
-      const card = doorCatalog().doors.find((d) => d.card?.id === cardId)?.card;
-      return card
-        ? {
-            id: card.id,
-            scenarios: card.scenarios,
-            situations: card.situations,
-            practice: card.practice,
-            ...(card.redFlag ? { redFlag: card.redFlag } : {}),
-          }
-        : null;
-    },
-    cardPaths: async (cardId) => cardPaths(cardId),
-  });
 }
