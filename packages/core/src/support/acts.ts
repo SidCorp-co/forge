@@ -22,6 +22,7 @@ import type {
 } from '@forge/contracts/support-channel';
 import type { SupportAskMasterRequest } from '@forge/contracts/support-master-ask';
 import { OPERATIONS_ACTIONS } from '@forge/contracts/support-operations';
+import type { SupportAuditRequest } from '@forge/contracts/support-reply-audit';
 import type { SupportTechnicalRequest } from '@forge/contracts/support-technical';
 import type { SupportCallArgs } from '../integrations/support-api/index.js';
 import {
@@ -59,6 +60,7 @@ import { makePromise } from './promise.js';
 import { proposeFix, proposeRecord } from './propose.js';
 import { answerHandedQuestion } from './question-task.js';
 import { decideReleaseFromMessage } from './release-decision.js';
+import { auditReply } from './reply-audit/audit.js';
 import { decideRouting } from './routing.js';
 import { search } from './search.js';
 import { listTools, readThread, reply, runDiagnose, staySilent } from './service.js';
@@ -166,6 +168,7 @@ export type SupportActInput =
   | { action: 'raise_owed'; thread: string; text: string }
   | { action: 'asker'; thread: string; message: string }
   | ({ action: 'technical' } & SupportTechnicalRequest)
+  | ({ action: 'audit' } & SupportAuditRequest)
   | ({ action: 'owner_forge_act' } & SupportForgeActRequest)
   | {
       action: 'read';
@@ -304,6 +307,8 @@ const SHARED = new Set<SupportActInput['action']>([
   'raise_owed',
   // every room agent raises what it needs in its project's technical channel (ISS-1243)
   'technical',
+  // every room agent audits its own reply right after posting it (ISS-1250)
+  'audit',
   // and reads who wrote a message and the thread around it (ISS-1250)
   'asker',
 ]);
@@ -458,6 +463,10 @@ async function act(
     case 'technical': {
       const { action: _, ...request } = input;
       return raiseTechnical(room, request);
+    }
+    case 'audit': {
+      const { action: _, ...request } = input;
+      return auditReply(room, request);
     }
     case 'owner_forge_act': {
       const { action: _, ...request } = input;
