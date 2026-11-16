@@ -7,6 +7,15 @@ import { readOf, useWrite } from "@/lib/api/query-kit";
 import { feedbackApi, forgeFeedbackApi } from "./api";
 import type { CreateFeedbackRequest, FeedbackAction, FeedbackMessageAudience, FeedbackReportRequest, ForgeFeedbackRequest, SimilarFeedbackDraft } from "./types";
 
+/** The project's run slots: how many are held, in use and wanted, polled like the runs read model (ISS-1255). */
+export const useRunSlots = (projectId: string | undefined) =>
+  useQuery({
+    ...readOf(["feedback", "run-slots", projectId] as const, () => feedbackApi.standing(projectId as string)),
+    enabled: !!projectId,
+    refetchInterval: 20_000,
+    select: (standing) => standing.slots?.subagents,
+  });
+
 /** The signed-in person's feedback to Forge, whichever project it came from. */
 export const forgeFeedbackKeys = { mine: ["forge-feedback", "mine"] as const };
 

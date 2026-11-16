@@ -1,3 +1,4 @@
+import type { MasterStanding } from "@forge/contracts/master-standing";
 import { apiClient } from "@/lib/api/client";
 import type {
   CreateFeedbackRequest,
@@ -63,6 +64,8 @@ export interface TargetChoice {
 }
 
 export const feedbackApi = {
+  /** `GET /api/projects/:id/masters/standing`, read for the run slots a waiting steward job shows (ISS-1255). */
+  standing: (projectId: string) => apiClient<MasterStanding>(`/projects/${encodeURIComponent(projectId)}/masters/standing`),
   list: (projectId: string) => apiClient<FeedbackListResponse>(base(projectId)),
   get: (projectId: string, key: string) => apiClient<FeedbackResponse>(one(projectId, key)),
   /** What a person picks About from: the project's requirements and releases by title, its workflows by flow, read as the lists' own routes serve them. */

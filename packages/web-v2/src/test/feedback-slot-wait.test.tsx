@@ -21,7 +21,7 @@ const standing = (subagents: Subagents) => ({ projectId: P, state: "idle", slots
 
 function list(subagents: Subagents) {
   return render(
-    <Seeded data={[...FEEDBACK_SEED, [["runs-standing", P, "master"], standing(subagents)]]}>
+    <Seeded data={[...FEEDBACK_SEED, [["feedback", "run-slots", P], standing(subagents)]]}>
       <FeedbackScreen projectId={P} slug="hop" />
     </Seeded>,
   );

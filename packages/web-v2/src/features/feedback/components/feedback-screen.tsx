@@ -45,8 +45,7 @@ import { type Eta, type EtaClock, etaOfFeedback, etaSortValue } from "@/features
 import { ETA_COPY } from "@/lib/i18n/eta-copy";
 import { useEtaClock } from "@/lib/i18n/eta-clock";
 import { useEtaSort, useFeedbackForecasts } from "@/features/forecast";
-import { useMasterStanding } from "@/features/agents";
-import { useFeedbackList } from "../hooks";
+import { useFeedbackList, useRunSlots } from "../hooks";
 import { FEEDBACK_LIST, feedbackHref } from "@/lib/routes/feedback";
 import type { FeedbackListResponse, FeedbackSummary } from "../types";
 import { FeedbackForm } from "./feedback-form";
@@ -162,7 +161,7 @@ const rowOf =
  */
 function SlotWait({ projectId }: { projectId: string }) {
   const t = useCopy();
-  const slots = useMasterStanding(projectId).data?.slots?.subagents;
+  const slots = useRunSlots(projectId).data;
   if (!slots || slots.waiting === 0 || slots.inUse < slots.held) return null;
   return (
     <p className="px-5 py-2 text-12 text-muted max-md:px-3" data-testid="feedback-slot-wait" title={t("feedback.slotWait.title", { inUse: slots.inUse, held: slots.held })}>
