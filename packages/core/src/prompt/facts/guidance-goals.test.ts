@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { getGuide } from '../../guides/index.js';
 import { ABOUT_WORDS } from '../../steward/lessons-classify.js';
 import { DRIVE_RULES_TEXT } from './drive-rules.js';
+import { issueDoorCards } from './issue-doors.js';
 import { OPERATING_AFFORDANCES_TEXT, renderFact } from './registry.js';
 
 const PIPELINE_RULES = renderFact('pipeline-rules') ?? '';
@@ -39,22 +40,36 @@ describe('a step and a drive run are handed no output ritual', () => {
   });
 
   it('keeps the kernel the rituals sat beside: the park fields, the shipped close and the verified mark', () => {
-    for (const kernel of [
-      'WAITING_KIND_REQUIRED',
-      'TRANSITION_REASON_REQUIRED',
-      'CLOSE_CRITERION_UNPLACED',
-      'CLOSE_REQUIRES_SHIPPED',
-      'ILLEGAL_TRANSITION',
-    ]) {
+    // the close's refusals are the orientation table's, the transition and merge cards' rows
+    for (const kernel of ['CLOSE_CRITERION_UNPLACED', 'CLOSE_REQUIRES_SHIPPED']) {
       expect(PIPELINE_RULES).toContain(kernel);
     }
   });
 
+  // ISS-1251: how to park, stamp and wait on a blocker is the cards' text, rendered into both rules,
+  // so a refusal or field a card teaches (WAITING_KIND_REQUIRED, `liveReading`) reaches the rules
+  // from its card and from nowhere else
+  it.each([
+    ['pipeline rules', PIPELINE_RULES],
+    ['drive rules', DRIVE_RULES_TEXT],
+  ])('%s carry the issue doors as their cards say them, and no copy of a card', (_who, text) => {
+    for (const card of issueDoorCards()) {
+      expect(text).toContain(`- \`${card.id}\`: ${card.purpose}`);
+      for (const line of card.practice) expect(text).toContain(`  - ${line}`);
+    }
+    for (const copy of [
+      '`needs_info` is ANSWERED, not commented back to life',
+      'Verify a merge before you claim it',
+      'A blocker releases its dependents by reaching',
+      'A blocker releases you by its STATUS',
+    ]) {
+      expect(text).not.toContain(copy);
+    }
+  });
+
   // ISS-1017: whether work is done is the agent's call, so no refusal for missing evidence is taught
-  it("teaches the mark as the agent's word, naming what it has, and no refusal core no longer makes", () => {
+  it('teaches no refusal core no longer makes for a mark', () => {
     for (const text of [PIPELINE_RULES, DRIVE_RULES_TEXT]) {
-      expect(text).toContain('`liveReading`');
-      expect(text).toContain('never a refusal');
       for (const gone of [
         'LANDING_REQUIRED',
         'NO_WORK_EVIDENCE',
