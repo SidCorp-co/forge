@@ -11359,6 +11359,20 @@
               "minLength": 3,
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "audience",
+            "required": false,
+            "schema": {
+              "enum": [
+                "bot",
+                "master",
+                "run",
+                "person"
+              ],
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -68498,6 +68512,20 @@
             "schema": {
               "maxLength": 300,
               "minLength": 3,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "audience",
+            "required": false,
+            "schema": {
+              "enum": [
+                "bot",
+                "master",
+                "run",
+                "person"
+              ],
               "type": "string"
             }
           }
