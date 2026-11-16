@@ -10,7 +10,7 @@ import {
   type SupportReaders,
   type SupportRoomConfig,
 } from '@forge/contracts/support';
-import { readMessages, type StoredConversationMessage } from '../conversations/index.js';
+import { readMessages } from '../conversations/index.js';
 import { guideRef } from '../guides/index.js';
 import type { BoundSupportTool } from '../integrations/support-api/index.js';
 import { markUntrusted } from '../lib/untrusted-text.js';
@@ -23,7 +23,6 @@ import { answersOf } from './owner-answer.js';
 import { ownerOwedNote } from './owner-owed.js';
 import { roomConductLines } from './room-conduct.js';
 import { type RoutingSignals, routingSignalsOf } from './routing-signals.js';
-import { isCoreThread } from './rules.js';
 import type { ActionRow, RoomRow } from './store.js';
 import { recentThreads, threadConversation, threadWritings } from './store.js';
 
@@ -329,64 +328,8 @@ export function turnMessages(
     .join('\n\n');
 }
 
-/** How many of a thread's last lines a turn hands with its messages (ISS-1250). */
-const RECENT_LINES = 6;
-
-type ThreadLine = Pick<
-  StoredConversationMessage,
-  'role' | 'content' | 'authorLabel' | 'externalId'
->;
-
-/**
- * A thread's last lines before the messages handed this turn (ISS-1250): a warm session never saw a
- * master's or Forge's post in its thread, so a ruling on what that post raised was read as about the
- * agent itself. Members' words are framed as data; a line any bot posted there reads `bot`.
- */
-export function recentBlock(
-  head: Record<string, unknown>,
-  lines: readonly ThreadLine[],
-  handed: ReadonlySet<string>,
-): string | null {
-  const said = lines
-    .filter((m) => m.role !== 'system' && m.content.trim().length > 0)
-    .filter((m) => !m.externalId || !handed.has(m.externalId))
-    .slice(-RECENT_LINES)
-    .map((m) =>
-      m.role === 'user'
-        ? `${m.authorLabel ?? 'member'}: ${markUntrusted(m.content, { source: SUPPORT_MEMBER_SOURCE })}`
-        : `bot: ${m.content}`,
-    );
-  if (said.length === 0) return null;
-  return `${JSON.stringify({ ...head, recent: "the thread's last lines before the messages below" })}\n${said.join('\n')}`;
-}
-
-/** The recent block of each member thread of this turn, core's own threads aside. */
-async function recentOfThreads(room: RoomRow, rows: readonly ActionRow[]): Promise<string[]> {
-  const members = rows.filter((r) => r.actorKind === 'member' && !isCoreThread(r.thread));
-  const handed = new Set(members.flatMap((r) => (r.externalId ? [r.externalId] : [])));
-  const where = room.kind === 'agent' ? { channel: room.rid } : {};
-  const blocks: string[] = [];
-  for (const thread of new Set(members.map((r) => r.thread))) {
-    const conversationId = await threadConversation(room.id, thread);
-    if (!conversationId) continue;
-    const lines = await readMessages(conversationId, RECENT_LINES + handed.size);
-    const block = recentBlock({ thread, ...where }, lines, handed);
-    if (block) blocks.push(block);
-  }
-  return blocks;
-}
-
-/** A room's messages as its session reads them: each thread's recent lines, then the messages. */
+/** A room's messages as its session reads them: a channel agent's with their group and what core read of them. */
 export async function roomMessages(room: RoomRow, rows: readonly ActionRow[]): Promise<string> {
-  const [recent, messages] = await Promise.all([
-    recentOfThreads(room, rows),
-    handedMessages(room, rows),
-  ]);
-  return [...recent, messages].join('\n\n');
-}
-
-/** The handed messages: a channel agent's with their group and what core read of them. */
-async function handedMessages(room: RoomRow, rows: readonly ActionRow[]): Promise<string> {
   const roles = await writerRoles(room.projectId, room.rid);
   const routing = await routingSignalsOf(room, rows);
   if (room.kind !== 'agent') return turnMessages(rows, roles, null, routing);

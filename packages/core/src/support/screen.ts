@@ -25,8 +25,6 @@ import { permissionTalkRefusal } from './permission-talk.js';
 import { isCoreThread } from './rules.js';
 import { agreedFilingsIn, insertAction, type RoomRow, threadMembers } from './store.js';
 import { TOP_LEVEL } from './thread.js';
-import { uiDirectionRefusal } from './ui-directions.js';
-import { apiHostLinkRefusal } from './web-links.js';
 
 export type SessionDoor = 'support-reply' | 'operations-reply';
 
@@ -98,11 +96,8 @@ export async function screenForThread(
       `nothing was posted: ${barred}, and the post holds ${codes.map((c) => `${c.kind} "${c.quote}"`).join(', ')}. ${PLAIN_WORDS_SHAPE}. Codes are shown only in a reply inside the thread of a team member who asked for the detail.${ownCodes}`,
     );
   }
-  // no grant talk, no directions to a screen, no link on the API host (ISS-1243, ISS-1250)
-  for (const screen of [permissionTalkRefusal, uiDirectionRefusal, apiHostLinkRefusal]) {
-    const refused = await screen(room, conversationId, thread, text, tool);
-    if (refused) return refused;
-  }
+  const talk = await permissionTalkRefusal(room, conversationId, thread, text, tool);
+  if (talk) return talk;
   const filed = await agreedFilingsIn(room.id, thread);
   const verdict = await screenReplyAtDoor(door, {
     projectId: room.projectId,
