@@ -450,7 +450,7 @@
     "by": "ISS-1251"
   },
   "PUT /api/projects/:id/knowledge/:slug": {
-    "hash": "a099cffec1e11c75",
+    "hash": "d6a480db1f004a05",
     "on": "2026-11-16",
     "by": "ISS-1256"
   },
