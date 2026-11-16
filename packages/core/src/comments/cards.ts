@@ -59,6 +59,7 @@ export const COMMENT_REST_CARDS = {
       },
     },
     // ISS-935: a workflow's wait was sent to the issue events door, which answered 404
+    redFlag: 'Recording a design’s wait on an issue’s events door, which answers 404, instead of on the design.',
     family: 'design',
     audience: ['master'],
   },
@@ -82,7 +83,76 @@ export const COMMENT_REST_CARDS = {
         reversedWhen: '2026-11-25',
       },
     },
+    // the steward asks again about an item whose wait nobody recorded; routing is the triage's act
+    redFlag: 'Routing or answering the item in a comment, where its triage or a reply to the reporter is the act.',
     family: 'project-feedback',
+    audience: ['master'],
+  },
+  'PATCH /api/comments/:id': {
+    purpose: 'Corrects a comment you wrote on an issue: its words, or what kind of comment it is.',
+    situations: [
+      {
+        when: 'a comment you posted says something wrong or was filed as the wrong intent',
+        do: 'edit its body, or send intent to turn it into one of the other two kinds',
+      },
+    ],
+    practice: [
+      'Send intent only to change it: the same intent again is refused COMMENT_INTENT_UNCHANGED.',
+      'Another person’s comment is theirs; only a project admin edits it.',
+    ],
+    example: { body: 'Correction: the fix landed in ISS-640, not ISS-604.' },
+    // forge, 2026-10-17..11-16: 7 of 19 edits refused, among them intents sent unchanged
+    redFlag:
+      'Rewriting a comment so its record says something else than it did, where a new comment should correct it.',
+    family: 'issue-work',
+    audience: ['master', 'run'],
+  },
+  'DELETE /api/comments/:id': {
+    purpose: 'Deletes a comment you posted on an issue by mistake.',
+    situations: [
+      {
+        when: 'you posted a comment on the wrong issue, or twice',
+        do: 'delete the stray one; repost it where it belongs',
+      },
+    ],
+    practice: ['A decision is a record and is kept (COMMENT_RECORD_KEPT): supersede it with a new one.'],
+    example: {},
+    // forge: 15 deletes in the window, each a master's own duplicate post; a decision is refused
+    redFlag: 'Deleting a decision or another person’s comment to change what the record says.',
+    family: 'issue-work',
+    audience: ['master', 'run'],
+  },
+  'POST /api/comments/:commentId/attachments': {
+    purpose: 'Attaches a file from disk to a comment, as one multipart upload.',
+    situations: [
+      {
+        when: 'a comment needs its evidence beside it: a screenshot, a log, a report',
+        do: 'post the comment first, then upload the file in the multipart `file` field to it',
+      },
+    ],
+    practice: [
+      'Upload from disk; never inline base64 bytes in a JSON request.',
+      'Oversized files are refused FILE_TOO_LARGE before the body is read.',
+    ],
+    example: {},
+    // the guides teach this route because agents inlined base64 screenshots in comment bodies
+    redFlag: 'Pasting a file’s bytes as base64 into a comment body instead of uploading it here.',
+    family: 'issue-work',
+    audience: ['master', 'run'],
+  },
+  'PATCH /api/projects/:id/requirements/:req/comments/:comment': {
+    purpose: 'Corrects a comment or decision you wrote on a requirement.',
+    situations: [
+      {
+        when: 'a decision or note you recorded on a requirement is worded wrong or is the wrong kind',
+        do: 'edit its body, or turn it into a decision with its fields',
+      },
+    ],
+    practice: ['Turning it into a decision takes the decision’s fields: COMMENT_DECISION_REQUIRED without.'],
+    example: { body: 'REQ-104 waits for the owner’s word on pickup points.' },
+    // the steward's one edit on forge in the window; a decision changed in substance is superseded
+    redFlag: 'Rewriting what a recorded decision decided instead of posting one that supersedes it.',
+    family: 'requirements',
     audience: ['master'],
   },
 } satisfies Record<string, CapabilityCardBody>;

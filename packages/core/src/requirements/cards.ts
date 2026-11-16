@@ -49,6 +49,8 @@ export const REQUIREMENT_REST_CARDS = {
     practice: ['A blank reason is refused REQUIREMENT_SIGNOFF_REASON_REQUIRED.'],
     example: { reason: 'Adds BC-4 for sold-out lines, as FB-212’s triage asked.' },
     // ISS-645: accepts recorded no reason, so a revision went current with no why
+    redFlag:
+      'Accepting with no reason or before its checklist holds: 37 of 123 accepts on forge were refused.',
     family: 'requirements',
     audience: ['master'],
   },
@@ -63,6 +65,7 @@ export const REQUIREMENT_REST_CARDS = {
     practice: ['A proposed revision cannot be edited or replaced; this is the way back to draft.'],
     example: { reason: 'BC-3 opens with “Verify”; restate it as what holds on the product.' },
     // ISS-766: an author stuck on a proposed revision was sent between two refusals, never to return
+    redFlag: 'Withdrawing a proposed revision and writing a new one where returning it to draft was the way.',
     family: 'requirements',
     audience: ['master'],
   },
@@ -77,6 +80,8 @@ export const REQUIREMENT_REST_CARDS = {
     ],
     practice: ['Only an agreed requirement; nothing moved is refused REQUIREMENT_PINS_CURRENT.'],
     example: { revision: 2, reason: 'The reorder design r4 was approved on 2026-11-15.' },
+    // forge, 2026-10-17..11-16: 2 of 29 re-pins refused, nothing having moved past the pins
+    redFlag: 'Re-pinning when no design or contract moved past the baseline (REQUIREMENT_PINS_CURRENT).',
     family: 'requirements',
     audience: ['master'],
   },
@@ -93,6 +98,8 @@ export const REQUIREMENT_REST_CARDS = {
     ],
     practice: ['Outside strict a draft requirement links too; under strict only once agreed.'],
     example: { issue: 'ISS-640' },
+    // forge, 2026-10-17..11-16: 7 of 181 links refused
+    redFlag: 'Linking an issue another requirement already holds instead of unlinking it there first.',
     family: 'requirements',
     audience: ['master'],
   },
@@ -109,6 +116,7 @@ export const REQUIREMENT_REST_CARDS = {
     practice: ['Nothing moves on its own and no notice announces it.'],
     example: { reason: 'ISS-640 builds BC-1 to BC-3.' },
     // ISS-1084: a held start-delivery was asked again and again while its delivery check could not finish
+    redFlag: 'Asking start-delivery again while the steward’s delivery check has not finished.',
     family: 'requirements',
     audience: ['master'],
   },
@@ -122,6 +130,7 @@ export const REQUIREMENT_REST_CARDS = {
     ],
     practice: ['Agreed straight to delivered is no edge: start delivery first.'],
     example: { reason: 'BC-1 to BC-4 pass on 0.4.0-dev.690.' },
+    redFlag: 'Marking delivered because its issues closed, before every criterion passes on the running build.',
     family: 'requirements',
     audience: ['master'],
   },
@@ -170,5 +179,81 @@ export const REQUIREMENT_REST_CARDS = {
     redFlag: 'Filing an issue whose only work is verifying something that already shipped.',
     family: 'requirements',
     audience: ['run', 'master'],
+  },
+  'POST /api/projects/:id/requirements/:req/drop': {
+    purpose: 'Drops a requirement that is not going to be built, with the reason it goes.',
+    situations: [
+      {
+        when: 'a requirement will not be built: superseded, refused by the owner or a repeat of another',
+        do: 'drop it with the reason, naming the requirement it repeats where it is one',
+      },
+      {
+        when: 'it is refused REQUIREMENT_HAS_LIVE_ISSUES',
+        do: 'unlink or drop the issues it names first, then drop it',
+      },
+    ],
+    practice: [
+      'Dropping is a sign-off: it takes requirements.approve, and its open draft is withdrawn with it.',
+    ],
+    example: { reason: 'Superseded by REQ-104, which covers the same reorder flow.' },
+    // forge, 2026-10-17..11-16: 43 of 72 drops refused, chiefly on requirements live issues still
+    // carried (REQUIREMENT_HAS_LIVE_ISSUES) or with no reason (REQUIREMENT_DROP_REASON_REQUIRED)
+    redFlag: 'Dropping a requirement live issues still deliver, before unlinking or dropping them.',
+    family: 'requirements',
+    audience: ['master'],
+  },
+  'DELETE /api/projects/:id/requirements/:req/issues/:issue': {
+    purpose: 'Unlinks an issue from the requirement it was linked as delivering.',
+    situations: [
+      {
+        when: 'an issue was linked to the wrong requirement, or is to deliver another one',
+        do: 'unlink it here, then link it where it belongs',
+      },
+    ],
+    practice: ['An agent’s act: the issue is named by its key or its uuid in the path.'],
+    example: {},
+    // the link door refuses an issue another requirement holds (REQUIREMENT_ISSUE_LINKED_ELSEWHERE),
+    // naming this unlink; 37 unlinks on forge in 30 days, none refused
+    redFlag: 'Unlinking an issue to make a refusal go away while it still delivers the requirement.',
+    family: 'requirements',
+    audience: ['master'],
+  },
+  'PATCH /api/projects/:id/requirements/:req': {
+    purpose: 'Names the person who owns a requirement, or clears its owner.',
+    situations: [
+      {
+        when: 'a requirement’s owner is to change, or the person it names left the project',
+        do: 'set owner to a member’s user id, or null to clear it',
+      },
+    ],
+    practice: ['Only a member of the project can own it; its text changes through a revision, never here.'],
+    example: { owner: null },
+    // forge: both calls in the window were refused, an owner who was no member
+    // (REQUIREMENT_OWNER_NOT_MEMBER) or a body carrying more than owner
+    redFlag: 'Sending a requirement’s text or status here: this door sets only its owner.',
+    family: 'requirements',
+    audience: ['master'],
+  },
+  'POST /api/projects/:id/contract-requests': {
+    purpose: 'Asks a provider project for a change to a contract this project consumes.',
+    situations: [
+      {
+        when: 'your project needs a contract changed that another project publishes',
+        do: 'file the request from your project naming provider/contract, why and the criteria it needs',
+      },
+    ],
+    practice: [
+      'It lands as a draft requirement in the provider project; only the provider signs it.',
+    ],
+    example: {
+      contract: 'catalog-api/catalog',
+      title: 'Expose a product’s stock per warehouse',
+      reason: 'The storefront shows stock per pickup point.',
+    },
+    // the door refuses a contract the requester neither consumes nor the provider publishes
+    // (REQUIREMENT_CONTRACT_UNKNOWN) and a request to its own project (REQUIREMENT_REQUEST_OWN_PROJECT)
+    redFlag: 'Filing it in the provider’s project, or for your own contract: it is sent from the consumer.',
+    family: 'requirements',
+    audience: ['master'],
   },
 } satisfies Record<string, CapabilityCardBody>;

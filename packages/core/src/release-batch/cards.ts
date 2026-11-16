@@ -51,6 +51,10 @@ export const RELEASE_REST_CARDS = {
       'A release cut by hand names you as its cutter; the sweep’s cut names no person.',
     ],
     example: { issueIds: [ISSUE], version: '0.27.0', name: 'Reorder in one tap' },
+    // forge, 2026-10-17..11-16: 4 of 94 cuts refused, for a version taken or behind the line
+    // (RELEASE_CUT_VERSION_TAKEN, RELEASE_CUT_VERSION_BEHIND); the sweep cuts what waits on its own
+    redFlag:
+      'Naming a version by hand that is taken or behind the project’s line, where the next free one would do.',
     family: 'release',
     audience: ['master'],
   },
@@ -75,7 +79,7 @@ export const RELEASE_REST_CARDS = {
     // ISS-670's judge (2026-10-23): an abort sent as {} recorded "aborted by agent" with no reason
     redFlag: 'Aborting with an empty body: the run ends with no reason and its version undecided.',
     family: 'release',
-    audience: ['master'],
+    audience: ['run'],
   },
   'POST /api/projects/:projectId/release-batches/:runId/carried': {
     purpose:
@@ -88,6 +92,8 @@ export const RELEASE_REST_CARDS = {
     ],
     practice: ['It only adds; a run still open says it on its own abort instead.'],
     example: { carried: [{ kind: 'tag', name: 'dev-v0.4.0-dev.438' }] },
+    // the door refuses a run still open (RELEASE_CARRIED_RUN_OPEN): its own abort says it
+    redFlag: 'Declaring what a run left while it is still open, instead of on its own abort.',
     family: 'release',
     audience: ['master'],
   },
@@ -136,8 +142,12 @@ export const RELEASE_REST_CARDS = {
         reading: 'Staging serves c82e7d7c3a; every criterion of the roster passes there.',
       },
     },
+    // the door refuses evidence whose environment does not fit how the project releases
+    // (RELEASE_APPROVAL_EVIDENCE_ENVIRONMENT): a merge-released project's approval names none
+    redFlag:
+      'Opening the request with evidence not read on the environment the approval rests on.',
     family: 'release',
-    audience: ['master'],
+    audience: ['run'],
   },
   'POST /api/projects/:projectId/release-batches/:runId/method': {
     purpose: 'Says which method a release run works from, before it records anything else.',
@@ -149,8 +159,11 @@ export const RELEASE_REST_CARDS = {
     ],
     practice: ['Send it first in every release run.'],
     example: { skill: 'forge:release-flow', loaded: true },
+    // forge, 2026-10-17..11-16: 449 calls, none refused; a deploy or record before it is refused
+    // RELEASE_NOTHING_RECORDED, which is how runs that skipped it learned to send it first
+    redFlag: 'Deploying or recording before announcing the method: the run is refused RELEASE_NOTHING_RECORDED.',
     family: 'release',
-    audience: ['master'],
+    audience: ['run'],
   },
   'POST /api/projects/:projectId/release-batches/:runId/shipped-commit': {
     purpose: 'Names the commit a release run shipped where its merge marks leave it unanswered.',
@@ -167,8 +180,11 @@ export const RELEASE_REST_CARDS = {
       commit: 'c82e7d7c3a339c5035efea3bcbb8b6f45c9510ee',
       evidence: '/api/version reports sourceCommit c82e7d7c3a.',
     },
+    // forge: its one call was refused; a commit lacking a roster landing or held by another run is
+    // refused (RELEASE_SHIPPED_COMMIT_LACKS_LANDING, RELEASE_SHIPPED_COMMIT_HELD)
+    redFlag: 'Naming the commit you merged rather than the one the running app reports serving.',
     family: 'release',
-    audience: ['master'],
+    audience: ['run'],
   },
   'POST /api/projects/:projectId/releases/:version/repair': {
     purpose: 'Repairs a release recorded failed that did ship, keeping the failure on its record.',
@@ -188,5 +204,74 @@ export const RELEASE_REST_CARDS = {
     redFlag: 'Repairing every failed release by routine instead of reporting why runs end failed.',
     family: 'release',
     audience: ['master'],
+  },
+  'POST /api/projects/:projectId/release-batches/:runId/finish': {
+    purpose: 'Records that a release run released its roster, naming the commit production serves.',
+    situations: [
+      {
+        when: 'your release run deployed and you watched production serve the release commit',
+        do: 'finish naming that commit, then read release-batches/<runId>/state until finished or failed',
+      },
+      {
+        when: 'a production site was deployed outside Forge in this release',
+        do: 'name every production site in `sites` with what it serves, or the release holds as not shipped',
+      },
+    ],
+    practice: [
+      'It answers accepted at once; the outcome is finish.state on the run’s state read.',
+      'A second finish naming another commit while one runs is refused RELEASE_FINISH_IN_FLIGHT.',
+    ],
+    example: { commit: 'c82e7d7c3a339c5035efea3bcbb8b6f45c9510ee' },
+    // forge, 2026-10-17..11-16: 129 of 548 finishes refused, most while the batch still waited on
+    // its approval (RELEASE_AWAITING_APPROVAL) or named no site (RELEASE_SITE_UNDECLARED); the
+    // release run's prompt says never to finish because the steps ran without throwing
+    redFlag:
+      'Finishing because the steps ran without throwing, before the approval is decided or the deploy is seen live.',
+    family: 'release',
+    audience: ['run'],
+  },
+  'POST /api/projects/:projectId/release-batches/:runId/range': {
+    purpose: 'Reports what a release’s commit range ships, from the checkout that cut it.',
+    situations: [
+      {
+        when: 'you pushed the release commit and have not deployed it yet',
+        do: 'run `forge-runner release range --project-id <id> --run <runId> --head <sha>` in that checkout',
+      },
+      {
+        when: 'it is refused RELEASE_RANGE_OUTSIDE_ROSTER',
+        do: 'do not deploy: cut from a head holding only the roster’s landings and report again, or abort',
+      },
+    ],
+    practice: [
+      'Send it through the CLI verb, which reads git; a base this checkout lacks is fetched and sent again.',
+      'Forge tags the head you report v<version> once, so the build you deploy reads its version.',
+    ],
+    example: {
+      base: '9c6d6ded0b1e4f2a8a7c5d3e1f0b2a4c6d8e0f1a',
+      head: 'c82e7d7c3a339c5035efea3bcbb8b6f45c9510ee',
+      changes: [{ path: 'packages/core/drizzle/migrations/0672_x.sql', change: 'added' }],
+      files: [{ path: 'packages/core/drizzle/migrations/0672_x.sql', base: null, head: 'ALTER …' }],
+    },
+    // forge, 2026-10-17..11-16: 14 of 431 reports refused (RELEASE_RANGE_BASE_MOVED and
+    // RELEASE_RANGE_OUTSIDE_ROSTER are the ones the release prompt names)
+    redFlag:
+      'Deploying a head the range refused as outside the roster: it ships issues still waiting at the gate.',
+    family: 'release',
+    audience: ['run'],
+  },
+  'POST /api/projects/:projectId/release-batches/:runId/range/reads': {
+    purpose: 'Answers which of a release range’s changed files Forge reads, before their text is sent.',
+    situations: [
+      {
+        when: 'you report a release’s range and need to know whose text to send',
+        do: 'let `forge-runner release range` ask it; send only the files it names in the report',
+      },
+    ],
+    practice: ['The CLI verb asks it for you; call it by hand only when the verb cannot run.'],
+    example: { changes: [{ path: 'packages/core/contracts/forge-api.openapi.json', change: 'changed' }] },
+    // forge, 2026-10-17..11-16: 432 asks, none refused, each from the release range verb
+    redFlag: 'Sending every changed file’s text in the range report instead of only the files this read names.',
+    family: 'release',
+    audience: ['run'],
   },
 } satisfies Record<string, CapabilityCardBody>;

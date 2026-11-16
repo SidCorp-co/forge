@@ -71,6 +71,7 @@ const MODULE_PREFIX: Readonly<Record<string, string>> = {
   'integration-door': 'integration',
   'project-config': 'config',
   'release-batch': 'releases',
+  'forge-door': 'feedback',
 };
 const METHOD_VERB: Readonly<Record<string, string>> = {
   PUT: 'set',
