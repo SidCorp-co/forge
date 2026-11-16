@@ -4243,6 +4243,13 @@
       "when": 1840752000000,
       "tag": "0669_a_project_names_the_sources_it_learns_from",
       "breakpoints": true
+    },
+    {
+      "idx": 670,
+      "version": "7",
+      "when": 1840838400000,
+      "tag": "0670_a_record_belongs_to_a_module_and_a_term_names_its_relations",
+      "breakpoints": true
     }
   ]
 }

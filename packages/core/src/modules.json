@@ -676,6 +676,7 @@
         "itemEmbeddings",
         "knowledgeEntries",
         "knowledgeEntryRevisions",
+        "knowledgeRelations",
         "orgKnowledgeEntries"
       ],
       "serves": [

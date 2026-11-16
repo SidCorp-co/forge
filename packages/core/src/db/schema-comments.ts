@@ -61,8 +61,17 @@ export const comments = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     /** The language the text was written in (`@forge/contracts/written-lang`); null where it was written before the language was stored. */
     writtenLang: text('written_lang', { enum: WRITTEN_LANGS }),
+    /**
+     * The module it belongs to (ISS-1256), a decision's only: a module label of the same project, written only by the
+     * placement door an agent calls (`labels/module-map-place.ts`); null where nobody placed it.
+     */
+    moduleId: uuid('module_id'),
   },
   (t) => ({
+    moduleChk: check(
+      'comments_module_chk',
+      sql`${t.moduleId} IS NULL OR ${t.intent} = 'decision'`,
+    ),
     writtenLangChk: check(
       'comments_written_lang_chk',
       sql`${t.writtenLang} IS NULL OR ${t.writtenLang} IN ('en', 'vi')`,

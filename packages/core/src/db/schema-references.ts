@@ -63,8 +63,17 @@ export const referenceSources = pgTable(
     followError: text('follow_error'),
     repoArchived: boolean('repo_archived'),
     repoPushedAt: timestamp('repo_pushed_at', { withTimezone: true }),
+    /**
+     * The module it belongs to (ISS-1256): a module label of the same project, written only by the
+     * placement door an agent calls (`labels/module-map-place.ts`); null where nobody placed it.
+     */
+    moduleId: uuid('module_id'),
   },
   (t) => ({
+    moduleChk: check(
+      'reference_sources_module_chk',
+      sql`${t.moduleId} IS NULL OR ${t.projectId} IS NOT NULL`,
+    ),
     orgIdx: index('reference_sources_org_idx').on(t.orgId),
     projectIdx: index('reference_sources_project_idx').on(t.projectId),
     activeUrlUq: uniqueIndex('reference_sources_active_url_uq')

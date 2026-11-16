@@ -84,11 +84,26 @@ export const knowledgeEntries = pgTable(
       (): SQL => sql`left(${knowledgeEntries.title} || ' ' || ${knowledgeEntries.body}, 100000)`,
     ),
     metadata: jsonb('metadata').notNull().default({}),
+    /**
+     * The module it belongs to (ISS-1256): a module label of the same project, written only by the
+     * placement door an agent calls (`labels/module-map-place.ts`); null where nobody placed it.
+     */
+    moduleId: uuid('module_id'),
+    /**
+     * A term's other names and who named it (ISS-1256, `@forge/contracts/module-map` TermFields):
+     * `{ aliases?: { vi?, code?, industry? }, namedBy?: { who, quote } }`; only a `glossary` entry.
+     */
+    term: jsonb('term'),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
+    moduleIdx: index('knowledge_entries_module_idx').on(t.projectId, t.moduleId),
+    termChk: check(
+      'knowledge_entries_term_chk',
+      sql`${t.term} IS NULL OR (${t.kind} = 'glossary' AND jsonb_typeof(${t.term}) = 'object')`,
+    ),
     projectKindIdx: index('knowledge_entries_project_kind_idx').on(t.projectId, t.kind),
     projectSlugUq: uniqueIndex('knowledge_entries_project_slug_uq').on(t.projectId, t.slug),
     embeddingHnswIdx: index('knowledge_entries_embedding_hnsw_idx').using(
@@ -109,6 +124,59 @@ export const knowledgeEntries = pgTable(
       'knowledge_entries_entry_type_chk',
       sql`${t.entryType} IS NULL OR ${t.entryType} IN ('fact', 'hypothesis', 'convention')`,
     ),
+  }),
+);
+
+/**
+ * The module map's stored relations (ISS-1256): each starts at a term or a rule and is one of four
+ * kinds, `used_in` (term → rule or capability), `governs` (rule → capability), `from` (term or rule →
+ * requirement or decision) and `anchored_at` (term or rule → `file.ts:symbol`). `belongs_to` is the
+ * entry's `module_id`, never a row. Written only by an agent's or a person's call; an anchor is weighed
+ * by the landing re-check like the entry's own `source` (`knowledge/recheck.ts`).
+ */
+export const knowledgeRelations = pgTable(
+  'knowledge_relations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    fromEntryId: uuid('from_entry_id')
+      .notNull()
+      .references(() => knowledgeEntries.id, { onDelete: 'cascade' }),
+    kind: text('kind', { enum: ['used_in', 'governs', 'from', 'anchored_at'] }).notNull(),
+    toType: text('to_type', {
+      enum: ['term', 'rule', 'capability', 'requirement', 'decision', 'code'],
+    }).notNull(),
+    toRef: text('to_ref').notNull(),
+    writtenBy: uuid('written_by').references(() => users.id, { onDelete: 'set null' }),
+    writtenAgency: text('written_agency', { enum: ['human', 'agent'] }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    kindChk: check(
+      'knowledge_relations_kind_chk',
+      sql`${t.kind} IN ('used_in', 'governs', 'from', 'anchored_at')`,
+    ),
+    toTypeChk: check(
+      'knowledge_relations_to_type_chk',
+      sql`${t.toType} IN ('term', 'rule', 'capability', 'requirement', 'decision', 'code')`,
+    ),
+    agencyChk: check(
+      'knowledge_relations_agency_chk',
+      sql`${t.writtenAgency} IN ('human', 'agent')`,
+    ),
+    toRefChk: check(
+      'knowledge_relations_to_ref_chk',
+      sql`length(${t.toRef}) BETWEEN 1 AND 512`,
+    ),
+    edgeUq: uniqueIndex('knowledge_relations_edge_uq').on(
+      t.fromEntryId,
+      t.kind,
+      t.toType,
+      t.toRef,
+    ),
+    projectIdx: index('knowledge_relations_project_idx').on(t.projectId, t.toType, t.toRef),
   }),
 );
 

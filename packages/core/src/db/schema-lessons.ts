@@ -85,6 +85,11 @@ export const lessons = pgTable(
     /** When a landing touched its anchor, and which with what (`ISS-12: <path>`); null while it stands. */
     invalidAt: timestamp('invalid_at', { withTimezone: true }),
     invalidBy: text('invalid_by'),
+    /**
+     * The module it belongs to (ISS-1256): a module label of the same project, written only by the
+     * placement door an agent calls (`labels/module-map-place.ts`); null where nobody placed it.
+     */
+    moduleId: uuid('module_id'),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
