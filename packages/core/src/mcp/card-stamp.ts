@@ -5,10 +5,12 @@
 
 import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { enterHermeticEnv } from '../api-contract/hermetic-env.js';
 import { CARD_LEDGER } from '../lib/card-changed.js';
 
-const LEDGER = new URL('../lib/card-changes.json', import.meta.url);
+const LEDGER = join(dirname(fileURLToPath(import.meta.url)), '..', 'lib', 'card-changes.json');
 
 function issue(): string {
   const given = process.argv[2];
