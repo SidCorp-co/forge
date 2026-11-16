@@ -16,6 +16,7 @@ import {
   provideChatTools,
   provideHeldWriteVets,
   provideNeedsYouDecisionRead,
+  provideTranscriptFindPort,
   refuseChatToolWrite,
   registerRoomBridges,
   registerRoomChat,
@@ -35,6 +36,7 @@ import { contractHolding, contractVersionReads, interfaceContractsOf } from './e
 import { declaredRunSecretPorts, provideExecutionPorts } from './execution-ports.js';
 import { provideFastLanePorts } from './fast-lane/index.js';
 import { provideFeedbackDependents, requirementFeedbackAs } from './feedback/index.js';
+import { transcriptThroughFind } from './find/index.js';
 import { readIssueForecast, releaseClaimsFor, releaseLegFor } from './forecast/index.js';
 import { provideAssistantMethod } from './guides/index.js';
 import { valueCheckHeld } from './intake/index.js';
@@ -262,6 +264,7 @@ registerReportQueries();
 provideReportPorts();
 provideStandingPorts();
 provideChatTools(CHAT_PROVIDED_TOOLS);
+provideTranscriptFindPort({ transcriptThroughFind });
 provideHeldWriteVets(CHAT_RECORD_VETS);
 provideDoorCatalog({
   doorCatalog: servedDoorCatalog,

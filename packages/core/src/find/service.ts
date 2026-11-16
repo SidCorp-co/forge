@@ -23,7 +23,7 @@ import {
   referenceArm,
   requirementArm,
 } from './arms-records.js';
-import { aliasArm, capabilityArm, conversationArm } from './arms-shared.js';
+import { aliasArm, capabilityArm, conversationArm, type TranscriptRead } from './arms-shared.js';
 import type { ArmList, Candidate } from './candidate.js';
 import { expandedPhrases, expandedText, expandThroughGlossary } from './expand.js';
 import { glossaryTerms, moduleTree, type PlacedKind, placementsOf } from './model-reads.js';
@@ -58,6 +58,8 @@ export interface FindInput {
    * absent, every curated source and core's issue copies.
    */
   memorySources?: readonly MemoryAuthoredSource[];
+  /** What the venue knows the room `query.conversation` names does not cover (a thread, not its channel). */
+  venueLimitation?: string | undefined;
 }
 
 /** What a find answered, and the fused candidates a filter of the door reads its own shape from. */
@@ -70,8 +72,8 @@ export interface FindOutcome {
    */
   kept: Fused[];
   memory: { keyword: MemoryArm; semantic: MemoryArm | null } | null;
-  /** What the transcript arm could not show, where it ran. */
-  limitation: string | null;
+  /** The transcript arm's read, where it ran: how far the room's index reaches and what it could not show. */
+  transcript: TranscriptRead | null;
 }
 
 /** Each arm reads this many beyond the answer's limit, so the fusion has ranks to weigh. */
@@ -120,7 +122,7 @@ async function armLists(
 ): Promise<{
   lists: ArmList[];
   memory: FindOutcome['memory'];
-  limitation: string | null;
+  transcript: TranscriptRead | null;
 }> {
   const { projectIds, projectId, query } = input;
   const k = armDepth(query.limit);
@@ -151,7 +153,10 @@ async function armLists(
           userId: readerUserId(input.reader, 'a room transcript'),
           projectId,
           query: query.q,
-          limit: k,
+          // one list, so no depth beyond the ask: the room reads as many as were asked, its own cap
+          // and the limit it names where the ask passes it
+          limit: query.limit,
+          venueLimitation: input.venueLimitation,
         })
       : null,
   ]);
@@ -185,7 +190,7 @@ async function armLists(
     ...(room ? [{ arm: 'keyword' as const, hits: room.hits }] : []),
     { arm: 'alias', hits: runs('alias') ? alias : [] },
   ];
-  return { lists, memory: mem, limitation: room?.limitation ?? null };
+  return { lists, memory: mem, transcript: room?.read ?? null };
 }
 
 /** The module label each fused candidate is placed in, read per table. */
@@ -242,7 +247,7 @@ export async function runFind(input: FindInput): Promise<FindOutcome> {
   const runs = runsOf(input);
   const vec = DENSE_ARMS.some(runs) ? await vectorOf(projectId, query.q) : null;
   const alias = aliasArm(named.map((n) => ({ term: n.term, alias: n.expansion.alias })));
-  const { lists, memory, limitation } = await armLists(input, text, phrases, vec, alias);
+  const { lists, memory, transcript } = await armLists(input, text, phrases, vec, alias);
   const fused = fuseArms(lists);
   const [modules, placements, projectSlugs] = await Promise.all([
     moduleTree(projectIds),
@@ -276,6 +281,6 @@ export async function runFind(input: FindInput): Promise<FindOutcome> {
     fused,
     kept: fused.filter((c) => keptIds.has(c.id)),
     memory,
-    limitation,
+    transcript,
   };
 }

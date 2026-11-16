@@ -55,6 +55,7 @@ export { makeItemAct } from './tools/item-act-doors.js';
 export { planItemAct } from './tools/item-act-plans.js';
 export { type ChatToolSpec, type ChatToolset, toolError } from './tools/mcp-adapter.js';
 export { provideChatTools } from './tools/registry.js';
+export { provideTranscriptFindPort } from './tools/transcript-port.js';
 export type { WidgetDraftParams } from './tools/widget-draft-tool.js';
 export { noteAppliedLessons, noteRoomReplies } from './turn-lessons.js';
 export { fenceToolsetToOrigin } from './turn-origin.js';

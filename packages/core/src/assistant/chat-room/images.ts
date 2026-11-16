@@ -102,6 +102,7 @@ export async function prepareFastTurn(opts: {
  * The room's own past, where this turn has a room to ask about.
  */
 function transcriptSearchToolsets(opts: {
+  route: { projectId: string };
   principalUserId: string;
   turn: ChatTurnFacts;
   restAuth: RocketChatRestAuth;
@@ -113,6 +114,7 @@ function transcriptSearchToolsets(opts: {
   return [
     buildTranscriptSearchToolset({
       conversationId,
+      projectId: opts.route.projectId,
       principalUserId: opts.principalUserId,
       permalink: (externalId) => buildMessagePermalink(opts.restAuth, opts.rid, externalId),
       ...(opts.tmid

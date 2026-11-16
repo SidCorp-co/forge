@@ -56,6 +56,9 @@ export function capabilityArm(text: string, limit: number): Candidate[] {
   return found.sort((a, b) => b.score - a.score || a.ref.localeCompare(b.ref)).slice(0, limit);
 }
 
+/** What one room's transcript read answered: its passages, how far its index reaches, its limits. */
+export type TranscriptRead = Awaited<ReturnType<typeof searchConversationTranscript>>;
+
 /** One room's indexed passages matching the query, read under the room's own fence. */
 export async function conversationArm(input: {
   conversationId: string;
@@ -63,15 +66,18 @@ export async function conversationArm(input: {
   projectId: string;
   query: string;
   limit: number;
-}): Promise<{ hits: Candidate[]; limitation: string | null }> {
+  /** What the venue knows the room does not cover, said among the read's limits. */
+  venueLimitation?: string | undefined;
+}): Promise<{ hits: Candidate[]; read: TranscriptRead }> {
   const found = await searchConversationTranscript({
     conversationId: input.conversationId,
     userId: input.userId,
     query: input.query,
     limit: input.limit,
+    ...(input.venueLimitation ? { venueLimitation: input.venueLimitation } : {}),
   });
   return {
-    limitation: found.limitation,
+    read: found,
     hits: found.matches.map((m) => ({
       id: hitId('conversation', m.passageId),
       type: 'conversation',

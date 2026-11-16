@@ -1,5 +1,6 @@
 /**
- * The one way a turn asks its room about its own past (ISS-1090).
+ * The one way a turn asks its room about its own past (ISS-1090), as a filter of the find door
+ * (ISS-1256): the door's conversation filter over this room, in its order (`transcript-port.ts`).
  *
  * The room and the caller are closed over, so the model names neither and
  * cannot ask about a room it is not in. Every bound is spent in
@@ -8,9 +9,10 @@
  * fence's own sentence rather than as an empty page.
  */
 
-import { RETRIEVAL_MAX_RESULTS, searchConversationTranscript } from '../../conversations/index.js';
+import { RETRIEVAL_MAX_RESULTS } from '../../conversations/index.js';
 import type { CallToolResult } from '../../lib/tool-result.js';
 import { type ChatToolset, toolError } from './mcp-adapter.js';
+import { type TranscriptFound, transcriptThroughFind } from './transcript-port.js';
 
 export const TRANSCRIPT_SEARCH_TOOL_NAME = 'conversation_transcript_search';
 /** Calls one turn may spend on it. */
@@ -23,6 +25,8 @@ export type PermalinkResolver = (externalId: string) => Promise<string | null>;
 
 export interface TranscriptSearchToolOptions {
   conversationId: string;
+  /** The project the turn answers in: where the door finds the room's passages. */
+  projectId: string;
   /** Whose authority this turn runs under; the room's fence is asked about them. */
   principalUserId: string | null | undefined;
   permalink?: PermalinkResolver | undefined;
@@ -68,13 +72,19 @@ export function buildTranscriptSearchToolset(opts: TranscriptSearchToolOptions):
       );
     }
 
+    if (!opts.principalUserId) {
+      return toolError(
+        `${TRANSCRIPT_SEARCH_TOOL_NAME} reads a room for a person, and this turn runs as none`,
+      );
+    }
     try {
-      const result = await searchConversationTranscript({
+      const result = await transcriptThroughFind({
         conversationId: opts.conversationId,
+        projectId: opts.projectId,
         userId: opts.principalUserId,
         query,
-        ...(typeof read.args.limit === 'number' ? { limit: read.args.limit } : {}),
-        ...(opts.venueLimitation ? { venueLimitation: opts.venueLimitation } : {}),
+        limit: typeof read.args.limit === 'number' ? read.args.limit : RETRIEVAL_MAX_RESULTS,
+        venueLimitation: opts.venueLimitation ?? undefined,
       });
       return { content: [{ type: 'text', text: JSON.stringify(await withLinks(result, opts)) }] };
     } catch (err) {
@@ -123,7 +133,7 @@ function refusalText(err: unknown): string {
  * Attach a link to every source the venue can build one for.
  */
 async function withLinks(
-  result: Awaited<ReturnType<typeof searchConversationTranscript>>,
+  result: TranscriptFound,
   opts: TranscriptSearchToolOptions,
 ): Promise<unknown> {
   if (!opts.permalink) return result;
