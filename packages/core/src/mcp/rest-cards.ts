@@ -1,7 +1,15 @@
 // The capability cards of the REST doors beyond the orientation's (ISS-1251), each written in its
-// module's own `cards.ts` beside its routes and gathered here for the door catalog
-// (`door-catalog.ts:servedDoorCatalog`). Builder H fills it; until then it holds none.
+// module's own `cards.ts` beside its routes, keyed by the door as the published contract lists it,
+// and gathered here for the door catalog (`door-catalog.ts:servedDoorCatalog`). The module a card
+// comes from is its owner, so a landing touching that module owes the card a re-check. A card that
+// does not stand refuses the module's load, naming it (`prompt/facts/affordance-cards.ts:card`).
 
-import type { CapabilityCard } from '@forge/contracts/capability-cards';
+import type { CapabilityCard, CapabilityCardBody } from '@forge/contracts/capability-cards';
+import { ISSUE_REST_CARDS } from '../issues/index.js';
+import { card } from '../prompt/index.js';
 
-export const REST_CARDS: readonly CapabilityCard[] = [];
+/** One module's cards, each owned by that module. */
+const ownedBy = (owner: string, cards: Readonly<Record<string, CapabilityCardBody>>) =>
+  Object.entries(cards).map(([id, body]) => card(id, owner, body));
+
+export const REST_CARDS: readonly CapabilityCard[] = [...ownedBy('issues', ISSUE_REST_CARDS)];
