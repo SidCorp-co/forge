@@ -139,6 +139,8 @@ describe('the drafted lesson reads the thread and quotes the owner (ISS-1251)', 
           sentence,
           corrections: [first.id, second.id],
           about: 'app',
+          // the epod CLI's messages, where the owner's ruling applies (rebuilt; epod ISS-201)
+          anchor: 'src/cli/messages.ts',
           scope: 'project',
           areaId: null,
           itemKind: null,
