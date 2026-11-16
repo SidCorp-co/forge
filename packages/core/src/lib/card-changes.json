@@ -250,7 +250,7 @@
     "by": "ISS-1251"
   },
   "POST /api/issues/:id/transition": {
-    "hash": "4ce7807623f74f98",
+    "hash": "2fada31cb4ed61f8",
     "on": "2026-11-16",
     "by": "ISS-1251"
   },

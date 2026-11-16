@@ -284,7 +284,7 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     practice: [
       'Say why in a comment first; closed means its criteria were met in scope.',
       'The status moves only here: `issues/<id> -X PATCH` writes fields, never the status.',
-      'A park takes reason and waitingKind on the one call (WAITING_KIND_REQUIRED, TRANSITION_REASON_REQUIRED); a move outside the lifecycle is ILLEGAL_TRANSITION, naming the legal ones.',
+      'A park takes `reason` and `waitingKind` on the one call (WAITING_KIND_REQUIRED, TRANSITION_REASON_REQUIRED) and waits on one fact: `needs`, `awaitsMerge` or `awaitsDesign`; a move outside the lifecycle is ILLEGAL_TRANSITION, naming the legal ones.',
     ],
     example: {
       toStatus: 'needs_info',
