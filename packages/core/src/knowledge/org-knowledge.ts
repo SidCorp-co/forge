@@ -8,7 +8,7 @@ import { and, asc, eq, notInArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { knowledgeEntries, orgKnowledgeEntries, projects } from '../db/schema.js';
 import { provenanceOf, provenanceRefusal } from './provenance.js';
-import { orgEntryInService, recheckDueOf } from './recheck.js';
+import { recheckDueOf } from './recheck.js';
 import { recheckForRules } from './upsert.js';
 
 type Row = typeof orgKnowledgeEntries.$inferSelect;
@@ -104,13 +104,7 @@ export async function orgAlwaysInjectOf(
     .select({ slug: orgKnowledgeEntries.slug, body: orgKnowledgeEntries.body })
     .from(orgKnowledgeEntries)
     .innerJoin(projects, eq(projects.orgId, orgKnowledgeEntries.orgId))
-    .where(
-      and(
-        eq(projects.id, projectId),
-        eq(orgKnowledgeEntries.injection, 'always'),
-        orgEntryInService,
-      ),
-    )
+    .where(and(eq(projects.id, projectId), eq(orgKnowledgeEntries.injection, 'always')))
     .orderBy(asc(orgKnowledgeEntries.orderIndex), asc(orgKnowledgeEntries.slug));
 }
 
@@ -133,7 +127,6 @@ export async function orgOnDemandSlugsOf(projectId: string): Promise<string[]> {
         eq(projects.id, projectId),
         eq(orgKnowledgeEntries.injection, 'on_demand'),
         notInArray(orgKnowledgeEntries.slug, held),
-        orgEntryInService,
       ),
     )
     .orderBy(asc(orgKnowledgeEntries.orderIndex), asc(orgKnowledgeEntries.slug));
@@ -148,13 +141,7 @@ export async function orgOnDemandSourcesOf(
     .select({ slug: orgKnowledgeEntries.slug, source: orgKnowledgeEntries.source })
     .from(orgKnowledgeEntries)
     .innerJoin(projects, eq(projects.orgId, orgKnowledgeEntries.orgId))
-    .where(
-      and(
-        eq(projects.id, projectId),
-        eq(orgKnowledgeEntries.injection, 'on_demand'),
-        orgEntryInService,
-      ),
-    );
+    .where(and(eq(projects.id, projectId), eq(orgKnowledgeEntries.injection, 'on_demand')));
   return Object.fromEntries(rows.map((r) => [r.slug, r.source]));
 }
 

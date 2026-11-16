@@ -35,6 +35,7 @@
 import { sql } from 'drizzle-orm';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
+import { selectAlwaysInjectFromKnowledge } from '../../src/knowledge/index.js';
 import { retireLapsedNotes } from '../../src/memory/note-lifetime.js';
 import { recheckForLanding } from '../../src/memory/recheck.js';
 import { api, type Body, userToken } from '../helpers/api.js';
@@ -329,6 +330,16 @@ describe('BC-5: a change meeting what an entry names flags it', () => {
       scope: 'memory writes',
       recheckWhen: 'the indexer changes',
     });
+    await putKnowledge('indexer-rule', {
+      kind: 'rule',
+      title: 'Indexer rule',
+      body: 'Never embed a memory twice for one text',
+      injection: 'always',
+      type: 'convention',
+      source: 'owner',
+      scope: 'memory writes',
+      recheckWhen: 'packages/core/src/memory/indexer.ts changes',
+    });
     await api(w.token, 'PUT', `/api/orgs/${w.orgId}/knowledge/indexer-ruling`, {
       title: 'Indexer ruling',
       body: 'Vectors are kept for unchanged text',
@@ -347,7 +358,7 @@ describe('BC-5: a change meeting what an entry names flags it', () => {
 
   it('flags the memory, the project entry and the org ruling naming a path the landing touched, and nothing else', async () => {
     const flagged = await recheckForLanding(w.projectId, issueId);
-    expect(flagged).toMatchObject({ memories: expect.any(Number), knowledge: 2 });
+    expect(flagged).toMatchObject({ memories: expect.any(Number), knowledge: 3 });
     const rows = (await entries('&limit=200')).body.items as Body[];
     const note = rows.find((r) => r.id === noteId);
     expect(note?.flagged).toMatchObject({ by: 'ISS-41' });
@@ -395,7 +406,7 @@ describe('BC-5: a change meeting what an entry names flags it', () => {
     expect(row?.flagged).toBeNull();
   });
 
-  it('serves no agent what a change took out of service, lists it, and serves it again once rewritten', async () => {
+  it('serves no agent learned text a change took out of service, keeps serving a decision in force, and serves the text again once rewritten', async () => {
     const memoryRecall = () =>
       api(w.token, 'POST', '/api/memory/search', {
         projectId: w.projectId,
@@ -416,7 +427,11 @@ describe('BC-5: a change meeting what an entry names flags it', () => {
     expect(withheld.body.withheldForRecheck).toBeGreaterThanOrEqual(1);
     const outOfService = await knowledgeRecall();
     expect(outOfService).not.toContain('indexer-guide');
-    expect(outOfService).not.toContain('indexer-ruling');
+    // a decision in force is not learned text: flagged, it stays served, since only a person retires it
+    expect(outOfService).toContain('indexer-ruling');
+    expect((await getKnowledge('indexer-rule')).body.recheckDue).toMatchObject({ by: 'ISS-41' });
+    const prompt = await selectAlwaysInjectFromKnowledge(w.projectId);
+    expect(prompt.map((f) => f.key)).toContain('indexer-rule');
     // where the next agent finds it to confirm or rewrite: the list, with the re-check owed on it
     const listed = await api(w.token, 'GET', `/api/projects/${w.projectId}/knowledge`);
     const guideRow = (listed.body.rows as Body[]).find((e) => e.slug === 'indexer-guide');

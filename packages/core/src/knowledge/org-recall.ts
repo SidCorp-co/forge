@@ -18,7 +18,7 @@ import { EmbeddingUnavailableError, embedBatch } from '../integrations/llm/index
 import { logger } from '../lib/logger.js';
 import { anyWordQuery } from './any-word.js';
 import { knowledgeEmbedInput } from './entry-input.js';
-import { orgEntryInService, recheckDueOf } from './recheck.js';
+import { recheckDueOf } from './recheck.js';
 
 /** An org entry as recall answers it, shaped as a project hit so the two rank in one list. */
 export interface OrgRecallHit {
@@ -53,12 +53,7 @@ async function reachable(projectIds: readonly string[]): Promise<Row[]> {
     .from(orgKnowledgeEntries)
     .innerJoin(projects, eq(projects.orgId, orgKnowledgeEntries.orgId))
     .where(
-      and(
-        inArray(projects.id, [...projectIds]),
-        notInArray(orgKnowledgeEntries.slug, shadowed),
-        // a ruling a change took out of service is recalled by no agent until re-checked
-        orgEntryInService,
-      ),
+      and(inArray(projects.id, [...projectIds]), notInArray(orgKnowledgeEntries.slug, shadowed)),
     );
   return rows.map((r) => r.entry);
 }

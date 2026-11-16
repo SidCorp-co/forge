@@ -3,20 +3,20 @@
 // When a change meets one — a landing whose commit touched a named path, whose text names a named
 // route or config key, or a rewrite of a named rule — the entry is flagged: `metadata.recheckDue` on a
 // project entry, `recheck_due` on an org entry, the release flag on a memory (`memory/recheck.ts`).
-// A flagged entry is out of service (REQ-89 r3 BC-5, ISS-1251): kept for its history and readable by
-// its slug, but never served to an agent: no prompt carries it, no guide index names it and no search
-// or recall returns it (`entryInService`, `orgEntryInService`). The next agent or the Audit confirms,
-// rewrites or retires it; a rewrite clears the flag and puts it back in service.
+// A flagged entry of learned text is out of service (REQ-89 r4 BC-5, ISS-1251): kept for its history
+// and readable by its slug, but never served to an agent: no prompt carries it, no guide index names it
+// and no search or recall returns it (`entryInService`). The next agent or the Audit confirms, rewrites
+// or retires it; a rewrite clears the flag and puts it back in service. A decision in force (a rule, an
+// org ruling, an agreement) is not learned text: it stays served while flagged, showing its
+// `recheckDue`, since only a person retires it.
 
 import type { RecheckDue } from '@forge/contracts/knowledge';
 import { and, eq, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { knowledgeEntries, orgKnowledgeEntries, projects } from '../db/schema.js';
 
-/** A project entry no change has taken out of service: no re-check owed on it. */
-export const entryInService = sql`${knowledgeEntries.metadata}->'recheckDue' IS NULL`;
-/** An org entry no change has taken out of service. */
-export const orgEntryInService = isNull(orgKnowledgeEntries.recheckDue);
+/** A project entry in service: no re-check owed on it, or a rule, which a flag never withholds. */
+export const entryInService = sql`(${knowledgeEntries.metadata}->'recheckDue' IS NULL OR ${knowledgeEntries.kind} = 'rule')`;
 
 /** What an entry names that a change can meet. */
 export interface Anchors {
