@@ -7,7 +7,8 @@
  *
  * A code anchor is met by a changed path (the file, or one under its directory); a requirement's
  * behaviour by the landing's own words naming it; a card by the paths its door lives in, or by the
- * landing naming the card.
+ * landing naming the card. A test changes no symbol, door or behaviour, so a changed test file meets
+ * no anchor (ISS-1251: ISS-1251's own test edits held ten lessons).
  */
 
 import { landsMerge } from '@forge/contracts/issue-machine';
@@ -39,13 +40,22 @@ const pathMeets = (anchor: string, changed: string) => {
   return changed === a || changed.endsWith(`/${a}`) || changed.startsWith(`${a}/`);
 };
 
+/** A test or a test's fixture: a file the build serves nothing from. */
+const TEST_PATH = /(^|\/)(tests?|__tests__)\/|\.(test|spec|fixture)\.[cm]?[jt]sx?$/;
+
 /** What of the change meets the anchor, as named; empty where nothing does. */
 export function anchorMet(
   anchor: string,
-  change: AnchorChange,
+  landing: AnchorChange,
   cardPaths: readonly string[] = [],
 ): string[] {
   const kind = lessonAnchorKind(anchor);
+  // a lesson anchored to a test itself is still met by that test's change
+  const own = kind === 'code' ? pathOf(anchor) : null;
+  const change = {
+    ...landing,
+    paths: landing.paths.filter((p) => !TEST_PATH.test(p) || (own !== null && pathMeets(own, p))),
+  };
   if (kind === 'code') return change.paths.filter((p) => pathMeets(anchor, p));
   if (kind === 'bc') {
     const [req, bc] = anchor.split(' ');

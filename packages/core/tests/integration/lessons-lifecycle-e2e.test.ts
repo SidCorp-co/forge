@@ -92,9 +92,29 @@ describe('a landing that touches a lesson’s anchor invalidates it (§5)', () =
       'Name the unit beside every number.',
       'packages/core/src/units.ts',
     );
+    // a card's door lives in its module: forge_support's in packages/core/src/support
+    const wide = await approvedOn('Read the member before you answer.', 'card:support.member');
+    const ownTest = await approvedOn(
+      'Plant the refusal first.',
+      'packages/core/src/widgets/render.test.ts',
+    );
     expect(await block(every)).toContain(`- lesson-${touched}:`);
 
-    await landedMove(await landed(71, [WIDGET, 'packages/core/src/widgets/index.ts']));
+    // a landing that changed only tests changes no anchored symbol, door or behaviour (forge-dev
+    // dev.701: ISS-1251's plain-agreement.test.ts held every support card's lessons)
+    await landedMove(
+      await landed(70, [
+        'packages/core/src/support/plain-agreement.test.ts',
+        'packages/core/tests/integration/support-room-e2e.test.ts',
+        'packages/core/src/widgets/render.test.ts',
+      ]),
+    );
+    expect(await stateOf(wide)).toMatchObject({ status: 'approved', invalid_at: null });
+    // a lesson anchored to a test itself is met by that test's change
+    expect((await stateOf(ownTest))?.status).toBe('held');
+
+    await landedMove(await landed(71, [WIDGET, 'packages/core/src/support/tool-description.ts']));
+    expect((await stateOf(wide))?.status).toBe('held');
 
     expect(await stateOf(touched)).toMatchObject({
       status: 'held',
