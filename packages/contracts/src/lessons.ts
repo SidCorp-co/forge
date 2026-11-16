@@ -204,9 +204,22 @@ export const proposeLessonRequestSchema = z.strictObject({
 });
 export type ProposeLessonRequest = z.infer<typeof proposeLessonRequestSchema>;
 
+/**
+ * One applied lesson, as the map writes it (`L-3`) or as its number (3): the confusions door's path
+ * already takes both, and the map teaching the key form while this door took the number alone refused
+ * every box call it was given (ISS-601's judge, then forge's three calls to 2026-10-22; ISS-1251).
+ */
+const appliedLesson = z.union([
+	lessonNumber,
+	z
+		.string()
+		.regex(/^L-[1-9]\d*$/, "a lesson is its key (L-3) or its number (3)")
+		.transform((key) => Number(key.slice(2))),
+]);
+
 /** `POST /api/projects/:id/lessons/applied`: the lessons one output applied. */
 export const recordAppliedRequestSchema = z.strictObject({
-	lessons: z.array(lessonNumber).min(1).max(LESSON_LIMITS.appliedPerOutput),
+	lessons: z.array(appliedLesson).min(1).max(LESSON_LIMITS.appliedPerOutput),
 	output: z.strictObject({
 		kind: z.enum(LESSON_OUTPUT_KINDS),
 		ref: z.string().trim().min(1).max(200),
@@ -214,7 +227,7 @@ export const recordAppliedRequestSchema = z.strictObject({
 });
 export type RecordAppliedRequest = z.infer<typeof recordAppliedRequestSchema>;
 export const RECORD_APPLIED_SHAPE =
-	"{ lessons: [lesson number], output: { kind: chat_message | steward_run | job | issue, ref } }";
+	"{ lessons: [L-n or n], output: { kind: chat_message | steward_run | job | issue, ref } }";
 
 const side = z.string().trim().min(1).max(LESSON_LIMITS.sideChars);
 

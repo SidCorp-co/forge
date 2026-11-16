@@ -22,8 +22,8 @@ import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { type LessonEntryMeta, putLessonEntry } from '../../src/knowledge/lesson-entries.js';
-import { type Doc, ok } from '../helpers/ecosystem-world.js';
-import { rows } from '../helpers/factories.js';
+import { type Doc, ok, requester } from '../helpers/ecosystem-world.js';
+import { addProjectMember, createTestUser, rows } from '../helpers/factories.js';
 import {
   approve,
   approved,
@@ -41,6 +41,7 @@ import {
   say,
   w,
 } from '../helpers/lessons-world.js';
+import { pairTestBox } from '../helpers/paired-box.js';
 
 openLessonsWorld();
 
@@ -363,6 +364,34 @@ describe('an output lists the lessons it applied, and an agent marks one wrongly
     });
     expect(fromProposal).toBe(0);
     expect(await lesson(p)).toMatchObject({ applied_count: 0, applications: [] });
+  });
+
+  // ISS-1251 c3: forge's three calls to this door were all refused, the map teaching `L-3` while the
+  // door took 3 alone; a box's checkout credential, as a master or run holds it, sends either form
+  it('records a box checkout credential’s applied lesson sent as the map writes it, or as its number', async () => {
+    const n = await approved('Name the ward on every handover.');
+    const m = await approved('Name the nurse on every handover.');
+    const agent = (await createTestUser({ kind: 'agent' })).id;
+    await addProjectMember(w.projectId, agent, 'member');
+    const { paneToken } = await pairTestBox(w.projectId, { pairedBy: w.ownerId, actsAs: agent });
+    const box = requester((await import('../../src/index.js')).app, { box: paneToken as string });
+    const output = { kind: 'issue', ref: 'ISS-1251' };
+    expect(
+      ok(await box('box', 'POST', at('/lessons/applied'), { lessons: [`L-${n}`, m], output })),
+    ).toEqual({ recorded: 2 });
+    expect((await lesson(n)).applied_count).toBe(1);
+    const [kept] = await rows<{ agent_user_id: string }>(
+      sql`SELECT a.agent_user_id FROM lesson_applications a JOIN lessons l ON l.id = a.lesson_id
+           WHERE l.project_id = ${w.projectId} AND l.number = ${n}`,
+    );
+    expect(kept?.agent_user_id).toBe(agent);
+    // a key that is not one is still refused by name, where it is
+    const bad = await box('box', 'POST', at('/lessons/applied'), {
+      lessons: [`lesson-${n}`],
+      output,
+    });
+    expect(bad.status).toBe(400);
+    expect(bad.json.error.refusals[0]).toMatchObject({ path: '/lessons/0' });
   });
 
   it('an agent marks one wrongly applied from its output: a confusion that holds the lesson for the steward', async () => {

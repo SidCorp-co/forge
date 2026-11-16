@@ -15,14 +15,15 @@ export const LESSON_REST_CARDS = {
       },
     ],
     practice: [
-      'Lessons are numbers: `L-3` is sent as 3.',
+      'A lesson goes as the map writes it (`L-3`) or as its number (3).',
       'Only an approved lesson of this project is applied; any other is refused LESSON_NOT_APPLICABLE.',
       'Record only lessons that shaped the output, not every one you read.',
     ],
-    example: { lessons: [29, 30], output: { kind: 'issue', ref: 'ISS-680' } },
-    // ISS-601 judge: `{lessons:["L-1"]}` was refused BAD_REQUEST "expected number, received string"
-    // while the map teaches the `L-1` form
-    redFlag: 'Sending the lesson as written in the map (`"L-3"`): the door takes the number only.',
+    example: { lessons: ['L-29', 'L-30'], output: { kind: 'issue', ref: 'ISS-680' } },
+    // forge to 2026-11-16: every lesson's applied count read 0 while runs ended their issue comments
+    // with `Lessons applied:` lines; a run's or master's line is read by nothing, only this call keeps it
+    redFlag:
+      'Ending the output with `Lessons applied: L-n` and recording nothing: only this call keeps a run’s or master’s use.',
     family: 'knowledge',
     audience: ['master', 'run'],
   },

@@ -420,7 +420,7 @@
     "by": "ISS-1251"
   },
   "POST /api/projects/:id/lessons/applied": {
-    "hash": "abba3b4ee28168a3",
+    "hash": "8b51ea50f5490c8b",
     "on": "2026-11-16",
     "by": "ISS-1251"
   },
