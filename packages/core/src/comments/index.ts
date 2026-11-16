@@ -1,3 +1,4 @@
+export { COMMENT_REST_CARDS } from './cards.js';
 export { type ItemDecision, itemDecisionOf, reasonedDecisionsOnItems } from './decision-answers.js';
 export { listDecisionsAs } from './entity-read.js';
 export { recordFeedbackDecisionIn, recordRequirementDecisionIn } from './entity-service.js';

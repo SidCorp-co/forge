@@ -6,6 +6,7 @@
 
 import type { CapabilityCard, CapabilityCardBody } from '@forge/contracts/capability-cards';
 import { CLEANUP_REST_CARDS } from '../cleanup/index.js';
+import { COMMENT_REST_CARDS } from '../comments/index.js';
 import { ECOSYSTEM_REST_CARDS } from '../ecosystem/index.js';
 import { INTEGRATION_DOOR_REST_CARDS } from '../integration-door/index.js';
 import { ISSUE_REST_CARDS } from '../issues/index.js';
@@ -44,4 +45,5 @@ export const REST_CARDS: readonly CapabilityCard[] = [
   ...ownedBy('workflows', WORKFLOW_REST_CARDS),
   ...ownedBy('ecosystem', ECOSYSTEM_REST_CARDS),
   ...ownedBy('lessons', LESSON_REST_CARDS),
+  ...ownedBy('comments', COMMENT_REST_CARDS),
 ];
