@@ -192,13 +192,21 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
         when: 'a person owes an answer, a decision or a resource you cannot make',
         do: 'park it through `issues/<id>/transition`, sending `{"toStatus":"needs_info"}` with `reason`, `waitingKind` and `needs` on the one call, `needs` written as the ask itself',
         watch:
-          'on an issue that delivers a requirement or carries feedback, `needs` with no `about` is refused `QUESTION_ABOUT_REQUIRED`: name the item it is asked on',
+          'on an issue that delivers a requirement or carries feedback, `needs` with no `about` is refused `QUESTION_ABOUT_REQUIRED`: name the item it is asked on, in the shapes `POST /api/questions` takes',
+        for: ['run'],
+      },
+      {
+        when: 'your issue waits on the approval of a design revision',
+        do: 'park it through `issues/<id>/transition` with `{"toStatus":"needs_info","waitingKind":"needs_decision","reason":"<why>","awaitsDesign":{"workflowId":"<id>","revision":2}}`, or a list of 1 to 20 revisions; `needs` may be left out, since the decision settles it. Approve or return answers the park\'s question, and the issue moves back once every revision is decided',
+        watch:
+          'a revision not awaiting its approver is refused `QUESTION_DESIGN_UNKNOWN` or `QUESTION_DESIGN_NOT_AWAITING`; a `needs_decision` park without it takes the one revision proposed under the issue, `QUESTION_DESIGN_AMBIGUOUS` where several are',
         for: ['run'],
       },
     ],
     practice: [
       'Say why in a comment first; closed means its criteria were met in scope.',
       'The status moves only here: `issues/<id> -X PATCH` writes fields, never the status.',
+      'One park waits on one fact: `awaitsDesign` beside `awaitsMerge`, or `about` off a `needs_info` park, is `NEEDS_NOT_APPLICABLE`; `about` beside either is `QUESTION_ABOUT_ON_MERGE_WAIT` or `QUESTION_ABOUT_ON_DESIGN_WAIT`; no `reason` or `waitingKind` is a 422.',
     ],
     audience: ['master', 'run'],
   }),

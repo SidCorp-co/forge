@@ -81,7 +81,8 @@ The same shape costs tokens rather than a stall: a stage lands in a checkout who
     title: 'Issue dependencies',
     summary:
       'How blocks edges gate dispatch, which blocker statuses release a dependent, how to set an edge without racing the first dispatch, and why an oversized issue stays one issue, built whole and released once.',
-    version: 11,
+    version: 12,
+    doors: ['POST /api/issues/:id/dependencies'],
     body: `## Issue dependencies
 
 ### Relation kinds
@@ -91,9 +92,7 @@ Edges are directional \`fromIssue --kind--> toIssue\`:
 - \`decomposes\` — epic → child, a grouping label with no dispatch effect: it waives nothing, since a mark takes the agent's word whatever the issue carries. Ordering between the two is still a \`blocks\` edge.
 
 ### Setting a blocks edge — avoid the create-then-block race
-- Blocker known **at create time** → pass it in the create call itself (\`POST /api/projects/:id/issues\` with \`relations: [{ kind: 'blocks', dependsOnId }]\`), committed before the issue dispatches. This is atomic.
-- Both issues already exist → \`POST /api/issues/:id/dependencies\` with \`{ kind: 'blocks', dependsOnId }\` on the dependent issue (\`dependsOnId\` = the blocker). This works with any credential class.
-- Red flag: creating the new issue at \`open\` and setting the blocks edge in a second call — the issue can dispatch in the gap between the two calls.
+- With the create when the blocker is known, on the dependent once both exist: the dependencies card beneath this guide gives both calls and the race between them. Either works with any credential class.
 - Verify, don't assume: \`GET /api/issues/:id/dependencies\` lists the edges, each carrying \`expired\`; an edge holds the issue back only while its kind is \`blocks\` and it is not \`expired\` (its \`validUntil\` has passed). A \`relates\`, \`duplicates\`, \`parent\` or \`decomposes\` edge never blocks. Retract an edge with \`DELETE /api/issues/:id/dependencies/:edgeId\`, or by re-sending it with \`validUntil\` in the past.
 
 ### An issue bigger than one change

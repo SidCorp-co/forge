@@ -24,9 +24,8 @@ const named = (body: string) => [
 // a key quoted on its own is the bare string the ask route refuses, unless the sentence says so
 const bareRequirementKeys = (text: string) =>
   text.split('"REQ-n"').length - text.split('{"requirement":"REQ-n"}').length;
-beforeAll(() => {
-  provideDoorCatalog({ doorCatalog: servedDoorCatalog, doorCalls: async () => new Map() });
-});
+// at load: a describe reads its guide served while the suite is collected
+provideDoorCatalog({ doorCatalog: servedDoorCatalog, doorCalls: async () => new Map() });
 const body = (slug: string) => {
   const guide = getGuide(slug);
   return guide ? servedGuideBody(guide) : '';
@@ -137,10 +136,10 @@ describe('the issue-flow method teaches the acts that name what they wait on', (
     const lifecycle = body('pipeline-and-issue-lifecycle');
     for (const word of [
       '**Waiting on another issue is not `needs_info`.**',
-      "`{ dependsOnId, kind: 'blocks' }`",
       'it is only for an act a person owes',
-      '`{ issueId }`: this issue, whose own merge mark settles it',
-      'Another issue is refused `QUESTION_MERGE_IS_ORDERING`',
+      'add a `blocks` edge (`issues/<dependent>/dependencies -X POST`)',
+      '`"awaitsMerge":{"issueId":"<id>"}`, naming this issue',
+      "a park naming another issue's mark is refused `QUESTION_MERGE_IS_ORDERING`",
     ]) {
       expect(lifecycle, `the lifecycle guide no longer names ${word}`).toContain(word);
     }

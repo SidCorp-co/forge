@@ -186,13 +186,8 @@ const SERVED: ReadonlyArray<readonly [string, string]> = [
 
 const findings = SERVED.flatMap(([source, text]) => transitionNames(source, text));
 
-/** The rows of the lifecycle guide's needs_info field table: `| \`reason\` | why … | yes … |`. */
-function parkTableFields(body: string): string[] {
-  const at = body.indexOf('| Field | Says | Required |');
-  if (at < 0) return [];
-  const rows = body.slice(at).split('\n\n')[0]?.split('\n').slice(2) ?? [];
-  return rows.map((row) => /^\| `([A-Za-z_]\w*)` \|/.exec(row)?.[1] ?? `<unreadable row: ${row}>`);
-}
+/** The park's fields as its card teaches them: the transition card names each one beside the route. */
+const PARK_FIELDS = ['reason', 'waitingKind', 'needs', 'awaitsMerge', 'awaitsDesign'];
 
 describe('the guides name only transition fields the route takes (ISS-566)', () => {
   it('reads the sentences it checks in every guide that teaches the move, so a reworded guide cannot pass by matching nothing', () => {
@@ -200,7 +195,6 @@ describe('the guides name only transition fields the route takes (ISS-566)', () 
     for (const guide of [
       'pipeline-and-issue-lifecycle',
       'issue-flow',
-      'workflow-design',
       'card POST /api/issues/:id/transition',
     ]) {
       expect(guides, guide).toContain(guide);
@@ -243,10 +237,16 @@ describe('the guides name only transition fields the route takes (ISS-566)', () 
     expect(body?.additionalProperties).toBe(false);
   });
 
-  it("the lifecycle guide's park field table lists only transition fields", () => {
-    const fields = parkTableFields(getGuide('pipeline-and-issue-lifecycle')?.body ?? '');
-    expect(fields).toContain('reason');
-    expect(fields.filter((f) => !TRANSITION_BODY_FIELDS.includes(f))).toEqual([]);
+  it('the transition card teaches every field a park waits on, each one the body takes (ISS-1251)', () => {
+    const door = servedDoorCatalog().doors.find((d) => d.id === 'POST /api/issues/:id/transition');
+    const card = door ? cardText(door) : '';
+    for (const field of PARK_FIELDS) {
+      expect(card, `the transition card no longer names \`${field}\``).toContain(`\`${field}\``);
+      expect(TRANSITION_BODY_FIELDS).toContain(field);
+    }
+    expect(getGuide('pipeline-and-issue-lifecycle')?.doors).toContain(
+      'POST /api/issues/:id/transition',
+    );
   });
 });
 

@@ -14,7 +14,8 @@ export const REQUIREMENT_LIFECYCLE_GUIDE: CoreGuide = {
   title: 'Requirements: revisions, agreement, baselines and delivery',
   summary:
     "How a requirement (REQ-n) is written in immutable revisions with stable business criteria (BC-n), proposed, accepted and agreed under a baseline pinning its designs — by its checklist and the project's master outside a strict profile, by a holder of requirements.approve where the project's gates keep a person —, re-pinned, deferred, moved into delivery and to delivered by an act, accepted (by its checklist or by decision) or dropped; and why an issue planned against it reads changed-since-plan.",
-  version: 11,
+  version: 12,
+  doors: ['POST /api/projects/:id/requirements/:req/issues'],
   body: `## Requirements: revisions, agreement, baselines and delivery
 
 A requirement (REQ-n) is the business intent a set of issues delivers. Its text never changes in place:
@@ -141,9 +142,8 @@ none: its standing asks for an issue of its own under the requirement, or a revi
   from the web on a person's session is refused \`REQUIREMENT_ISSUE_ACT_FORBIDDEN\` with nothing written.
 - **link_issue** once the requirement is agreed or accepted under strict (\`REQUIREMENT_NOT_AGREED\` before that);
   outside strict a draft links too (gate \`link_requirement_agreed\`). An
-  issue serves one requirement: linking one held elsewhere is \`REQUIREMENT_ISSUE_LINKED_ELSEWHERE\`, naming
-  the requirement that holds it. **unlink_issue** \`DELETE /api/projects/:id/requirements/:req/issues/:issue\`
-  frees it there first.
+  issue serves one requirement (the link card beneath this guide); **unlink_issue**
+  \`DELETE /api/projects/:id/requirements/:req/issues/:issue\` frees one held elsewhere.
 - **A sibling project's issue delivers it too.** Name it by uuid on the requirement's project
   (\`POST /api/projects/:id/requirements/:req/issues { issue: <uuid> }\`): the caller holds
   \`project.write\` on the requirement's project and \`project.read\` on the issue's, so an agent's

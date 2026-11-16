@@ -56,7 +56,8 @@ export const WORKFLOW_DESIGN_GUIDE: CoreGuide = {
   title: 'Design a workflow first, build it once it is approved',
   summary:
     'A flow that does not exist yet is drawn as a workflow-v2 design, proposed, and approved under its approval checklist before any issue that builds it is dispatched.',
-  version: 8,
+  version: 9,
+  doors: ['POST /api/issues/:id/transition'],
   body: `## Design a workflow first, build it once it is approved
 
 A new flow — a storefront journey, a pipeline, a state machine — is drawn before it is built, and its
@@ -91,18 +92,8 @@ names the workflow it builds is not dispatched while that design is not approved
    build lands. Draw a design that is the deliverable under an issue of its own. A return reopens
    the design's issue with the reason posted on it, and \`GET /api/issues/:id\` shows it under
    \`proposesWorkflows\` (every design drawn under it, each at the latest revision drawn there with that revision's own \`state\`), so the issue is admissible work again; a design issue standing at a park keeps
-   its park and only gets the reason posted. **To park an issue until the approver decides**, park it with
-   \`POST /api/issues/:id/transition\` \`{ toStatus: 'needs_info', waitingKind: 'needs_decision', reason, awaitsDesign: { workflowId, revision } }\`
-   naming the revision now waiting; \`needs\` may be left out, since the decision is what settles it. The
-   decision, approve or return, is written as the answer to the question that park asks, and the issue
-   moves back to the status it left as any answer moves it. An issue waiting on several revisions sends them as a list,
-   and moves back once every one is decided; one parked on a revision that now waits on another is re-pointed by
-   parking again at \`needs_info\` naming the one it waits on now, which withdraws the earlier wait and moves no status. A park naming any other revision is refused
-   \`QUESTION_DESIGN_UNKNOWN\` or \`QUESTION_DESIGN_NOT_AWAITING\`. A \`needs_decision\` park that names no
-   revision, on an issue with exactly one revision proposed under it still awaiting its approver, is linked to
-   that revision by core, and its question says so (\`linked to <flow> r<N>, proposed under this issue\`); with
-   two or more awaiting it is refused \`QUESTION_DESIGN_AMBIGUOUS\`, naming each, until \`awaitsDesign\` picks
-   one. Any other park asked in prose alone stays open after the approval until a person answers it too. Writing a new revision while one is still waiting
+   its park and only gets the reason posted. **To park an issue until the approver decides**, park it on the revision now waiting, as the transition card beneath this guide shows; the decision, approve or return, answers the question that park asks, and the issue moves back to the status it left. One parked on a revision that now waits on another is re-pointed by
+   parking again at \`needs_info\` naming the one it waits on now, which withdraws the earlier wait and moves no status. A \`needs_decision\` park that names no revision, linked by core to the one revision proposed under the issue, says so in its question (\`linked to <flow> r<N>, proposed under this issue\`). Any other park asked in prose alone stays open after the approval until a person answers it too. Writing a new revision while one is still waiting
    voids the questions on the old one and asks each issue again of the new one. A return no live issue carries is the
    master's own work: core counts it every time the master's box sweeps, and names it on the pass until
    the next revision is proposed. So is a proposal where no person decides designs (not strict, \`approvals.designs\`

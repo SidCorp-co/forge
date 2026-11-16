@@ -136,10 +136,12 @@ describe('the design-write shape the workflow-design guide gives (ISS-579)', () 
 
   it('gives the whole park body that waits on a design decision, need text optional', async () => {
     const design = await served('workflow-design');
+    // the park is taught once, on the transition card served beneath the guide (ISS-1251)
     expect(design).toContain(
-      "`POST /api/issues/:id/transition` `{ toStatus: 'needs_info', waitingKind: 'needs_decision', reason, awaitsDesign: { workflowId, revision } }`",
+      '`{"toStatus":"needs_info","waitingKind":"needs_decision","reason":"<why>","awaitsDesign":{"workflowId":"<id>","revision":2}}`',
     );
     expect(design).toContain('`needs` may be left out');
+    expect(design).toContain('### `POST /api/issues/:id/transition`');
   });
 });
 

@@ -24,12 +24,14 @@ export const ISSUE_FLOW_GUIDE: CoreGuide = {
   title: 'Taking one issue from open to awaiting_release',
   summary:
     'The method a run follows for one issue or a batch, every tracker act a REST call: read it whole, take it, write criteria (a plan where the work needs one), build in its own tree, prove it, land, mark the merge, move it to `awaiting_release`, and close it once its criteria are met in scope.',
-  version: 17,
+  version: 18,
   doors: [
     'POST /api/questions',
     'POST /api/issues/:id/transition',
     'POST /api/issues/:id/merge',
     'POST /api/issues/:id/dependencies',
+    'POST /api/issues/:id/merge-check',
+    'POST /api/projects/:projectId/integrations/source/change-requests',
   ],
   body: `## Taking one issue from open to awaiting_release
 
@@ -391,8 +393,7 @@ landing and moved, its key in its own commit subject so the mark reads the commi
    which holds the source host's credential and records what it opened:
    \`POST /api/projects/:projectId/integrations/source/change-requests\` \`{ head, base, title, body?, draft? }\`
    (\`forge-runner api projects/<projectId>/integrations/source/change-requests -X POST\` from a
-   pane), refused \`SOURCE_HOST_UNAVAILABLE\` naming why where the binding is missing, off or not
-   granted to agents. Never with a host token of your own. Core merges it at
+   pane; its card beneath this guide). Core merges it at
    \`POST /api/issues/:id/merge-pull-request\`.
 2. \`POST /api/issues/:id/merge\` \`{ commit, target, note }\`, the commit as it stands on the target,
    whole: an abbreviated sha is refused \`COMMIT_NOT_WHOLE\`. Whether the work is done is your call:
@@ -416,8 +417,7 @@ landing and moved, its key in its own commit subject so the mark reads the commi
    the repository cannot answer). A record that named the wrong release is corrected by the same
    call with \`corrects: "<the version it names now>"\` and a \`reason\`: the issue stays closed, the
    release it names lists it, and the old record stays on its release, marked superseded.
-   Where a merge check is owed, the mark is refused \`MERGE_CHECK_MISSING\` until a passing one is
-   recorded at the commit it marks (the commit named, else the one the issue records).
+   Where a merge check is owed, its card beneath this guide says what the mark waits on.
    Where the project declares the merge check, it is then refused \`MERGE_REVIEW_MISSING\` until a
    passing review by a reviewer other than the building run stands at that commit.
    On the fast lane the deploy that follows is web only:
