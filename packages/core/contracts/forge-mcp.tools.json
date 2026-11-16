@@ -3107,6 +3107,31 @@
             "pattern": "^[A-Za-z0-9_-]+$",
             "type": "string"
           },
+          "missed": {
+            "description": "each capability this reply should have reached for and did not, by its name as forge_find lists it (`support.member`), with why; leave it out where none",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "door": {
+                  "maxLength": 300,
+                  "minLength": 3,
+                  "type": "string"
+                },
+                "why": {
+                  "maxLength": 500,
+                  "minLength": 3,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "door",
+                "why"
+              ],
+              "type": "object"
+            },
+            "maxItems": 8,
+            "type": "array"
+          },
           "n": {
             "description": "which of its pictures, 1 to the `images.count` you were handed; 1 when omitted",
             "maximum": 16,
@@ -3842,5 +3867,5 @@
       }
     }
   ],
-  "version": "8.3.1"
+  "version": "8.4.0"
 }

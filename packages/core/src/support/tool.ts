@@ -218,6 +218,7 @@ const inputSchema = z.strictObject({
   ...supportReplyRequestSchema.partial().shape,
   ...supportSilentRequestSchema.partial().shape,
   failed: supportAuditRequestSchema.shape.failed.optional(),
+  missed: supportAuditRequestSchema.shape.missed,
   signals: supportDecideRequestSchema.shape.signals.optional(),
   confidence: supportDecideRequestSchema.shape.confidence.optional(),
   ...supportProposeFixRequestSchema.partial().shape,
