@@ -4,12 +4,13 @@
 // `forge_decisions`), so what a product role reads here and what the chat and the dashboard say
 // cannot disagree. Reached as the `project.*` actions through forge_call.
 
+import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
 import { PROJECT_TOOL_READS } from '@forge/contracts/mcp-product';
 import { z } from 'zod';
 import { forgeDecisionsTool } from '../comments/index.js';
 import { forgeNeedsYouTool } from '../development/index.js';
 import { RefusalError, requestRefusals } from '../lib/refusal.js';
-import { type ContextScopedMcpToolFactory, zodToMcpSchema } from '../lib/tool.js';
+import { type ContextScopedMcpToolFactory, sourceOf, zodToMcpSchema } from '../lib/tool.js';
 import { onArg } from '../permissions/index.js';
 import { forgeProjectStatusTool } from '../project-status/index.js';
 
@@ -33,6 +34,66 @@ const DESCRIPTION = `How one project stands, what waits on you and what was deci
 - needs_you { projectId, limit? }: only the decisions waiting on you, each with its question, the recommended answer and why; \`notDecisions\` counts what else your Needs you list holds.
 - decisions { projectId, days?, limit? }: the decisions recorded in the project, newest first, each on its issue, requirement, design or feedback item with the reason, who decided and when.`;
 
+/** When a product role reaches for the project reads (ISS-1251), from how product roles used them. */
+const CARDS = {
+  status: {
+    purpose: 'Reads how the project stands now, as its dashboard draws it.',
+    situations: [
+      {
+        when: 'a person asks how the project is going, what is stuck, what shipped or what is next',
+        do: 'read status first and answer from it, naming the read each figure came from',
+      },
+      {
+        when: 'you start working a project’s Product and do not yet know where it stands',
+        do: 'read status before any list, so your next step follows what is stuck or late',
+      },
+    ],
+    practice: [
+      'Say a forecast as the range it is; a release’s issues are releases.get’s, not this read’s.',
+    ],
+    example: { projectId: '<project uuid>', days: 7 },
+    // ISS-1183: a product role answered "how does it stand" by walking issues.list and counting
+    redFlag:
+      'Counting issues.list by hand to say how the project stands: it disagrees with the dashboard.',
+    audience: ['person'],
+    changed: { on: '2026-11-16', by: 'ISS-1251' },
+  },
+  needs_you: {
+    purpose: 'Lists only the decisions waiting on you, each with the recommended answer and why.',
+    situations: [
+      {
+        when: 'a person asks what they owe, or what waits on them',
+        do: 'read needs_you and put each decision with its recommended answer and why',
+      },
+      {
+        when: 'you are about to ask a person something',
+        do: 'read needs_you first: the decision may already wait on them with a recommendation',
+      },
+    ],
+    practice: ['Answer each one on the item it shapes; notDecisions counts the rest of the list.'],
+    example: { projectId: '<project uuid>', limit: 10 },
+    audience: ['person'],
+    changed: { on: '2026-11-16', by: 'ISS-1251' },
+  },
+  decisions: {
+    purpose: 'Reads the decisions recorded in the project, with who decided, when and why.',
+    situations: [
+      {
+        when: 'a person asks why something was decided, or who decided it',
+        do: 'read decisions over the days in question and quote the reason recorded',
+      },
+      {
+        when: 'you are about to decide something that may already have been settled',
+        do: 'read decisions first and follow or revise the one in force, never decide it twice',
+      },
+    ],
+    practice: ['Quote the recorded reason and the item it sits on, not your reading of it.'],
+    example: { projectId: '<project uuid>', days: 30, limit: 20 },
+    audience: ['person'],
+    changed: { on: '2026-11-16', by: 'ISS-1251' },
+  },
+} satisfies Record<(typeof PROJECT_TOOL_READS)[number], CapabilityCardBody>;
+
 export const forgeProjectTool: ContextScopedMcpToolFactory = (ctx) => {
   const reads = {
     status: forgeProjectStatusTool(ctx),
@@ -43,6 +104,8 @@ export const forgeProjectTool: ContextScopedMcpToolFactory = (ctx) => {
     name: 'forge_project',
     description: DESCRIPTION,
     inputSchema: zodToMcpSchema(input),
+    cards: CARDS,
+    source: sourceOf(import.meta.url),
     route: '/api/projects',
     grant: 'projects:read',
     reach: 'project',

@@ -4,6 +4,7 @@
 // kernel's own refusals still hold: project.write, the edges). An issue filed here is born at `draft`
 // and the master admits it: no person admits an issue (REQ-68 BC-6), so the door takes no `admit`.
 
+import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
 import { ISSUE_STATUSES } from '@forge/contracts/issue-machine';
 import { ISSUE_FILING_LANE, ISSUES_TOOL_ACTIONS } from '@forge/contracts/mcp-product';
 import { z } from 'zod';
@@ -18,7 +19,12 @@ import {
 import { egressAs, egressOr } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { RefusalError } from '../lib/refusal.js';
-import { type ContextScopedMcpToolFactory, type McpContext, zodToMcpSchema } from '../lib/tool.js';
+import {
+  type ContextScopedMcpToolFactory,
+  type McpContext,
+  sourceOf,
+  zodToMcpSchema,
+} from '../lib/tool.js';
 import { argumentRefusal, need, readingArgument } from '../lib/tool-args.js';
 import { onArg } from '../permissions/index.js';
 import { readQuestionsForIssue } from '../questions/index.js';
@@ -208,11 +214,95 @@ const DESCRIBE = {
   },
 } as const;
 
+/** When a person's client reaches for the issue door (ISS-1251), from how product roles used it. */
+const CARDS = {
+  list: {
+    purpose:
+      'Lists delivery work with each issue’s status and whether it runs and when it is likely done.',
+    situations: [
+      {
+        when: 'a person asks what is being built now, or what is stuck, in a project',
+        do: 'list it with statusNot closed and dropped, and tell them each `progress.says`',
+      },
+      {
+        when: 'you look for the issue a person names in their own words, not by key',
+        do: 'list with search on their words and confirm the match with them by its title',
+      },
+    ],
+    practice: [
+      'Repeat `progress.says` and a `pause`, never a date the forecast does not hold.',
+      'For how the project stands overall, project.status reads it in one call.',
+    ],
+    example: { projectId: '<project uuid>', statusNot: ['closed', 'dropped'], limit: 25 },
+    audience: ['person'],
+    changed: { on: '2026-11-16', by: 'ISS-1251' },
+  },
+  get: {
+    purpose:
+      'Reads one issue: what it delivers, the questions it waits on, and when it is likely done.',
+    situations: [
+      {
+        when: 'a person asks where one piece of work stands, or why it waits',
+        do: 'get it by its key and tell them `progress.says` and each open question it waits on',
+      },
+      {
+        when: 'you need the requirement and criteria an issue delivers before you judge or revise it',
+        do: 'get it and read `requirement`, which names a sibling project’s requirement too',
+      },
+    ],
+    practice: ['Name the issue by its key exactly, ISS-12, or by its uuid.'],
+    example: { projectId: '<project uuid>', issue: 'ISS-12' },
+    // ISS-891: `ISS602`, `#602` and `ISS-602x` were sent as keys and refused
+    redFlag:
+      'Sending a key in another shape (ISS602, #602): it is refused at /issue, not looked up.',
+    audience: ['person'],
+    changed: { on: '2026-11-16', by: 'ISS-1251' },
+  },
+  create: {
+    purpose: 'Files delivery work at draft, where the project’s master admits it.',
+    situations: [
+      {
+        when: 'an agreed requirement or a triaged feedback item covers work nobody has filed yet',
+        do: 'create it naming what it delivers, its criteria in acceptanceCriteria',
+      },
+      {
+        when: 'you found a technical defect against an existing expectation, a security or performance gap, or debt',
+        do: 'create it yourself in its technical lane, saying why it is an issue and not Feedback',
+      },
+      {
+        when: 'a person reports a problem or wants new or changed behaviour',
+        do: 'file it as Feedback (project_feedback.submit) or a requirement draft, not an issue',
+        watch:
+          'an issue filed for a product wish skips the triage that turns it into a requirement',
+      },
+    ],
+    practice: [
+      'Choose the lane yourself and say why in the description; a person is never asked before filing.',
+      'Put criteria in acceptanceCriteria as numbered lines; a list only in the description is none.',
+      'Send a blocks edge in relations with the create, so it cannot dispatch before its blocker.',
+    ],
+    example: {
+      projectId: '<project uuid>',
+      title: 'Reorder fills the cart with a past order’s items',
+      description: 'Delivers the reorder requirement’s first criterion.',
+      acceptanceCriteria: '1. A past order’s page offers Reorder, which fills the cart.',
+    },
+    // ISS-1183 and ISS-861: clients asked the person before filing; triage-filed issues carried their
+    // criteria only in the description (the create answers a warning for it)
+    redFlag:
+      'Asking the person whether to file, or listing criteria only in the description: the first parks routine work on him, the second leaves the issue with no criterion.',
+    audience: ['person'],
+    changed: { on: '2026-11-16', by: 'ISS-1251' },
+  },
+} satisfies Record<(typeof ISSUES_TOOL_ACTIONS)[number], CapabilityCardBody>;
+
 export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_issues',
   description: DESCRIPTION,
   inputSchema: zodToMcpSchema(input),
   actionDescribe: DESCRIBE,
+  cards: CARDS,
+  source: sourceOf(import.meta.url),
   reach: 'project',
   route: ['/api/projects', '/api/issues'],
   grant: {
