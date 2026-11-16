@@ -6,7 +6,6 @@ import type { RefusalStatuses } from "./refusal.js";
 export const MEMORY_REFUSAL_CODES = [
 	"MEMORY_REFUSED",
 	"MEMORY_TEXT_TOO_LONG",
-	"MEMORY_CODE_BLOCK_TOO_LONG",
 	"MEMORY_EVIDENCE_REQUIRED",
 	"MEMORY_NOT_FOUND",
 	"MEMORY_MIRROR_READ_ONLY",

@@ -1,4 +1,3 @@
-import { articleFor } from '@forge/contracts/articles';
 import type { CurationWarning } from '@forge/contracts/knowledge';
 import { MEMORY_AUTHORED_SOURCES, type MemoryRefusalCode } from '@forge/contracts/memory';
 import { and, eq, inArray, or } from 'drizzle-orm';
@@ -7,6 +6,7 @@ import { fencedProjectIds } from '../credentials/pat-scope.js';
 import { db } from '../db/client.js';
 import { memories, memorySources } from '../db/schema.js';
 import { refuser } from '../lib/refusal.js';
+import { codeBlockWarning } from './code-block.js';
 import { curationOf, isCuratedSource, memoryCurationInputSchema } from './curation.js';
 import { ENDING_ISSUE_KEY, unobservedEndingWarning } from './endings.js';
 import {
@@ -44,47 +44,13 @@ const refuse = refuser<MemoryRefusalCode>('MEMORY_REFUSED');
 
 const AGENT_AUTHORED_SOURCES = new Set<string>(['note', 'knowledge', 'policy']);
 
-const MAX_CODE_BLOCK_LINES = 5;
-
-/** Returns the line count of the longest fenced (```/~~~) block, 0 if none. */
-function longestFencedBlockLines(text: string): number {
-  let longest = 0;
-  let openFence: string | null = null;
-  let blockLines = 0;
-  for (const rawLine of text.split('\n')) {
-    const line = rawLine.trimStart();
-    const fence = line.match(/^(`{3,}|~{3,})/)?.[1] ?? null;
-    if (openFence === null) {
-      if (fence) {
-        openFence = fence[0] === '`' ? '```' : '~~~';
-        blockLines = 0;
-      }
-    } else if (fence?.startsWith(openFence)) {
-      openFence = null;
-      longest = Math.max(longest, blockLines);
-    } else {
-      blockLines += 1;
-    }
-  }
-  // Unterminated fence: everything after the opener is the block.
-  if (openFence !== null) longest = Math.max(longest, blockLines);
-  return longest;
-}
-
-function assertAgentMemoryQuality(input: WriteMemoryInput): void {
+/** The embedding window: text past it would be stored yet unsearchable, so it is a contract limit, not a style. */
+function assertWithinEmbedWindow(input: WriteMemoryInput): void {
   if (!AGENT_AUTHORED_SOURCES.has(input.source)) return;
   if (input.textContent.length > MAX_EMBED_CHARS) {
     throw refuse(
       'MEMORY_TEXT_TOO_LONG',
       `textContent is ${input.textContent.length} chars but agent-authored memory (${input.source}) is capped at ${MAX_EMBED_CHARS} — the embedding window; anything past it would be stored yet unsearchable. Tighten to facts + pointers, or split into multiple sourceRefs.`,
-      '/textContent',
-    );
-  }
-  const blockLines = longestFencedBlockLines(input.textContent);
-  if (blockLines > MAX_CODE_BLOCK_LINES) {
-    throw refuse(
-      'MEMORY_CODE_BLOCK_TOO_LONG',
-      `textContent contains ${articleFor(String(blockLines))} ${blockLines}-line fenced code block (max ${MAX_CODE_BLOCK_LINES}). Memory stores logic, not code — copied code rots on the next commit. Replace the block with a one-sentence invariant + a file:line or SHA pointer; one-line runnable commands (verify, query) are fine.`,
       '/textContent',
     );
   }
@@ -285,7 +251,7 @@ export async function runMemoryWrite(
 ): Promise<MemoryWriteResult> {
   refuseDecision(given);
   const mirrored = await landingOfMirrorWrite(given);
-  assertAgentMemoryQuality(mirrored.input);
+  assertWithinEmbedWindow(mirrored.input);
   const curated = isCuratedSource(mirrored.input.source);
   const { input, vector, landedOn } = curated
     ? await landingOfCuratedWrite(mirrored.input)
@@ -293,9 +259,10 @@ export async function runMemoryWrite(
   const { carried, existing } = await carriedFromExisting(input);
   const revisionBefore = existing ? await latestRevisionId(existing.id) : null;
   const said = curated ? curationOf(input) : null;
-  const warnings = said
-    ? [...said.warnings, ...unobservedEndingWarning(input.source, input.endsWhen)]
-    : [];
+  const warnings = [
+    ...(said ? [...said.warnings, ...unobservedEndingWarning(input.source, input.endsWhen)] : []),
+    ...codeBlockWarning(input.source, input.textContent),
+  ];
   const metadata = {
     ...(input.metadata ?? {}),
     ...endsWithIssue(input),

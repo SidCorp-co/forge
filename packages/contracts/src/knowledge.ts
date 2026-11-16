@@ -36,8 +36,11 @@ export const CURATED_ENTRY_TYPE_SHAPE =
  * listed as owing it until a rewrite answers it.
  */
 export interface CurationWarning {
-	/** CURATION_OWED: an answer left out. ENDING_UNOBSERVED: an `endsWhen` naming nothing core can see happen (ISS-1156). */
-	code: "CURATION_OWED" | "ENDING_UNOBSERVED";
+	/**
+	 * CURATION_OWED: an answer left out. ENDING_UNOBSERVED: an `endsWhen` naming nothing core can see
+	 * happen (ISS-1156). CODE_BLOCK_LONG: a memory stored with a long fenced code block (ISS-1251).
+	 */
+	code: "CURATION_OWED" | "ENDING_UNOBSERVED" | "CODE_BLOCK_LONG";
 	/** The field left out, as a JSON pointer into the write. */
 	path: string;
 	detail: string;

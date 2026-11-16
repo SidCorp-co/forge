@@ -267,6 +267,36 @@ describe('a decision is not a memory (criterion 4)', () => {
   });
 });
 
+// ISS-1251: a long code block is the writer's call, taught and warned, never refused.
+describe('a memory carrying a long code block is stored and its writer warned', () => {
+  it('answers 2xx with CODE_BLOCK_LONG on /textContent, and the row holds the text as written', async () => {
+    const w = await world();
+    const block = [
+      '```ts',
+      ...Array.from({ length: 6 }, (_, i) => `const line${i} = ${i};`),
+      '```',
+    ];
+    const textContent = ['The write path keeps one row per subject.', ...block].join('\n');
+    const res = await api(w.token, 'POST', '/api/memory', {
+      projectId: w.projectId,
+      source: 'note',
+      sourceRef: 'long-block',
+      textContent,
+    });
+    expect(res.status, JSON.stringify(res.body)).toBeLessThan(300);
+    const warnings = (res.body as Body).warnings as { code: string; path: string }[];
+    expect(warnings).toContainEqual(
+      expect.objectContaining({ code: 'CODE_BLOCK_LONG', path: '/textContent' }),
+    );
+    const [row] = (await db.execute(sql`
+      SELECT text_content AS text FROM memories
+       WHERE project_id = ${w.projectId} AND source_ref = 'long-block'`)) as unknown as {
+      text: string;
+    }[];
+    expect(row?.text).toBe(textContent);
+  });
+});
+
 describe('retiring keeps the record: the decay purge deletes only what decay archived', () => {
   it('purges a row decay archived long ago, and keeps one a person retired and one retired with its issue', async () => {
     const w = await world();
