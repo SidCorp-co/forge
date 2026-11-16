@@ -28,6 +28,37 @@ vi.mock('../knowledge/index.js', () => {
   };
 });
 
+/**
+ * The situations this project's lessons folded into an orientation card (ISS-1251): one more thing
+ * the orientation is composed from, read from the card ledger rather than the knowledge store.
+ */
+const cards = vi.hoisted(() => ({
+  proposed: [] as { cardId: string; text: string }[],
+}));
+vi.mock('../lessons/index.js', async (actual) => ({
+  ...(await actual<typeof import('../lessons/index.js')>()),
+  cardFreshness: async (ids: readonly string[]) => {
+    if (knowledge.fail) throw new Error('knowledge store down');
+    return ids.map((cardId) => ({
+      cardId,
+      recheckOwed: null,
+      scenarios: [],
+      proposedDeltas: cards.proposed
+        .filter((p) => p.cardId === cardId)
+        .map((p, i) => ({
+          id: `d-${i}`,
+          field: 'situation' as const,
+          op: 'add' as const,
+          text: p.text,
+          replaces: null,
+          fromLesson: 'L-4',
+          projectId: null,
+          at: '2026-11-16T00:00:00Z',
+        })),
+    }));
+  },
+}));
+
 // the working agreements a project inherits from Forge, read as a project that changed none (REQ-90)
 vi.mock('../agreements/index.js', async (actual) => {
   const real = await actual<typeof import('../agreements/index.js')>();
@@ -97,6 +128,7 @@ beforeEach(() => {
   ];
   assigned.fail = false;
   compose.throws = false;
+  cards.proposed = [];
 });
 
 describe('an orientation carries a revision that moves whenever what it is composed from moves (ISS-1066)', () => {
@@ -119,6 +151,14 @@ describe('an orientation carries a revision that moves whenever what it is compo
     knowledge.rows = knowledge.rows.filter((r) => r.slug !== 'org-voice-guide');
     const orgDeleted = orientationRevision(await servedCheckoutOrientation('p-1', 'forge'));
     expect(orgDeleted).not.toBe(ruleChanged);
+  });
+
+  it('moves when a lesson folds a proposed situation into an orientation card (ISS-1251)', async () => {
+    const before = await servedCheckoutOrientation('p-1', 'forge');
+    cards.proposed = [{ cardId: 'POST /api/memory', text: 'A gotcha a later run would hit again' }];
+    const after = await servedCheckoutOrientation('p-1', 'forge');
+    expect(after).toContain('| (proposed) A gotcha a later run would hit again |');
+    expect(orientationRevision(after)).not.toBe(orientationRevision(before));
   });
 
   it('stands still while nothing the orientation is composed from changes', async () => {
