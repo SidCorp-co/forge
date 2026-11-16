@@ -107,7 +107,7 @@ export function NodeRail({
           )}
         </Fact>
         <Fact label={t("modules.rail.reads")} testId="rail-reads">
-          {node.reads === null ? <span className="text-muted">{t("modules.rail.readsNone")}</span> : <span className="tabular-nums">{t("modules.rail.readsCount", { n: node.reads, days: readsDays })}</span>}
+          <span className="tabular-nums">{t("modules.rail.readsCount", { n: node.reads, days: readsDays })}</span>
         </Fact>
         {/* who named it, quoting them on hover, says more than who typed it in; else who wrote it */}
         {node.namedBy ? (

@@ -13,6 +13,9 @@ const inList = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`
  * its prompt or orientation, or returned by a knowledge get or a knowledge or memory search its
  * credential made. Owned by `run-context`; one row per reach, written in one batch per read and never
  * changed. A run over several issues records one row per issue, so an issue's read finds every reach.
+ * A row with no session is a find hit opened outside any run (ISS-1256): a person's, or an agent's
+ * whose credential names no single run. Only the module map's reads count it; every read of what
+ * reached a run keeps to rows with a session.
  */
 export const runContextReaches = pgTable(
   'run_context_reaches',
@@ -21,9 +24,12 @@ export const runContextReaches = pgTable(
     projectId: uuid('project_id')
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
-    agentSessionId: uuid('agent_session_id')
-      .notNull()
-      .references(() => agentSessions.id, { onDelete: 'cascade' }),
+    /** The run session it reached; null for a find hit opened outside any run. */
+    agentSessionId: uuid('agent_session_id').references(() => agentSessions.id, {
+      onDelete: 'cascade',
+    }),
+    /** The account that read it (a person, or the credential's holder), where the request named one. */
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
     /** The issue the session worked when the source reached it; null for a session working none. */
     issueId: uuid('issue_id').references(() => issues.id, { onDelete: 'cascade' }),
     kind: text('kind', { enum: RUN_CONTEXT_SOURCE_KINDS }).notNull(),
@@ -43,6 +49,11 @@ export const runContextReaches = pgTable(
       sql`${t.kind} IN (${inList(RUN_CONTEXT_SOURCE_KINDS)})`,
     ),
     howChk: check('run_context_reaches_how_chk', sql`${t.how} IN (${inList(RUN_CONTEXT_HOWS)})`),
+    // a row with no run is an open, for no issue: no prompt or search reads as a run's without it
+    readerChk: check(
+      'run_context_reaches_reader_chk',
+      sql`${t.agentSessionId} IS NOT NULL OR (${t.how} = 'get' AND ${t.issueId} IS NULL)`,
+    ),
   }),
 );
 

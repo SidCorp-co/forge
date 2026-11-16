@@ -279,11 +279,11 @@ export interface ModuleMapNode {
 	relations: ModuleMapRelationView[];
 	recheck: ModuleMapRecheck | null;
 	/**
-	 * How often agents read it over `readsWindowDays`, from ISS-1251's signals: a term's or a rule's
-	 * reaches (run_context_reaches), a capability's door calls, a reference's citations. Null where
-	 * Forge keeps no read signal for the type (a requirement, a decision).
+	 * How often it was read over `readsWindowDays`: each time it reached a run or was opened through
+	 * find, by an agent or a person (run_context_reaches, ISS-1256), with a capability's door calls and
+	 * a reference's citations beside them.
 	 */
-	reads: number | null;
+	reads: number;
 }
 
 /** An open issue in the module's subtree. */

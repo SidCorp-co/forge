@@ -15,7 +15,7 @@ import { rateLimit } from '../middleware/rate-limit.js';
 import { idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requiresOnParam } from '../permissions/index.js';
-import { recordReached } from '../run-context/index.js';
+import { recordFindOpened } from '../run-context/index.js';
 import { readFindGaps } from './gaps.js';
 import { openHit } from './open.js';
 import { runFind } from './service.js';
@@ -59,7 +59,7 @@ findRoutes.get(
       projectIds: [id],
       id: c.req.valid('query').id,
     });
-    recordReached(c, id, 'get', found);
+    recordFindOpened(c, id, found);
     return c.json(opened);
   },
 );

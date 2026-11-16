@@ -222,6 +222,8 @@ async function readRows(projectId: string, since: Date): Promise<DoorReadRow[]> 
       SELECT ${sessionAgent(sql`c.agent_session_id`)} AS agent, c.kind, c.how, c.ref, count(*)::int AS n
       FROM run_context_reaches c
       WHERE c.project_id = ${projectId}::uuid AND c.created_at >= ${since.toISOString()}::timestamptz
+        -- a session's reads only: a find hit opened outside any run is no agent kind's read
+        AND c.agent_session_id IS NOT NULL
       GROUP BY 1, 2, 3, 4`)) as unknown as ReachRow[];
   const groups = new Map<string, DoorReadRow>();
   for (const r of rows) {

@@ -48,7 +48,7 @@ const node = (over: Partial<ModuleMapNode> & Pick<ModuleMapNode, "type" | "ref" 
   writtenBy: { agency: "agent" },
   relations: [],
   recheck: null,
-  reads: null,
+  reads: 0,
   ...over,
 });
 

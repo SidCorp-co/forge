@@ -139,7 +139,6 @@
     "modules.rail.pick": "Pick an item",
     "modules.rail.reads": "Reads",
     "modules.rail.readsCount": "{n} in {days} days",
-    "modules.rail.readsNone": "Not kept",
     "modules.rail.recheck": "Re-check",
     "modules.rail.recheckOwed": "Owed since {when}",
     "modules.rail.relations": "Relations",

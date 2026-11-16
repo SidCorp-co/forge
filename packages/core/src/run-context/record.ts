@@ -39,15 +39,18 @@ export function runContextTally(): { failed: number; unattributed: number; since
 
 /** One batch insert: a row per source, and per issue where the run works several. */
 async function write(
-  subject: RunSubject,
+  // a null session is a find hit opened outside any run, for no issue (`run_context_reaches_reader_chk`)
+  subject: Omit<RunSubject, 'sessionId'> & { sessionId: string | null },
   how: RunContextHow,
   sources: readonly RunContextSource[],
+  userId: string | null = null,
 ): Promise<void> {
   const issues = subject.issueIds.length > 0 ? subject.issueIds : [null];
   const rows = issues.flatMap((issueId) =>
     sources.map((s) => ({
       projectId: subject.projectId,
       agentSessionId: subject.sessionId,
+      userId,
       issueId,
       kind: s.kind,
       ref: s.ref,
@@ -143,6 +146,35 @@ export function recordSessionReached(
   work.start(
     () => write({ ...subject, issueIds: [] }, how, sources),
     failed({ projectId: subject.projectId, sessionId: subject.sessionId, how }),
+  );
+}
+
+/** Who opened a find hit: the account that read, and the box credential it read with, if any. */
+export interface FindOpener {
+  projectId: string;
+  /** The person, or the credential's holder; null where the request named no account. */
+  userId: string | null;
+  /** The box credential the open was made with; null for a person's session or personal token. */
+  caller: RunCaller | null;
+}
+
+/**
+ * Records a find hit opened (ISS-1256): against the run a box credential names where it names one,
+ * else as an open outside any run (a person's, or an agent's whose credential names no single run),
+ * so the module map counts every open as a read. Never throws and never waits.
+ */
+export function recordOpened(opener: FindOpener, sources: readonly RunContextSource[]): void {
+  if (sources.length === 0) return;
+  const { projectId, userId, caller } = opener;
+  work.start(
+    async () => {
+      const run = caller ? await runContextPort('runOfCall')(caller) : null;
+      const subject = run?.ok
+        ? { projectId, sessionId: run.sessionId, issueIds: run.issueIds }
+        : { projectId, sessionId: null, issueIds: [] };
+      await write(subject, 'get', sources, userId);
+    },
+    failed({ projectId, deviceId: caller?.deviceId ?? null, how: 'find-open' }),
   );
 }
 

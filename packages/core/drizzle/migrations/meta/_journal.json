@@ -4285,6 +4285,13 @@
       "when": 1841270400000,
       "tag": "0675_a_followed_release_matches_by_judgement_not_words",
       "breakpoints": true
+    },
+    {
+      "idx": 676,
+      "version": "7",
+      "when": 1841356800000,
+      "tag": "0676_an_opened_find_hit_is_a_read_whoever_opens_it",
+      "breakpoints": true
     }
   ]
 }

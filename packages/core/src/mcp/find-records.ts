@@ -4,7 +4,7 @@
  * (`find/service.ts:runFind`), so an agent and a person searching the same words see the same order.
  * The project is the one the client names, else the one its token is bound to, else the only one it
  * reads; with none of those it is asked to name one. A hit is opened with `fetch { id }`, which
- * records the read where the token belongs to a box (ISS-1251 §3).
+ * records the read whoever opens it: against the run a box token names, else outside any run.
  */
 
 import { FIND_LIMIT, type FindHit, type FindType } from '@forge/contracts/find';
@@ -15,7 +15,7 @@ import { RefusalError } from '../lib/refusal.js';
 import { loadVisibleProjectIdsForPrincipal, projectReaderOf } from '../lib/tool.js';
 import { webBaseUrl } from '../lib/web-base-url.js';
 import type { McpPrincipal } from '../middleware/require-pat.js';
-import { recordCalled, sourcesOf } from '../run-context/index.js';
+import { recordOpened, sourcesOf } from '../run-context/index.js';
 
 /** A hit as `forge_find` lists it: what an agent reads to choose one, never its whole text. */
 type ListedHit = Pick<
@@ -105,7 +105,7 @@ const SURFACE: Partial<Record<FindType, EgressSurface>> = {
   conversation: 'conversation',
 };
 
-/** A find hit read whole over MCP, its read recorded against the box the token belongs to. */
+/** A find hit read whole over MCP, its read recorded against the token's run where it names one. */
 export async function fetchHit(principal: McpPrincipal, id: string) {
   const visible = await loadVisibleProjectIdsForPrincipal(principal);
   const home = principal.boundProjectId ?? visible[0];
@@ -117,19 +117,22 @@ export async function fetchHit(principal: McpPrincipal, id: string) {
   }
   // a record of a project the token reads is read, egressed and counted in its own project
   const { opened, found, projectId } = await openHit({ projectId: home, projectIds: visible, id });
-  if (principal.deviceId) {
-    recordCalled(
-      {
-        deviceId: principal.deviceId,
-        fence: principal.projectIds,
-        projectId,
-        asked: null,
-        tokenId: principal.tokenId,
-      },
-      'get',
-      sourcesOf(found),
-    );
-  }
+  recordOpened(
+    {
+      projectId,
+      userId: principal.userId,
+      caller: principal.deviceId
+        ? {
+            deviceId: principal.deviceId,
+            fence: principal.projectIds,
+            projectId,
+            asked: null,
+            tokenId: principal.tokenId,
+          }
+        : null,
+    },
+    sourcesOf(found),
+  );
   const surface = SURFACE[opened.hit.type];
   const content = surface
     ? await egressShown(

@@ -43,6 +43,8 @@ const DAY_MS = 86_400_000;
 interface Item {
   type: ModuleMapBranch | 'knowledge' | 'lesson';
   ref: string;
+  /** The id a read of it is recorded by, where it differs from `ref` (a requirement's, not REQ-n). */
+  readRef?: string;
   title: string;
   moduleId: string | null;
   body?: string | null;
@@ -89,7 +91,7 @@ async function knowledgeItems(projectId: string): Promise<Item[]> {
 async function recordItems(projectId: string): Promise<Item[]> {
   const [reqs, decisions, refs, lessons] = await Promise.all([
     db.execute(sql`
-      SELECT 'REQ-' || req_seq AS ref, title, module_id, status
+      SELECT 'REQ-' || req_seq AS ref, id::text AS read_ref, title, module_id, status
         FROM requirements WHERE project_id = ${projectId} AND status <> 'dropped'
        ORDER BY req_seq`),
     // a decision is the map's when it is placed, or a person's left unplaced (an agent's pass logs
@@ -120,6 +122,7 @@ async function recordItems(projectId: string): Promise<Item[]> {
   ]);
   type Raw = {
     ref: string;
+    read_ref?: string;
     title: string;
     module_id: string | null;
     status?: string;
@@ -130,6 +133,7 @@ async function recordItems(projectId: string): Promise<Item[]> {
       (r): Item => ({
         type,
         ref: r.ref,
+        ...(r.read_ref ? { readRef: r.read_ref } : {}),
         title: r.title,
         moduleId: r.module_id,
         status: r.status ?? null,
@@ -261,14 +265,17 @@ async function relationRows(projectId: string): Promise<RelationRaw[]> {
   );
 }
 
-/** Agents' reads over the window: a term's or a rule's reaches, a capability's calls, a source's citations. */
+/**
+ * The reads over the window, keyed `<type>:<ref>` as the tree's nodes read them: every source that
+ * reached a run or was opened through find (`run_context_reaches`, a person's open outside any run
+ * included, ISS-1256), a capability's door calls and a reference's citations beside them.
+ */
 async function readCounts(projectId: string, since: Date): Promise<Map<string, number>> {
   const [reaches, citations, calls] = await Promise.all([
     db.execute(sql`
-      SELECT ref, count(*)::int AS n FROM run_context_reaches
-       WHERE project_id = ${projectId} AND kind IN ('knowledge', 'rule')
-         AND created_at >= ${since.toISOString()}::timestamptz
-       GROUP BY ref`),
+      SELECT kind, ref, count(*)::int AS n FROM run_context_reaches
+       WHERE project_id = ${projectId} AND created_at >= ${since.toISOString()}::timestamptz
+       GROUP BY kind, ref`),
     db.execute(sql`
       SELECT source_id::text AS ref, count(*)::int AS n FROM reference_citations
        WHERE project_id = ${projectId} AND cited_at >= ${since.toISOString()}::timestamptz
@@ -276,18 +283,21 @@ async function readCounts(projectId: string, since: Date): Promise<Map<string, n
     doorCallsOf(projectId, MODULE_MAP_READS_WINDOW_DAYS),
   ]);
   const out = new Map<string, number>();
-  for (const r of rowsOf<{ ref: string; n: number }>(reaches)) out.set(`knowledge:${r.ref}`, r.n);
-  for (const r of rowsOf<{ ref: string; n: number }>(citations)) out.set(`reference:${r.ref}`, r.n);
-  for (const [door, n] of calls) out.set(`capability:${door}`, n);
+  const add = (key: string, n: number) => out.set(key, (out.get(key) ?? 0) + n);
+  // a term is a knowledge entry and a rule a rule entry, both read by slug
+  for (const r of rowsOf<{ kind: string; ref: string; n: number }>(reaches)) {
+    add(`${r.kind === 'rule' ? 'knowledge' : r.kind}:${r.ref}`, r.n);
+  }
+  for (const r of rowsOf<{ ref: string; n: number }>(citations)) add(`reference:${r.ref}`, r.n);
+  for (const [door, n] of calls) add(`capability:${door}`, n);
   return out;
 }
 
-const readKey = (type: ModuleMapBranch, ref: string): string | null =>
+/** The key a node's reads are counted under: a term or rule by slug, a requirement by its id. */
+const readKey = (type: ModuleMapBranch, item: Item): string =>
   type === 'term' || type === 'rule'
-    ? `knowledge:${ref}`
-    : type === 'capability' || type === 'reference'
-      ? `${type}:${ref}`
-      : null;
+    ? `knowledge:${item.ref}`
+    : `${type}:${item.readRef ?? item.ref}`;
 
 const firstLine = (body: string | null | undefined): string | null => {
   const line = body
@@ -395,7 +405,6 @@ export async function readModuleTree(
     if (item.type === 'knowledge' || item.type === 'lesson') continue;
     if (!item.moduleId || !within.has(item.moduleId)) continue;
     const type = item.type;
-    const key = readKey(type, item.ref);
     const cardOwed = type === 'capability' ? owed.get(item.ref) : undefined;
     branches[type].push({
       type,
@@ -411,7 +420,7 @@ export async function readModuleTree(
       recheck: cardOwed
         ? { since: cardOwed.since, by: cardOwed.by, matched: [] }
         : (item.recheck ?? null),
-      reads: key ? (reads.get(key) ?? 0) : null,
+      reads: reads.get(readKey(type, item)) ?? 0,
     });
   }
   const inFlight = issues
