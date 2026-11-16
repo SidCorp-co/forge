@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { operationsBrief } from './ops-prompt.js';
-import { agentOpening, supportBrief, toolsLine } from './prompt.js';
-import { ANSWER_THE_ASKER, DONE_ONLY_WHEN_CHECKED, NO_PERMISSION_TALK } from './room-conduct.js';
+import { agentOpening, grantsLine, recentBlock, supportBrief, toolsLine } from './prompt.js';
+import {
+  ANSWER_THE_ASKER,
+  DONE_ONLY_WHEN_CHECKED,
+  linksOnWeb,
+  NO_PERMISSION_TALK,
+} from './room-conduct.js';
 
 const brief = supportBrief({ projectName: 'P', product: null, tools: [] });
 
@@ -212,5 +217,55 @@ describe('every room agent brief carries the room conduct', () => {
 
   it('answers the asker with the deliverable asked for, short, steps only for a guide', () => {
     for (const text of [brief, channel, operations]) expect(text).toContain(ANSWER_THE_ASKER);
+  });
+
+  // ISS-1250 (epod, 16/11): the operations room explained its grants and sent the owner to settings,
+  // told its role's acts alone and to name who can grant the rest. Every brief now hands an act on
+  // with ask_master, never says who could grant it, and links the web app, never the API host.
+  it('hands an act it cannot make to the master, and tells no thread who could grant it', () => {
+    expect(operations).toMatch(/Your acts: [^.]*\bask_master\b[^.]*\./);
+    expect(operations).toContain('you hand on and never explain');
+    for (const text of [brief, channel, operations, grantsLine({ abilities: [] } as never)]) {
+      expect(text).not.toContain('naming who can grant it');
+      expect(text).not.toContain("say in the persona's words what you could not do");
+    }
+    expect(NO_PERMISSION_TALK).toContain('support.ask_master');
+    expect(NO_PERMISSION_TALK).toContain('never send anyone, the owner included, to a page');
+    for (const text of [brief, channel, operations]) {
+      expect(text).toContain(linksOnWeb('http://localhost:3000'));
+    }
+  });
+});
+
+// ISS-1250 (epod 16/11 02:21): the owner's ruling answered a post the epod master had just made in
+// the thread, which the warm session never saw; each turn now hands a thread's last lines with it.
+describe('a turn carries the last lines of its thread', () => {
+  const line = (role: 'user' | 'assistant' | 'system', content: string, id: string | null) => ({
+    role,
+    content,
+    authorLabel: role === 'user' ? 'chuong' : null,
+    externalId: id,
+  });
+
+  it('holds the post just made there, frames a member as data, and leaves out what it hands', () => {
+    const block = recentBlock(
+      { thread: 't1' },
+      [
+        line('assistant', 'ePOD v1.4.2: the new errors read in Vietnamese.', 'm1'),
+        line('system', 'stayed silent: chatter', null),
+        line('user', 'ok', 'm2'),
+        line('user', '@babo language per the setting, English by default', 'm3'),
+      ],
+      new Set(['m3']),
+    );
+    expect(block).toContain('"recent"');
+    expect(block).toContain('bot: ePOD v1.4.2: the new errors read in Vietnamese.');
+    expect(block).toContain('chuong: ');
+    expect(block).not.toContain('English by default');
+    expect(block).not.toContain('stayed silent');
+  });
+
+  it('is nothing for a thread with no line before the handed ones', () => {
+    expect(recentBlock({ thread: 't1' }, [line('user', 'hi', 'm1')], new Set(['m1']))).toBeNull();
   });
 });
