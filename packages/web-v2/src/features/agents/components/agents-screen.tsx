@@ -5,9 +5,10 @@ import { useCopy } from "@/lib/i18n/interface-language";
 import { agentsListHref } from "@/lib/routes/agents";
 import { useLocationSearch } from "@/lib/utils/use-location-search";
 import { useStuckRuns } from "../hooks";
+import { CapabilitiesTab } from "./capabilities-tab";
 import { type AgentsAccess, RunsList } from "./runs-list";
 
-const AGENTS_TABS = ["runs", "sessions"] as const;
+const AGENTS_TABS = ["runs", "sessions", "capabilities"] as const;
 type AgentsTab = (typeof AGENTS_TABS)[number];
 
 export function AgentsScreen({ access }: { access: AgentsAccess }) {
@@ -15,6 +16,7 @@ export function AgentsScreen({ access }: { access: AgentsAccess }) {
   const TABS = [
     { value: "runs", label: t("agents.tab.runs") },
     { value: "sessions", label: t("agents.tab.sessions") },
+    { value: "capabilities", label: t("agents.tab.capabilities") },
   ];
   const [urlTab, setTab] = useUrlTab(AGENTS_TABS);
   const params = new URLSearchParams(useLocationSearch());
@@ -30,6 +32,7 @@ export function AgentsScreen({ access }: { access: AgentsAccess }) {
       </div>
       {tab === "runs" ? <RunsList access={access} /> : null}
       {tab === "sessions" ? <SessionsTab projectId={access.projectId} slug={access.slug} issueId={issueId} /> : null}
+      {tab === "capabilities" ? <CapabilitiesTab projectId={access.projectId} /> : null}
     </div>
   );
 }

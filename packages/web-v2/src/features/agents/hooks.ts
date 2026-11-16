@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { readerZone } from "@/design";
 import { type StuckRuns, stuckRunsOf } from "@/features/sessions";
 import { liveIssueKeys, projectNowOf } from "./now";
-import { nowQueries, RUNS_STANDING_ROOT, runKeys, runQueries } from "./queries";
+import { capabilityQueries, nowQueries, RUNS_STANDING_ROOT, runKeys, runQueries } from "./queries";
 import type { RunStandingScope } from "./types";
 
 export { RUNS_STANDING_ROOT };
@@ -49,4 +49,19 @@ export function useLiveIssueKeys(projectId: string): ReadonlySet<string> {
   const live = useQuery(nowQueries.live(projectId));
   if (!live.data) return new Set();
   return liveIssueKeys(projectNowOf({ state: "read", data: live.data }, { state: "loading" }, { state: "loading" }));
+}
+
+/** Every door's use over the capabilities window, with its card. */
+export function useDoorUse(projectId: string | undefined) {
+  return useQuery(capabilityQueries.doors(projectId));
+}
+
+/** Each pile every prompt carries, against its cap. */
+export function usePiles(projectId: string | undefined) {
+  return useQuery(capabilityQueries.piles(projectId));
+}
+
+/** The reports agents filed on a door and the lessons on its card. */
+export function useCapabilityExtra(projectId: string | undefined) {
+  return useQuery(capabilityQueries.extra(projectId));
 }

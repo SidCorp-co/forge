@@ -1,3 +1,5 @@
+import type { CapabilitiesView } from "@forge/contracts/capabilities";
+import type { DoorUseView, PilesView } from "@forge/contracts/door-use";
 import type { RunFlow } from "@forge/contracts/run-flow";
 import type { SupportTurnsView } from "@forge/contracts/project-now";
 import { RUN_STANDING_LIST_MAX } from "@forge/contracts/run-standing";
@@ -34,4 +36,14 @@ export const runsApi = {
   passes: (projectId: string, limit = 50) => apiClient<MasterPassList>(`${projectPath(projectId)}/masters/passes?limit=${limit}`),
 
   charter: (projectId: string) => apiClient<MasterCharter>(`${projectPath(projectId)}/master-charter`),
+};
+
+/** The capabilities page's reads (ISS-1251 §7), each over the last `days`. */
+export const capabilitiesApi = {
+  /** `GET /api/projects/:id/metrics/doors` — every door's calls by agent kind, its card, and what agents read. */
+  doors: (projectId: string, days: number) => apiClient<DoorUseView>(`${projectPath(projectId)}/metrics/doors?days=${days}`),
+  /** `GET /api/projects/:id/metrics/piles` — each text every prompt carries, against its cap. */
+  piles: (projectId: string) => apiClient<PilesView>(`${projectPath(projectId)}/metrics/piles`),
+  /** `GET /api/projects/:id/metrics/capabilities` — the reports agents filed on a door, and the lessons on its card. */
+  extra: (projectId: string, days: number) => apiClient<CapabilitiesView>(`${projectPath(projectId)}/metrics/capabilities?days=${days}`),
 };
