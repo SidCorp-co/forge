@@ -32,6 +32,7 @@ import {
   type ContextScopedMcpToolFactory,
   type McpContext,
   refusedAnswer,
+  sourceOf,
   zodToMcpSchema,
 } from '../lib/tool.js';
 import { ArgumentRefusal, keyArgument, need, zodArgumentRefusal } from '../lib/tool-args.js';
@@ -47,8 +48,17 @@ import {
   routedRequirements,
 } from '../product-progress/index.js';
 import { resolveEffectiveProjectId } from '../projects/index.js';
+import { CARDS } from './feedback-tool.cards.js';
 
-const ACTIONS = ['list', 'get', 'progress', 'similar', 'submit', 'clarify', 'attach'] as const;
+export const ACTIONS = [
+  'list',
+  'get',
+  'progress',
+  'similar',
+  'submit',
+  'clarify',
+  'attach',
+] as const;
 const READS = ['list', 'get', 'progress', 'similar'] as const;
 export const PROJECT_FEEDBACK_READ_ACTIONS: readonly string[] = READS;
 
@@ -380,6 +390,8 @@ export const projectFeedbackMcpTool: ContextScopedMcpToolFactory = (ctx) => ({
   description: DESCRIPTION,
   inputSchema: zodToMcpSchema(inputSchema),
   actionDescribe: DESCRIBE,
+  cards: CARDS,
+  source: sourceOf(import.meta.url),
   handler: async (args) => {
     looseTargetRefusal(args);
     const input = inputSchema.parse(args);

@@ -19,6 +19,7 @@ import {
   type ContextScopedMcpToolFactory,
   type McpContext,
   refusedAnswer,
+  sourceOf,
   zodToMcpSchema,
 } from '../lib/tool.js';
 import { argumentRefusal, need } from '../lib/tool-args.js';
@@ -41,8 +42,9 @@ import {
 } from '../requirements/index.js';
 import { ANSWER_LINE, answerOnRequirement } from './requirement-answer.js';
 import { requirementDetail, requirementProgress, requirementRow } from './requirement-views.js';
+import { CARDS } from './requirements-tool.cards.js';
 
-const ACTIONS = [
+export const ACTIONS = [
   'list',
   'get',
   'progress',
@@ -478,6 +480,8 @@ export const forgeRequirementsMcpTool: ContextScopedMcpToolFactory = (ctx) => ({
   description: DESCRIPTION,
   inputSchema: zodToMcpSchema(inputSchema),
   actionDescribe: DESCRIBE,
+  cards: CARDS,
+  source: sourceOf(import.meta.url),
   handler: async (args) => {
     const input = inputSchema.parse(args);
     const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
