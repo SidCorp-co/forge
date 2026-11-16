@@ -24,6 +24,7 @@ export const REFERENCE_ACT_CARDS = {
       'Name the file, doc or release you used in your answer, and say what you take and what you reject.',
     ],
     example: { project: 'epod', area: 'theme' },
+    family: 'room.references',
     audience: ['bot'],
   },
   reference_add: {
@@ -50,6 +51,7 @@ export const REFERENCE_ACT_CARDS = {
       areas: ['worktrees'],
       followReleases: true,
     },
+    family: 'room.references',
     audience: ['bot'],
   },
   reference_cite: {
@@ -72,6 +74,7 @@ export const REFERENCE_ACT_CARDS = {
       why: 'one worktree per task under the repo, removed when the task lands',
       about: 'ISS-167',
     },
+    family: 'room.references',
     audience: ['bot'],
   },
   reference_propose: {
@@ -92,6 +95,7 @@ export const REFERENCE_ACT_CARDS = {
       areas: ['theme'],
       evidence: 'ISS-160 and ISS-167 took its section schema layout',
     },
+    family: 'room.references',
     audience: ['bot'],
   },
 } satisfies Partial<Record<SupportAction, CapabilityCardBody>>;

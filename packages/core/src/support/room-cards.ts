@@ -42,6 +42,7 @@ export const ROOM_ACT_CARDS = {
     // the message text alone; all 35 cross-project records carried no key
     redFlag:
       'Picking the project from the message’s words alone, against its thread and sender: sid-desk filed mail-server work that sidcorp-mail owned.',
+    family: 'room.message',
     audience: ['bot'],
   },
   asker: {
@@ -63,6 +64,7 @@ export const ROOM_ACT_CARDS = {
     // ISS-1243: a reply to thuanhtm's question was addressed to @anhhtt.
     redFlag:
       'Reading a ruling alone: on 16/11 the owner’s “language per the setting” answered the post just above it on ePOD’s errors, and the bot took it for its own settings.',
+    family: 'room.message',
     audience: ['bot'],
   },
   member: {
@@ -88,6 +90,7 @@ export const ROOM_ACT_CARDS = {
     // answered the organization's owner knowing nothing of him
     redFlag:
       'Leaving the record empty: Forge-Communicate held no member on 16/11, so its bot answered the organization’s owner as a stranger.',
+    family: 'room.record',
     audience: ['bot'],
   },
   rule: {
@@ -111,6 +114,7 @@ export const ROOM_ACT_CARDS = {
     // bot answered that the room would not let it save a channel rule
     redFlag:
       'Taking a ruling on the product for a channel rule: on 16/11 the owner’s language ruling was about ePOD’s errors, not the room.',
+    family: 'room.record',
     audience: ['bot'],
   },
   reply: {
@@ -135,6 +139,7 @@ export const ROOM_ACT_CARDS = {
     // I will report back") instead of an answer, and a master post landed beside 14 of them
     redFlag:
       'Relaying “passed to the team, will report back” when the answer can be had now: ask the master in the turn and answer yourself.',
+    family: 'room.answer',
     audience: ['bot'],
   },
   silent: {
@@ -158,6 +163,7 @@ export const ROOM_ACT_CARDS = {
     // that was sidcorp-mail's
     redFlag:
       'Posting in a thread another binding holds: in sid-email, sid-desk posted a failure line on sidcorp-mail’s request.',
+    family: 'room.answer',
     audience: ['bot'],
   },
   thread: {
@@ -174,6 +180,7 @@ export const ROOM_ACT_CARDS = {
     ],
     practice: ['Cite an earlier message by its id rather than asking the person to say it again.'],
     example: { thread: THREAD },
+    family: 'room.message',
     audience: ['bot'],
   },
   search: {
@@ -189,6 +196,7 @@ export const ROOM_ACT_CARDS = {
       'What the product can do is what its knowledge and project document say; where neither says it, say you cannot tell.',
     ],
     example: { query: 'order export size column', project: 'adminhub-api' },
+    family: 'room.facts',
     audience: ['bot'],
   },
   image: {
@@ -205,6 +213,7 @@ export const ROOM_ACT_CARDS = {
     // ISS-1010: screenshots never reached the agent, which asked people to describe them; ISS-1243,
     // AdminHub-Support 14/11: one user, 40 posts of instruction, error screenshot, new instruction
     redFlag: 'Asking the person to describe a screenshot you can read.',
+    family: 'room.message',
     audience: ['bot'],
   },
   ask_master: {
@@ -236,6 +245,7 @@ export const ROOM_ACT_CARDS = {
     // owner to set ePOD's language in Forge's settings himself
     redFlag:
       'Explaining grants or sending the owner to a screen instead of handing the act on: on 16/11 the bot told him to set ePOD’s language in Forge’s settings himself.',
+    family: 'room.hand-on',
     audience: ['bot'],
   },
   technical: {
@@ -257,6 +267,7 @@ export const ROOM_ACT_CARDS = {
     // for me", e.g. sid-email 06/11 "I am not yet allowed to share the mailbox"
     redFlag:
       'Telling a user thread you lack a permission or wait on someone: 114 posts did that across the rooms from 01/11 to 15/11.',
+    family: 'room.hand-on',
     audience: ['bot'],
   },
   route: {
@@ -279,6 +290,7 @@ export const ROOM_ACT_CARDS = {
       title: 'support.agree answers that a just-filed record holds no feedback',
       text: 'agree on proposal K7QX2M filed FB-12 in adminhub-fe, then answered “holds no feedback”.',
     },
+    family: 'room.hand-on',
     audience: ['bot'],
   },
   in_flight: {
@@ -296,6 +308,7 @@ export const ROOM_ACT_CARDS = {
     // live; on 14/11 the user found them not built. 7 corrections stacked beside master posts.
     redFlag:
       'Telling a thread work is done from memory or the thread’s own claims: AdminHub-Support was told on 12/11 that rules were live which were not built.',
+    family: 'room.facts',
     audience: ['bot'],
   },
   audit: {
@@ -317,6 +330,7 @@ export const ROOM_ACT_CARDS = {
     // 0 audited
     redFlag:
       'Posting and moving on: after the audit door shipped, the first seven Forge-Communicate replies carried no verdict.',
+    family: 'room.answer',
     audience: ['bot'],
   },
   guide: {
@@ -332,6 +346,7 @@ export const ROOM_ACT_CARDS = {
       'A project or its organization may keep its own guide (knowledge entry room-agent-guide): follow it over what you recall.',
     ],
     example: {},
+    family: 'room.facts',
     audience: ['bot'],
   },
   ask_owner: {
@@ -353,6 +368,7 @@ export const ROOM_ACT_CARDS = {
         'Add Varnish to the forge-ops deploy job now (recommended, ten minutes) or after the release?',
       record: 'ISS-201',
     },
+    family: 'room.owner',
     audience: ['bot'],
   },
   answer_question: {
@@ -379,6 +395,7 @@ export const ROOM_ACT_CARDS = {
     // filed as a new request
     redFlag:
       'Filing the owner’s answer as a new request instead of recording it on the question he owed.',
+    family: 'room.owner',
     audience: ['bot'],
   },
   raise_owed: {
@@ -395,6 +412,7 @@ export const ROOM_ACT_CARDS = {
       thread: 'owed-release-0-19-0',
       text: 'adminhub-api 0.19.0 waits on your approval: approve it (recommended, every check is green) or return it.',
     },
+    family: 'room.owner',
     audience: ['bot'],
   },
   approve: {
@@ -412,6 +430,7 @@ export const ROOM_ACT_CARDS = {
     // approvals filed as new feedback; thread BeK4G held FB-15..19 of two projects
     redFlag:
       'Filing the owner’s approval as a new item: 16 of 79 records into the AdminHub projects were approvals of items already open.',
+    family: 'room.consent',
     audience: ['bot'],
   },
   promise: {
@@ -431,6 +450,7 @@ export const ROOM_ACT_CARDS = {
     // owner's thread, and was refused SUPPORT_ONE_RESULT_PER_REQUEST
     redFlag:
       'Posting a second result in a thread whose person waits on work recorded elsewhere: promise them instead.',
+    family: 'room.live',
     audience: ['bot'],
   },
 } satisfies Partial<Record<SupportAction, CapabilityCardBody>>;

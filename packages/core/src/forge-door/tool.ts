@@ -174,6 +174,7 @@ const CARDS = {
     },
     redFlag:
       'Working around a Forge defect in silence, so the next agent meets it again and nobody hears.',
+    family: 'forge-feedback',
     audience: ['bot', 'master', 'run', 'person'],
   },
   door: {
@@ -202,6 +203,7 @@ const CARDS = {
     },
     redFlag:
       'Giving up on a door, or guessing around it, without saying so: the feature never learns it failed.',
+    family: 'forge-feedback',
     audience: ['bot', 'master', 'run'],
   },
   ...FEEDBACK_CARDS,

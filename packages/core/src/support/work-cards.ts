@@ -25,6 +25,7 @@ export const WORK_ACT_CARDS = {
       'Each check is recorded on its action, so your answer is the only post the asker sees.',
     ],
     example: { thread: THREAD, tool: 'runs_list', args: { status: 'failed' } },
+    family: 'room.diagnose',
     audience: ['bot'],
   },
   read: {
@@ -44,6 +45,7 @@ export const WORK_ACT_CARDS = {
     // though catalog-api is a project it follows
     redFlag:
       'Telling a thread you cannot read logs or data before trying the reads your brief lists.',
+    family: 'room.diagnose',
     audience: ['bot'],
   },
   propose_fix: {
@@ -62,6 +64,7 @@ export const WORK_ACT_CARDS = {
       args: { order: 'RIV-68493' },
       asker: 'Yt8kWq3NcRe5HmP2v',
     },
+    family: 'room.diagnose',
     audience: ['bot'],
   },
   record: {
@@ -92,6 +95,7 @@ export const WORK_ACT_CARDS = {
     // "ok" before filing what their own request asked for, 11 times in 03/11-15/11
     redFlag:
       'Asking the asker to say ok before filing what their own request asked for: cite that request with support.agree at once.',
+    family: 'room.consent',
     audience: ['bot'],
   },
   agree: {
@@ -116,6 +120,7 @@ export const WORK_ACT_CARDS = {
     // bot asked her to say ok again
     redFlag:
       'Asking the owner or a named decider to agree to what they asked for themselves: their own request is the agreement.',
+    family: 'room.consent',
     audience: ['bot'],
   },
   check_result: {
@@ -132,6 +137,7 @@ export const WORK_ACT_CARDS = {
       check: 'check:stock-sync:2026-11-16',
       finding: 'The 06:00 stock sync left 12 SKUs unmatched, all from the new supplier sheet.',
     },
+    family: 'room.diagnose',
     audience: ['bot'],
   },
   releases: {
@@ -154,6 +160,7 @@ export const WORK_ACT_CARDS = {
     // ISS-1123 and ISS-1189: a release said live, or said missing, from memory with no read in the
     // turn; ISS-1243: MangoTee rules told live on 12/11 were not built
     redFlag: 'Saying a release is or is not live with no release read in that turn.',
+    family: 'room.live',
     audience: ['bot'],
   },
   deployment: {
@@ -167,6 +174,7 @@ export const WORK_ACT_CARDS = {
     ],
     practice: ['Name the target as your grant lists it.'],
     example: { target: '6f1c2a0e-5b7d-4c1e-9a3f-2d8e4b6c7a10' },
+    family: 'room.live',
     audience: ['bot'],
   },
   project: {
@@ -186,6 +194,7 @@ export const WORK_ACT_CARDS = {
     example: { project: 'orbit' },
     // ISS-775: four OrbitInternal duties named a box file, key or production host instead of a door
     redFlag: 'Reading a box file or a production host for what the project document says.',
+    family: 'room.facts',
     audience: ['bot'],
   },
   issues: {
@@ -199,6 +208,7 @@ export const WORK_ACT_CARDS = {
     ],
     practice: ['It reads the same from any of your groups, over every project you follow.'],
     example: { project: 'epod', key: 'ISS-167' },
+    family: 'room.facts',
     audience: ['bot'],
   },
   feedback: {
@@ -216,6 +226,7 @@ export const WORK_ACT_CARDS = {
     // room may not read it and named a settings change that does not exist
     redFlag:
       'Telling the owner the room cannot read feedback: on 15/11 the bot said so and named a settings change that does not exist.',
+    family: 'room.facts',
     audience: ['bot'],
   },
   link: {
@@ -229,6 +240,7 @@ export const WORK_ACT_CARDS = {
     ],
     practice: ['You are told when they have linked: make the act then.'],
     example: { thread: THREAD, member: 'Yt8kWq3NcRe5HmP2v' },
+    family: 'room.record',
     audience: ['bot'],
   },
   release_decision: {
@@ -254,6 +266,7 @@ export const WORK_ACT_CARDS = {
     // his room ("is it making more work for me, when I already approved?")
     redFlag:
       'Asking the owner again, or to click, after he said go: adminhub-api 0.19.0 asked him three times on 10/11.',
+    family: 'room.live',
     audience: ['bot'],
   },
   owner_forge_act: {
@@ -279,6 +292,7 @@ export const WORK_ACT_CARDS = {
     // job" to close a question it could have closed as him
     redFlag:
       'Telling the owner to press a button to settle something he just decided: on 16/11 the bot sent him to click an answer it could record as him.',
+    family: 'room.owner',
     audience: ['bot'],
   },
 } satisfies Partial<Record<SupportAction, CapabilityCardBody>>;

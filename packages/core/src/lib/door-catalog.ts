@@ -9,6 +9,7 @@ import {
   situationsFor,
   TIER0_MAP_MAX_CHARS,
 } from '@forge/contracts/capability-cards';
+import { CARD_FAMILIES } from '@forge/contracts/card-families';
 import type { DoorSurface } from '@forge/contracts/door-use';
 import { portSlot } from './port-slot.js';
 
@@ -64,10 +65,26 @@ export interface Tier0Map {
 }
 
 /**
- * The Tier-0 map of one audience (ISS-1251): one line per situation, "when X → door", of the cards
- * that teach it, most used first (`calls`, the door use of the window), as many whole cards as fit in
- * `TIER0_MAP_MAX_CHARS`. The rest are Tier 1, reached by situation through `forge_find`; a card is
- * never cut to fit, and a map that cannot carry every card is a pile due for merging.
+ * A family's doors on one line: an MCP action whose tool the door before it names is written by its
+ * action alone (`support.decide · asker · thread`), so the line names every door and repeats no tool.
+ */
+function doorsLine(targets: readonly string[]): string {
+  const toolOf = (t: string | undefined) => (t && !t.includes(' ') ? t.split('.')[0] : null);
+  return targets
+    .map((t, i) => {
+      const tool = toolOf(t);
+      return tool && tool === toolOf(targets[i - 1]) ? t.slice(tool.length + 1) : t;
+    })
+    .join(' · ');
+}
+
+/**
+ * The Tier-0 map of one audience (ISS-1251): the cards that teach it, most used first (`calls`, the
+ * door use of the window). A card of a family (`card-families.ts`) is one door on its family's line,
+ * "when <the family's situation> → its doors", so a cap is met by merging lines, never by dropping a
+ * door; a card of none gives each of its situations a line. Whole blocks are carried within
+ * `TIER0_MAP_MAX_CHARS`; a map that cannot carry every card is a pile due for merging, and the rest
+ * are Tier 1, reached by situation through `forge_find`.
  */
 export function tier0Map(
   doors: readonly CatalogDoor[],
@@ -80,24 +97,37 @@ export function tier0Map(
       (d) => d.card?.audience.includes(audience) && situationsFor(d.card, audience).length > 0,
     )
     .sort((a, b) => (calls.get(b.id) ?? 0) - (calls.get(a.id) ?? 0) || a.id.localeCompare(b.id));
+  // a master and its runs work over REST, so their map names an act's REST twin where it has one
+  const target = (d: CatalogDoor) =>
+    (audience === 'master' || audience === 'run') && d.twins?.[0] ? d.twins[0] : d.id;
+  // one block per family, ranked by its most used door, and one per card of none
+  const groups = new Map<string, CatalogDoor[]>();
+  for (const d of taught) {
+    const key = d.card?.family ?? `door:${d.id}`;
+    groups.set(key, [...(groups.get(key) ?? []), d]);
+  }
   const lines: string[] = [];
   const carried: string[] = [];
   let size = -1;
-  for (const d of taught) {
-    const card = d.card as CapabilityCard;
-    // a master and its runs work over REST, so their map names an act's REST twin where it has one
-    const target =
-      (audience === 'master' || audience === 'run') && d.twins?.[0] ? d.twins[0] : d.id;
+  for (const members of groups.values()) {
+    const cards = members.map((d) => d.card as CapabilityCard);
+    const family = cards[0]?.family;
     const block = [
-      ...situationsFor(card, audience).map((s) => `- when ${s.when} → ${target}`),
+      ...(family
+        ? [`- when ${CARD_FAMILIES[family]} → ${doorsLine(members.map(target))}`]
+        : situationsFor(cards[0] as CapabilityCard, audience).map(
+            (s) => `- when ${s.when} → ${target(members[0] as CatalogDoor)}`,
+          )),
       // a situation a lesson folded in, shown until the card's code carries it
-      ...(proposed.get(card.id) ?? []).map((t) => `- (proposed) ${t} → ${target}`),
+      ...members.flatMap((d) =>
+        (proposed.get(d.card?.id ?? '') ?? []).map((t) => `- (proposed) ${t} → ${target(d)}`),
+      ),
     ];
     const grows = block.join('\n').length + 1;
     if (size + grows > TIER0_MAP_MAX_CHARS) continue;
     size += grows;
     lines.push(...block);
-    carried.push(card.id);
+    carried.push(...cards.map((c) => c.id));
   }
   return { text: lines.join('\n'), carried, reach: taught.length };
 }

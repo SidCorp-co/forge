@@ -1,14 +1,17 @@
 // ISS-1251: a door's capability card sits beside it, is judged whole when the registry is built, is
 // found by the situation an agent is in, and is answered with the action's input.
 
+import { TIER0_MAP_MAX_CHARS } from '@forge/contracts/capability-cards';
+import { CARD_FAMILIES } from '@forge/contracts/card-families';
 import { describe, expect, it } from 'vitest';
 import { tier0Map } from '../lib/door-catalog.js';
 import type { McpTool } from '../lib/tool.js';
 import { sourceOf } from '../lib/tool.js';
 import { AFFORDANCE_CARDS } from '../prompt/index.js';
+import { SUPPORT_ACT_CARDS } from '../support/act-cards.js';
 import { actionCatalog, findActions } from './action-catalog.js';
 import { cardsOf, describedCard, withCard } from './cards.js';
-import { carded, catalogOf, mcpDoors } from './door-catalog.js';
+import { carded, catalogOf, mcpDoors, servedDoorCatalog } from './door-catalog.js';
 import { mcpTools } from './server.js';
 
 const catalog = actionCatalog(mcpTools({ principal: { userId: 'cards-test' } } as never));
@@ -220,5 +223,63 @@ describe('a reference act is taught once per audience', () => {
     expect(roomCard?.audience).toEqual(['bot']);
     expect(doorCard?.audience).toEqual(expect.arrayContaining(['master', 'run']));
     expect(doorCard?.audience.filter((a) => roomCard?.audience.includes(a))).toEqual([]);
+  });
+});
+
+// ISS-1251 criterion 5: a cap on the Tier-0 map triggers merging, never truncation. A card of a family
+// is one door on its family's line, so the room agent's map names every act it holds within its cap.
+describe('a Tier-0 map merges a family of acts into one line', () => {
+  const door = (id: string, family?: keyof typeof CARD_FAMILIES) => ({
+    id,
+    surface: 'mcp' as const,
+    summary: null,
+    feature: 'f',
+    card: {
+      id,
+      owner: 'f',
+      purpose: 'p',
+      situations: [
+        { when: `you need ${id}`, do: 'call it' },
+        { when: 'a second case', do: 'x' },
+      ],
+      practice: ['x'],
+      audience: ['bot' as const],
+      scenarios: [],
+      ...(family ? { family } : {}),
+    },
+  });
+
+  it('gives a family one line naming each door once, and a card of none its own lines', () => {
+    const map = tier0Map(
+      [door('support.a', 'room.answer'), door('support.b', 'room.answer'), door('other.c')],
+      'bot',
+      new Map([['support.b', ['when a lesson said so']]]),
+      new Map([['support.b', 2]]),
+    );
+    expect(map.text.split('\n')).toEqual([
+      `- when ${CARD_FAMILIES['room.answer']} → support.b · a`,
+      '- (proposed) when a lesson said so → support.b',
+      '- when you need other.c → other.c',
+      '- when a second case → other.c',
+    ]);
+    expect(map.carried).toEqual(['support.b', 'support.a', 'other.c']);
+  });
+
+  it('carries every act a room agent holds, each named on the bot map, within its cap', () => {
+    const map = tier0Map(servedDoorCatalog().doors, 'bot');
+    const acts = Object.keys(SUPPORT_ACT_CARDS);
+    expect(map.carried.length).toBe(map.reach);
+    for (const act of acts) {
+      expect(map.carried, act).toContain(`support.${act}`);
+      expect(map.text, act).toMatch(new RegExp(`(support\\.| · )${act}( · |$|\\n)`, 'm'));
+    }
+    expect(map.text.length).toBeLessThanOrEqual(TIER0_MAP_MAX_CHARS);
+  });
+
+  it('gives every card the room agent is taught a family, so none takes lines of its own', () => {
+    const loose = servedDoorCatalog()
+      .doors.filter((d) => d.card?.audience.includes('bot') && !d.card.family)
+      .map((d) => d.id);
+    expect(loose).toEqual([]);
   });
 });

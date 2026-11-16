@@ -4,6 +4,7 @@
 // situation it is in, never from the door's name, so a card leads with its situations.
 
 import { z } from "zod";
+import { CARD_FAMILY_IDS } from "./card-families.js";
 
 /** Who a card teaches: a room's agent, a project's master, a run it starts, or a person's client. */
 export const CARD_AUDIENCES = ["bot", "master", "run", "person"] as const;
@@ -61,6 +62,12 @@ export const capabilityCardSchema = z
 		/** The wrong way agents actually take; absent until one is seen. */
 		redFlag: line(CARD_LIMITS.redFlag).optional(),
 		audience: z.array(z.enum(CARD_AUDIENCES)).min(1),
+		/**
+		 * The family a Tier-0 map gives one line to (`card-families.ts`): the map names this door on
+		 * that line, and the card's own situations are read when the act is used. Absent, the card's
+		 * situations are its own lines.
+		 */
+		family: z.enum(CARD_FAMILY_IDS).optional(),
 		/**
 		 * Never written on the card: when its text last changed is read from the card ledger, which
 		 * `cards:stamp` writes from the card itself (`packages/core/src/lib/card-changed.ts`).

@@ -1,6 +1,6 @@
-// The run's map (ISS-1251): one line per situation a run meets, "when X → door", rendered from the
-// capability cards that teach a run and ranked by this project's calls over thirty days, as many whole
-// cards as the run map's budget holds. A door's detail is its card, read on its first use; the map
+// The run's map (ISS-1251): "when X → door" lines rendered from the capability cards that teach a
+// run, one per family of acts or per situation of a card of none (`door-catalog.ts:tier0Map`), ranked
+// by this project's calls over thirty days, as many whole blocks as the run map's budget holds. A door's detail is its card, read on its first use; the map
 // is the only always-on teaching of the doors a run acts through.
 
 import { cardFreshness } from '../lessons/index.js';

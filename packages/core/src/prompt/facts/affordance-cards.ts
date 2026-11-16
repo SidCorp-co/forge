@@ -141,6 +141,7 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     practice: [
       'Treat a hit as point-in-time: an unverified one is a lead to check against the code, never a fact.',
     ],
+    family: 'memory',
     audience: ['master', 'run', 'bot'],
   }),
   card('POST /api/issues/:id/merge', 'issues', {
@@ -275,6 +276,7 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     // and were refused FEEDBACK_TARGET_NOT_ONE; ISS-861: a guide sent clients to project_feedback.create
     redFlag:
       'Naming the target as its own field (screen: …, requirement: …) or naming two, or calling create: the action is submit, with one target { kind, ref }.',
+    family: 'project-feedback',
     audience: ['master', 'run', 'bot', 'person'],
   }),
   card('POST /api/projects/:projectId/debts', 'cleanup', {

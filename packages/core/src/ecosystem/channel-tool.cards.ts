@@ -30,6 +30,7 @@ export const CARDS = {
       'From a checkout the same read is GET /api/projects/:id/channel/unanswered.',
     ],
     example: { projectId: '<project uuid>' },
+    family: 'channel',
     audience: ['master', 'bot'],
   },
   inbox: {
@@ -46,6 +47,7 @@ export const CARDS = {
     ],
     practice: ['Work unanswered first: the inbox adds only what owes no reply yet.'],
     example: { projectId: '<project uuid>' },
+    family: 'channel',
     audience: ['master', 'bot'],
   },
   read: {
@@ -64,6 +66,7 @@ export const CARDS = {
       'Only a document this project sends or receives is readable; any other is refused as not a party.',
     ],
     example: { projectId: '<project uuid>', ref: 'FP-CN-3' },
+    family: 'channel',
     audience: ['master', 'bot'],
   },
   thread: {
@@ -80,6 +83,7 @@ export const CARDS = {
       'Name the number of the document that opened the conversation, not of a reply in it.',
     ],
     example: { projectId: '<project uuid>', thread: 'FP-CN-3' },
+    family: 'channel',
     audience: ['master', 'bot'],
   },
   contracts: {
@@ -100,6 +104,7 @@ export const CARDS = {
       'From a checkout the same read is GET /api/projects/<provider>/api-page.',
     ],
     example: { projectId: '<project uuid>', project: '<provider project uuid>' },
+    family: 'channel',
     audience: ['master', 'bot'],
   },
   reply: {

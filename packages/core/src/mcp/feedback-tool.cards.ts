@@ -26,6 +26,7 @@ export const CARDS = {
       'Feedback about Forge itself is the feedback door’s (feedback.list), not this one.',
     ],
     example: { projectId: '<project uuid>', phase: ['new', 'reopened'] },
+    family: 'project-feedback',
     audience: ['person', 'bot'],
   },
   get: {
@@ -46,6 +47,7 @@ export const CARDS = {
       'Its attachments are listed here; uploads.fetch reads one.',
     ],
     example: { projectId: '<project uuid>', feedback: 'FB-12' },
+    family: 'project-feedback',
     audience: ['person', 'bot'],
   },
   clarify: {
