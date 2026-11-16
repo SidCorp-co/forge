@@ -1300,7 +1300,7 @@
       "kind": "domain",
       "context": "conversations",
       "owns": ["referenceCitations", "referenceReleases", "referenceSources"],
-      "serves": ["feedback-triage#intake", "REQ-50"]
+      "serves": ["feedback-triage#intake", "REQ-104"]
     },
     "steward-notes": {
       "kind": "domain",

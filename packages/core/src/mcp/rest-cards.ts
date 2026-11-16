@@ -5,6 +5,7 @@
 // does not stand refuses the module's load, naming it (`prompt/facts/affordance-cards.ts:card`).
 
 import type { CapabilityCard, CapabilityCardBody } from '@forge/contracts/capability-cards';
+import { REFERENCE_REST_CARD } from '@forge/contracts/references';
 import { CLEANUP_REST_CARDS } from '../cleanup/index.js';
 import { COMMENT_REST_CARDS } from '../comments/index.js';
 import { ECOSYSTEM_REST_CARDS } from '../ecosystem/index.js';
@@ -50,4 +51,5 @@ export const REST_CARDS: readonly CapabilityCard[] = [
   ...ownedBy('comments', COMMENT_REST_CARDS),
   ...ownedBy('feedback', FEEDBACK_REST_CARDS),
   ...ownedBy('requirements', REQUIREMENT_REST_CARDS),
+  card('POST /api/projects/:id/reference-sources/:source/citations', 'references', REFERENCE_REST_CARD),
 ];

@@ -244,6 +244,11 @@
     "on": "2026-11-16",
     "by": "ISS-1251"
   },
+  "POST /api/projects/:id/reference-sources/:source/citations": {
+    "hash": "722d216d7a7ab0c2",
+    "on": "2026-11-16",
+    "by": "ISS-1251"
+  },
   "POST /api/projects/:id/requirements/:req/accept": {
     "hash": "d58e61111530348d",
     "on": "2026-11-16",

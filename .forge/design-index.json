@@ -328,6 +328,10 @@
   "REQ-90": {
    "title": "Working Agreements: see which rules a project inherits, overrides and gives its agents",
    "status": "agreed"
+  },
+  "REQ-104": {
+   "title": "A project names the sources it learns from first, and agents consult them before researching from zero",
+   "status": "agreed"
   }
  },
  "workflows": {

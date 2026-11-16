@@ -10,7 +10,7 @@ export const REST_TWINS: Readonly<Record<string, readonly string[]>> = {
   'feedback.verify': ['POST /api/forge/feedback/:key/verify'],
   'feedback.reopen': ['POST /api/forge/feedback/:key/reopen'],
   'feedback.reply': ['POST /api/forge/feedback/:key/reply'],
-  // feedback.door's twin, POST /api/forge/feedback/doors, joins once the published contract lists it
+  'feedback.door': ['POST /api/forge/feedback/doors'],
   // (the batch's contracts:generate); the catalog refuses a twin the contract does not list
   'requirements.create': ['POST /api/projects/:id/requirements'],
   'requirements.revise': [
