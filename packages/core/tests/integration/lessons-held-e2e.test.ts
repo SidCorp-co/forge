@@ -65,7 +65,7 @@ describe('on confusion the agent stops, and the steward settles it with no perso
       201,
     );
     expect(raised).toEqual({ lesson: { key: `L-${n}`, status: 'held' } });
-    expect(await block({ produces: ['issue'], area: 'any' })).not.toContain(`L-${n} `);
+    expect(await block({ produces: ['issue'], area: 'any' })).not.toContain(`- lesson-${n}:`);
 
     // the steward reads both sides and the recommendation, and keeps it
     const asked: Doc[] = [];
@@ -96,7 +96,7 @@ describe('on confusion the agent stops, and the steward settles it with no perso
       reason: 'The house style yields to large type for patients.',
       actor_id: w.stewardId,
     });
-    expect(await block({ produces: ['issue'], area: 'any' })).toContain(`L-${n} `);
+    expect(await block({ produces: ['issue'], area: 'any' })).toContain(`- lesson-${n}:`);
 
     // edit: the recommended sentence when the steward names none
     ok(await say('member', 'POST', at(`/lessons/${n}/confusions`), conflictOn(other)), 201);
@@ -335,7 +335,7 @@ describe('the steward retires an unused or superseded lesson with a reason, neve
     });
     expect((await lesson(used)).status).toBe('approved');
     expect((await lesson(opened)).status).toBe('approved');
-    expect(await block({ produces: ['issue'], area: 'any' })).not.toContain(`L-${n} `);
+    expect(await block({ produces: ['issue'], area: 'any' })).not.toContain(`- lesson-${n}:`);
   });
 
   it('retires a superseded one when its replacement is approved; the row stays', async () => {
