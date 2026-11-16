@@ -130,6 +130,21 @@ const valueOf = (row: BarRow, key: string) => {
   return typeof v === "number" ? v : 0;
 };
 
+/** A tick's character at TICK's size, and the axis left for three of them, the chart's narrowest. */
+const TICK_CHAR_PX = 7;
+const AXIS_MIN_WIDTH = 40;
+
+/**
+ * The y-axis wide enough for its longest tick: the highest bar (a stack's sum) or average, with a
+ * quarter's room for the rounded tick above it, so `3400` never reads `400` cut at the margin.
+ */
+export function axisWidthOf(rows: readonly BarRow[], series: readonly BarSeries[], stacked: boolean, average?: number): number {
+  const tops = rows.map((r) => (stacked ? series.reduce((n, s) => n + valueOf(r, s.key), 0) : Math.max(0, ...series.map((s) => valueOf(r, s.key)))));
+  const top = Math.max(0, average ?? 0, ...tops);
+  const chars = String(Math.ceil(top * 1.25)).length;
+  return Math.max(AXIS_MIN_WIDTH, AXIS_MIN_WIDTH + TICK_CHAR_PX * (chars - 3));
+}
+
 export function BarChartFigure<R extends BarRow>({ title, testId, rows, series, stacked = false, average, tipOf, emptyText, reader, legendTestId }: BarChartFigureProps<R>) {
   const config: ChartConfig = Object.fromEntries(series.map((s) => [s.key, { label: s.label, color: s.fill }]));
   const empty = rows.every((r) => series.every((s) => valueOf(r, s.key) === 0));
@@ -142,7 +157,7 @@ export function BarChartFigure<R extends BarRow>({ title, testId, rows, series, 
           <BarChart data={[...rows]} margin={average ? AVERAGE_MARGIN : MARGIN} accessibilityLayer={false}>
             <CartesianGrid vertical={false} stroke="var(--border-subtle)" />
             <XAxis dataKey="tick" tickLine={false} axisLine={AXIS} tick={TICK} interval="preserveStartEnd" />
-            <YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={TICK} width={40} />
+            <YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={TICK} width={axisWidthOf(rows, series, stacked, average?.value)} />
             <Tooltip
               cursor={{ fill: "var(--bg-hover)" }}
               content={({ active, payload }) => {
