@@ -880,6 +880,8 @@ export const STEWARD_SKIP_REASONS = [
 	"budget_spent",
 	"steward_off",
 	"subject_ended",
+	/** A filed item's triage draft not taken: the item was routed before the draft's job could start (ISS-596). */
+	"triage_taken",
 ] as const;
 export type StewardSkipReason = (typeof STEWARD_SKIP_REASONS)[number];
 /** The skip reasons core still writes: every one but the retired. */

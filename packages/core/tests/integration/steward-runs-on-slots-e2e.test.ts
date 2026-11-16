@@ -9,8 +9,11 @@
 // ISS-596 c6. Which of a project's runs takes its free slot is the head of its job line, by when each
 // is due its slot from its first trigger: on forge's one slot, FB-650's triage waited behind nine
 // release follow-throughs, taken by whichever run's minute retry happened to be due when the slot
-// freed, until a person triaged it by hand.
+// freed, until a person triaged it by hand. A draft whose item was routed before its job could start
+// is skipped `triage_taken`, never a job spent writing nothing, unsaid (FB-641..645).
 //
+// @direct-test-of packages/core/src/steward/runs-store.ts
+// @direct-test-of packages/core/src/steward/subjects.ts
 // @direct-test-of packages/core/src/steward/dispatch.ts
 // @direct-test-of packages/core/src/steward/policy.ts
 // @direct-test-of packages/core/src/steward/slot-demand.ts
@@ -417,5 +420,88 @@ describe("a filed item's triage takes the next slot that frees, ahead of a follo
       'the overdue follow-through was starved',
     ).not.toBeNull();
     expect(await runRow(fresh)).toMatchObject({ state: 'queued', job_id: null });
+  });
+});
+
+describe('a filed item routed before its triage draft ran is owed no draft (ISS-596 c6)', () => {
+  /** A filed item a person routed to an issue: `triaged`, its triage taken. */
+  async function routedItem(pid: string, seq: number) {
+    const carrier = await createTestIssue(pid, ownerId, seq, {
+      status: 'open',
+      createdAt: new Date(),
+    });
+    const key = await createTestFeedback(pid, ownerId, seq, [carrier.id]);
+    const [fb] = await rows<{ id: string; status: string }>(sql`
+      SELECT id, status FROM feedback WHERE project_id = ${pid} AND fb_seq = ${seq}`);
+    expect(fb?.status).toBe('triaged');
+    return { kind: 'feedback', id: fb?.id ?? '', key };
+  }
+
+  async function queued(
+    pid: string,
+    subject: { kind: string; id: string; key: string },
+    acts: string[],
+  ) {
+    const [made] = await rows<{ id: string }>(sql`
+      INSERT INTO steward_runs (project_id, subject_kind, subject_id, subject_key, trigger, events,
+                                acts_to_run, state, queued_at, not_before)
+      VALUES (${pid}, ${subject.kind}, ${subject.id}, ${subject.key}, 'feedback.filed', '[]'::jsonb,
+              ${sql.raw(`ARRAY[${acts.map((a) => `'${a}'`).join(', ')}]::text[]`)}, 'queued',
+              now() - interval '3 minutes', now() - interval '1 minute')
+      RETURNING id`);
+    return made?.id ?? '';
+  }
+
+  it('skips the draft triage_taken and starts no job for it', async () => {
+    const pid = (await createTestProject(ownerId)).id;
+    const device = await createTestDevice(ownerId, { maxSubagents: 1 });
+    await bindTestRunner(pid, device);
+    const subject = await routedItem(pid, 598);
+    const draft = await queued(pid, subject, ['triage_draft']);
+
+    await dispatch(new Date());
+
+    expect(await runRow(draft)).toMatchObject({
+      state: 'skipped',
+      skip_reason: 'triage_taken',
+      job_id: null,
+    });
+    const [jobs] = await rows<{ n: number }>(sql`
+      SELECT count(*)::int AS n FROM jobs WHERE project_id = ${pid} AND type = 'steward'`);
+    expect(jobs?.n, 'a job was spent on a triage already taken').toBe(0);
+  });
+
+  it("takes the item's note and skips its draft in a run of its own, each recorded on the item", async () => {
+    const pid = (await createTestProject(ownerId)).id;
+    const device = await createTestDevice(ownerId, { maxSubagents: 1 });
+    await bindTestRunner(pid, device);
+    const subject = await routedItem(pid, 599);
+    const first = await queued(pid, subject, ['note', 'triage_draft']);
+
+    await dispatch(new Date());
+    expect(await runRow(first)).toMatchObject({ state: 'done', job_id: null });
+    await dispatch(new Date());
+
+    const runs = await rows<{ acts: string[]; state: string; skip_reason: string | null }>(sql`
+      SELECT acts_to_run AS acts, state, skip_reason FROM steward_runs
+       WHERE subject_id = ${subject.id} ORDER BY queued_at`);
+    expect(runs).toEqual([
+      { acts: ['note'], state: 'done', skip_reason: null },
+      { acts: ['triage_draft'], state: 'skipped', skip_reason: 'triage_taken' },
+    ]);
+  });
+
+  it('still drafts the triage of an item awaiting it (negative)', async () => {
+    const pid = (await createTestProject(ownerId)).id;
+    const device = await createTestDevice(ownerId, { maxSubagents: 1 });
+    await bindTestRunner(pid, device);
+    const key = await createTestFeedback(pid, ownerId, 600);
+    const [fb] = await rows<{ id: string }>(sql`
+      SELECT id FROM feedback WHERE project_id = ${pid} AND fb_seq = 600`);
+    const draft = await queued(pid, { kind: 'feedback', id: fb?.id ?? '', key }, ['triage_draft']);
+
+    await dispatch(new Date());
+
+    expect((await runRow(draft))?.job_id).not.toBeNull();
   });
 });

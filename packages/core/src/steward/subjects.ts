@@ -24,6 +24,18 @@ const ENDED: Record<StandingSubjectKind, readonly string[]> = {
   workflow: [],
 };
 
+/**
+ * The statuses a feedback item awaits its triage at: one routed (`triaged`) is owed no triage draft,
+ * whoever routed it, so its draft is skipped `triage_taken` rather than spending a job on a triage
+ * already taken (ISS-596 c6: FB-641..645's drafts ran on routed items and wrote nothing, unsaid).
+ */
+const AWAITING_TRIAGE: readonly string[] = ['new', 'reopened'];
+
+/** Whether `subject` is a feedback item whose triage was taken before its draft ran. */
+export function triageTaken(subject: { kind: string; status: string }): boolean {
+  return subject.kind === 'feedback' && !AWAITING_TRIAGE.includes(subject.status);
+}
+
 /** An act that follows an item past its end: the follow-through of shipped work reads closed issues. */
 const ACTS_PAST_END: readonly StewardAct[] = ['release_followthrough'];
 

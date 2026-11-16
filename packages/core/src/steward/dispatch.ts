@@ -41,7 +41,7 @@ import {
   runsToSettle,
   stampRun,
 } from './runs-store.js';
-import { actsOwedAt, subjectOf } from './subjects.js';
+import { actsOwedAt, subjectOf, triageTaken } from './subjects.js';
 import { runGatewayAct } from './turn.js';
 
 /** How many runs this core takes up at once, across its projects. */
@@ -180,11 +180,21 @@ const startJobInSlot = (run: RunRow, runner: readonly StewardAct[], tick: Tick) 
 /** Take one claimed run as far as it goes now; a `slot_wait` run is put back by the caller to retry. */
 export async function runOne(run: RunRow, tick: Tick = { noSlot: new Set() }): Promise<RunOutcome> {
   const subject = await subjectOf(run.projectId, run.subjectKind, run.subjectId);
-  const owed = subject ? actsOwedAt(subject.kind, subject.status, run.actsToRun) : [];
-  if (owed.length === 0) {
+  const owedAll = subject ? actsOwedAt(subject.kind, subject.status, run.actsToRun) : [];
+  if (owedAll.length === 0) {
     await endRun(run.id, { state: 'skipped', reason: 'subject_ended' });
     return 'ended';
   }
+  // a filed item routed before its triage draft ran owes no draft: the run says so, never spending a
+  // job to write nothing; a run owing other acts takes them and carries the draft to a run of its own,
+  // skipped the same way when taken up
+  const taken = subject && owedAll.includes('triage_draft') && triageTaken(subject);
+  if (taken && owedAll.length === 1) {
+    await endRun(run.id, { state: 'skipped', reason: 'triage_taken' });
+    return 'ended';
+  }
+  if (taken) await carryActs(run.id, ['triage_draft']);
+  const owed = taken ? owedAll.filter((a) => a !== 'triage_draft') : owedAll;
   // a run owing only a job waits for its slot before anything else is read
   const jobOnly = owed.every((a) => STEWARD_ACT_RUNTIME[a] === 'runner_job');
   if (jobOnly && !(await slotFree(run.projectId, tick))) return 'slot_wait';
