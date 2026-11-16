@@ -63,7 +63,7 @@ export type AskInput = {
   issueId?: string;
   /** The requirement it is asked of: a BA clarification, or an open question of a revision's spec. */
   requirementId?: string;
-  /** A BA clarification's feedback item: at most one open question per item. */
+  /** A BA clarification's feedback item. */
   feedbackId?: string;
   /**
    * What the asker names it as about, resolved and stored as `about`; never read from the prompt. A

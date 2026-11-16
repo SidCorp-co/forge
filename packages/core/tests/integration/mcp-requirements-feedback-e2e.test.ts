@@ -265,7 +265,7 @@ describe('project_feedback over /mcp', () => {
     expect(etaOf(linked)).toMatchObject({ estimate: true });
   });
 
-  it('files an item, asks its reporter, and refuses a second open question by name', async () => {
+  it('files an item, asks its reporter, and asks a second question beside the open one', async () => {
     const filed = ok(
       await call(token, 'project_feedback', {
         action: 'submit',

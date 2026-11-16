@@ -1,0 +1,1 @@
+**Agents may ask a feedback reporter every question they need.** The clarify tool no longer tells them to wait while one question is open, and the check that guards against question limits now catches that wording.

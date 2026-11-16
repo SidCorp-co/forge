@@ -27,11 +27,13 @@ const ASKED =
 /** The shapes a question count has been written in, each one a phrasing this repo carried. */
 const COUNTS: readonly RegExp[] = [
   new RegExp(
-    String.raw`\b(?:at most|up to|no more than)\s+${NUMBER}\s+(?:of (?:your |the )?)?${ASKED}`,
+    String.raw`\b(?:at most|up to|no more than)\s+${NUMBER}\s+(?:of (?:your |the )?)?(?:open |pending )?${ASKED}`,
     'i',
   ),
   /\bone\s+(?:question|clarification|card|questionnaire card|batch)\b[^.\n]{0,40}\bat a time\b/i,
   /\b(?:at most )?one is open (?:at a time|per)\b/i,
+  // ISS-904 c1 on dev.701: the clarify tool still said 'Refused while one is open on the item'
+  /\b(?:refused|refuses|wait)\b[^.\n]{0,20}\bwhile (?:one|a question|a clarification) is (?:open|pending|unanswered)\b/i,
   /\b(?:STEWARD_ASK_LIMIT|STEWARD_OPEN_ASKS_MAX|FEEDBACK_CLARIFICATION_ALREADY_OPEN|CLARIFICATION_ALREADY_OPEN|ONBOARDING_QUESTIONS_OVER_CAP|ONBOARDING_MAX_QUESTIONS|QUESTIONNAIRE_ROUNDS_EXHAUSTED|QUESTIONNAIRE_MAX_ROUNDS|INTAKE_QUESTIONS_MAX)\b/,
 ];
 
@@ -54,6 +56,7 @@ const ASKING_MODULES = [
   'onboarding',
   'prompt',
   'questionnaires',
+  'questions',
   'requirements',
   'steward',
   'support',
