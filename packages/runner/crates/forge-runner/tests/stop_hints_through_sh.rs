@@ -238,7 +238,13 @@ fn the_dirty_hint_filled_with_prose_commits_it_as_the_message() {
         run_id: "296f5496-870e-428f-b386-d1c6007bfd9c",
         tree: &tree,
         runner: env!("CARGO_BIN_EXE_forge-runner"),
-        issues: vec![],
+        // a dirty tree alone holds no stop (ISS-1251): the hint rides a held issue's refusal
+        issues: vec![(
+            "ISS-297".into(),
+            Issue::HeldUnwritten {
+                id: ISSUE_ID.into(),
+            },
+        )],
         dirty: Ok(dirty),
         standing: Ok(vec![]),
         refused_in_a_row: 0,
@@ -275,7 +281,13 @@ fn the_dirty_hint_commits_a_deletion_already_staged() {
         run_id: "296f5496-870e-428f-b386-d1c6007bfd9c",
         tree: &tree,
         runner: env!("CARGO_BIN_EXE_forge-runner"),
-        issues: vec![],
+        // a dirty tree alone holds no stop (ISS-1251): the hint rides a held issue's refusal
+        issues: vec![(
+            "ISS-297".into(),
+            Issue::HeldUnwritten {
+                id: ISSUE_ID.into(),
+            },
+        )],
         dirty: Ok(dirty),
         standing: Ok(vec![]),
         refused_in_a_row: 0,
@@ -320,7 +332,12 @@ fn the_hint_after_a_failed_commit_runs_as_written() {
             run_id: "296f5496-870e-428f-b386-d1c6007bfd9c",
             tree: &tree,
             runner: env!("CARGO_BIN_EXE_forge-runner"),
-            issues: vec![],
+            issues: vec![(
+                "ISS-297".into(),
+                Issue::HeldUnwritten {
+                    id: ISSUE_ID.into(),
+                },
+            )],
             dirty: Ok(dirty),
             standing: Ok(vec![]),
             refused_in_a_row: 0,

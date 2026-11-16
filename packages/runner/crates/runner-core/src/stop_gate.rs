@@ -1,5 +1,14 @@
-//! Whether a run may stop: the three kernel conditions a run's stop is refused
-//! for, decided from facts read elsewhere.
+//! Whether a run may stop: the two kernel conditions a run's stop is refused
+//! for (an issue held with nothing written on it, a process left standing),
+//! and a third the gate names without refusing (a dirty tree), decided from
+//! facts read elsewhere.
+//!
+//! A dirty tree refused the stop until ISS-1251. Its work is never lost: the
+//! box keeps a tree holding uncommitted files and names it when the run is
+//! released (`runner-workspace/src/terminate.rs`), so refusing the stop only
+//! forced a commit the run's method already teaches (the issue-flow guide's
+//! clean-up step). It is now journalled with the stop, where the master reads
+//! it, and its hint rides along whenever a kernel condition refuses.
 //!
 //! Until ISS-297 only the forge-plugin's `turn/stop-check` hook refused a stop,
 //! reading its lease through the plugin's own CLI; on a pane without the
@@ -37,7 +46,8 @@ const PATHS_SHOWN: usize = 10;
 pub enum Condition {
     /// An issue the run holds in progress, with nothing written since the take.
     HeldUnwritten,
-    /// The run's worktree has uncommitted changes.
+    /// The run's worktree has uncommitted changes. Named and journalled,
+    /// never refused on its own (ISS-1251).
     WorktreeDirty,
     /// A process the run started still stands in its worktree.
     ProcessRunning,
@@ -349,7 +359,9 @@ pub fn decide(f: &Facts<'_>) -> Verdict {
         Err(why) => unread.push(format!("the process table: {why}")),
     }
     let conditions: Vec<Condition> = lines.iter().map(|(c, _)| *c).collect();
-    let outcome = if lines.is_empty() {
+    // a dirty tree alone holds no stop: the box keeps the tree and names it
+    let holds = conditions.iter().any(|c| *c != Condition::WorktreeDirty);
+    let outcome = if !holds {
         Outcome::Passed
     } else if f.refused_in_a_row >= STOP_BOUND {
         Outcome::LetGo
@@ -369,11 +381,20 @@ fn reason(f: &Facts<'_>, lines: &[(Condition, String)]) -> String {
         .map(|(c, line)| format!("- {}: {line}", c.code()))
         .collect::<Vec<_>>()
         .join("\n");
+    let dirty_note = if lines.iter().any(|(c, _)| *c == Condition::WorktreeDirty) {
+        format!(
+            " {} alone never holds a stop: commit what is work and remove what is not, or the \
+             box keeps the tree and names it to your master.",
+            Condition::WorktreeDirty.code()
+        )
+    } else {
+        String::new()
+    };
     format!(
         "Refused by the runner's stop gate: run {} is stopping while it holds work. Clear each \
-         item below, then stop again.\n\n{items}\n\nThis is refusal {} of {STOP_BOUND} in a row \
-         for this run; the stop after the last is let through and recorded on this box as \
-         having left this work standing.",
+         item below, then stop again.{dirty_note}\n\n{items}\n\nThis is refusal {} of \
+         {STOP_BOUND} in a row for this run; the stop after the last is let through and recorded \
+         on this box as having left this work standing.",
         crate::ledger::short_id(f.run_id),
         f.refused_in_a_row + 1
     )

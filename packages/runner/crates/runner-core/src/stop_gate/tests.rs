@@ -127,15 +127,44 @@ fn a_held_issue_with_nothing_written_refuses_naming_its_condition_and_the_issue(
     assert!(r.contains("run 296f5496 "), "{r}");
 }
 
+/// ISS-1251: a dirty tree is never lost (the box keeps it and names it), so
+/// it holds no stop on its own; it is named in the journal the master reads.
 #[test]
-fn a_dirty_tree_refuses_naming_the_tree_and_its_paths() {
+fn a_dirty_tree_alone_passes_and_is_journalled() {
     let tree = PathBuf::from("/r/wt");
     let mut f = facts(&tree, vec![]);
+    f.dirty = Ok(vec!["a.rs".into()]);
+    let v = decide(&f);
+    assert_eq!(v.outcome, Outcome::Passed);
+    assert_eq!(v.conditions, vec![Condition::WorktreeDirty]);
+    let line = journal_line(7, "r1", &v);
+    assert!(line.contains(r#""outcome":"passed""#), "{line}");
+    assert!(line.contains("STOP_WORKTREE_DIRTY"), "{line}");
+}
+
+fn held(tree: &Path) -> Facts<'_> {
+    facts(
+        tree,
+        vec![("ISS-1".into(), Issue::HeldUnwritten { id: "u".into() })],
+    )
+}
+
+#[test]
+fn a_dirty_tree_beside_a_refusal_is_named_with_its_tree_and_paths() {
+    let tree = PathBuf::from("/r/wt");
+    let mut f = held(&tree);
     let paths: Vec<Uncommitted> = (0..12).map(|i| format!("f{i}.rs").into()).collect();
     f.dirty = Ok(paths);
     let v = decide(&f);
     let r = refused(&v);
-    assert_eq!(v.conditions, vec![Condition::WorktreeDirty]);
+    assert_eq!(
+        v.conditions,
+        vec![Condition::HeldUnwritten, Condition::WorktreeDirty]
+    );
+    assert!(
+        r.contains("STOP_WORKTREE_DIRTY alone never holds a stop"),
+        "{r}"
+    );
     assert!(
         r.contains("STOP_WORKTREE_DIRTY: /r/wt has uncommitted changes: f0.rs, f1.rs"),
         "{r}"
@@ -216,16 +245,16 @@ fn a_clear_run_passes_and_what_could_not_be_read_refuses_nothing() {
 fn the_bound_lets_the_stop_after_the_last_refusal_through_and_says_so() {
     let tree = PathBuf::from("/r/wt");
     let mut f = facts(&tree, vec![]);
-    f.dirty = Ok(vec!["a".into()]);
+    f.standing = Ok(vec![standing(1, "a")]);
     f.refused_in_a_row = STOP_BOUND - 1;
     assert!(refused(&decide(&f)).contains(&format!("refusal {STOP_BOUND} of {STOP_BOUND}")));
     f.refused_in_a_row = STOP_BOUND;
     let v = decide(&f);
     assert_eq!(v.outcome, Outcome::LetGo);
-    assert_eq!(v.conditions, vec![Condition::WorktreeDirty]);
+    assert_eq!(v.conditions, vec![Condition::ProcessRunning]);
     let line = journal_line(7, "r1", &v);
     assert!(line.contains(r#""outcome":"let_go""#), "{line}");
-    assert!(line.contains("STOP_WORKTREE_DIRTY"), "{line}");
+    assert!(line.contains("STOP_PROCESS_RUNNING"), "{line}");
 }
 
 #[test]
@@ -287,7 +316,7 @@ fn porcelain_names_each_changed_path_once() {
 #[test]
 fn a_staged_deletion_is_named_but_left_off_the_add_line() {
     let tree = PathBuf::from("/r/wt");
-    let mut f = facts(&tree, vec![]);
+    let mut f = held(&tree);
     f.dirty = Ok(vec![
         "kept.rs".into(),
         Uncommitted {
@@ -377,7 +406,7 @@ fn the_held_hint_reads_the_comment_from_a_quoted_heredoc_through_the_judging_bin
 #[test]
 fn the_dirty_hint_names_removing_scratch_first_and_quotes_the_tree_as_one_word() {
     let tree = PathBuf::from("/r/a tree/it's");
-    let mut f = facts(&tree, vec![]);
+    let mut f = held(&tree);
     f.dirty = Ok(vec!["notes.tmp".into(), "src/it's.rs".into()]);
     let v = decide(&f);
     let r = refused(&v);
