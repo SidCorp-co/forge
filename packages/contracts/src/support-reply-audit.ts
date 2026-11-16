@@ -1,15 +1,17 @@
-// The after-send audit of a room's lines (ISS-1250, owner 2026-11-16: "audit every bot message for
-// quality as soon as it is sent"). One rubric for every room kind, every bot and every project: the
-// judge in core (`support/reply-audit/`) reads each stored line against it, its verdict is kept per
-// line, and a failed one is a room correction in the lessons store (REQ-50). No project keeps a copy.
+// A room agent's audit of its own reply (ISS-1250; owner 2026-11-16, "teach the flow, not block it"):
+// right after a reply is posted, the agent scores it against one rubric with support.audit, and the
+// verdict is kept, readable per project and per bot, with how many replies went unaudited. Nothing
+// blocks, rewrites or judges a reply on the agent's behalf; a failed line is a room correction in
+// the lessons store (REQ-50). The rubric is declared once, here, for every room, bot and project.
 
 import { z } from "zod";
+import { supportThreadIdSchema } from "./support.js";
 import {
 	SUPPORT_ROOM_KINDS,
 	type SupportRoomKind,
 } from "./support-operations.js";
 
-/** The rubric, line by line: what each line asks of a stored room line. Declared once, here. */
+/** The rubric, line by line: what each line asks of a reply. Declared once, here. */
 export const REPLY_RUBRIC = {
 	answered: "It answers what was asked, or does the act asked for.",
 	in_context:
@@ -28,31 +30,68 @@ export const REPLY_RUBRIC = {
 	web_links:
 		"Every link for a person points at the web host, never the API host.",
 	language: "It is written in the project's content language.",
-	silence: "Its silence, or its speaking, was right for the message.",
+	silence: "Speaking was right here: the message asked for a reply.",
 } as const;
 export type ReplyRubricLine = keyof typeof REPLY_RUBRIC;
-export const REPLY_RUBRIC_LINES = Object.keys(
-	REPLY_RUBRIC,
-) as ReplyRubricLine[];
+export const REPLY_RUBRIC_LINES = Object.keys(REPLY_RUBRIC) as [
+	ReplyRubricLine,
+	...ReplyRubricLine[],
+];
 
-/** What was judged: a line the agent posted, a silence it kept, or a line core wrote in its place. */
-export const REPLY_SUBJECTS = ["reply", "silence", "core_line"] as const;
-export type ReplySubject = (typeof REPLY_SUBJECTS)[number];
-
-/** `unjudged`: the model gave no answer and no rubric line failed in code. */
-export const REPLY_VERDICTS = ["pass", "fail", "unjudged"] as const;
+export const REPLY_VERDICTS = ["pass", "fail"] as const;
 export type ReplyVerdict = (typeof REPLY_VERDICTS)[number];
 
-/** One failed rubric line, why, and whether code or the model found it. */
+/** Who found a failed line: the agent's own reading, or core's check of what code can tell. */
+export const REPLY_FINDERS = ["agent", "code"] as const;
+export type ReplyFinder = (typeof REPLY_FINDERS)[number];
+
 export interface ReplyFinding {
 	line: ReplyRubricLine;
 	why: string;
-	by: "code" | "model";
+	by: ReplyFinder;
 }
 
-/** `GET /api/projects/:id/support/reply-verdicts`: the newest first, by bot and verdict. */
+/**
+ * support.audit: the agent's own reading of one reply it posted, by its chat message id: each rubric
+ * line it fails, with why; an empty list where it fails none.
+ */
+export const supportAuditRequestSchema = z.strictObject({
+	thread: supportThreadIdSchema,
+	message: z
+		.string()
+		.trim()
+		.min(1)
+		.max(64)
+		.regex(/^[A-Za-z0-9_-]+$/, "a Rocket.Chat message id")
+		.describe("the reply you audit: the messageId reply answered you"),
+	failed: z
+		.array(
+			z.strictObject({
+				line: z.enum(REPLY_RUBRIC_LINES),
+				why: z.string().trim().min(3).max(240),
+			}),
+		)
+		.max(REPLY_RUBRIC_LINES.length)
+		.describe(
+			"each rubric line the reply fails, with why; [] where it fails none",
+		),
+});
+export type SupportAuditRequest = z.infer<typeof supportAuditRequestSchema>;
+
+/** What an audit answers: the verdict kept, with what code found beside the agent's own reading. */
+export interface SupportAuditView {
+	verdict: ReplyVerdict;
+	failed: ReplyRubricLine[];
+	findings: ReplyFinding[];
+	/** The room correction a failed verdict became in the lessons store. */
+	correctionId: string | null;
+	/** The reply was audited before; this is that verdict, unchanged. */
+	already: boolean;
+}
+
+/** `GET /api/projects/:id/support/reply-verdicts`: the newest first, by bot, verdict and room kind. */
 export const replyVerdictsQuerySchema = z.strictObject({
-	/** The bot: the Rocket.Chat connection whose account posted the line. */
+	/** The bot: the Rocket.Chat connection whose account posted the reply. */
 	bot: z.uuid().optional(),
 	verdict: z.enum(REPLY_VERDICTS).optional(),
 	roomKind: z.enum(SUPPORT_ROOM_KINDS).optional(),
@@ -61,7 +100,7 @@ export const replyVerdictsQuerySchema = z.strictObject({
 });
 export type ReplyVerdictsQuery = z.infer<typeof replyVerdictsQuerySchema>;
 export const REPLY_VERDICTS_SHAPE =
-	"?bot=<connection uuid>&verdict=pass|fail|unjudged&roomKind=support|operations|agent&since=<ISO datetime>&limit=1..200, each optional";
+	"?bot=<connection uuid>&verdict=pass|fail&roomKind=support|operations|agent&since=<ISO datetime>&limit=1..200, each optional";
 export const REPLY_VERDICTS_LIMIT = 50;
 
 export interface ReplyVerdictView {
@@ -70,25 +109,29 @@ export interface ReplyVerdictView {
 	roomId: string;
 	rid: string;
 	roomKind: SupportRoomKind;
-	conversationId: string | null;
-	messageId: string;
-	subject: ReplySubject;
+	thread: string;
+	/** The reply's chat message id. */
+	message: string;
 	verdict: ReplyVerdict;
 	failed: ReplyRubricLine[];
 	findings: ReplyFinding[];
-	/** The model that judged it; null where code alone did. */
-	model: string | null;
-	/** Why the model gave no answer, where it gave none. */
-	miss: string | null;
-	/** The room correction a failed verdict became in the lessons store. */
 	correctionId: string | null;
-	judgedAt: string;
+	auditedAt: string;
 }
 
 export interface ReplyVerdictsView {
 	verdicts: ReplyVerdictView[];
 	/** The window held more than `limit`. */
 	truncated: boolean;
-	/** Per bot, over the same filter: how many passed, failed and went unjudged. */
-	bots: Array<{ bot: string } & Record<ReplyVerdict, number>>;
+	/**
+	 * Per bot, over the same bot, room kind and window: the replies it posted, how many of them its
+	 * agent audited, and how those passed and failed. `replies - audited` went unaudited.
+	 */
+	bots: Array<{
+		bot: string;
+		replies: number;
+		audited: number;
+		pass: number;
+		fail: number;
+	}>;
 }

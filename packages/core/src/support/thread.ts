@@ -2,19 +2,15 @@
 // posted into it — through the Rocket.Chat outbound door, scrubbed of the bot's token and of every
 // credential the room's tools hold, then recorded as the room's own row (REQ-75 BC-17, BC-18).
 
-import type { ReplySubject } from '@forge/contracts/support-reply-audit';
 import { scrubLogText } from '@forge/observability';
 import { noteAppliedLessons } from '../assistant/index.js';
 import {
   appendMessages,
-  appendMessagesIn,
   type ConversationRow,
   derivedScope,
   findConversation,
   openConversation,
-  type StoredConversationMessage,
 } from '../conversations/index.js';
-import { db } from '../db/client.js';
 import { findBindingWithConnectionById } from '../integrations/index.js';
 import {
   FIXED_REPLY_CONSTANT,
@@ -30,7 +26,6 @@ import { supportApiSecretsOf } from '../integrations/support-api/index.js';
 import { findProjectSlugs } from '../projects/index.js';
 import { no, type Outcome } from './outcome.js';
 import { ownerSecretsOf } from './owner-credential.js';
-import { noteLineStored } from './reply-audit/audit.js';
 import { supportVenueId } from './rules.js';
 import type { RoomRow } from './store.js';
 
@@ -118,48 +113,28 @@ export async function postInThread(input: {
     text,
     input.proof ?? FIXED_REPLY_CONSTANT,
   );
-  const written = await storeRoomLine(
-    input.room,
-    conversation.id,
-    input.proof ? 'reply' : 'core_line',
-    {
-      role: 'assistant',
-      content: text,
-      authorUserId: input.room.principalUserId,
-      externalId: messageId,
-      deliveryProof: {
-        messageId,
-        door: input.proof
-          ? input.room.kind === 'operations'
-            ? 'operations-reply'
-            : 'support-reply'
-          : 'code-authored',
+  const written = await appendMessages({
+    conversationId: conversation.id,
+    messages: [
+      {
+        role: 'assistant',
+        content: text,
+        authorUserId: input.room.principalUserId,
+        externalId: messageId,
+        deliveryProof: {
+          messageId,
+          door: input.proof
+            ? input.room.kind === 'operations'
+              ? 'operations-reply'
+              : 'support-reply'
+            : 'code-authored',
+        },
       },
-    },
-  );
+    ],
+  });
   // the session's line keeps its `Lessons applied:` as a chat answer does (REQ-50 BC-4)
   await noteAppliedLessons(input.room.projectId, written);
   return { messageId, conversationId: conversation.id, text };
-}
-
-type NewConversationMessage = Parameters<typeof appendMessagesIn>[1]['messages'][number];
-
-/**
- * Store a room's line on its thread's conversation and tell it for its after-send judgement in the
- * same transaction (ISS-1250, `reply-audit/`): every line a room posts is stored through here, so
- * every one is judged, and the judge runs off the post's path.
- */
-async function storeRoomLine(
-  room: RoomRow,
-  conversationId: string,
-  subject: ReplySubject,
-  message: NewConversationMessage,
-): Promise<StoredConversationMessage[]> {
-  return db.transaction(async (tx) => {
-    const written = await appendMessagesIn(tx, { conversationId, messages: [message] });
-    await noteLineStored(tx, room, conversationId, written, subject);
-    return written;
-  });
 }
 
 /** Record an action as a `system` line of the thread's conversation, so Forge shows it in place. */
@@ -167,18 +142,6 @@ export async function noteInThread(conversationId: string, line: string): Promis
   await appendMessages({
     conversationId,
     messages: [{ role: 'system', content: line }],
-  });
-}
-
-/** Record the session's silence in the thread (ISS-942), judged as its line would be (ISS-1250). */
-export async function noteSilenceInThread(
-  room: RoomRow,
-  conversationId: string,
-  reason: string,
-): Promise<void> {
-  await storeRoomLine(room, conversationId, 'silence', {
-    role: 'system',
-    content: `stayed silent: ${reason}`,
   });
 }
 
@@ -273,12 +236,17 @@ async function postTopLevel(input: {
     input.text,
     input.proof,
   );
-  const written = await storeRoomLine(input.room, conversation.id, 'reply', {
-    role: 'assistant',
-    content: input.text,
-    authorUserId: input.room.principalUserId,
-    externalId: messageId,
-    deliveryProof: { messageId, door: 'support-reply' },
+  const written = await appendMessages({
+    conversationId: conversation.id,
+    messages: [
+      {
+        role: 'assistant',
+        content: input.text,
+        authorUserId: input.room.principalUserId,
+        externalId: messageId,
+        deliveryProof: { messageId, door: 'support-reply' },
+      },
+    ],
   });
   await noteAppliedLessons(input.room.projectId, written);
   return { messageId, conversationId: conversation.id };

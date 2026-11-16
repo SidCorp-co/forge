@@ -120,7 +120,6 @@ export const OUTBOX_CONSUMERS = {
 	],
 	"feedback.filed": ["master-wake", "intake-assistant", "steward"],
 	"support.masterAsked": ["master-wake"],
-	"support.replyStored": ["support-reply-audit"],
 	"intake.answered": ["intake-assistant"],
 	"feedback.verifyAsked": ["notify-feedback"],
 	"feedback.verifySettled": [

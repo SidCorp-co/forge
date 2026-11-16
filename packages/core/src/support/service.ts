@@ -21,7 +21,7 @@ import type { Refusal } from './refusals.js';
 import { limitsOf } from './rules.js';
 import { type SessionDoor, screenForThread } from './screen.js';
 import { insertAction, type RoomRow } from './store.js';
-import { noteInThread, noteSilenceInThread, postInThread, scrubbedForRoom } from './thread.js';
+import { noteInThread, postInThread, scrubbedForRoom } from './thread.js';
 import { unansweredInThread } from './thread-requests.js';
 
 export type { Outcome } from './outcome.js';
@@ -249,7 +249,7 @@ export async function staySilent(
     actorKind: 'session',
     input: { reason, ...(input.message ? { message: input.message } : {}) },
   });
-  await noteSilenceInThread(room, conversationId, reason);
+  await noteInThread(conversationId, `stayed silent: ${reason}`);
   return { ok: true, value: { silent: true } };
 }
 

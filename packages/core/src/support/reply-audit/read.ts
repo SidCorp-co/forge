@@ -1,51 +1,73 @@
-// A project's room-line verdicts as a reader reads them (ISS-1250): the newest first, by bot, verdict
-// and room kind, with each bot's pass, fail and unjudged counts over the same window.
+// A project's reply audits as a reader reads them (ISS-1250): the newest first, by bot, verdict and
+// room kind, with each bot's replies, how many its agent audited, and how those passed and failed, so
+// a person sees whether the teaching works.
 
 import {
   REPLY_VERDICTS_LIMIT,
   type ReplyFinding,
   type ReplyRubricLine,
-  type ReplyVerdict,
   type ReplyVerdictsQuery,
   type ReplyVerdictsView,
 } from '@forge/contracts/support-reply-audit';
-import { and, desc, eq, gte, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, type SQL, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
-import { supportRooms } from '../../db/schema-support.js';
+import { supportActions, supportRooms } from '../../db/schema-support.js';
 import { supportReplyVerdicts } from '../../db/schema-support-verdicts.js';
+
+type Bots = ReplyVerdictsView['bots'];
+
+/** Each bot's replies in the window, and of them the audited, passed and failed. */
+async function botCounts(projectId: string, q: ReplyVerdictsQuery): Promise<Bots> {
+  const a = supportActions;
+  const v = supportReplyVerdicts;
+  const where: SQL[] = [
+    eq(a.projectId, projectId),
+    eq(a.kind, 'reply'),
+    sql`${a.externalId} IS NOT NULL`,
+    ...(q.bot ? [eq(supportRooms.connectionId, q.bot)] : []),
+    ...(q.roomKind ? [eq(supportRooms.kind, q.roomKind)] : []),
+    ...(q.since ? [gte(a.createdAt, new Date(q.since))] : []),
+  ];
+  const rows = await db
+    .select({
+      bot: supportRooms.connectionId,
+      replies: sql<number>`count(*)::int`,
+      audited: sql<number>`count(${v.id})::int`,
+      pass: sql<number>`count(*) FILTER (WHERE ${v.verdict} = 'pass')::int`,
+      fail: sql<number>`count(*) FILTER (WHERE ${v.verdict} = 'fail')::int`,
+    })
+    .from(a)
+    .innerJoin(supportRooms, eq(supportRooms.id, a.roomId))
+    .leftJoin(v, and(eq(v.roomId, a.roomId), eq(v.message, a.externalId)))
+    .where(and(...where))
+    .groupBy(supportRooms.connectionId);
+  return rows;
+}
 
 export async function replyVerdictsOf(
   projectId: string,
   q: ReplyVerdictsQuery,
 ): Promise<ReplyVerdictsView> {
   const v = supportReplyVerdicts;
-  const window = [
-    eq(v.projectId, projectId),
-    ...(q.bot ? [eq(v.bot, q.bot)] : []),
-    ...(q.roomKind ? [eq(v.roomKind, q.roomKind)] : []),
-    ...(q.since ? [gte(v.judgedAt, new Date(q.since))] : []),
-  ];
   const limit = q.limit ?? REPLY_VERDICTS_LIMIT;
-  const [rows, counts] = await Promise.all([
+  const [rows, bots] = await Promise.all([
     db
       .select({ verdict: v, rid: supportRooms.rid })
       .from(v)
       .innerJoin(supportRooms, eq(supportRooms.id, v.roomId))
-      .where(and(...window, ...(q.verdict ? [eq(v.verdict, q.verdict)] : [])))
-      .orderBy(desc(v.judgedAt), desc(v.id))
+      .where(
+        and(
+          eq(v.projectId, projectId),
+          ...(q.bot ? [eq(v.bot, q.bot)] : []),
+          ...(q.roomKind ? [eq(v.roomKind, q.roomKind)] : []),
+          ...(q.since ? [gte(v.auditedAt, new Date(q.since))] : []),
+          ...(q.verdict ? [eq(v.verdict, q.verdict)] : []),
+        ),
+      )
+      .orderBy(desc(v.auditedAt), desc(v.id))
       .limit(limit + 1),
-    db
-      .select({ bot: v.bot, verdict: v.verdict, n: sql<number>`count(*)::int` })
-      .from(v)
-      .where(and(...window))
-      .groupBy(v.bot, v.verdict),
+    botCounts(projectId, q),
   ]);
-  const bots = new Map<string, { bot: string } & Record<ReplyVerdict, number>>();
-  for (const c of counts) {
-    const at = bots.get(c.bot) ?? { bot: c.bot, pass: 0, fail: 0, unjudged: 0 };
-    at[c.verdict] = c.n;
-    bots.set(c.bot, at);
-  }
   return {
     verdicts: rows.slice(0, limit).map(({ verdict: r, rid }) => ({
       id: r.id,
@@ -53,18 +75,15 @@ export async function replyVerdictsOf(
       roomId: r.roomId,
       rid,
       roomKind: r.roomKind,
-      conversationId: r.conversationId,
-      messageId: r.messageId,
-      subject: r.subject,
+      thread: r.thread,
+      message: r.message,
       verdict: r.verdict,
       failed: r.failed as ReplyRubricLine[],
       findings: r.findings as ReplyFinding[],
-      model: r.model,
-      miss: r.miss,
       correctionId: r.correctionId,
-      judgedAt: r.judgedAt.toISOString(),
+      auditedAt: r.auditedAt.toISOString(),
     })),
     truncated: rows.length > limit,
-    bots: [...bots.values()],
+    bots,
   };
 }

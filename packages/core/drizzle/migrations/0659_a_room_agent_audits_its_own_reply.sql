@@ -1,13 +1,11 @@
--- ISS-1250 (owner, 2026-11-16): every stored room line is judged right after it is sent, against one
--- rubric. One new table; no row standing today is changed.
---   1. support_reply_verdicts: one verdict per stored room line (a reply, a silence's note, or a line
---      core wrote), the rubric lines it failed with who found each, the bot (the Rocket.Chat
+-- ISS-1250 (owner, 2026-11-16): a room agent audits its own reply right after posting it, with
+-- support.audit, against one rubric. One new table; no row standing today is changed.
+--   1. support_reply_verdicts: one verdict per audited reply (by its chat message id in its room), the
+--      rubric lines it failed with who found each (the agent or code), the bot (the Rocket.Chat
 --      connection) and the room's kind, and the room correction a failed one became in the lessons
---      store (corrections, REQ-50).
---   2. outbox_event_types takes `support.replyStored`, the event a stored line is judged from.
+--      store (corrections, REQ-50). A reply with no row was never audited.
 --
 -- ROLLBACK:
---   DELETE FROM outbox_event_types WHERE type = 'support.replyStored'; (once no outbox row holds it)
 --   DROP TABLE IF EXISTS support_reply_verdicts;
 
 SET LOCAL lock_timeout = '10s';--> statement-breakpoint
@@ -18,18 +16,15 @@ CREATE TABLE IF NOT EXISTS "support_reply_verdicts" (
   "room_kind" text NOT NULL,
   "bot" uuid NOT NULL,
   "conversation_id" uuid,
-  "message_id" uuid NOT NULL,
-  "subject" text NOT NULL,
+  "thread" text NOT NULL,
+  "message" text NOT NULL,
   "verdict" text NOT NULL,
   "failed" text[] DEFAULT '{}'::text[] NOT NULL,
   "findings" jsonb DEFAULT '[]'::jsonb NOT NULL,
-  "model" text,
-  "miss" text,
   "correction_id" uuid,
-  "judged_at" timestamp with time zone DEFAULT now() NOT NULL,
+  "audited_at" timestamp with time zone DEFAULT now() NOT NULL,
   CONSTRAINT "support_reply_verdicts_room_kind_chk" CHECK ("room_kind" IN ('support', 'operations', 'agent')),
-  CONSTRAINT "support_reply_verdicts_subject_chk" CHECK ("subject" IN ('reply', 'silence', 'core_line')),
-  CONSTRAINT "support_reply_verdicts_verdict_chk" CHECK ("verdict" IN ('pass', 'fail', 'unjudged') AND ("verdict" = 'fail') = (cardinality("failed") > 0))
+  CONSTRAINT "support_reply_verdicts_verdict_chk" CHECK ("verdict" IN ('pass', 'fail') AND ("verdict" = 'fail') = (cardinality("failed") > 0))
 );--> statement-breakpoint
 DO $$
 BEGIN
@@ -50,7 +45,6 @@ BEGIN
       FOREIGN KEY ("correction_id") REFERENCES "public"."corrections"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
   END IF;
 END $$;--> statement-breakpoint
-CREATE UNIQUE INDEX IF NOT EXISTS "support_reply_verdicts_message_uq" ON "support_reply_verdicts" USING btree ("message_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "support_reply_verdicts_project_idx" ON "support_reply_verdicts" USING btree ("project_id", "judged_at");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "support_reply_verdicts_bot_idx" ON "support_reply_verdicts" USING btree ("bot", "judged_at");--> statement-breakpoint
-INSERT INTO "outbox_event_types" ("type") VALUES ('support.replyStored') ON CONFLICT DO NOTHING;
+CREATE UNIQUE INDEX IF NOT EXISTS "support_reply_verdicts_message_uq" ON "support_reply_verdicts" USING btree ("room_id", "message");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "support_reply_verdicts_project_idx" ON "support_reply_verdicts" USING btree ("project_id", "audited_at");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "support_reply_verdicts_bot_idx" ON "support_reply_verdicts" USING btree ("bot", "audited_at");

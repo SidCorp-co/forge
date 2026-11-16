@@ -1,5 +1,5 @@
-// `GET /api/projects/:id/support/reply-verdicts` (ISS-1250): a project reader reads the verdict on each
-// room line its bots stored, per bot and per room kind.
+// `GET /api/projects/:id/support/reply-verdicts` (ISS-1250): a project reader reads each reply audit
+// its room agents kept, per bot and per room kind, with how many replies went unaudited.
 
 import {
   REPLY_VERDICTS_SHAPE,

@@ -33,7 +33,6 @@ import {
   noteReleaseShipped,
   registerSupportReleaseNotes,
 } from './release-notes.js';
-import { registerReplyAudit } from './reply-audit/index.js';
 import { registerSupportResults, tellAllResults } from './result.js';
 import { SUPPORT_SESSION_MARKER } from './rooms.js';
 import { tellLinked } from './speaker-link.js';
@@ -118,8 +117,6 @@ export function registerSupportRooms(): void {
  */
 export function registerSupportConsumers(): void {
   registerSupportResults();
-  // every stored room line, judged against the one rubric right after it is sent (ISS-1250)
-  registerReplyAudit();
   // a release reaching production, handed to each opted-in room's agent (ISS-854)
   registerSupportReleaseNotes();
   consume('integration.changed', {
