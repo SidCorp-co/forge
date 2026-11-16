@@ -11,6 +11,7 @@ import { ISSUE_REST_CARDS } from '../issues/index.js';
 import { card } from '../prompt/index.js';
 import { QUESTION_REST_CARDS } from '../questions/index.js';
 import { RELEASE_REST_CARDS } from '../release-batch/index.js';
+import { SCHEDULE_REST_CARDS } from '../schedules/index.js';
 
 /** One module's cards, each owned by that module. */
 const ownedBy = (owner: string, cards: Readonly<Record<string, CapabilityCardBody>>) =>
@@ -22,4 +23,5 @@ export const REST_CARDS: readonly CapabilityCard[] = [
   ...ownedBy('cleanup', CLEANUP_REST_CARDS),
   ...ownedBy('questions', QUESTION_REST_CARDS),
   ...ownedBy('integration-door', INTEGRATION_DOOR_REST_CARDS),
+  ...ownedBy('schedules', SCHEDULE_REST_CARDS),
 ];
