@@ -20,9 +20,8 @@ import { issueInReach, questionRefusal } from './owner-ask-targets.js';
 import { ownerUsername } from './owner-consent.js';
 import { handedAsk } from './question-task.js';
 import { isQuestionThread } from './rules.js';
-import { screenForThread } from './screen.js';
 import { insertAction, type RoomRow, threadMembers } from './store.js';
-import { headed, postTechnical, technicalChannelOf } from './technical-channel.js';
+import { postTechnical, screenedTechnical, technicalChannelOf } from './technical-channel.js';
 import { scrubbedForRoom } from './thread.js';
 
 /** The tool an ask is recorded under on the asker's thread. */
@@ -137,23 +136,19 @@ export async function askOwner(
   // in the shared thread the owner is named; a direct message is his alone
   const shared = (await technicalChannelOf(room.projectId)).kind === 'thread';
   const username = shared ? await ownerUsername(room.projectId, owner) : null;
-  // the question is the agent's own words; the owner's reply in the channel counts as the answer by
-  // the kernel rule (`settleOwnerAnswer`), and the agent says so itself if it needs to
-  const text = await scrubbedForRoom(room, `${username ? `@${username} ` : ''}${input.question}`);
-  const admitted = await screenForThread(
+  // the question is the agent's own words, after a plain lead naming the project (ISS-1249), the
+  // whole line screened; the owner's reply in the channel counts as the answer by the kernel rule
+  // (`settleOwnerAnswer`), read from the routed action below, never from the posted text
+  const words = await scrubbedForRoom(room, input.question);
+  const admitted = await screenedTechnical(
     room,
-    conversationId,
-    input.thread,
-    text,
-    'operations-reply',
-    ASK,
+    { conversationId, thread: input.thread, tool: ASK },
+    'ask',
+    words,
+    username,
   );
   if (!admitted.ok) return admitted;
-  const posted = await postTechnical(
-    room,
-    await headed(room, 'ask', input.thread, admitted.value.text),
-    '/action',
-  );
+  const posted = await postTechnical(room, admitted.value.text, '/action');
   if (!posted.ok) return posted;
   const asked: AskInput = {
     question: input.question,

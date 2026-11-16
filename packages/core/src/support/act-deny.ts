@@ -112,11 +112,15 @@ export async function deniedActRefusal(
       : act.action === 'command'
         ? act.command
         : act.tool;
-  const raised = await raiseTechnical(room, {
-    thread: act.thread,
-    need: 'approval',
-    text: `A room agent was asked for ${DENY_MEANING[found]} (${act.action}: ${what}), which this project keeps from its room agents; a person who may decide it acts on it.`,
-  });
+  const raised = await raiseTechnical(
+    room,
+    {
+      thread: act.thread,
+      need: 'approval',
+      text: `A room agent was asked for ${DENY_MEANING[found]} (${act.action}: ${what}), which this project keeps from its room agents; a person who may decide it acts on it.`,
+    },
+    'core',
+  );
   await insertAction({
     roomId: room.id,
     projectId: room.projectId,

@@ -11,6 +11,7 @@ export {
   pendingInvitationNamed,
   projectCreatorOf,
   projectHead,
+  projectName,
   projectOrgHead,
 } from './read.js';
 export {

@@ -13,10 +13,12 @@ import {
   sendFixedReply,
 } from '../integrations/rocketchat/index.js';
 import { readProjectDocument } from '../project-config/index.js';
-import { findProjectSlugs, orgSiblingProjects } from '../projects/index.js';
+import { findProjectSlugs, orgSiblingProjects, projectName } from '../projects/index.js';
 import { grantsOf, supportConfigOf } from './grants.js';
 import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
+import { roomLanguage } from './report-thread.js';
 import { roomIsBound } from './rooms.js';
+import { screenForThread } from './screen.js';
 import { insertAction, type RoomRow, roomsOfProject } from './store.js';
 import { postInThread, projectThreadOfRoom, roomAuth, scrubbedForRoom } from './thread.js';
 
@@ -109,10 +111,73 @@ async function postInDirect(
   return { ok: true, value: { channel: 'dm', rid: direct.rid, messageId, thread: null } };
 }
 
-/** The line the channel is handed: whose need, from which room and thread, then the agent's words. */
-export async function headed(room: RoomRow, need: TechnicalNeed, thread: string, text: string) {
-  const slug = (await findProjectSlugs([room.projectId])).get(room.projectId) ?? room.projectId;
-  return `[${slug} | ${need}] from ${room.rid}, thread ${thread}:\n${text}`;
+/**
+ * What the asking project needs, in plain words, by the room's language (ISS-1249): the line opens
+ * with these after the project's name, then the agent's words, and holds no room, thread or question
+ * id. Where the line came from is the routed action's record, never the posted text.
+ */
+const NEED_WORDS: Readonly<Record<'vi' | 'en', Readonly<Record<TechnicalNeed, string>>>> = {
+  vi: {
+    ask: 'hỏi', // i18n-allow: the plain Vietnamese lead of an ask in the technical channel (ISS-1249)
+    permission: 'xin quyền', // i18n-allow: the plain Vietnamese lead of a permission need (ISS-1249)
+    approval: 'xin duyệt', // i18n-allow: the plain Vietnamese lead of an approval need (ISS-1249)
+    finding: 'báo', // i18n-allow: the plain Vietnamese lead of a technical finding (ISS-1249)
+  },
+  en: {
+    ask: 'asks',
+    permission: 'asks for a permission',
+    approval: 'asks for approval',
+    finding: 'reports',
+  },
+};
+
+/** The line as the channel reads it: a mention where one is due, the project's name, the need, the words. */
+export function technicalLine(
+  project: string,
+  need: TechnicalNeed,
+  language: 'vi' | 'en',
+  words: string,
+  mention: string | null = null,
+): string {
+  return `${mention ? `@${mention} ` : ''}${project} ${NEED_WORDS[language][need]}: ${words}`;
+}
+
+/** The line for `room`'s project: named as its people know it, by its slug only where it has no name. */
+async function lineOf(
+  room: RoomRow,
+  need: TechnicalNeed,
+  words: string,
+  mention: string | null = null,
+): Promise<string> {
+  const project =
+    (await projectName(room.projectId)) ??
+    (await findProjectSlugs([room.projectId])).get(room.projectId) ??
+    room.projectId;
+  return technicalLine(project, need, await roomLanguage(room, [words]), words, mention);
+}
+
+/**
+ * The whole line a need is posted as, screened as a room post is (`screenForThread`), lead included,
+ * so nothing reaches the channel that the screen did not read. Refused by name, recorded on
+ * `thread`, nothing posted.
+ */
+export async function screenedTechnical(
+  room: RoomRow,
+  at: { conversationId: string | null; thread: string; tool: string },
+  need: TechnicalNeed,
+  words: string,
+  mention: string | null = null,
+): Promise<Outcome<{ text: string }>> {
+  const line = await lineOf(room, need, words, mention);
+  const admitted = await screenForThread(
+    room,
+    at.conversationId,
+    at.thread,
+    line,
+    'operations-reply',
+    at.tool,
+  );
+  return admitted.ok ? { ok: true, value: { text: admitted.value.text } } : admitted;
 }
 
 /**
@@ -129,16 +194,24 @@ export async function postTechnical(room: RoomRow, text: string, path: string): 
 /**
  * Raise one need in the project's technical channel, from the thread it arose in: posted there
  * alone, recorded as a `routed` action of that thread naming where it went. The asker's thread is
- * posted nothing; the agent tells it the answer or that it is in hand.
+ * posted nothing; the agent tells it the answer or that it is in hand. An agent's words are posted
+ * only once the whole line passed the screen; core's own line naming an act it refused (`act-deny.ts`)
+ * is written by core and posted as written, under the same plain lead.
  */
 export async function raiseTechnical(
   room: RoomRow,
   input: { thread: string; need: TechnicalNeed; text: string },
+  written: 'agent' | 'core' = 'agent',
 ): Promise<Raised> {
   const conversationId = await knownThread(room, input.thread);
   if (!conversationId) return threadUnknown(input.thread);
-  const text = await headed(room, input.need, input.thread, input.text);
-  const out = await postTechnical(room, text, '/need');
+  const at = { conversationId, thread: input.thread, tool: TECHNICAL };
+  const line =
+    written === 'agent'
+      ? await screenedTechnical(room, at, input.need, input.text)
+      : { ok: true as const, value: { text: await lineOf(room, input.need, input.text) } };
+  if (!line.ok) return line;
+  const out = await postTechnical(room, line.value.text, '/need');
   if (!out.ok) return out;
   await insertAction({
     roomId: room.id,

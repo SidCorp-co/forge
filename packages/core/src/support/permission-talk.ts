@@ -35,8 +35,11 @@ export function permissionTalkIn(text: string): string | null {
   return null;
 }
 
-/** The acts whose post is the place a need may be said: the owner's own room is asked there. */
-const MAY_SAY_NEED: ReadonlySet<string> = new Set(['ask_owner']);
+/**
+ * The acts whose post is the place a need may be said: an ask of the owner and a need raised in the
+ * technical channel (`technical-channel.ts:TECHNICAL`), whose whole line is screened (ISS-1249).
+ */
+const MAY_SAY_NEED: ReadonlySet<string> = new Set(['ask_owner', 'technical']);
 
 /** Whether a post of `tool` is screened for permission talk: every post in a work thread is. */
 export const screensPermissionTalk = (tool: string): boolean => !MAY_SAY_NEED.has(tool);
