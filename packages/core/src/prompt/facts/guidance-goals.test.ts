@@ -4,6 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { getGuide } from '../../guides/index.js';
+import { ABOUT_WORDS } from '../../steward/lessons-classify.js';
 import { DRIVE_RULES_TEXT } from './drive-rules.js';
 import { OPERATING_AFFORDANCES_TEXT, renderFact } from './registry.js';
 
@@ -68,6 +69,17 @@ describe('a step and a drive run are handed no output ritual', () => {
 });
 
 describe('a drive run recalls by judgement and builds its issue whole', () => {
+  // ISS-1254 (owner, 2026-11-16): a pattern-level rule belongs in the code standard, not in memory
+  it.each([
+    ['drive rules', DRIVE_RULES_TEXT],
+    ['pipeline rules', PIPELINE_RULES],
+    ['the lesson classifier', ABOUT_WORDS],
+  ])('%s hold how builders share code as a code-standard rule, never a memory', (_who, text) => {
+    expect(flat(text)).toMatch(
+      /How builders share code \(.*\) is (a code-standard rule, a gate, a default or a tool, never a memory|`app`: a code-standard rule a gate, a default or a tool holds)/i,
+    );
+  });
+
   it('is not told to recall every time the work turns', () => {
     expect(DRIVE_RULES_TEXT).not.toContain('every time the work turns to a new area');
     expect(DRIVE_RULES_TEXT).toContain('before you design');

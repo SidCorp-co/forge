@@ -29,7 +29,7 @@ export type Classifier = (
 
 /** The steward's own statement of the two kinds, the same words the grouping asks a proposal by. */
 export const ABOUT_WORDS =
-  "`about`: `app` when the corrections are about the app's own behaviour (a screen, a field, a flow, a page's copy), which a check in the project's code can catch; `process` when they are about an agent's judgement or a Forge step (how a requirement, design, issue or reply was written or decided), which no code in the project's repo can. Read the corrections, not where the lesson applies.";
+  "`about`: `app` when the corrections are about the app's own behaviour (a screen, a field, a flow, a page's copy), which a check in the project's code can catch; `process` when they are about an agent's judgement or a Forge step (how a requirement, design, issue or reply was written or decided), which no code in the project's repo can. How builders share code (one worktree per builder, an inventory a new route or door must join) is `app`: a code-standard rule a gate, a default or a tool holds. Read the corrections, not where the lesson applies.";
 
 export function classifyPrompt(owed: OwedCheck): string {
   return [

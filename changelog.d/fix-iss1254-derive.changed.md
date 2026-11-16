@@ -1,0 +1,1 @@
+**Each parallel builder now works in a worktree of its own, and tests read what a registry registers.** A new route, door or query needs no hand edit to a test list; a classification fails naming what to add.
