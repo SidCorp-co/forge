@@ -20,7 +20,7 @@ export type ReferenceKind = (typeof REFERENCE_KINDS)[number];
 
 /** How an entry came: a person's or an agent's add, or an agent's proposal of a source it kept using. */
 export const REFERENCE_ORIGINS = ["added", "proposed"] as const;
-export type ReferenceOrigin = (typeof REFERENCE_ORIGINS)[number];
+type ReferenceOrigin = (typeof REFERENCE_ORIGINS)[number];
 
 /** What a citing agent did with what it read. */
 export const REFERENCE_VERDICTS = ["take", "reject"] as const;
@@ -28,8 +28,7 @@ export type ReferenceVerdict = (typeof REFERENCE_VERDICTS)[number];
 
 /** A release read on a followed source either became an idea or stayed silent on the timeline. */
 export const REFERENCE_RELEASE_OUTCOMES = ["idea", "silent"] as const;
-export type ReferenceReleaseOutcome =
-	(typeof REFERENCE_RELEASE_OUTCOMES)[number];
+type ReferenceReleaseOutcome = (typeof REFERENCE_RELEASE_OUTCOMES)[number];
 
 /** Why a source is up for review: archived upstream, no release or push for long, or nobody cites it. */
 export const REFERENCE_FLAG_KINDS = [
@@ -160,14 +159,6 @@ export const referenceSearchQuerySchema = z.strictObject({
 });
 export type ReferenceSearchQuery = z.infer<typeof referenceSearchQuerySchema>;
 
-export const REFERENCE_REFUSAL_CODES = [
-	"REFERENCE_REFUSED",
-	"REFERENCE_SOURCE_DUPLICATE",
-	"REFERENCE_FOLLOW_UNSUPPORTED",
-	"REFERENCE_SHARED_FORBIDDEN",
-] as const;
-export type ReferenceRefusalCode = (typeof REFERENCE_REFUSAL_CODES)[number];
-
 /** The actions of the MCP door `forge_references` that read; every other one writes. */
 export const REFERENCES_TOOL_READS = ["search", "signals", "timeline"] as const;
 
@@ -184,9 +175,6 @@ export function githubRepoOf(address: string): string | null {
 /** The feedback key an idea from one release of one source is filed and joined under. */
 export const referenceSignalKey = (sourceId: string, tag: string) =>
 	`reference-release:${sourceId}:${tag}`;
-
-/** Where an idea a release filed says it was seen. */
-export const REFERENCE_FEEDBACK_SCREEN = "reference-sources";
 
 export interface ReferenceSourceView {
 	id: string;

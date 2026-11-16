@@ -5,12 +5,7 @@ import type {
 } from "./issue-standing.js";
 import type { IssueStatus } from "./issue-machine.js";
 import type { IssueStatusTone, WorkStep } from "./issue-vocabulary.js";
-import type {
-	Standing,
-	StandingGroup,
-	StandingGroupLabels,
-	WaitingOn,
-} from "./standing.js";
+import type { Standing, StandingGroup, WaitingOn } from "./standing.js";
 
 /** A module's groups, read from its open issues; none groups Needs you, as no issue does (REQ-68). */
 export const MODULE_ATTENTION_GROUPS = [
@@ -19,24 +14,6 @@ export const MODULE_ATTENTION_GROUPS = [
 	"quiet",
 ] as const satisfies readonly StandingGroup[];
 export type ModuleAttentionGroup = (typeof MODULE_ATTENTION_GROUPS)[number];
-
-export const MODULE_ATTENTION_LABELS: StandingGroupLabels<ModuleAttentionGroup> = {
-	moving: {
-		label: "Moving",
-		tone: "run",
-		collapsed: false,
-	},
-	stuck: {
-		label: "Stuck",
-		tone: "blocked",
-		collapsed: false,
-	},
-	quiet: {
-		label: "Quiet",
-		tone: "done",
-		collapsed: true,
-	},
-};
 
 export const MODULE_OPEN_KINDS = [
 	"moving",
