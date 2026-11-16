@@ -1,1 +1,0 @@
-**Terms, rules, requirements, decisions and sources sit under their business module.** Agents write a term with its other names and who named it, place records, tie them by five relation kinds, and read a module's tree first.
