@@ -12,7 +12,7 @@ import { requirements } from '../db/schema-requirements.js';
 import { type NearestItem, nearestItems } from '../knowledge/index.js';
 import type { ProjectReader } from '../lib/authz.js';
 import { env } from '../lib/env.js';
-import { SEMANTIC_FLOOR } from '../lib/search-fusion.js';
+import { ISSUE_SEMANTIC_FLOOR, SEMANTIC_FLOOR } from '../lib/search-fusion.js';
 import { runMemorySearch } from '../memory/index.js';
 import {
   FEEDBACK_COLUMNS,
@@ -37,7 +37,7 @@ export interface MemoryArm {
 /**
  * One project's memory read by both arms of memory's own search, so each arm ranks on its own score:
  * curated notes, policies and knowledge copies are memory, a recorded decision a decision, and core's
- * copy of an issue that issue. A dense hit under `SEMANTIC_FLOOR` is left out.
+ * copy of an issue that issue. A dense hit under `ISSUE_SEMANTIC_FLOOR` is left out.
  */
 export async function memoryArm(input: {
   projectId: string;
@@ -65,7 +65,7 @@ export async function memoryArm(input: {
     keyword: await armOf(keyword, input.projectId, 'keyword'),
     semantic: semantic
       ? await armOf(
-          { ...semantic, hits: semantic.hits.filter((h) => h.score >= SEMANTIC_FLOOR) },
+          { ...semantic, hits: semantic.hits.filter((h) => h.score >= ISSUE_SEMANTIC_FLOOR) },
           input.projectId,
           'semantic',
         )

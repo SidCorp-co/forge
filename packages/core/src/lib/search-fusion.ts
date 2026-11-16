@@ -22,6 +22,19 @@ const HYBRID_ALPHA = 0.5;
  */
 export const SEMANTIC_FLOOR = 0.55;
 
+/**
+ * The floor of the find door's memory-backed arm (memory's semantic read: core's copies of the
+ * issues, and memory's notes, decisions and knowledge copies), where `SEMANTIC_FLOOR` is the
+ * knowledge and item arms'. Short issues, such as dropped "[judge K80 test] throwaway" ones, embed
+ * near any token soup: measured on forge-dev after dev.700 (2026-11-17, memory semantic read over
+ * issues), nonsense led at 0.561 ("zzqx flarn vobble"), 0.553 ("qzxv wbrlt"), 0.55 ("lorem ipsum
+ * dolor"), 0.523 and 0.487, while narrow real queries led at 0.62 ("run slots") to 0.735 ("the
+ * release waits for an approval"). 0.59 is the line between them. A knowledge copy under it is still
+ * found by the knowledge arm, whose thinnest real match sits at 0.557. Memory's own search route
+ * takes no floor from here.
+ */
+export const ISSUE_SEMANTIC_FLOOR = 0.59;
+
 /** One ranked list a fusion takes, and its weight. */
 export interface RankedList<T> {
   hits: readonly T[];

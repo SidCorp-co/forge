@@ -160,6 +160,27 @@ beforeAll(async () => {
   await createTestRunSession(w.projectId, box.deviceId, new Date(), null);
 });
 
+/**
+ * An issue whose memory copy sits at exactly `cosine` to `query`'s vector: the query's direction
+ * mixed with one dimension it does not use. Its title and text share no word with the query, so only
+ * the memory arm's dense read can find it.
+ */
+async function issueCopyAt(seq: number, query: string, cosine: number): Promise<string> {
+  const q = modelLikeVector(query);
+  const norm = Math.hypot(...q);
+  const free = q.findIndex((x, i) => i > 0 && i >= seq % 1000 && x === 0);
+  const v = q.map((x) => (x / norm) * cosine);
+  v[free] = Math.sqrt(1 - cosine * cosine);
+  const issue = await createTestIssue(w.projectId, w.owner, seq, {
+    status: 'open',
+    createdAt: new Date(),
+  });
+  await db.execute(sql`
+    INSERT INTO memories (project_id, source, source_ref, text_content, embedding)
+    VALUES (${w.projectId}, 'issue', ${issue.id}, ${`issue ${seq}`}, ${`[${v.join(',')}]`}::vector)`);
+  return issue.key;
+}
+
 async function find(query: Record<string, unknown>, token = w.token): Promise<FindResult> {
   const res = await api(token, 'POST', `/api/projects/${w.projectId}/find`, query);
   expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -330,13 +351,26 @@ describe('criterion 4: a hit reads as the map reads it', () => {
 
 describe('criterion 4: a find with no hit is a gap', () => {
   it('answers nonsense with no hit although every dense arm has a nearest row', async () => {
+    // a short issue's copy sits above SEMANTIC_FLOOR to token soup, as dropped judge-test issues
+    // did live (0.561 to "zzqx flarn vobble"), and stays under the memory arm's own floor
+    await issueCopyAt(1301, 'qzxv wbrlt plimbo', 0.57);
     // words the stand-in hashes onto no seeded word's dimension, so nothing here shares one
     const missed = await find({ q: 'qzxv wbrlt plimbo' });
-    expect(missed, 'a dense hit under SEMANTIC_FLOOR counted as a match').toMatchObject({
+    expect(
+      missed,
+      'an issue copy under ISSUE_SEMANTIC_FLOOR counted as a match in the memory arm',
+    ).toMatchObject({
       gap: true,
       total: 0,
       groups: [],
     });
+  });
+
+  it('still finds an issue a narrow real query leads at 0.62, as "run slots" did live', async () => {
+    const key = await issueCopyAt(1302, 'gobbet narwhal', 0.62);
+    const found = await find({ q: 'gobbet narwhal' });
+    expect(found.gap).toBe(false);
+    expect(flat(found).map((h) => h.key)).toContain(key);
   });
 
   it('records the miss and shows it in the gaps read, most asked first', async () => {
