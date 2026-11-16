@@ -1,0 +1,1 @@
+**A followed project's release becomes an idea only when it really helps an open item.** The model judges the nearest open items, not shared words; several releases helping one item file one idea, and without a model they stay silent.
