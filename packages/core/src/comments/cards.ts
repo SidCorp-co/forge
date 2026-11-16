@@ -59,7 +59,8 @@ export const COMMENT_REST_CARDS = {
       },
     },
     // ISS-935: a workflow's wait was sent to the issue events door, which answered 404
-    redFlag: 'Recording a design’s wait on an issue’s events door, which answers 404, instead of on the design.',
+    redFlag:
+      'Recording a design’s wait on an issue’s events door, which answers 404, instead of on the design.',
     family: 'design',
     audience: ['master'],
   },
@@ -84,7 +85,8 @@ export const COMMENT_REST_CARDS = {
       },
     },
     // the steward asks again about an item whose wait nobody recorded; routing is the triage's act
-    redFlag: 'Routing or answering the item in a comment, where its triage or a reply to the reporter is the act.',
+    redFlag:
+      'Routing or answering the item in a comment, where its triage or a reply to the reporter is the act.',
     family: 'project-feedback',
     audience: ['master'],
   },
@@ -115,7 +117,9 @@ export const COMMENT_REST_CARDS = {
         do: 'delete the stray one; repost it where it belongs',
       },
     ],
-    practice: ['A decision is a record and is kept (COMMENT_RECORD_KEPT): supersede it with a new one.'],
+    practice: [
+      'A decision is a record and is kept (COMMENT_RECORD_KEPT): supersede it with a new one.',
+    ],
     example: {},
     // forge: 15 deletes in the window, each a master's own duplicate post; a decision is refused
     redFlag: 'Deleting a decision or another person’s comment to change what the record says.',
@@ -148,10 +152,13 @@ export const COMMENT_REST_CARDS = {
         do: 'edit its body, or turn it into a decision with its fields',
       },
     ],
-    practice: ['Turning it into a decision takes the decision’s fields: COMMENT_DECISION_REQUIRED without.'],
+    practice: [
+      'Turning it into a decision takes the decision’s fields: COMMENT_DECISION_REQUIRED without.',
+    ],
     example: { body: 'REQ-104 waits for the owner’s word on pickup points.' },
     // the steward's one edit on forge in the window; a decision changed in substance is superseded
-    redFlag: 'Rewriting what a recorded decision decided instead of posting one that supersedes it.',
+    redFlag:
+      'Rewriting what a recorded decision decided instead of posting one that supersedes it.',
     family: 'requirements',
     audience: ['master'],
   },

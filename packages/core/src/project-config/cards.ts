@@ -30,7 +30,8 @@ export const PROJECT_CONFIG_REST_CARDS = {
     audience: ['master'],
   },
   'PUT /api/projects/:id/testing-profiles/:profileId': {
-    purpose: 'Writes a testing profile: the actors and services a judge signs in as, by secret reference.',
+    purpose:
+      'Writes a testing profile: the actors and services a judge signs in as, by secret reference.',
     situations: [
       {
         when: 'a judge needs an actor or service it cannot sign in as on an environment',
@@ -77,7 +78,8 @@ export const PROJECT_CONFIG_REST_CARDS = {
     },
     // forge: both proposals in the window were refused, each naming no issue of the project
     // (VARIABLE_PROPOSAL_ISSUE_UNKNOWN)
-    redFlag: 'Proposing a change with no issue that needs it, or a secret value in a plain variable.',
+    redFlag:
+      'Proposing a change with no issue that needs it, or a secret value in a plain variable.',
     family: 'setup',
     audience: ['master', 'run'],
   },
@@ -90,9 +92,16 @@ export const PROJECT_CONFIG_REST_CARDS = {
       },
     ],
     practice: ['An agent proposes instead (…/variables/proposals).'],
-    example: { environment: 'staging', key: 'ORDER_CACHE_TTL', type: 'plain', protected: false, value: '300' },
+    example: {
+      environment: 'staging',
+      key: 'ORDER_CACHE_TTL',
+      type: 'plain',
+      protected: false,
+      value: '300',
+    },
     // forge, 2026-10-17..11-16: 4 of 5 creates refused, 3 forbidden to agent credentials
-    redFlag: 'An agent writing a variable directly: it is refused VARIABLE_AGENT_PROPOSES and proposes instead.',
+    redFlag:
+      'An agent writing a variable directly: it is refused VARIABLE_AGENT_PROPOSES and proposes instead.',
     family: 'setup',
     audience: ['person'],
   },
@@ -107,17 +116,21 @@ export const PROJECT_CONFIG_REST_CARDS = {
     practice: ['A version moved past is refused VARIABLE_STALE: read it again.'],
     example: { baseVersion: 2, value: '600' },
     // forge: both writes in the window were the steward's, forbidden
-    redFlag: 'An agent writing a variable directly: it is refused VARIABLE_AGENT_PROPOSES and proposes instead.',
+    redFlag:
+      'An agent writing a variable directly: it is refused VARIABLE_AGENT_PROPOSES and proposes instead.',
     family: 'setup',
     audience: ['person'],
   },
   'DELETE /api/projects/:id/variables/:variable': {
     purpose: 'Removes a project variable.',
-    situations: [{ when: 'a person removes a variable no environment needs', do: 'delete it by its id' }],
+    situations: [
+      { when: 'a person removes a variable no environment needs', do: 'delete it by its id' },
+    ],
     practice: ['An agent proposes the removal with act delete instead.'],
     example: {},
     // forge: 2 of 3 deletes, the steward's, forbidden
-    redFlag: 'An agent writing a variable directly: it is refused VARIABLE_AGENT_PROPOSES and proposes instead.',
+    redFlag:
+      'An agent writing a variable directly: it is refused VARIABLE_AGENT_PROPOSES and proposes instead.',
     family: 'setup',
     audience: ['person'],
   },
@@ -127,13 +140,19 @@ export const PROJECT_CONFIG_REST_CARDS = {
     practice: ['A run reads the values it targets at GET /api/jobs/<run>/variables/<environment>.'],
     example: {},
     // forge: 2 of 3 reveals, the steward's, forbidden
-    redFlag: 'An agent revealing a secret to read it, where its job’s own variables read answers it.',
+    redFlag:
+      'An agent revealing a secret to read it, where its job’s own variables read answers it.',
     family: 'setup',
     audience: ['person'],
   },
   'POST /api/projects/:id/variables/proposals/:proposal/decision': {
     purpose: 'Approves or rejects an agent’s proposed variable change, as a holder of env.manage.',
-    situations: [{ when: 'a variable change an agent proposed waits on you', do: 'approve or reject it with why' }],
+    situations: [
+      {
+        when: 'a variable change an agent proposed waits on you',
+        do: 'approve or reject it with why',
+      },
+    ],
     practice: ['A proposal already decided is refused VARIABLE_PROPOSAL_DECIDED.'],
     example: { decision: 'approve', reason: 'Staging only; the value is not secret.' },
     // forge: both decisions in the window were the steward's, forbidden: a person decides
@@ -149,7 +168,9 @@ export const PROJECT_CONFIG_REST_CARDS = {
         do: 'remove its binding with the baseRevision you read',
       },
     ],
-    practice: ['It takes project admin; a binding’s target changes through bindings.write instead.'],
+    practice: [
+      'It takes project admin; a binding’s target changes through bindings.write instead.',
+    ],
     example: { baseRevision: 4 },
     // forge: both removals in the window were an agent credential's, forbidden
     redFlag: 'Removing a binding to rewrite it, where bindings.write changes its target in place.',

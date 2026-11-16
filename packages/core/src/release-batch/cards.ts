@@ -144,8 +144,7 @@ export const RELEASE_REST_CARDS = {
     },
     // the door refuses evidence whose environment does not fit how the project releases
     // (RELEASE_APPROVAL_EVIDENCE_ENVIRONMENT): a merge-released project's approval names none
-    redFlag:
-      'Opening the request with evidence not read on the environment the approval rests on.',
+    redFlag: 'Opening the request with evidence not read on the environment the approval rests on.',
     family: 'release',
     audience: ['run'],
   },
@@ -161,7 +160,8 @@ export const RELEASE_REST_CARDS = {
     example: { skill: 'forge:release-flow', loaded: true },
     // forge, 2026-10-17..11-16: 449 calls, none refused; a deploy or record before it is refused
     // RELEASE_NOTHING_RECORDED, which is how runs that skipped it learned to send it first
-    redFlag: 'Deploying or recording before announcing the method: the run is refused RELEASE_NOTHING_RECORDED.',
+    redFlag:
+      'Deploying or recording before announcing the method: the run is refused RELEASE_NOTHING_RECORDED.',
     family: 'release',
     audience: ['run'],
   },
@@ -260,7 +260,8 @@ export const RELEASE_REST_CARDS = {
     audience: ['run'],
   },
   'POST /api/projects/:projectId/release-batches/:runId/range/reads': {
-    purpose: 'Answers which of a release range’s changed files Forge reads, before their text is sent.',
+    purpose:
+      'Answers which of a release range’s changed files Forge reads, before their text is sent.',
     situations: [
       {
         when: 'you report a release’s range and need to know whose text to send',
@@ -268,9 +269,12 @@ export const RELEASE_REST_CARDS = {
       },
     ],
     practice: ['The CLI verb asks it for you; call it by hand only when the verb cannot run.'],
-    example: { changes: [{ path: 'packages/core/contracts/forge-api.openapi.json', change: 'changed' }] },
+    example: {
+      changes: [{ path: 'packages/core/contracts/forge-api.openapi.json', change: 'changed' }],
+    },
     // forge, 2026-10-17..11-16: 432 asks, none refused, each from the release range verb
-    redFlag: 'Sending every changed file’s text in the range report instead of only the files this read names.',
+    redFlag:
+      'Sending every changed file’s text in the range report instead of only the files this read names.',
     family: 'release',
     audience: ['run'],
   },

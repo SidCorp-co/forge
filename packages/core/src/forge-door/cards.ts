@@ -7,7 +7,8 @@ import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
 
 export const FORGE_DOOR_REST_CARDS = {
   'POST /api/forge/feedback/answers/claim': {
-    purpose: 'Hands a reporter’s session each answer on its Forge feedback it was not told yet, once.',
+    purpose:
+      'Hands a reporter’s session each answer on its Forge feedback it was not told yet, once.',
     situations: [
       {
         when: 'an FB-n you filed about Forge was answered and your session was not told',

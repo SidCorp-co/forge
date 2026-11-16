@@ -32,7 +32,8 @@ export const SUPPORT_REST_CARDS = {
     },
     // forge, 2026-10-17..11-16: 13 of 29 posts refused, among them top-level posts in a users' room
     // (SUPPORT_POST_NEEDS_THREAD) and a second telling of one result (SUPPORT_MASTER_POST_ALREADY_TOLD)
-    redFlag: 'Posting at a users’ room’s top level, or telling a thread a result it was already told.',
+    redFlag:
+      'Posting at a users’ room’s top level, or telling a thread a result it was already told.',
     family: 'rooms',
     audience: ['master'],
   },
@@ -47,7 +48,8 @@ export const SUPPORT_REST_CARDS = {
     practice: ['Past the edit window (SUPPORT_POST_EDIT_WINDOW_PASSED) post a correction instead.'],
     example: { text: 'The reorder fix is live in 1.31.2, not 1.31.1.' },
     // forge: its one call was refused; the door refuses another account's post (SUPPORT_POST_NOT_YOURS)
-    redFlag: 'Editing a post past its window or one that is not yours, where a correction post is the act.',
+    redFlag:
+      'Editing a post past its window or one that is not yours, where a correction post is the act.',
     family: 'rooms',
     audience: ['master'],
   },
@@ -129,7 +131,8 @@ export const SUPPORT_REST_CARDS = {
       duties: [{ key: 'reorder', text: 'Answers a reorder question with the order’s code.' }],
     },
     // forge: the steward's one call was forbidden; the switch is a person's act (REQ-77 BC-16)
-    redFlag: 'An agent planning or applying a group’s switch itself: forbidden, it is a person’s act.',
+    redFlag:
+      'An agent planning or applying a group’s switch itself: forbidden, it is a person’s act.',
     family: 'rooms',
     audience: ['person'],
   },
@@ -141,7 +144,9 @@ export const SUPPORT_REST_CARDS = {
         do: 'apply it; the outside bot leaves the group and the agent answers it',
       },
     ],
-    practice: ['A switch waiting on another group’s switch or the owner’s word is refused until it holds.'],
+    practice: [
+      'A switch waiting on another group’s switch or the owner’s word is refused until it holds.',
+    ],
     example: {},
     // forge: the steward's one call was forbidden
     redFlag: 'An agent applying a switch a person has not passed: forbidden, it is a person’s act.',

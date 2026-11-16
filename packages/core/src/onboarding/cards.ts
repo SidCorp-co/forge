@@ -42,7 +42,8 @@ export const ONBOARDING_REST_CARDS = {
     // forge, 2026-10-17..11-16: 7 of 8 batches refused, questions with no recommended answer
     // (ONBOARDING_QUESTION_UNRECOMMENDED) and recommendations sent as items
     // (ONBOARDING_RECOMMENDATION_IS_A_SUGGESTION)
-    redFlag: 'Asking a question with no recommended answer, or posting a recommendation as an item.',
+    redFlag:
+      'Asking a question with no recommended answer, or posting a recommendation as an item.',
     family: 'onboarding',
     audience: ['run'],
   },
@@ -80,9 +81,12 @@ export const ONBOARDING_REST_CARDS = {
     practice: [
       'A draft design is refused ONBOARDING_DESIGNS_UNPROPOSED; on a sensitive-data project a data flow is owed.',
     ],
-    example: { text: 'Done on its assumptions; the open questions keep only their own items open.' },
+    example: {
+      text: 'Done on its assumptions; the open questions keep only their own items open.',
+    },
     // the prompt says "Do not wait for answers": a job that held the close for a person stalled
-    redFlag: 'Holding the close until a person answers: an unanswered question keeps only its item open.',
+    redFlag:
+      'Holding the close until a person answers: an unanswered question keeps only its item open.',
     family: 'onboarding',
     audience: ['run'],
   },
@@ -97,7 +101,8 @@ export const ONBOARDING_REST_CARDS = {
     practice: ['A project onboards once; ONBOARDING_ALREADY_STARTED names the one under way.'],
     example: { request: 'Read the shop and draft its checkout and reorder flows.' },
     // forge: all 6 starts refused, 3 forbidden to agent credentials and the rest already started
-    redFlag: 'An agent starting a project’s onboarding the person did not ask for, or a second one.',
+    redFlag:
+      'An agent starting a project’s onboarding the person did not ask for, or a second one.',
     family: 'onboarding',
     audience: ['person'],
   },

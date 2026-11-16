@@ -1,5 +1,6 @@
 export { type PipelineCaller, resolvePipelineContext } from './active-job-context.js';
 export { broadcastSessionEvent, syncAgentSessionLifecycle } from './agent-session-link.js';
+export { JOB_REST_CARDS } from './cards.js';
 export { finalizeJobDone } from './finalize-done.js';
 export { type HoldState, holdReleasesItself, readHoldState, releaseHeldJobs } from './hold.js';
 export { countInFlightByRunner } from './in-flight.js';

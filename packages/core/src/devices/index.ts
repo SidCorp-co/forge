@@ -1,4 +1,5 @@
 export { readAdmissibleForProjects, readAdmissibleIssues } from './admissible.js';
+export { DEVICE_REST_CARDS } from './cards.js';
 export { readOwedComments } from './comment-inbox.js';
 export {
   type DeclaredRunElsewhere,

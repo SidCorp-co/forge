@@ -49,6 +49,16 @@
     "on": "2026-11-16",
     "by": "ISS-1251"
   },
+  "DELETE /api/projects/:projectId/debts/:debt/carry": {
+    "hash": "6f683113f0d60855",
+    "on": "2026-11-16",
+    "by": "ISS-1251"
+  },
+  "DELETE /api/skills/:id": {
+    "hash": "5814b3d244867880",
+    "on": "2026-11-16",
+    "by": "ISS-1251"
+  },
   "PATCH /api/comments/:id": {
     "hash": "d3a4679861df5bbd",
     "on": "2026-11-16",
@@ -84,13 +94,43 @@
     "on": "2026-11-16",
     "by": "ISS-1251"
   },
+  "PATCH /api/projects/:projectId/integrations/:id": {
+    "hash": "bc92c2978675b190",
+    "on": "2026-11-16",
+    "by": "ISS-1251"
+  },
+  "POST /api/body/preview": {
+    "hash": "bf9865eb798675ab",
+    "on": "2026-11-16",
+    "by": "ISS-1251"
+  },
   "POST /api/comments/:commentId/attachments": {
     "hash": "01d1844c50ac5bfe",
     "on": "2026-11-16",
     "by": "ISS-1251"
   },
+  "POST /api/devices/me/questions": {
+    "hash": "88291c89adc7127f",
+    "on": "2026-11-16",
+    "by": "ISS-1251"
+  },
+  "POST /api/devices/me/run-sessions": {
+    "hash": "b8c3f7c38060fc46",
+    "on": "2026-11-16",
+    "by": "ISS-1251"
+  },
+  "POST /api/devices/me/run-sessions/:sessionId/close": {
+    "hash": "c82ac045f23d4447",
+    "on": "2026-11-16",
+    "by": "ISS-1251"
+  },
   "POST /api/forge/feedback/answers/claim": {
     "hash": "6a7011c237f1342f",
+    "on": "2026-11-16",
+    "by": "ISS-1251"
+  },
+  "POST /api/integration-connections": {
+    "hash": "ff77b3e108b540b1",
     "on": "2026-11-16",
     "by": "ISS-1251"
   },
@@ -100,7 +140,17 @@
     "by": "ISS-1251"
   },
   "POST /api/integration-connections/:id/monitoring/readiness": {
-    "hash": "f7028f6f5b95064b",
+    "hash": "789040029c8c69f7",
+    "on": "2026-11-16",
+    "by": "ISS-1251"
+  },
+  "POST /api/integration-connections/:id/monitoring/tokens/:kind": {
+    "hash": "b59b9247d3c6876f",
+    "on": "2026-11-16",
+    "by": "ISS-1251"
+  },
+  "POST /api/issue-step-contexts": {
+    "hash": "ed4d022468cbd0f4",
     "on": "2026-11-16",
     "by": "ISS-1251"
   },
@@ -170,7 +220,7 @@
     "by": "ISS-1251"
   },
   "POST /api/issues/:id/merge-pull-request": {
-    "hash": "8a95c5d17f05da0e",
+    "hash": "52d68fc1173bd61c",
     "on": "2026-11-16",
     "by": "ISS-1251"
   },
@@ -209,8 +259,18 @@
     "on": "2026-11-16",
     "by": "ISS-1251"
   },
+  "POST /api/jobs/:id/cancel": {
+    "hash": "beb7249eefa16b63",
+    "on": "2026-11-16",
+    "by": "ISS-1251"
+  },
   "POST /api/memory": {
     "hash": "eb9b8bdf5a24ebdd",
+    "on": "2026-11-16",
+    "by": "ISS-1251"
+  },
+  "POST /api/memory/:memoryId/retire": {
+    "hash": "3d4dbcb07fbf9476",
     "on": "2026-11-16",
     "by": "ISS-1251"
   },
@@ -234,8 +294,28 @@
     "on": "2026-11-16",
     "by": "ISS-1251"
   },
+  "POST /api/pipeline-runs/:id/phases": {
+    "hash": "bc3cd08a2050c460",
+    "on": "2026-11-16",
+    "by": "ISS-1251"
+  },
+  "POST /api/pipeline-runs/:id/phases/end": {
+    "hash": "cb8bc4e05cf6752d",
+    "on": "2026-11-16",
+    "by": "ISS-1251"
+  },
+  "POST /api/projects/:id/archive": {
+    "hash": "17bca3847ee98fe9",
+    "on": "2026-11-16",
+    "by": "ISS-1251"
+  },
   "POST /api/projects/:id/contract-requests": {
     "hash": "ef39bec112de3509",
+    "on": "2026-11-16",
+    "by": "ISS-1251"
+  },
+  "POST /api/projects/:id/executions": {
+    "hash": "a81bf05d1f3c7ed6",
     "on": "2026-11-16",
     "by": "ISS-1251"
   },
@@ -309,6 +389,11 @@
     "on": "2026-11-16",
     "by": "ISS-1256"
   },
+  "POST /api/projects/:id/intake-drafts/:ref/answers": {
+    "hash": "aa4c66d2fbc25239",
+    "on": "2026-11-16",
+    "by": "ISS-1251"
+  },
   "POST /api/projects/:id/interface/adopt": {
     "hash": "8e504c72826d6564",
     "on": "2026-11-16",
@@ -369,6 +454,11 @@
     "on": "2026-11-16",
     "by": "ISS-1251"
   },
+  "POST /api/projects/:id/previews": {
+    "hash": "9581512e0109292b",
+    "on": "2026-11-16",
+    "by": "ISS-1251"
+  },
   "POST /api/projects/:id/questionnaires/:bid/answers": {
     "hash": "a9ca8d6b7ffca22f",
     "on": "2026-11-16",
@@ -379,6 +469,11 @@
     "on": "2026-11-16",
     "by": "ISS-1251"
   },
+  "POST /api/projects/:id/report-templates/:templateId/runs": {
+    "hash": "7ba9480525585aeb",
+    "on": "2026-11-16",
+    "by": "ISS-1251"
+  },
   "POST /api/projects/:id/requirements/:req/accept": {
     "hash": "c9c0d94cb7d098d0",
     "on": "2026-11-16",
@@ -386,6 +481,11 @@
   },
   "POST /api/projects/:id/requirements/:req/agree": {
     "hash": "5db85306273579e5",
+    "on": "2026-11-16",
+    "by": "ISS-1251"
+  },
+  "POST /api/projects/:id/requirements/:req/assistant": {
+    "hash": "ae36950720584821",
     "on": "2026-11-16",
     "by": "ISS-1251"
   },
@@ -474,6 +574,11 @@
     "on": "2026-11-16",
     "by": "ISS-1251"
   },
+  "POST /api/projects/:id/unarchive": {
+    "hash": "289999d709d092e7",
+    "on": "2026-11-16",
+    "by": "ISS-1251"
+  },
   "POST /api/projects/:id/variables": {
     "hash": "72c6845b1b1281c3",
     "on": "2026-11-16",
@@ -530,12 +635,17 @@
     "by": "ISS-1251"
   },
   "POST /api/projects/:projectId/debts/:debt/carry": {
-    "hash": "0112d8462c525688",
+    "hash": "b004e3808e3ed572",
     "on": "2026-11-16",
     "by": "ISS-1251"
   },
   "POST /api/projects/:projectId/debts/:debt/evidence": {
     "hash": "ccbd7202545d7d7f",
+    "on": "2026-11-16",
+    "by": "ISS-1251"
+  },
+  "POST /api/projects/:projectId/integrations/coolify/cancel": {
+    "hash": "03c6a8ed90c6dea0",
     "on": "2026-11-16",
     "by": "ISS-1251"
   },
@@ -545,7 +655,7 @@
     "by": "ISS-1251"
   },
   "POST /api/projects/:projectId/integrations/source/change-requests": {
-    "hash": "8f4e9cad91e2e046",
+    "hash": "317db75973b854f3",
     "on": "2026-11-16",
     "by": "ISS-1251"
   },
@@ -616,6 +726,11 @@
   },
   "POST /api/questions/:id/void": {
     "hash": "8f058e98dd3ae786",
+    "on": "2026-11-16",
+    "by": "ISS-1251"
+  },
+  "POST /api/runners": {
+    "hash": "be87e8c00cfe368f",
     "on": "2026-11-16",
     "by": "ISS-1251"
   },
@@ -690,7 +805,7 @@
     "by": "ISS-1251"
   },
   "PUT /api/projects/:projectId/integrations/coolify/env/:key": {
-    "hash": "4e95e7a21a565c9f",
+    "hash": "b1289438dd796fca",
     "on": "2026-11-16",
     "by": "ISS-1251"
   },

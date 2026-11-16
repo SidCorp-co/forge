@@ -111,7 +111,8 @@ export const FEEDBACK_REST_CARDS = {
         'On 0.4.0-dev.690 a reorder with a sold-out line still fails when that line is the first.',
     },
     // the door refuses a reopen that says nothing (FEEDBACK_REOPEN_REASON_REQUIRED)
-    redFlag: 'Reopening with “still broken” and nothing of what you ran or saw on the running build.',
+    redFlag:
+      'Reopening with “still broken” and nothing of what you ran or saw on the running build.',
     family: 'project-feedback',
     audience: ['master'],
   },
@@ -195,19 +196,23 @@ export const FEEDBACK_REST_CARDS = {
     practice: ['You never ask yourself: a reporter verifies their own item instead.'],
     example: {},
     // forge: 10 asks, 9 of them the steward's; the door refuses asking yourself (FEEDBACK_VERIFY_ASK_SELF)
-    redFlag: 'Asking the same reporter again each pass: one ask stays on their bell until they answer.',
+    redFlag:
+      'Asking the same reporter again each pass: one ask stays on their bell until they answer.',
     family: 'project-feedback',
     audience: ['master'],
   },
   'POST /api/projects/:id/feedback/:fb/tell-shipped': {
-    purpose: 'Tells an item’s reporter its fix shipped, where its standing still waits on that relay.',
+    purpose:
+      'Tells an item’s reporter its fix shipped, where its standing still waits on that relay.',
     situations: [
       {
         when: 'a release shipped an item’s fix and the item’s standing still waits on telling its reporter',
         do: 'tell its reporter with {}; the item asks them to confirm by itself',
       },
     ],
-    practice: ['Most items ask their reporter on their own when the release ships: tell only those waiting.'],
+    practice: [
+      'Most items ask their reporter on their own when the release ships: tell only those waiting.',
+    ],
     example: {},
     // forge, 2026-10-17..11-16: 7 of the steward's 8 tells were refused, the item not waiting on it
     redFlag: 'Telling every routed item’s reporter after a release, where most ask on their own.',
@@ -241,7 +246,8 @@ export const FEEDBACK_REST_CARDS = {
     practice: ['A relay records what was already told and has no preview: send it as it is.'],
     example: { audience: 'reporter', text: 'Reorder now tells you which line sold out.' },
     // forge: all 3 previews refused, each a relay (relayed: true has no preview) or an empty text
-    redFlag: 'Previewing a relay (relayed: true), which sends no notice and has nothing to preview.',
+    redFlag:
+      'Previewing a relay (relayed: true), which sends no notice and has nothing to preview.',
     family: 'project-feedback',
     audience: ['master'],
   },

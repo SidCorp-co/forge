@@ -1,5 +1,6 @@
 export type { KnowledgeObligation } from './autonomous-contract.js';
 export { missingProjectKnowledge } from './autonomous-contract.js';
+export { PROJECT_REST_CARDS } from './cards.js';
 export { declaredIssueSeqs, issueRefPattern, subjectOf } from './commit-owners.js';
 export { provideProjectsPorts } from './ports.js';
 export type { RESERVED_PROJECT_FACT_KEYS } from './project-facts.js';

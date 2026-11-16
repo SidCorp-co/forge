@@ -2,9 +2,11 @@
 // runs a script over a turn's runs on a sandbox executor and keeps that for 30 days too, and posts
 // the blocks drawn from either. It reaches queries, rooms, executors and the project's compute
 // setting only through ports its process entry provides, so the assistant never imports it.
+
 export type { Executor } from '@forge/contracts/report-executions';
 export type { ReportDocument, ReportTemplate } from '@forge/contracts/report-templates';
 export { type AttachedBlock, attachVisualBlock } from './blocks.js';
+export { REPORT_REST_CARDS } from './cards.js';
 export { keptExecutionFrames, readExecution } from './executions.js';
 export {
   type ComputePolicy,

@@ -30,6 +30,9 @@ export const INTEGRATION_DOOR_REST_CARDS = {
       base: 'dev',
       title: 'ISS-583: a park names what its question is about',
     },
+    // forge: the steward's one call in the window was refused (no source host bound)
+    redFlag:
+      'Opening the request with a host token of your own, so core records nothing it opened.',
     family: 'issue-landing',
     audience: ['master', 'run'],
   },
@@ -52,6 +55,8 @@ export const INTEGRATION_DOOR_REST_CARDS = {
       method: 'merge',
     },
     // ISS-852 / FB-457: a first merge refused as conflict merged on an identical call 20 s later
+    redFlag:
+      'Treating a first conflict as final and rebasing, where the host’s first reading was stale.',
     family: 'issue-landing',
     audience: ['master', 'run'],
   },
@@ -95,6 +100,7 @@ export const INTEGRATION_DOOR_REST_CARDS = {
     ],
     practice: ['Values are masked on read: never paste one into a comment or a log.'],
     example: { value: 'https://staging.example.com', redeploy: false },
+    redFlag: 'Pasting the value into a comment, a log or a commit to show what was set.',
     family: 'setup',
     audience: ['master'],
   },
@@ -139,7 +145,80 @@ export const INTEGRATION_DOOR_REST_CARDS = {
     ],
     practice: ['Each false names the setup step that turns it true.'],
     example: {},
+    // the monitoring guide: null means it could not be read, and is never taken as done
+    redFlag: 'Reading a null step as done and binding a project before the server can do it.',
     family: 'setup',
     audience: ['master'],
+  },
+  'POST /api/integration-connections': {
+    purpose:
+      'Creates an integration connection, such as the Prometheus server projects are watched by.',
+    situations: [
+      {
+        when: 'a project needs production monitoring and no Prometheus connection exists',
+        do: 'create one with provider prometheus, its URL, its user and the password its web.yml admits',
+        watch: 'without both user and password it is refused MONITORING_SERVER_UNAUTHENTICATED',
+      },
+    ],
+    practice: [
+      'An organization’s connection takes org.admin there; a personal one is the caller’s own.',
+    ],
+    example: {
+      provider: 'prometheus',
+      config: { prometheusUrl: 'https://prom.example.com', prometheusUser: 'forge', ruler: 'file' },
+      secrets: { prometheusPassword: '<the password its web.yml admits>' },
+    },
+    // buy-before-build: monitoring runs on Prometheus connected here, never a stack the project builds
+    redFlag:
+      'Pointing Forge at an open endpoint, or standing up a watch stack in the project instead.',
+    family: 'setup',
+    audience: ['master'],
+  },
+  'POST /api/integration-connections/:id/monitoring/tokens/:kind': {
+    purpose:
+      'Mints the token a Prometheus server (sd) or its Alertmanager (alerts) calls Forge with.',
+    situations: [
+      {
+        when: 'the connection’s setup list reads a token file you have not filled',
+        do: 'mint sd for the server and alerts for the Alertmanager; each is shown once',
+      },
+    ],
+    practice: ['A new one replaces the old: the server’s file is updated in the same step.'],
+    example: {},
+    // the guide: the setup list names files, never a secret, and each token is shown once
+    redFlag:
+      'Pasting a minted token into a comment or the setup list instead of the server’s file.',
+    family: 'setup',
+    audience: ['master'],
+  },
+  'POST /api/projects/:projectId/integrations/coolify/cancel': {
+    purpose: 'Cancels a Coolify deployment through core’s binding.',
+    situations: [
+      {
+        when: 'a deploy you started is building the wrong commit or hangs past its window',
+        do: 'cancel it naming the deployment, then deploy the right one or abort the run',
+      },
+    ],
+    practice: ['Read the deployment first: a finished deploy is not undone by a cancel.'],
+    example: { deploymentUuid: 'k8w4c0s8o4g0' },
+    redFlag: 'Cancelling a deploy that is still progressing because its poll was slow.',
+    family: 'issue-landing',
+    audience: ['master', 'run'],
+  },
+  'PATCH /api/projects/:projectId/integrations/:id': {
+    purpose:
+      'Changes a project integration: on or off, its config, secrets, instructions or agent access.',
+    situations: [
+      {
+        when: 'a person turns an integration on or off, or changes what agents may do through it',
+        do: 'send only the fields that change, as a project admin',
+      },
+    ],
+    practice: ['Agent access is a person’s grant: an agent reads it, never widens it.'],
+    example: { active: false },
+    // forge: the one agent call was forbidden (access, locked: no agreement widens a grant)
+    redFlag: 'An agent widening its own access to an integration.',
+    family: 'setup',
+    audience: ['person'],
   },
 } satisfies Record<string, CapabilityCardBody>;

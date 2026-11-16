@@ -358,6 +358,8 @@ describe('a Tier-0 map merges a family of acts into one line', () => {
     expect(of('POST /api/projects/:id/requirements/:req/revisions/:n/accept')).toBe(
       'requirements.revisions_accept',
     );
+    expect(of('POST /api/memory/:memoryId/retire')).toBe('memory.retire_one');
+    expect(of('POST /api/memory/retire')).toBe('memory.retire');
     const carded = doors.filter((d) => d.card).map((d) => names.get(d.id));
     expect(carded.filter((n, i) => carded.indexOf(n) !== i)).toEqual([]);
   });

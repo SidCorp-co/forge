@@ -65,7 +65,8 @@ export const REQUIREMENT_REST_CARDS = {
     practice: ['A proposed revision cannot be edited or replaced; this is the way back to draft.'],
     example: { reason: 'BC-3 opens with “Verify”; restate it as what holds on the product.' },
     // ISS-766: an author stuck on a proposed revision was sent between two refusals, never to return
-    redFlag: 'Withdrawing a proposed revision and writing a new one where returning it to draft was the way.',
+    redFlag:
+      'Withdrawing a proposed revision and writing a new one where returning it to draft was the way.',
     family: 'requirements',
     audience: ['master'],
   },
@@ -81,7 +82,8 @@ export const REQUIREMENT_REST_CARDS = {
     practice: ['Only an agreed requirement; nothing moved is refused REQUIREMENT_PINS_CURRENT.'],
     example: { revision: 2, reason: 'The reorder design r4 was approved on 2026-11-15.' },
     // forge, 2026-10-17..11-16: 2 of 29 re-pins refused, nothing having moved past the pins
-    redFlag: 'Re-pinning when no design or contract moved past the baseline (REQUIREMENT_PINS_CURRENT).',
+    redFlag:
+      'Re-pinning when no design or contract moved past the baseline (REQUIREMENT_PINS_CURRENT).',
     family: 'requirements',
     audience: ['master'],
   },
@@ -99,7 +101,8 @@ export const REQUIREMENT_REST_CARDS = {
     practice: ['Outside strict a draft requirement links too; under strict only once agreed.'],
     example: { issue: 'ISS-640' },
     // forge, 2026-10-17..11-16: 7 of 181 links refused
-    redFlag: 'Linking an issue another requirement already holds instead of unlinking it there first.',
+    redFlag:
+      'Linking an issue another requirement already holds instead of unlinking it there first.',
     family: 'requirements',
     audience: ['master'],
   },
@@ -130,7 +133,8 @@ export const REQUIREMENT_REST_CARDS = {
     ],
     practice: ['Agreed straight to delivered is no edge: start delivery first.'],
     example: { reason: 'BC-1 to BC-4 pass on 0.4.0-dev.690.' },
-    redFlag: 'Marking delivered because its issues closed, before every criterion passes on the running build.',
+    redFlag:
+      'Marking delivered because its issues closed, before every criterion passes on the running build.',
     family: 'requirements',
     audience: ['master'],
   },
@@ -214,7 +218,8 @@ export const REQUIREMENT_REST_CARDS = {
     example: {},
     // the link door refuses an issue another requirement holds (REQUIREMENT_ISSUE_LINKED_ELSEWHERE),
     // naming this unlink; 37 unlinks on forge in 30 days, none refused
-    redFlag: 'Unlinking an issue to make a refusal go away while it still delivers the requirement.',
+    redFlag:
+      'Unlinking an issue to make a refusal go away while it still delivers the requirement.',
     family: 'requirements',
     audience: ['master'],
   },
@@ -226,7 +231,9 @@ export const REQUIREMENT_REST_CARDS = {
         do: 'set owner to a member’s user id, or null to clear it',
       },
     ],
-    practice: ['Only a member of the project can own it; its text changes through a revision, never here.'],
+    practice: [
+      'Only a member of the project can own it; its text changes through a revision, never here.',
+    ],
     example: { owner: null },
     // forge: both calls in the window were refused, an owner who was no member
     // (REQUIREMENT_OWNER_NOT_MEMBER) or a body carrying more than owner
@@ -252,7 +259,8 @@ export const REQUIREMENT_REST_CARDS = {
     },
     // the door refuses a contract the requester neither consumes nor the provider publishes
     // (REQUIREMENT_CONTRACT_UNKNOWN) and a request to its own project (REQUIREMENT_REQUEST_OWN_PROJECT)
-    redFlag: 'Filing it in the provider’s project, or for your own contract: it is sent from the consumer.',
+    redFlag:
+      'Filing it in the provider’s project, or for your own contract: it is sent from the consumer.',
     family: 'requirements',
     audience: ['master'],
   },

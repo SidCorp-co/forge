@@ -76,6 +76,8 @@ export const CLEANUP_REST_CARDS = {
       costs: 'Staging errors are not reported.',
       endsWhen: 'The owner sets SENTRY_DSN on staging.',
     },
+    // forge: 2 of 3 carries refused, one forbidden to a caller without project admin
+    redFlag: 'Carrying a debt a change could clear, to make a cleanup report read green.',
     family: 'debt',
     audience: ['master'],
   },
@@ -93,5 +95,20 @@ export const CLEANUP_REST_CARDS = {
     },
     family: 'debt',
     audience: ['run'],
+  },
+  'DELETE /api/projects/:projectId/debts/:debt/carry': {
+    purpose: 'Withdraws the carry on a debt, so reports read it red again until it is cleared.',
+    situations: [
+      {
+        when: 'what a carried debt waited on happened, or the carry was a mistake',
+        do: 'withdraw the carry as a project admin, then clear the debt or let it read red',
+      },
+    ],
+    practice: ['The debt itself stays until a change clears it.'],
+    example: {},
+    // forge: its one call in the window landed
+    redFlag: 'Withdrawing a carry to make the debt read cleared: it reads red again, not gone.',
+    family: 'debt',
+    audience: ['master'],
   },
 } satisfies Record<string, CapabilityCardBody>;

@@ -3,6 +3,7 @@ export {
   AUTONOMOUS_ENTRY_STATUS,
   isEntryGateClosed,
 } from './autonomous-mode.js';
+export { PIPELINE_REST_CARDS } from './cards.js';
 export {
   abandonDeployDispatchHold,
   deployHoldsOf,

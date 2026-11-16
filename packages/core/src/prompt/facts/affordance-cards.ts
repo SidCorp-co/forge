@@ -40,7 +40,8 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
       kind: 'blocks',
       reason: 'The reorder screen reads the order cache this issue adds.',
     },
-    redFlag: 'Writing the order in prose (“after ISS-640”) instead of a blocks edge: prose gates nothing.',
+    redFlag:
+      'Writing the order in prose (“after ISS-640”) instead of a blocks edge: prose gates nothing.',
     family: 'issue-order',
     audience: ['master', 'run'],
   }),
@@ -59,14 +60,16 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
       projectId: 'd1bb4907-74d9-4228-85ff-76121523af7d',
       source: 'note',
       sourceRef: 'order-cache-invalidation',
-      textContent: 'The order cache is cleared by the orders write path only; a direct SQL fix leaves it stale.',
+      textContent:
+        'The order cache is cleared by the orders write path only; a direct SQL fix leaves it stale.',
       type: 'fact',
       scope: 'packages/core/src/orders',
       recheckWhen: 'when the orders write path changes',
     },
     // forge, 2026-10-17..11-16: 41 of 86 writes refused, among them decisions in force
     // (MEMORY_DECISION_NOT_MEMORY) and texts past the embedding window (MEMORY_TEXT_TOO_LONG)
-    redFlag: 'Writing a decision in force as memory, or a second entry beside the one already held.',
+    redFlag:
+      'Writing a decision in force as memory, or a second entry beside the one already held.',
     family: 'memory',
     audience: ['master', 'run'],
   }),
@@ -149,7 +152,8 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
         intake: { mode: 'auto' },
       },
     },
-    redFlag: 'Sending only the keys that change: the policy is written whole against the revision read.',
+    redFlag:
+      'Sending only the keys that change: the policy is written whole against the revision read.',
     family: 'setup',
     audience: ['master'],
   }),
@@ -236,7 +240,8 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     example: { target: 'base', commit: 'c82e7d7c3a339c5035efea3bcbb8b6f45c9510ee' },
     // issues/merge-correction.ts: MR 5162's merge stamped a closed issue with a commit over its real
     // landing; forge, 2026-10-17..11-16: 75 of 677 stamps refused
-    redFlag: 'Stamping a commit that is not this issue’s own landing, such as the branch head before a squash.',
+    redFlag:
+      'Stamping a commit that is not this issue’s own landing, such as the branch head before a squash.',
     family: 'issue-landing',
     audience: ['master', 'run'],
   }),
@@ -289,7 +294,8 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     },
     // forge, 2026-10-17..11-16: 264 of 1,828 moves refused; a park naming another issue's landing
     // is QUESTION_MERGE_IS_ORDERING, a blocks edge's job
-    redFlag: 'Parking an issue that waits on another issue’s landing, where a blocks edge orders it.',
+    redFlag:
+      'Parking an issue that waits on another issue’s landing, where a blocks edge orders it.',
     family: 'issue-landing',
     audience: ['master', 'run'],
   }),
@@ -319,7 +325,8 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
       'A design resting on another one is approved only once its base is approved at the revision it names.',
     ],
     example: { workflowId: '3d2b8c4e-1a5f-4e7d-9b6c-0f1e2d3c4b5a', revision: 3, issue: 'ISS-640' },
-    redFlag: 'Filing or dispatching the build of a design before its revision is proposed and approved.',
+    redFlag:
+      'Filing or dispatching the build of a design before its revision is proposed and approved.',
     family: 'design',
     audience: ['master', 'run', 'person'],
   }),
@@ -414,7 +421,8 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     },
     // forge, 2026-10-17..11-16: 98 of 7,257 comments refused; a defect only mentioned in a comment is
     // not discharged (CLAUDE.md, "A defect you see has a place")
-    redFlag: 'Mentioning a standalone defect only in a comment, where it belongs on the debt ledger.',
+    redFlag:
+      'Mentioning a standalone defect only in a comment, where it belongs on the debt ledger.',
     family: 'issue-work',
     audience: ['master', 'run'],
   }),

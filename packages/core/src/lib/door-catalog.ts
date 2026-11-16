@@ -85,12 +85,14 @@ const METHOD_VERB: Readonly<Record<string, string>> = {
  * (the one before it where the last is the module's own resource, `comments.requirements`), led by
  * its method's verb where it is not a POST (`issues.set_criteria`). Two doors one name would take
  * are told apart by the segment before (`requirements.revisions_accept`), or by the scope it
- * is in where an action already holds the name (`issues.create_in_project`). The map names this;
+ * is in where an action already holds the name (`issues.create_in_project`), or by `_one` on the act
+ * on a single record beside the same act on a list (`memory.retire_one`). The map names this;
  * the card the agent opens carries the route.
  */
 export function doorNames(doors: readonly CatalogDoor[]): ReadonlyMap<string, string> {
   const derived = doors.map((d) => {
-    if (d.surface !== 'rest' || !d.card) return { d, name: d.id, alt: d.id, scoped: d.id };
+    if (d.surface !== 'rest' || !d.card)
+      return { d, name: d.id, alt: d.id, scoped: d.id, one: d.id };
     const owner = d.card.owner;
     const prefix = MODULE_PREFIX[owner] ?? owner.replace(/-/g, '_');
     const [method = 'POST', path = ''] = d.id.split(' ');
@@ -116,6 +118,8 @@ export function doorNames(doors: readonly CatalogDoor[]): ReadonlyMap<string, st
       // two doors one name: the segment before tells them apart, else the scope the door is in
       alt: before && !own(before) && before !== 'projects' ? name(`${before}_${act}`) : name(act),
       scoped: `${name(act)}${scope ? `_in_${scope}` : ''}`,
+      // the one act on a single record beside the same act on a list (`memory.retire_one`)
+      one: path.split('/').at(-2)?.startsWith(':') ? `${name(act)}_one` : name(act),
     };
   });
   const tally = (names: readonly string[]) => {
@@ -126,8 +130,12 @@ export function doorNames(doors: readonly CatalogDoor[]): ReadonlyMap<string, st
   const first = tally(derived.map((x) => x.name));
   const second = derived.map((x) => (first(x.name) ? x.alt : x.name));
   const still = tally(second);
+  const third = derived.map((x, i) =>
+    still(second[i] as string) ? x.scoped : (second[i] as string),
+  );
+  const yet = tally(third);
   return new Map(
-    derived.map((x, i) => [x.d.id, still(second[i] as string) ? x.scoped : (second[i] as string)]),
+    derived.map((x, i) => [x.d.id, yet(third[i] as string) ? x.one : (third[i] as string)]),
   );
 }
 
@@ -247,11 +255,18 @@ export function tier0Map(
   const tail = anyMerged ? [mergedLine] : [];
   const whole = fill(TIER0_MAP_MAX_CHARS - (anyMerged ? mergedLine.length + 1 : 0));
   if (whole.carried.length === taught.length) {
-    return { text: [...whole.lines, ...tail].join('\n'), carried: whole.carried, reach: taught.length };
+    return {
+      text: [...whole.lines, ...tail].join('\n'),
+      carried: whole.carried,
+      reach: taught.length,
+    };
   }
   // the pointer to the cards left out is within the cap too, so room is kept for it
   const kept = fill(
-    TIER0_MAP_MAX_CHARS - moreLine(taught.length).length - 1 - (anyMerged ? mergedLine.length + 1 : 0),
+    TIER0_MAP_MAX_CHARS -
+      moreLine(taught.length).length -
+      1 -
+      (anyMerged ? mergedLine.length + 1 : 0),
   );
   return {
     text: [...kept.lines, ...tail, moreLine(taught.length - kept.carried.length)].join('\n'),

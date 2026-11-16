@@ -18,6 +18,7 @@ export {
   botSend,
   botThreads,
 } from './bot-actions.js';
+export { ASSISTANT_REST_CARDS } from './cards.js';
 export { drainRoomQuestions, registerRoomBridges } from './chat-room/drains.js';
 export {
   type ChannelAgentRound,

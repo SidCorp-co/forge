@@ -240,7 +240,8 @@ export const ISSUE_REST_CARDS = {
     },
     // forge, 2026-10-17..11-16: 170 of 485 posts refused, chiefly an id reused for another check
     // (CHECK_RUN_CONFLICT)
-    redFlag: 'Reusing one check id for a different check, or resending what a merge check already recorded.',
+    redFlag:
+      'Reusing one check id for a different check, or resending what a merge check already recorded.',
     family: 'issue-work',
     audience: ['run', 'master'],
   },
@@ -320,7 +321,8 @@ export const ISSUE_REST_CARDS = {
     practice: ['It ties no criterion you wrote: tag your own line `(REQ-n BC-m)` for that.'],
     example: { codes: ['BC-3', 'BC-4'] },
     // forge: 4 of 43 traces refused, codes the requirement's live head does not hold
-    redFlag: 'Tracing BC codes the requirement no longer holds, or writing the BC’s text by hand beside the trace.',
+    redFlag:
+      'Tracing BC codes the requirement no longer holds, or writing the BC’s text by hand beside the trace.',
     family: 'issue-work',
     audience: ['run', 'master'],
   },
@@ -352,7 +354,8 @@ export const ISSUE_REST_CARDS = {
     ],
     example: {},
     // the door takes the file in the multipart `file` field: a local path or base64 in evidence is refused
-    redFlag: 'Citing a local file path in a verdict’s evidence instead of uploading the file first.',
+    redFlag:
+      'Citing a local file path in a verdict’s evidence instead of uploading the file first.',
     family: 'issue-work',
     audience: ['run', 'master'],
   },
@@ -368,7 +371,8 @@ export const ISSUE_REST_CARDS = {
     example: { reason: 'A probe of the route, not a decision.' },
     // forge, 2026-10-17..11-16: 10 of 14 withdrawals refused, among them a core act
     // (EVENT_WITHDRAW_CORE_ACT) and a decision kept as a comment (EVENT_WITHDRAW_IN_COMMENT)
-    redFlag: 'Withdrawing a record core wrote, or a decision kept as a comment, which this door does not hold.',
+    redFlag:
+      'Withdrawing a record core wrote, or a decision kept as a comment, which this door does not hold.',
     family: 'issue-work',
     audience: ['master', 'run'],
   },
@@ -389,7 +393,8 @@ export const ISSUE_REST_CARDS = {
       'An approved new pattern’s catalog page lands in the same change.',
     ],
     example: { pattern: 'core-module' },
-    redFlag: 'Naming a new slug where a catalogued pattern fits, which holds the work until it is approved.',
+    redFlag:
+      'Naming a new slug where a catalogued pattern fits, which holds the work until it is approved.',
     family: 'issue-work',
     audience: ['run'],
   },
@@ -417,9 +422,13 @@ export const ISSUE_REST_CARDS = {
       },
     ],
     practice: ['The work naming it waits until another holder decides.'],
-    example: { decision: 'returned', reason: 'core-module already covers a module with one route file.' },
+    example: {
+      decision: 'returned',
+      reason: 'core-module already covers a module with one route file.',
+    },
     // forge: all 3 decisions were the naming run's master approving its own run's pattern, forbidden
-    redFlag: 'Approving a pattern your own run named: another holder of patterns.approve decides it.',
+    redFlag:
+      'Approving a pattern your own run named: another holder of patterns.approve decides it.',
     family: 'issue-work',
     audience: ['person'],
   },
@@ -431,7 +440,9 @@ export const ISSUE_REST_CARDS = {
         do: 'remove it by its edge id; an edge that ended in time is retracted with validUntil instead',
       },
     ],
-    practice: ['A blocks edge that held until something landed keeps its history: retract it, do not remove it.'],
+    practice: [
+      'A blocks edge that held until something landed keeps its history: retract it, do not remove it.',
+    ],
     example: {},
     // forge: both removals in the window were a master's own mistaken edges
     redFlag: 'Removing a blocks edge that once held, which erases why the work waited.',

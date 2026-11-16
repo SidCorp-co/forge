@@ -88,4 +88,20 @@ export const MEMORY_REST_CARDS = {
     family: 'memory',
     audience: ['master', 'run'],
   },
+  'POST /api/memory/:memoryId/retire': {
+    purpose:
+      'Retires one memory that is wrong or no longer useful, with the reason, or deletes it.',
+    situations: [
+      {
+        when: 'one memory you read is wrong or stale and nothing else needs curating',
+        do: 'retire it with `?projectId` and the reason; `delete: true` removes it for good',
+      },
+    ],
+    practice: ['Many at once go through POST /api/memory/retire with their ids in one call.'],
+    example: { reason: 'The push route it names was replaced on 2026-11-02.' },
+    // forge: its one call in the window landed; ISS-1104's 55 single retires are why the list door exists
+    redFlag: 'Retiring a curation sweep here one memory per call instead of in one list call.',
+    family: 'memory',
+    audience: ['master', 'run'],
+  },
 } satisfies Record<string, CapabilityCardBody>;

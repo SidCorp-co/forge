@@ -50,7 +50,8 @@ export const STEWARD_REST_CARDS = {
     example: {},
     // forge, 2026-10-17..11-16: all 11 undos refused, 7 naming an act this project holds no steward
     // act as (STEWARD_ACT_UNKNOWN): an issue's event or a comment id sent as the act's
-    redFlag: 'Undoing by an id that is not a steward act’s (an event’s, a comment’s): read the acts first.',
+    redFlag:
+      'Undoing by an id that is not a steward act’s (an event’s, a comment’s): read the acts first.',
     audience: ['master'],
   },
 } satisfies Record<string, CapabilityCardBody>;
