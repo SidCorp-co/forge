@@ -155,7 +155,8 @@ describe("a project's door use counts each call against the catalog, the never-c
       byAgent: { 'agent-account': 1, box: 1 },
     });
     expect(door(view, 'support.member').feature).toContain('forge_support');
-    expect(door(view, 'support.member').tiers).toEqual({});
+    // a room act's card teaches the room agent; the most called act is carried on its map (ISS-1251)
+    expect(door(view, 'support.member').tiers).toEqual({ bot: 0 });
     // a card's door is in each audience's map it teaches, at Tier 0 (carried) or Tier 1 (found)
     expect(Object.keys(door(view, 'feedback.door').tiers).sort()).toEqual(['bot', 'master', 'run']);
     // a REST write that does an MCP action's act counts on that act's one row, under its one card
