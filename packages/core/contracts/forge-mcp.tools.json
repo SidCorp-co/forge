@@ -983,7 +983,7 @@
       }
     },
     {
-      "description": "Feedback about Forge itself — its CLI, routes, MCP tools, guides, web app or pipeline — from any project you work in. It is filed into Forge’s own home project as you (your own account, person or agent), whether or not you are a member there; it never writes into the project you work in. A project’s own feedback is project_feedback. submit { kind: bug | change_request | question | idea | contract_change, title, target: { kind: page | command | route | tool | guide | skill | other, ref }, body?, severity?: low | medium | high | critical, signalKey?, clientVersion?, from?: { project?, issue?, run? } (uuids), writtenLang?: en | vi }: file it. A box credential’s live session names the project, issue and run it came from (its job’s, or its declared run’s); from names them otherwise. A report whose signalKey (absent: its kind and title) an open item already holds is added to that item as an occurrence, never filed twice — the answer says created:false. list: the items you reported, each with phase, origin and `progress` (whether work runs, who it waits on, and the forecast or why there is none; repeat `progress.says`, never a date it does not hold). get {feedback}: one item you reported (a member of the home project reads any, and an agent reporter’s master reads its items), with `told` — what its triage told you: the answer, the decline note, the clarification asked and the release its fix shipped in, each null until told — and `shipEvidence` once its work shipped: the violated criterion’s verdict on the running build and its clip. progress {feedback}: its progress block alone. verify {feedback, evidence} and reopen {feedback, evidence}: once its work shipped (phase resolved) and its progress waits on you, confirm the fix or reopen the item, as its reporter or, for an agent reporter, as the master of the project it reported from. evidence is what you ran against the shipped build and what you saw; an agent is refused FEEDBACK_EVIDENCE_REQUIRED without it, and FORGE_FEEDBACK_NOT_YOURS on an item another account filed. reply {feedback, evidence}: once the item stands on an answer, reply to it once, with what it leaves open; the item goes back to triage as a reopen does, and the next answer names your reply. A second reply to one answer is FEEDBACK_REPLY_SPENT, an item with no answer standing FEEDBACK_REPLY_NO_ANSWER. FORGE_HOME_NOT_SET: this instance names no home project, and nothing was written. A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and writes nothing.",
+      "description": "Feedback about Forge itself — its CLI, routes, MCP tools, guides, web app or pipeline — from any project you work in. It is filed into Forge’s own home project as you (your own account, person or agent), whether or not you are a member there; it never writes into the project you work in. A project’s own feedback is project_feedback. submit { kind: bug | change_request | question | idea | contract_change, title, target: { kind: page | command | route | tool | guide | skill | other, ref }, body?, severity?: low | medium | high | critical, signalKey?, clientVersion?, from?: { project?, issue?, run? } (uuids), writtenLang?: en | vi }: file it. A box credential’s live session names the project, issue and run it came from (its job’s, or its declared run’s); from names them otherwise. A report whose signalKey (absent: its kind and title) an open item already holds is added to that item as an occurrence, never filed twice — the answer says created:false. list: the items you reported, each with phase, origin and `progress` (whether work runs, who it waits on, and the forecast or why there is none; repeat `progress.says`, never a date it does not hold). get {feedback}: one item you reported (a member of the home project reads any, and an agent reporter’s master reads its items), with `told` — what its triage told you: the answer, the decline note, the clarification asked and the release its fix shipped in, each null until told — and `shipEvidence` once its work shipped: the violated criterion’s verdict on the running build and its clip. progress {feedback}: its progress block alone. verify {feedback, evidence} and reopen {feedback, evidence}: once its work shipped (phase resolved) and its progress waits on you, confirm the fix or reopen the item, as its reporter or, for an agent reporter, as the master of the project it reported from. evidence is what you ran against the shipped build and what you saw; an agent is refused FEEDBACK_EVIDENCE_REQUIRED without it, and FORGE_FEEDBACK_NOT_YOURS on an item another account filed. reply {feedback, evidence}: once the item stands on an answer, reply to it once, with what it leaves open; the item goes back to triage as a reopen does, and the next answer names your reply. A second reply to one answer is FEEDBACK_REPLY_SPENT, an item with no answer standing FEEDBACK_REPLY_NO_ANSWER. door { verdict, door, what, from }: when a door or a piece of teaching failed you, say so here, at the moment it happens. verdict is did_not_help | unclear | missing; door names an MCP action as forge_find lists it (`support.member`), a REST route (`POST /api/projects/:id/feedback`), or teaching as `<guide|lesson|knowledge|skill|brief>:<its key>` (`guide:agent-setup`, `lesson:103`, `brief:room support`) (for missing, the nearest door, or leave it out); what is what you were doing and what it did or lacked. It is filed as feedback about Forge on the feature that owns that door, and a second agent meeting the same gap adds to the one item. Unknown doors are refused DOOR_REPORT_UNKNOWN_DOOR with the actions that door serves. FORGE_HOME_NOT_SET: this instance names no home project, and nothing was written. A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and writes nothing.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -995,7 +995,8 @@
               "progress",
               "verify",
               "reopen",
-              "reply"
+              "reply",
+              "door"
             ],
             "type": "string"
           },
@@ -1007,6 +1008,12 @@
             "maxLength": 100,
             "minLength": 1,
             "pattern": "^[^\\p{Cc}]+$",
+            "type": "string"
+          },
+          "door": {
+            "description": "door: the action, route or teaching it is about (`support.member`, `POST /api/projects/:id/feedback`, `guide:agent-setup`, `lesson:103`); for missing, the nearest door or none",
+            "maxLength": 300,
+            "minLength": 3,
             "type": "string"
           },
           "evidence": {
@@ -1098,6 +1105,21 @@
             "minLength": 1,
             "type": "string"
           },
+          "verdict": {
+            "description": "door: did_not_help (it did not do what you needed), unclear (its teaching did not say when or how), missing (no door does it)",
+            "enum": [
+              "did_not_help",
+              "unclear",
+              "missing"
+            ],
+            "type": "string"
+          },
+          "what": {
+            "description": "door: what you were doing, what you reached for, and what it did or lacked",
+            "maxLength": 4000,
+            "minLength": 10,
+            "type": "string"
+          },
           "writtenLang": {
             "enum": [
               "en",
@@ -1113,6 +1135,9 @@
       },
       "name": "forge_feedback",
       "x-forge-permission": {
+        "door": {
+          "self": "a report that a door failed the caller, filed as the caller's own into Forge's home project"
+        },
         "get": {
           "rule": "forge-door/service.ts:getForgeFeedback",
           "why": "the item's row decides: its reporter, an agent reporter's master, or a member of Forge's home project; another answers not found"
@@ -1564,6 +1589,162 @@
         "list": {
           "rule": "questions/read.ts:accessOn",
           "why": "the projects the caller has a role in; another answers not found, as does a question it cannot read"
+        }
+      }
+    },
+    {
+      "description": "The sources this project learns from first: repos, products, projects, patterns and docs, each with why, the areas it informs and whether its releases are followed; the project’s own first, then its org’s. search {projectId, area, q}: the active sources, narrowed to an area and to words; neither, every one. add {projectId, kind, url, why, areas, title, priority, followReleases, shared}: add one, { kind: repo | product | project | pattern | doc, url, why, areas: [area, …] (1 to 12), title?, priority?: 1..1000, followReleases?: boolean (github.com repositories), shared?: boolean (the org's, for an org admin) }. Only a github.com repository’s releases are followed (REFERENCE_FOLLOW_UNSUPPORTED otherwise); an address already held is REFERENCE_SOURCE_DUPLICATE. propose {projectId, kind, url, why, areas, title, priority, followReleases, evidence}: an agent’s add of a source it kept using, recorded as its proposal, { kind: repo | product | project | pattern | doc, url, why, areas: [area, …], evidence: the work it helped and what was taken, title?, priority?, followReleases? }. update {projectId, source, kind, title, why, areas, priority, followReleases}: change one, { kind?, title?, why?, areas?, priority?, followReleases? } (at least one); an org entry is its admin’s (REFERENCE_SHARED_FORBIDDEN). remove {projectId, source, reason}: remove one; it is kept with its citations and timeline and never served again. cite {projectId, source, ref, verdict, why, about}: record one use of a source, { ref: the repo path, doc or release read, verdict: take | reject, why, about?: ISS-n | REQ-n | FB-n }. signals {projectId}: per source, its citations (taken, rejected, recent), the ideas its releases filed and what became of them, and its flags (archived, unmaintained, uncited 90 days) for keep, replace or remove. timeline {projectId, source}: the releases read from a followed source, each an idea on the open item it may help or silent. A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and writes nothing.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "about": {
+            "description": "cite: the work it was read for, ISS-n, REQ-n or FB-n",
+            "type": "string"
+          },
+          "action": {
+            "enum": [
+              "search",
+              "add",
+              "propose",
+              "update",
+              "remove",
+              "cite",
+              "signals",
+              "timeline"
+            ],
+            "type": "string"
+          },
+          "area": {
+            "description": "search: an area or module the source informs",
+            "type": "string"
+          },
+          "areas": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "evidence": {
+            "description": "propose: the work it helped and what was taken",
+            "type": "string"
+          },
+          "followReleases": {
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "repo",
+              "product",
+              "project",
+              "pattern",
+              "doc"
+            ],
+            "type": "string"
+          },
+          "priority": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "projectId": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          },
+          "q": {
+            "description": "search: words its name, address, why or areas hold",
+            "type": "string"
+          },
+          "reason": {
+            "description": "remove: why it goes",
+            "type": "string"
+          },
+          "ref": {
+            "description": "cite: the repo path, doc or release read",
+            "type": "string"
+          },
+          "shared": {
+            "description": "add: the org's, shared by every project of it (org admin)",
+            "type": "boolean"
+          },
+          "source": {
+            "description": "update, remove, cite, timeline: the source, by id, address or name (`owner/name`)",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "description": "add, propose: the http(s) address of the source",
+            "type": "string"
+          },
+          "verdict": {
+            "enum": [
+              "take",
+              "reject"
+            ],
+            "type": "string"
+          },
+          "why": {
+            "description": "add, propose, update: what this project learns from it; cite: why you took or rejected it",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "projectId"
+        ],
+        "type": "object"
+      },
+      "name": "forge_references",
+      "x-forge-permission": {
+        "add": {
+          "on": {
+            "arg": "projectId"
+          },
+          "permission": "project.write"
+        },
+        "cite": {
+          "on": {
+            "arg": "projectId"
+          },
+          "permission": "project.write"
+        },
+        "propose": {
+          "on": {
+            "arg": "projectId"
+          },
+          "permission": "project.write"
+        },
+        "remove": {
+          "on": {
+            "arg": "projectId"
+          },
+          "permission": "project.write"
+        },
+        "search": {
+          "on": {
+            "arg": "projectId"
+          },
+          "permission": "project.read"
+        },
+        "signals": {
+          "on": {
+            "arg": "projectId"
+          },
+          "permission": "project.read"
+        },
+        "timeline": {
+          "on": {
+            "arg": "projectId"
+          },
+          "permission": "project.read"
+        },
+        "update": {
+          "on": {
+            "arg": "projectId"
+          },
+          "permission": "project.write"
         }
       }
     },
@@ -3466,5 +3647,5 @@
       }
     }
   ],
-  "version": "8.1.0"
+  "version": "8.2.0"
 }
