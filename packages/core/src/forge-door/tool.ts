@@ -40,6 +40,7 @@ import {
   settleForgeFeedback,
   submitForgeFeedback,
 } from './service.js';
+import { FEEDBACK_CARDS } from './tool.cards.js';
 
 const ACTIONS = ['submit', 'list', 'get', 'progress', 'verify', 'reopen', 'reply', 'door'] as const;
 export const FORGE_FEEDBACK_READ_ACTIONS: readonly string[] = ['list', 'get', 'progress'];
@@ -205,6 +206,7 @@ const CARDS = {
     audience: ['bot', 'master', 'run'],
     changed: { on: '2026-11-16', by: 'ISS-1251' },
   },
+  ...FEEDBACK_CARDS,
 } satisfies Record<string, CapabilityCardBody>;
 
 const GRANT = {
