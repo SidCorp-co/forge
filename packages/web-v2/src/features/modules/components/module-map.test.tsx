@@ -2,7 +2,7 @@
 // module, one column per branch, each count opening that module's tree at that branch, the Unplaced
 // row beneath, gaps drawn and never gated, open issues the only health figure. A module's page is its
 // tree beside the rail of the node it selects: the five relation kinds, each walking on, its re-check
-// and its reads. The old Agents Capabilities tab lands on the map's Capabilities branch.
+// and its reads.
 //
 // @direct-test-of packages/web-v2/src/features/modules/components/module-map-screen.tsx
 // @direct-test-of packages/web-v2/src/features/modules/components/module-tree-screen.tsx
@@ -10,13 +10,11 @@
 // @direct-test-of packages/web-v2/src/features/modules/components/node-rail.tsx
 // @direct-test-of packages/web-v2/src/features/modules/pillar.ts
 // @direct-test-of packages/web-v2/src/features/modules/module-tree.ts
-// @direct-test-of packages/web-v2/src/features/agents/components/agents-screen.tsx
 
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PageCommandsProvider } from "@/design";
-import { AgentsScreen } from "@/features/agents";
 import { MAP_PROJECT, PILLAR, TREE } from "@/test/module-map";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import { rawKeysOnFace } from "@/test/screen-face";
@@ -193,14 +191,5 @@ describe("a module's tree and its rail", () => {
     expect(reqs.dataset.at).toBe("true");
     expect(within(reqs).getByTestId("tree-node").getAttribute("href")).toBe("/projects/hop/requirements/REQ-12");
     expect(within(reqs).getByText("96 more")).toBeTruthy();
-  });
-});
-
-describe("the old Agents Capabilities tab", () => {
-  it("lands on the map's Capabilities branch, the one page there is", () => {
-    at("/projects/hop/agents?tab=capabilities");
-    render(<AgentsScreen access={{ projectId: MAP_PROJECT, slug: "hop", canWrite: true }} />);
-    expect(replace).toHaveBeenCalledWith("/projects/hop/modules?view=capabilities");
-    expect(screen.queryByTestId("agents-tabs")).toBeNull();
   });
 });

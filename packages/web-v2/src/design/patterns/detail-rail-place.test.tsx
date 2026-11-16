@@ -157,9 +157,11 @@ describe("every page on the detail layout", () => {
   const pages = sources(join(WEB, "src")).filter((f) => f !== "src/design/patterns/detail-tabs.tsx" && readFileSync(join(WEB, f), "utf8").includes("<DetailLayout"));
 
   it("is found", () => {
-    // nine stand on it: ISS-903 moved the requirement, master and feedback pages' facts into a drawer,
-    // and ISS-1001 drew the release page as one column, its facts behind its Technical section
-    expect(pages.length).toBeGreaterThanOrEqual(9);
+    // eight stand on it: ISS-903 moved the requirement, master and feedback pages' facts into a drawer,
+    // ISS-1001 drew the release page as one column, its facts behind its Technical section, and
+    // ISS-1256 drew a module's page as its tree beside the rail of the node it selects, which is no
+    // record's facts and stands under the tree below 1024px
+    expect(pages.length).toBeGreaterThanOrEqual(8);
   });
 
   // a page whose rail only lists its contents folds nothing: it owes the menu that stands in for the rail instead

@@ -118,7 +118,7 @@ export const RUN_SLOTS_HIT = {
   title: "Run slots",
   excerpt: "How many runs a runner box runs at once",
   projectSlug: "hop",
-  module: { slug: "execution", name: "Execution" },
+  module: { slug: "execution", name: "Execution", path: "execution/devices" },
   status: "active",
   path: ["Execution", "Terms"] as [string, string],
   match: { arms: ["alias" as const], alias: "chia slot" },

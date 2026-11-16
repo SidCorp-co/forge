@@ -109,11 +109,13 @@ export function NodeRail({
         <Fact label={t("modules.rail.reads")} testId="rail-reads">
           {node.reads === null ? <span className="text-muted">{t("modules.rail.readsNone")}</span> : <span className="tabular-nums">{t("modules.rail.readsCount", { n: node.reads, days: readsDays })}</span>}
         </Fact>
-        {node.writtenBy ? <Fact label={t("modules.rail.writtenBy")}>{t(`modules.agency.${node.writtenBy.agency}`)}</Fact> : null}
+        {/* who named it, quoting them on hover, says more than who typed it in; else who wrote it */}
         {node.namedBy ? (
           <Fact label={t("modules.rail.namedBy")}>
             <span title={node.namedBy.quote}>{node.namedBy.who}</span>
           </Fact>
+        ) : node.writtenBy ? (
+          <Fact label={t("modules.rail.writtenBy")}>{t(`modules.agency.${node.writtenBy.agency}`)}</Fact>
         ) : null}
       </FactsGroup>
     </div>

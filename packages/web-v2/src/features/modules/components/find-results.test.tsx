@@ -29,7 +29,7 @@ const palette = (query: string) =>
 beforeEach(() => {
   push.mockClear();
   calls = fakeCore((c) => {
-    if (c.path.startsWith(`/projects/${MAP_PROJECT}/find?`)) return { body: new URLSearchParams(c.path.split("?")[1]).get("q") === "blorp" ? FIND_NOTHING : FIND_CHIA_SLOT };
+    if (c.method === "POST" && c.path === `/projects/${MAP_PROJECT}/find`) return { body: (c.body as { q: string }).q === "blorp" ? FIND_NOTHING : FIND_CHIA_SLOT };
     if (c.path.startsWith(`/projects/${MAP_PROJECT}/find/open`)) return { body: { hit: {}, url: "/projects/hop/issues/ISS-1255", text: "" } };
     return undefined;
   });
@@ -44,7 +44,7 @@ describe("the ⌘K search", () => {
     expect(first.textContent).toContain("Run slots");
     expect(within(first).getByTestId("find-hit-path").textContent).toBe("Execution › Terms · active");
     expect(first.textContent).toContain("Matched “chia slot”");
-    expect(calls[0]?.path).toBe(`/projects/${MAP_PROJECT}/find?q=chia+slot`);
+    expect(calls[0]).toMatchObject({ method: "POST", path: `/projects/${MAP_PROJECT}/find`, body: { q: "chia slot" } });
   });
 
   it("leads with the find's hits and keeps the matching commands beneath", async () => {
@@ -73,7 +73,7 @@ describe("the ⌘K search", () => {
     palette("chia slot");
     const facets = await screen.findByTestId("find-facets");
     fireEvent.click(within(facets).getAllByTestId("find-facet-module")[0]);
-    await waitFor(() => expect(calls.at(-1)?.path).toBe(`/projects/${MAP_PROJECT}/find?q=chia+slot&module=execution`));
+    await waitFor(() => expect(calls.at(-1)?.body).toEqual({ q: "chia slot", module: ["execution"] }));
     expect(within(facets).getAllByTestId("find-facet-module")[0]?.getAttribute("aria-pressed")).toBe("true");
   });
 

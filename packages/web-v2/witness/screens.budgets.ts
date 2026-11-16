@@ -83,7 +83,10 @@ export const BUDGETS: Record<string, ScreenBudget> = {
   channels: { budget: 50 },
   channel: { budget: 80 },
   modules: { budget: 90 },
-  "module-detail": { budget: 90 },
+  // ISS-1256 (owner, MK-11): a module's page is its tree, each branch named with its count, beside the
+  // rail of the node it selects (its one line, other names, relations, re-check and reads), about ten
+  // words over the Overview it replaced
+  "module-detail": { budget: 100 },
   "preview-room": { budget: 80 },
   "ecosystem-api": { budget: 80 },
   "channel-document": { budget: 80 },

@@ -6,8 +6,8 @@
 
 import { FIND_UNPLACED_FILTER } from "@forge/contracts/find";
 import type { ModuleTreeResponse } from "@forge/contracts/module-map";
-import { useEffect, useMemo, useRef } from "react";
-import { DetailHeader, DetailMobileTitle, SegmentedControl, useMediaQuery, useUrlChoice, useUrlParams } from "@/design";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { DetailHeader, DetailMobileTitle, Icon, SegmentedControl, useMediaQuery, useUrlChoice, useUrlParams } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { Link } from "@/lib/navigation/router";
@@ -31,14 +31,15 @@ function TreeEntry({ n, selected, onSelect }: { n: TreeNodeView; selected: boole
   const body = (
     <>
       <span className={cn("min-w-0", selected && "font-semibold")}>{n.title}</span>
-      {n.meta ? <span className="min-w-0 truncate text-12-5 text-muted">{n.meta}</span> : null}
+      {/* the picked node's other names are the rail's, said once */}
+      {n.meta && !selected ? <span className="min-w-0 truncate text-12-5 text-muted">{n.meta}</span> : null}
       {n.retiring ? <span className="rounded-sm bg-sunken px-1 text-11 font-semibold uppercase text-warn-11">{t("modules.rail.retiring")}</span> : null}
     </>
   );
   const row = "flex w-full min-w-0 flex-wrap items-baseline gap-x-2.5 rounded-sm px-1.5 py-1 text-left text-14";
   if (n.node)
     return (
-      <button type="button" aria-current={selected || undefined} onClick={() => onSelect(n.id)} className={cn(row, selected ? "bg-accent-tint" : "hover:bg-hover")} data-testid="tree-node" data-node={n.id}>
+      <button type="button" aria-current={selected || undefined} onClick={() => onSelect(n.id)} title={n.summary ?? undefined} className={cn(row, selected ? "bg-accent-tint" : "hover:bg-hover")} data-testid="tree-node" data-node={n.id}>
         {body}
       </button>
     );
@@ -55,28 +56,54 @@ function TreeEntry({ n, selected, onSelect }: { n: TreeNodeView; selected: boole
   );
 }
 
+/** The branches drawn open on arrival: the one a count named, the selected node's, else the first that holds anything. */
+function openOnArrival(branches: readonly TreeBranchView[], at: TreeBranch | null, selected: string | null): Set<TreeBranch> {
+  const held = branches.find((b) => b.nodes.some((n) => n.id === selected))?.branch;
+  const first = branches.find((b) => b.nodes.length > 0)?.branch;
+  return new Set([at ?? held ?? first].filter((b): b is TreeBranch => Boolean(b)));
+}
+
 function Tree({ branches, at, selected, onSelect }: { branches: readonly TreeBranchView[]; at: TreeBranch | null; selected: string | null; onSelect: (id: string) => void }) {
   const t = useCopy();
+  // every branch reads its name and count; its items open on demand, so the page leads with the map's shape
+  const [opened, setOpened] = useState(() => openOnArrival(branches, at, selected));
+  const held = branches.find((b) => b.nodes.some((n) => n.id === selected))?.branch;
+  const isOpen = (b: TreeBranch) => opened.has(b) || b === held;
+  const toggle = (b: TreeBranch) =>
+    setOpened((cur) => {
+      const next = new Set(cur);
+      if (!next.delete(b)) next.add(b);
+      return next;
+    });
   // a count opened the tree at its branch: that branch is brought into view once, on arrival
   useEffect(() => {
     if (at) document.getElementById(`branch-${at}`)?.scrollIntoView?.({ block: "start" });
   }, [at]);
   return (
-    <ul className="grid gap-2" aria-label={t("modules.tree.label")} data-testid="module-tree">
+    <ul className="grid gap-1" aria-label={t("modules.tree.label")} data-testid="module-tree">
       {branches.map((b) => (
-        <li key={b.branch} id={`branch-${b.branch}`} className="scroll-mt-4" data-testid={`tree-branch-${b.branch}`} data-at={b.branch === at || undefined}>
-          <div className={cn("flex items-baseline gap-2 rounded-sm px-1.5 py-1 font-semibold", b.branch === at && "bg-sunken")}>
+        <li key={b.branch} id={`branch-${b.branch}`} className="scroll-mt-4" data-testid={`tree-branch-${b.branch}`} data-at={b.branch === at || undefined} data-open={isOpen(b.branch) || undefined}>
+          <button
+            type="button"
+            aria-expanded={isOpen(b.branch)}
+            onClick={() => toggle(b.branch)}
+            className={cn("flex w-full items-center gap-2 rounded-sm px-1.5 py-1 text-left font-semibold hover:bg-hover", b.branch === at && "bg-sunken")}
+            data-testid="tree-branch-toggle"
+          >
+            <Icon name={isOpen(b.branch) ? "chevronDown" : "chevronRight"} size={14} className="flex-none text-subtle" />
             {branchLabel(t, b.branch)} <span className="text-12 font-normal tabular-nums text-subtle">{b.count}</span>
-          </div>
-          <ul className="ml-4 grid gap-0.5 border-l border-line-subtle pl-3">
-            {b.nodes.map((n) => (
-              <li key={n.id}>
-                <TreeEntry n={n} selected={n.id === selected} onSelect={onSelect} />
-              </li>
-            ))}
-            {b.nodes.length === 0 ? <li className="px-1.5 py-1 text-13 text-subtle">{t("modules.tree.none")}</li> : null}
-            {b.count > b.nodes.length && b.nodes.length > 0 ? <li className="px-1.5 py-1 text-13 text-subtle">{t("modules.tree.more", { n: b.count - b.nodes.length })}</li> : null}
-          </ul>
+          </button>
+          {isOpen(b.branch) ? (
+            <ul className="ml-5 grid gap-0.5 border-l border-line-subtle pl-3">
+              {b.nodes.map((n) => (
+                <li key={n.id}>
+                  <TreeEntry n={n} selected={n.id === selected} onSelect={onSelect} />
+                </li>
+              ))}
+              {b.nodes.length === 0 ? <li className="px-1.5 py-1 text-13 text-subtle">{t("modules.tree.none")}</li> : null}
+              {b.count > b.nodes.length && b.nodes.length > 0 ? <li className="px-1.5 py-1 text-13 text-subtle">{t("modules.tree.more", { n: b.count - b.nodes.length })}</li> : null}
+            </ul>
+          ) : null}
         </li>
       ))}
     </ul>

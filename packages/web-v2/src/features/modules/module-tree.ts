@@ -27,8 +27,10 @@ export const pillarOf = (path: string) => path.split("/")[0] ?? path;
 export interface TreeNodeView {
   id: string;
   title: string;
-  /** A few words beside the title: a term's other names, else its one line. */
+  /** A term's other names beside its title; null for every other node. */
   meta: string | null;
+  /** Its one line, read on hover; the rail shows it once the node is picked. */
+  summary: string | null;
   /** A rule or a requirement on its way out. */
   retiring: boolean;
   /** Where a node with no rail opens (an issue, an unplaced requirement); null where it selects. */
@@ -56,7 +58,8 @@ function nodeView(node: ModuleMapNode): TreeNodeView {
   return {
     id: nodeIdOf(node.type, node.ref),
     title: node.title,
-    meta: aliases.length > 0 ? aliases.join(" · ") : node.summary,
+    meta: aliases.length > 0 ? aliases.join(" · ") : null,
+    summary: node.summary,
     retiring: RETIRING.has(node.status ?? ""),
     href: null,
     node,
@@ -70,7 +73,7 @@ export function branchesOf(slug: string, tree: ModuleTreeResponse): TreeBranchVi
     {
       branch: "inflight" as const,
       count: tree.openIssues,
-      nodes: tree.inFlight.map((i) => ({ id: nodeIdOf("issue", i.key), title: `${i.key} ${i.title}`, meta: null, retiring: false, href: issueHref(slug, i.key), node: null })),
+      nodes: tree.inFlight.map((i) => ({ id: nodeIdOf("issue", i.key), title: `${i.key} ${i.title}`, meta: null, summary: null, retiring: false, href: issueHref(slug, i.key), node: null })),
     },
   ];
 }
@@ -85,7 +88,7 @@ export function unplacedBranchesOf(slug: string, read: ModulePillarResponse): Tr
     return {
       branch: b,
       count: b === "inflight" ? u.openIssues : u.counts[b],
-      nodes: items(type).map((i) => ({ id: nodeIdOf(type, i.ref), title: i.title, meta: null, retiring: false, href: hrefOf(type, i.ref), node: null })),
+      nodes: items(type).map((i) => ({ id: nodeIdOf(type, i.ref), title: i.title, meta: null, summary: null, retiring: false, href: hrefOf(type, i.ref), node: null })),
     };
   });
 }

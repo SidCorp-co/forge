@@ -1,5 +1,5 @@
 // The find door's adapter (ISS-1256): the one search people reach by ⌘K and agents by `forge_find`,
-// read from core's `GET /projects/:id/find`. Every reading of a find the palette makes is here: the
+// read from core's `POST /projects/:id/find`. Every reading of a find the palette makes is here: the
 // query it sends, the facets it toggles, and where opening a hit walks, so a change to the contract
 // changes this file alone.
 
@@ -15,11 +15,14 @@ export type FindFilters = Record<FindFacetName, string[]>;
 
 export const NO_FILTERS: FindFilters = { type: [], module: [], status: [] };
 
-/** The query string a find is sent with: the words, then each facet the person turned on. */
-export function findParams(q: string, filters: FindFilters): string {
-  const p = new URLSearchParams({ q: q.trim() });
-  for (const f of FIND_FACETS) if (filters[f].length > 0) p.set(f, filters[f].join(","));
-  return p.toString();
+/** What `POST /projects/:id/find` takes (`findQuerySchema`): the words and the facets turned on. */
+export type FindQueryBody = { q: string } & Partial<FindFilters>;
+
+/** The body a find is sent with: the words, then each facet the person turned on. */
+export function findBody(q: string, filters: FindFilters): FindQueryBody {
+  const body: FindQueryBody = { q: q.trim() };
+  for (const f of FIND_FACETS) if (filters[f].length > 0) body[f] = filters[f];
+  return body;
 }
 
 export function toggleFilter(filters: FindFilters, facet: FindFacetName, value: string): FindFilters {
@@ -30,7 +33,8 @@ export function toggleFilter(filters: FindFilters, facet: FindFacetName, value: 
 const projectPath = (projectId: string) => `/projects/${encodeURIComponent(projectId)}`;
 
 export const findApi = {
-  find: (projectId: string, q: string, filters: FindFilters) => apiClient<FindResult>(`${projectPath(projectId)}/find?${findParams(q, filters)}`),
+  find: (projectId: string, q: string, filters: FindFilters) =>
+    apiClient<FindResult>(`${projectPath(projectId)}/find`, { method: "POST", body: JSON.stringify(findBody(q, filters)) }),
   /** Opening a hit is the read signal: core records it and answers where the record is read. */
   open: (hit: FindHit) => apiClient<FindOpened>(hit.open.replace(/^\/api(?=\/)/, "")),
   /** The searches that found nothing over the window: what the map still lacks a name for. */
