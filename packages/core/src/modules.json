@@ -1308,6 +1308,7 @@
         "supportPromises",
         "chatTemporaryAccounts",
         "supportMasterAsks",
+        "supportReplyVerdicts",
         "supportOwnerConsents",
         "supportOwnerSignIns",
         "supportChannels",
