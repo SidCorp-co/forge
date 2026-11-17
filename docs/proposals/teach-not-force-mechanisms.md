@@ -92,6 +92,26 @@ lands, keeping their secret and leak half.
 | `onboarding/first-requirements.ts:registerFirstRequirementsCase` | starts a BA turn nobody asked for | offered to the person as the next step |
 | `feedback/loop-check.ts:sweepResolvedFeedback` | verifies feedback by its ship outside strict | borderline evidence: the reporter's confirm stays the verdict; the sweep proposes it |
 
+## Found reading the guides, the steward's prompts and the assistant's layers (round 3)
+
+Read whole in ISS-1251's round 3: the 19 served guides round 1 and 2 had not read, `steward/prompts.ts`
+and `assistant/prompt/*.ts`. Their text teaches; these are the mechanisms behind lines they teach,
+which refuse a choice of the agent's or take a step for it and are not kernel, contract or safety.
+
+| Mechanism | Forces | Why it waits | Conversion |
+|---|---|---|---|
+| `suggestions/rules.ts:rejectedBeforeRefusal` (`SUGGESTION_REJECTED_BEFORE`), taught by the `suggestions` guide | refuses proposing again a change a person rejected on the same target | REQ-10 BC-8 says a rejected suggestion is not suggested again | take it, answer naming the rejection and its reason, and show a repeat on the target's queue so the approver sees it |
+| `suggestions/rules.ts:queueFullRefusal` (`SUGGESTION_QUEUE_FULL`, 5 a target) and `mockups/rules.ts:queueRefusal` (`MOCKUP_QUEUE_FULL`), taught by the `suggestions` and `mockups` guides | caps what an agent may propose on one item | the cap guards a person's approval queue, which is the person's control; lifting it is the owner's call | take it, warn with the count waiting, and show the queue's depth on the item |
+| `requirements/draft-picture.ts` (`REQUIREMENT_PICTURE_NOT_DRAWN`, the assistant's doors only), taught by `assistant/prompt/door-ba.ts` and `door-ba-first.ts` | refuses an assistant's draft revision that would show no picture | REQ-35 BC-10 and BC-14 ask it of the assistant and not of a person | store the draft, mark it owing its picture on the requirement's page, and keep the teaching in the BA layer |
+| `feedback/triage-checklist.ts:reproductionRefusal` (`FEEDBACK_REPRODUCTION_EMPTY`), taught by the `feedback-triage` guide and the steward's `triage_draft` act | refuses a triage whose `reproduced` names no attempt | REQ-66 BC-5; it sits in the triage checklist, gate `feedback_triage`, which the catalog never relaxes | take the triage, mark the answer as naming no attempt on the item, and count those per triager |
+| `steward/diagnosis-end.ts:endUnmovedDiagnosis`, taught by `steward/prompts.ts` ("where you neither act nor ask, Forge asks whoever owes the act for you") | core asks whoever owes the act when the steward's stuck diagnosis ended on its note alone | REQ-48 BC-5 (ISS-654) makes the ask the diagnosis's end | the standing shows a diagnosis that ended unmoved, the steward's card teaches the ask, and core's own ask goes |
+
+Read and not forcing: the refusals the other guides teach are contract shapes (a payload, a target, a
+template's vocabulary, a monitoring rule), evidence (a verdict's identity, capture and clip, the
+cleanup report agreeing with its debt), permission (who triages, accepts, links or deploys) or safety
+(a script's calls read only, a secret never printed, a deploy sent once); `FEEDBACK_REPLY_SPENT` is the
+feedback item's own state (a reopened item stands on no answer to reply to).
+
 ## Order
 
 1. The requirement revisions: REQ-89 BC-2, REQ-76's standard defaults, REQ-41 BC-3, REQ-32 BC-6,

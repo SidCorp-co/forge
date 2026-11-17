@@ -161,11 +161,11 @@ Verify liveness on the deployed environment before declaring success — a deplo
     audience: 'agent',
     title: 'Attachments & uploads',
     summary:
-      'Presigned-URL upload flow vs base64, and how to read the content of an existing attachment.',
-    version: 2,
+      'Upload the file as multipart, never as base64, and how to read the content of an existing attachment.',
+    version: 3,
     body: `## Attachments & uploads
 
-### Writing an attachment — presigned URL, not base64
+### Writing an attachment — the file, not base64
 Upload the file from disk instead of inlining base64 bytes into a request: a multipart \`POST /api/issues/:id/attachments\` / \`POST /api/comments/:commentId/attachments\` with the file in the \`file\` field. Base64 in a request body is slow to transmit and burns context tokens carrying bytes that don't need to pass through the model at all.
 
 ### Reading an attachment's content
@@ -258,7 +258,7 @@ naming files and endpoints: those claims go stale and, in practice, outrank live
     title: 'Migrating a project onto the module taxonomy',
     summary:
       'Turn an existing module convention — a projectFact list and `**Module:**` comment tags — into kind=module labels and primary attributions, idempotently, without deleting anything.',
-    version: 1,
+    version: 2,
     body: `## Migrating a project onto the module taxonomy
 
 For a project that already names its modules somewhere ELSE — a knowledge entry, a wiki page,
@@ -334,7 +334,7 @@ as primary are the ones you attributed and nothing else.
 
 ### After the migration
 Nothing else to switch on. A project whose labels include a \`kind:"module"\` row gets a
-**Module attribution** section in every pipeline agent's system prompt automatically, naming its
+section on **the issue's primary module** in every pipeline agent's system prompt, naming its
 modules and the \`isPrimary\` field — so new issues get attributed by the agents that work them, and
 the old convention has no second half to maintain. A project with no module labels gets no such
 section, which is why this migration is what turns the feature on.`,
