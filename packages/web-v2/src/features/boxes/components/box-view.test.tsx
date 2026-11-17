@@ -24,6 +24,31 @@ class FakeDecoder {
 
 afterEach(() => vi.unstubAllGlobals());
 
+// noVNC loads on demand; the gate holds its import open so a view can be left before it lands.
+const novnc = vi.hoisted(() => {
+  let open: () => void = () => undefined;
+  const loaded = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  return { clients: [] as { disconnected: boolean }[], loaded, open: () => open() };
+});
+vi.mock("@novnc/novnc", async () => {
+  await novnc.loaded;
+  return {
+    default: class {
+      disconnected = false;
+      viewOnly = false;
+      scaleViewport = false;
+      constructor() {
+        novnc.clients.push(this);
+      }
+      disconnect() {
+        this.disconnected = true;
+      }
+    },
+  };
+});
+
 describe("an android box's view", () => {
   it("names the missing WebCodecs where the browser lacks them, and asks for no ticket", () => {
     const calls = fakeCore(() => undefined);
@@ -44,6 +69,33 @@ describe("an android box's view", () => {
     await waitFor(() => expect(calls.map((c) => [c.method, c.path, c.body])).toEqual([["POST", TICKET, { channel: "view" }]]));
     expect(screen.queryByTestId("box-view-fault")).toBeNull();
     expect(screen.getByTestId("box-view")).toHaveAttribute("data-codec", "scrcpy-h264");
+  });
+});
+
+describe("a desktop box's view", () => {
+  it("leaves no noVNC client behind when the view is left before noVNC has loaded", async () => {
+    const desktop = { ...android, mode: "desktop" as const, view: { codec: "rfb" as const, width: 1280, height: 800 } };
+    fakeCore((c) => (c.method === "POST" && c.path === TICKET ? { body: { ticket: "t", expiresAt: "2026-11-17T00:01:00Z", url: "/ws/boxes/view?ticket=t" } } : undefined));
+    const sockets: unknown[] = [];
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        static OPEN = 1;
+        readyState = 0;
+        constructor() {
+          sockets.push(this);
+        }
+        send() {}
+        close() {}
+      },
+    );
+    const view = renderWithQuery(<BoxView box={desktop} label="ISS-12" fps={10} />);
+    await waitFor(() => expect(sockets).toHaveLength(1));
+    view.unmount();
+    novnc.open();
+    await novnc.loaded;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(novnc.clients.filter((c) => !c.disconnected)).toEqual([]);
   });
 });
 

@@ -64,6 +64,7 @@ function useViewSocket(url: string | null, codec: BoxViewCodec, fps: number, ref
     let channel: ReturnType<typeof rfbChannel> | null = null;
     let rfb: { disconnect: () => void } | null = null;
     const early: ArrayBuffer[] = [];
+    let left = false;
     const viewer = openViewer(boxSocketUrl(url, fps), {
       hello: (m) => setPhase({ at: "live", width: m.width, height: m.height }),
       holder: () => undefined,
@@ -84,6 +85,8 @@ function useViewSocket(url: string | null, codec: BoxViewCodec, fps: number, ref
     if (codec === "rfb" && refs.rfb) {
       const target = refs.rfb;
       void import("@novnc/novnc").then(({ default: RFB }) => {
+        // the view was left while noVNC loaded: a client made now would hold a closed socket forever
+        if (left) return;
         channel = rfbChannel(viewer);
         const client = new RFB(target, channel, { shared: true });
         client.viewOnly = true;
@@ -93,6 +96,7 @@ function useViewSocket(url: string | null, codec: BoxViewCodec, fps: number, ref
       });
     }
     return () => {
+      left = true;
       rfb?.disconnect();
       sink?.close();
       viewer.close();
