@@ -107,7 +107,7 @@ export function assertSessionOwnerOrAdmin(
 }
 
 /**
- * Full mutate guard used by /send, /abort, /cancel and DELETE: member-role
+ * Full mutate guard used by /send, /interrupt, /cancel and DELETE: member-role
  * gate + session-owner-or-admin check on a freshly loaded session row.
  */
 export async function ensureSessionOwnerOrAdmin(sessionId: string, userId: string) {
