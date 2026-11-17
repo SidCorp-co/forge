@@ -302,7 +302,7 @@ export async function proposedLessons(projectId: string): Promise<ProposedLesson
 export interface OpenConfusion {
   id: string;
   kind: LessonConfusionKind;
-  lesson: { number: number; sentence: string; scope: LessonScope };
+  lesson: { number: number; sentence: string; scope: LessonScope; anchor: string | null };
   /** What it is held against: another lesson (its key and sentence), or a requirement, design or output ref. */
   other: { lesson: string | null; sentence: string | null; ref: string | null };
   sides: { lesson: string; other: string };
@@ -321,6 +321,7 @@ export async function openConfusions(projectId: string): Promise<OpenConfusion[]
       kind: lessonConfusions.kind,
       number: lessons.number,
       sentence: lessons.sentence,
+      anchor: lessons.anchor,
       scopeKind: lessons.scopeKind,
       scopeAreaId: lessons.scopeAreaId,
       scopeItemKind: lessons.scopeItemKind,
@@ -344,7 +345,7 @@ export async function openConfusions(projectId: string): Promise<OpenConfusion[]
   return rows.map((r) => ({
     id: r.id,
     kind: r.kind,
-    lesson: { number: r.number, sentence: r.sentence, scope: scopeOf(r) },
+    lesson: { number: r.number, sentence: r.sentence, scope: scopeOf(r), anchor: r.anchor },
     other: {
       lesson: r.againstNumber ? lessonKey(r.againstNumber) : null,
       sentence: r.againstSentence,

@@ -8,7 +8,9 @@
 
 import { LESSON_MACHINE } from '@forge/contracts/lesson-machine';
 import {
+  LESSON_ANCHOR_SHAPE,
   type LessonResolution,
+  lessonAnchorSchema,
   lessonKey,
   type RaiseConfusionRequest,
 } from '@forge/contracts/lessons';
@@ -17,6 +19,7 @@ import { db, type Tx } from '../db/client.js';
 import { lessonApplications, lessonConfusions, lessons } from '../db/schema-lessons.js';
 import { movedRow, transition } from '../lifecycle/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { refuseUnknownCard } from './anchor-card.js';
 import { closeOpenConfusions, otherOpenConfusion } from './confusion-close.js';
 import {
   kernelActor,
@@ -170,6 +173,11 @@ export interface ConfusionSettlement {
   resolution: LessonResolution;
   /** The new sentence for an edit; the raiser's recommended one where absent. */
   sentence?: string | undefined;
+  /**
+   * What the lesson is about, where the confusion showed its anchor names something else (ISS-1251
+   * c4: L-55, L-92 and L-104 were anchored to `card:support.member`); kept on a lesson kept or edited.
+   */
+  anchor?: string | undefined;
   reason: string;
 }
 
@@ -213,6 +221,14 @@ export async function decideConfusion(input: {
     projectResource(projectId),
     'settling a lesson confusion',
   );
+  if (settle.anchor !== undefined && !lessonAnchorSchema.safeParse(settle.anchor).success) {
+    throw refuse(
+      'LESSON_CONFUSION_INVALID',
+      `anchor ${settle.anchor}: ${LESSON_ANCHOR_SHAPE}`,
+      '/anchor',
+    );
+  }
+  await refuseUnknownCard(settle.anchor, '/anchor');
   const id = await db.transaction(async (tx) => {
     await lockLessons(tx, projectId);
     const confusion = await openConfusionIn(tx, projectId, input.confusionId);
@@ -245,10 +261,14 @@ export async function decideConfusion(input: {
       });
       return row.id;
     }
-    if (sentence) {
+    if (sentence || settle.anchor) {
       await tx
         .update(lessons)
-        .set({ sentence, updatedAt: new Date() })
+        .set({
+          ...(sentence ? { sentence } : {}),
+          ...(settle.anchor ? { anchor: settle.anchor } : {}),
+          updatedAt: new Date(),
+        })
         .where(eq(lessons.id, row.id));
     }
     if (row.status === 'held' && !(await otherOpenConfusion(tx, row.id, confusion.id))) {

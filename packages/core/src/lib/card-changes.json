@@ -425,8 +425,8 @@
     "by": "ISS-1251"
   },
   "POST /api/projects/:id/lessons/applied": {
-    "hash": "8b51ea50f5490c8b",
-    "on": "2026-11-16",
+    "hash": "106a026428f8ab0c",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "POST /api/projects/:id/monitoring/agent-token": {

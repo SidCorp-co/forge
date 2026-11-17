@@ -17,6 +17,7 @@ import { callFastModelObject } from '../integrations/llm/index.js';
 import { logger } from '../lib/logger.js';
 import { consume } from '../outbox/index.js';
 import { registerLessonInvalidation } from './anchors.js';
+import { recordAppliedFromText } from './applied.js';
 import { type ThreadPost, threadBefore, threadLines } from './correction-thread.js';
 import { recordCorrection } from './corrections.js';
 import { lessonsPorts } from './ports.js';
@@ -181,6 +182,22 @@ export function registerLessonCorrections(): void {
           at: new Date(p.at),
         }),
       );
+    },
+  });
+  // a run's or a master's issue comment ends with the `Lessons applied:` line its orientation asks
+  // for; that line is how it says so, kept against the issue as the door would keep it (ISS-1251 c10)
+  consume('comment.created', {
+    name: 'lessons-applied',
+    handle: async (p) => {
+      if (p.authored !== 'agent' || !/Lessons applied:/i.test(p.body)) return;
+      const ref = await lessonsPorts().issueKeyOf(p.issueId);
+      if (!ref) return;
+      await recordAppliedFromText({
+        projectId: p.projectId,
+        text: p.body,
+        output: { kind: 'issue', ref },
+        agentUserId: p.actor.type === 'user' ? p.actor.id : null,
+      });
     },
   });
   consume('chat.replied', {

@@ -33,6 +33,7 @@ import {
   pass,
   proposal,
   say,
+  TEST_ANCHOR,
   w,
 } from '../helpers/lessons-world.js';
 
@@ -40,16 +41,25 @@ openLessonsWorld();
 
 const WIDGET = 'packages/core/src/widgets/render.ts';
 
-/** An approved lesson naming `anchor`, from two corrections; its number. */
+/**
+ * An approved lesson naming `anchor`, from two corrections; its number. A card this file's own
+ * registry stands in for is named once the lesson stands, as a card a door carried when the lesson
+ * was drafted, since a proposal naming a card no door carries is refused (ISS-1251 c4).
+ */
 async function approvedOn(sentence: string, anchor: string): Promise<number> {
   const a = await correction(`${sentence} (1)`);
   const b = await correction(`${sentence} (2)`);
+  const drafted = anchor.startsWith('card:') ? TEST_ANCHOR : anchor;
   await pass({
-    proposals: [{ ...proposal(sentence, [a, b]), anchor }],
+    proposals: [{ ...proposal(sentence, [a, b]), anchor: drafted }],
     review: (input) =>
       (input.lesson as { sentence: string }).sentence === sentence ? approve() : null,
   });
-  return numberOf(sentence);
+  const n = await numberOf(sentence);
+  await db.execute(
+    sql`UPDATE lessons SET anchor = ${anchor} WHERE project_id = ${w.projectId} AND number = ${n}`,
+  );
+  return n;
 }
 
 const every = { produces: ['issue', 'chat', 'requirement'], area: 'any' as const };

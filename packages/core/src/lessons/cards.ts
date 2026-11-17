@@ -11,19 +11,23 @@ export const LESSON_REST_CARDS = {
     situations: [
       {
         when: 'a lesson you opened from the lessons map changed what you built, wrote or decided',
-        do: 'record it against that output (`issue`, `job`, `chat_message` or `steward_run` and its ref), and end the output with `Lessons applied: L-n`',
+        do: 'end the issue comment that reports it with `Lessons applied: L-n`, which is kept against the issue; for any other output (`job`, `chat_message`, `steward_run`) record it here with its ref',
       },
     ],
     practice: [
-      'A lesson goes as the map writes it (`L-3`) or as its number (3).',
+      'A lesson goes as its key (`L-3`), its slug as the map lists it (`lesson-3`) or its number (3).',
       'Only an approved lesson of this project is applied; any other is refused LESSON_NOT_APPLICABLE.',
       'Record only lessons that shaped the output, not every one you read.',
     ],
-    example: { lessons: ['L-29', 'L-30'], output: { kind: 'issue', ref: 'ISS-680' } },
-    // forge to 2026-11-16: every lesson's applied count read 0 while runs ended their issue comments
-    // with `Lessons applied:` lines; a run's or master's line is read by nothing, only this call keeps it
+    example: { lessons: ['L-29', 'lesson-30'], output: { kind: 'job', ref: 'a3c1e2f4' } },
+    // forge to 2026-11-17: 4 calls, all refused (3 as a generic error to 10-22, 1 BAD_REQUEST on 11-17),
+    // while runs ended their issue comments with `Lessons applied:` lines nothing read; since ISS-1251
+    // round 4 that line on an agent's issue comment is kept, and the door takes the map's slug
     redFlag:
-      'Ending the output with `Lessons applied: L-n` and recording nothing: only this call keeps a run’s or master’s use.',
+      'Naming in `Lessons applied:` every lesson the map listed: a lesson applied three times and never corrected is folded into its card and retired, so a lesson you only read must not count.',
+    scenarios: [
+      'a run’s `Lessons applied:` line read by nothing while the door refused every call',
+    ],
     family: 'knowledge',
     audience: ['master', 'run'],
   },

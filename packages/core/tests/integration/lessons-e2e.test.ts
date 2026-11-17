@@ -384,9 +384,9 @@ describe('an output lists the lessons it applied, and an agent marks one wrongly
            WHERE l.project_id = ${w.projectId} AND l.number = ${n}`,
     );
     expect(kept?.agent_user_id).toBe(agent);
-    // a key that is not one is still refused by name, where it is
+    // a key that is not one is still refused by name, where it is; the map's slug is one (ISS-1251 c10)
     const bad = await box('box', 'POST', at('/lessons/applied'), {
-      lessons: [`lesson-${n}`],
+      lessons: [`lessons-${n}`],
       output,
     });
     expect(bad.status).toBe(400);

@@ -11,6 +11,19 @@ const USE = 'forge door use, 2026-08-19..11-17';
 
 export const KNOWLEDGE_SCENARIOS: readonly CardScenario[] = [
   {
+    name: 'a run’s `Lessons applied:` line read by nothing while the door refused every call',
+    card: 'POST /api/projects/:id/lessons/applied',
+    source: `ISS-1251 judge on dev.711, 2026-11-17: every lesson read applied 0; ${USE}: 4 calls, all refused (3 error to 10-22, 1 BAD_REQUEST on 11-17)`,
+    situation:
+      'A run built an issue the way a lesson from the map told it, and is writing its report',
+    bad: 'it ended its comment with `Lessons applied:`, which nothing read, or called the door with the map’s slug and was refused',
+    good: 'end the issue comment with `Lessons applied: L-n`, kept against the issue, or record any other output here',
+    teaches: [
+      /end the issue comment that reports it with `Lessons applied: L-n`/i,
+      /its slug as the map lists it/i,
+    ],
+  },
+  {
     name: 'per-project rules merged into their org guides, the merged entry deleted',
     card: 'DELETE /api/projects/:id/knowledge/:slug',
     source: `prompt-is-a-map rulings 2026-11-01..07; ${USE}: 88 deletes, none refused`,

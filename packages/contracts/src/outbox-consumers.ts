@@ -46,7 +46,7 @@ export const OUTBOX_CONSUMERS = {
 		"release-highlights",
 		"release-naming",
 	],
-	"comment.created": ["activity-feed", "master-wake", "ws-broadcast"],
+	"comment.created": ["activity-feed", "lessons-applied", "master-wake", "ws-broadcast"],
 	"comment.updated": ["activity-feed", "ws-broadcast"],
 	"comment.deleted": ["activity-feed", "ws-broadcast"],
 	"comment.mentioned": ["activity-feed", "notify-mentions"],

@@ -118,11 +118,22 @@ export function replayPrompt(input: ReplayInput): string {
 const lessonLine = (l: LifecycleLesson) =>
   `${lessonKey(l.number)}${l.anchor ? ` (anchor ${l.anchor})` : ''}: ${l.sentence}`;
 
-export function anchorPrompt(l: LifecycleLesson): string {
+/** The cards an anchor may name, as a prompt lists them: each by its id and what its door does. */
+export const cardChoices = (cards: readonly { id: string; purpose: string }[]): string =>
+  cards.length > 0
+    ? `Cards whose doors read nearest it (an anchor names one of these, or none):\n${cards.map((c) => `- card:${c.id}: ${c.purpose}`).join('\n')}`
+    : 'No card reads near it: anchor it to a requirement behaviour or code, or to none.';
+
+/** The anchor step's prompt: the cards nearest the lesson, never an example to copy (ISS-1251 c4). */
+export function anchorPrompt(
+  l: LifecycleLesson,
+  cards: readonly { id: string; purpose: string }[] = [],
+): string {
   return [
     "You are the project's steward. The lesson below was drafted before every lesson named what it is about. Name its `anchor` from its record, so the change that moves what it describes retires it.",
-    'An anchor is `card:<id>` (a capability card, e.g. `card:support.member`), `REQ-<n> BC-<m>` (a requirement behaviour), or a code path with its symbol (`packages/core/src/x.ts:name`). Name one only where the record shows it; else answer null and say what is missing in `reason`.',
+    "An anchor is `card:<id>` (the capability card of the door the lesson is about, only one listed below), `REQ-<n> BC-<m>` (a requirement behaviour), or a code path with its symbol (`packages/core/src/x.ts:name`). Name one only where the record shows the lesson is about it, never the nearest-sounding one and never an item's id; else answer null and say what is missing in `reason`.",
     lessonLine(l),
+    cardChoices(cards),
     `Its corrections:\n${untrusted(l.failures)}`,
   ].join('\n\n');
 }
@@ -168,8 +179,19 @@ async function modelCall<T extends z.ZodType>(
   return null;
 }
 
-export const modelAnchorer: Anchorer = (p, l) =>
-  modelCall(p, 'a lesson anchored', anchorPrompt(l), anchorSchema);
+/** How many cards the anchor step and the grouping are shown to choose from. */
+export const CARD_CHOICES = 12;
+
+export const modelAnchorer: Anchorer = async (p, l) =>
+  modelCall(
+    p,
+    'a lesson anchored',
+    anchorPrompt(
+      l,
+      await lessonsPorts().cardsLike([l.sentence, ...l.failures].join(' '), CARD_CHOICES),
+    ),
+    anchorSchema,
+  );
 export const modelRechecker: Rechecker = (p, l) =>
   modelCall(p, 'an invalidated lesson re-checked', recheckPrompt(l), recheckSchema);
 export const modelFolder: Folder = (p, l) =>

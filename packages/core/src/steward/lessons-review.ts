@@ -27,6 +27,7 @@ import {
   gatherInput,
   type LessonActor,
   type LessonEdit,
+  lessonsPorts,
   type OpenConfusion,
   openConfusions,
   type ProposedLesson,
@@ -36,7 +37,7 @@ import {
 import { logger } from '../lib/logger.js';
 import { isRefusal, type RefusalError } from '../lib/refusal.js';
 import { markUntrusted } from '../lib/untrusted-text.js';
-import { adopts, type Replayer } from './lessons-lifecycle.js';
+import { adopts, CARD_CHOICES, cardChoices, type Replayer } from './lessons-lifecycle.js';
 import { lessonScopeText } from './lessons-scope.js';
 
 const JUDGE_MAX_TOKENS = 800;
@@ -57,6 +58,8 @@ export type LessonReview = z.infer<typeof reviewSchema>;
 const settleSchema = z.object({
   resolution: z.enum(LESSON_RESOLUTIONS),
   sentence: sentence.nullable(),
+  /** What the lesson is about, where the confusion shows its anchor names something else (ISS-1251 c4). */
+  anchor: z.string().nullish(),
   reason,
 });
 export type ConfusionVerdict = z.infer<typeof settleSchema>;
@@ -69,6 +72,8 @@ export interface ReviewInput {
 export interface SettleInput {
   confusion: OpenConfusion;
   scope: string;
+  /** The cards nearest the lesson, which a corrected anchor names one of. */
+  cards?: readonly { id: string; purpose: string }[];
 }
 
 /** How the pass reviews a proposal: the fast model through the gateway, or a test's own answer. */
@@ -111,8 +116,9 @@ export function settlePrompt(input: SettleInput): string {
     '- `keep` when the lesson stands as written and the other side does not defeat it.',
     '- `edit` when a clearer or narrower sentence settles it: give the new `sentence` (or leave it null to take the recommended one).',
     '- `retire` when the lesson is wrong, contradicts a requirement or design below, or does more harm than good.',
-    'Always give a one-sentence `reason`.',
-    `The lesson: ${lessonKey(c.lesson.number)}, scope ${scopeWords(c.lesson.scope)}: ${c.lesson.sentence}`,
+    "Always give a one-sentence `reason`. Where the confusion shows the lesson's anchor names something it is not about, keep or edit it and give the right `anchor` (one of the cards below, a `REQ-<n> BC-<m>` or a code path); else leave `anchor` null.",
+    `The lesson: ${lessonKey(c.lesson.number)}, scope ${scopeWords(c.lesson.scope)}, anchor ${c.lesson.anchor ?? 'none'}: ${c.lesson.sentence}`,
+    cardChoices(input.cards ?? []),
     `The confusion (${c.kind}), held against ${against}:\n${markUntrusted(
       [
         `- The lesson's side: ${c.sides.lesson}`,
@@ -143,7 +149,10 @@ export const modelReviewer: Reviewer = async (projectId, input) => {
 export const modelSettler: Settler = async (projectId, input) => {
   const answer = await callFastModelObject(
     { surface: 'lessons', projectId, what: 'a lesson confusion settled' },
-    settlePrompt(input),
+    settlePrompt({
+      ...input,
+      cards: await lessonsPorts().cardsLike(input.confusion.lesson.sentence, CARD_CHOICES),
+    }),
     settleSchema,
     { maxTokens: JUDGE_MAX_TOKENS },
   );
@@ -285,6 +294,7 @@ async function settleOne(
         settle: {
           resolution: answer.resolution,
           sentence: answer.sentence ?? undefined,
+          anchor: answer.anchor ?? undefined,
           reason: answer.reason,
         },
       }),

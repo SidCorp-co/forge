@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appliedLessonsIn } from "./lessons.js";
+import { appliedLessonsIn, recordAppliedRequestSchema } from "./lessons.js";
 
 describe("the lessons an output says it applied (REQ-50 BC-4)", () => {
 	it("reads its one line, once each, in order", () => {
@@ -7,6 +7,16 @@ describe("the lessons an output says it applied (REQ-50 BC-4)", () => {
 			[3, 7],
 		);
 		expect(appliedLessonsIn("lessons applied: L-12.")).toEqual([12]);
+	});
+
+	// ISS-1251 c10: the map names each lesson by its slug, which is what an agent copies
+	it("reads a lesson named by its slug as the map lists it, in the line and at the door", () => {
+		expect(appliedLessonsIn("Lessons applied: lesson-103, L-7")).toEqual([103, 7]);
+		const body = (lessons: unknown[]) =>
+			recordAppliedRequestSchema.safeParse({ lessons, output: { kind: "issue", ref: "ISS-1" } });
+		expect(body(["lesson-103", "L-7", 9]).data?.lessons).toEqual([103, 7, 9]);
+		expect(body(["lessons-3"]).success).toBe(false);
+		expect(body(["L-0"]).success).toBe(false);
 	});
 
 	it("reads nothing from text with no such line, or one naming no lesson", () => {

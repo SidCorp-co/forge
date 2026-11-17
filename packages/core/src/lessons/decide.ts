@@ -27,6 +27,7 @@ import {
 import { lockXact } from '../lib/advisory-lock.js';
 import { movedRow, transition } from '../lifecycle/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { refuseUnknownCard } from './anchor-card.js';
 import { closeOpenConfusions } from './confusion-close.js';
 import { type LessonRow, lessonIn } from './read.js';
 import { refuse } from './refuse.js';
@@ -154,6 +155,7 @@ export async function proposeLesson(input: {
 }): Promise<LessonMoved> {
   const { projectId, actor, body } = input;
   await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
+  await refuseUnknownCard(body.anchor, '/anchor');
   const id = await db.transaction(async (tx) => {
     await lockLessons(tx, projectId);
     const about = aboutOf(body.about);
@@ -220,6 +222,7 @@ export async function approveLesson(input: {
   reason: string;
 }): Promise<LessonMoved> {
   await requireDecider(input.actor, input.projectId, 'approving a lesson');
+  await refuseUnknownCard(input.edit?.anchor, '/edit/anchor');
   const id = await db.transaction(async (tx) => {
     await lockLessons(tx, input.projectId);
     const row = await lessonIn(tx, input.projectId, input.ref);
@@ -398,6 +401,7 @@ export async function readmitLesson(input: {
   reason: string;
 }): Promise<LessonMoved> {
   await requireDecider(input.actor, input.projectId, 're-admitting a lesson');
+  await refuseUnknownCard(input.edit?.anchor, '/edit/anchor');
   const id = await db.transaction(async (tx) => {
     await lockLessons(tx, input.projectId);
     const row = await lessonIn(tx, input.projectId, input.ref);
@@ -441,6 +445,7 @@ export async function anchorLesson(input: {
   anchor: string;
 }): Promise<boolean> {
   await requireDecider(input.actor, input.projectId, 'anchoring a lesson');
+  await refuseUnknownCard(input.anchor, '/anchor');
   return db.transaction(async (tx) => {
     await lockLessons(tx, input.projectId);
     const row = await lessonIn(tx, input.projectId, input.ref);

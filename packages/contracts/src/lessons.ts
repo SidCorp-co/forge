@@ -142,15 +142,26 @@ export const LESSON_LIMITS = {
 
 export const lessonKey = (number: number) => `L-${number}`;
 
+/**
+ * One lesson as an agent names it: its key (`L-3`), or its slug as the lessons map lists it
+ * (`lesson-3`), which is what an agent copies from the map it read (ISS-1251 c10).
+ */
+const NAMED_LESSON = "(?:L|lesson)-[1-9]\\d*";
+
 /** The line an output ends with when lessons shaped it: `Lessons applied: L-3, L-7`. */
-const APPLIED_LINE =
-	/^\s*Lessons applied:\s*(L-\d+(?:\s*,\s*L-\d+)*)\s*\.?\s*$/im;
+const APPLIED_LINE = new RegExp(
+	`^\\s*Lessons applied:\\s*(${NAMED_LESSON}(?:\\s*,\\s*${NAMED_LESSON})*)\\s*\\.?\\s*$`,
+	"im",
+);
+
+/** The number a lesson's key or slug names. */
+const numberOfNamed = (named: string): number => Number(named.trim().replace(/^(?:L|lesson)-/, ""));
 
 /** The lesson numbers an output's `Lessons applied:` line names, in order, once each. */
 export function appliedLessonsIn(text: string): number[] {
 	const line = APPLIED_LINE.exec(text);
 	if (!line?.[1]) return [];
-	const numbers = line[1].split(",").map((k) => Number(k.trim().slice(2)));
+	const numbers = line[1].split(",").map(numberOfNamed);
 	return [...new Set(numbers.filter((n) => Number.isInteger(n) && n > 0))];
 }
 
@@ -166,6 +177,7 @@ export const LESSON_REFUSAL_CODES = [
 	"LESSON_CONFUSION_DECIDED",
 	"LESSON_APPLICATION_MARKED",
 	"LESSON_WINDOW_INVALID",
+	"LESSON_ANCHOR_UNKNOWN",
 	...PERMISSION_REFUSAL_CODES,
 ] as const;
 export type LessonRefusalCode = (typeof LESSON_REFUSAL_CODES)[number];
@@ -205,16 +217,20 @@ export const proposeLessonRequestSchema = z.strictObject({
 export type ProposeLessonRequest = z.infer<typeof proposeLessonRequestSchema>;
 
 /**
- * One applied lesson, as the map writes it (`L-3`) or as its number (3): the confusions door's path
- * already takes both, and the map teaching the key form while this door took the number alone refused
- * every box call it was given (ISS-601's judge, then forge's three calls to 2026-10-22; ISS-1251).
+ * One applied lesson, as its key (`L-3`), its slug as the lessons map lists it (`lesson-3`) or its
+ * number (3): the map teaching the key form while this door took the number alone refused every box
+ * call it was given (ISS-601's judge, then forge's three calls to 2026-10-22; ISS-1251), and the map
+ * names each lesson by its slug, which an agent copies.
  */
 const appliedLesson = z.union([
 	lessonNumber,
 	z
 		.string()
-		.regex(/^L-[1-9]\d*$/, "a lesson is its key (L-3) or its number (3)")
-		.transform((key) => Number(key.slice(2))),
+		.regex(
+			new RegExp(`^${NAMED_LESSON}$`),
+			"a lesson is its key (L-3), its slug as the lessons map lists it (lesson-3) or its number (3)",
+		)
+		.transform(numberOfNamed),
 ]);
 
 /** `POST /api/projects/:id/lessons/applied`: the lessons one output applied. */
@@ -227,7 +243,7 @@ export const recordAppliedRequestSchema = z.strictObject({
 });
 export type RecordAppliedRequest = z.infer<typeof recordAppliedRequestSchema>;
 export const RECORD_APPLIED_SHAPE =
-	"{ lessons: [L-n or n], output: { kind: chat_message | steward_run | job | issue, ref } }";
+	"{ lessons: [L-n, lesson-n or n], output: { kind: chat_message | steward_run | job | issue, ref } }";
 
 const side = z.string().trim().min(1).max(LESSON_LIMITS.sideChars);
 

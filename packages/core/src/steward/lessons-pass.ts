@@ -25,6 +25,7 @@ import {
   type GatherCorrection,
   type GatherLesson,
   gatherInput,
+  lessonsPorts,
   linkRepeats,
   projectsWithLessonWork,
   proposeLesson,
@@ -43,6 +44,8 @@ import { fileChecks } from './lessons-checks.js';
 import { ABOUT_WORDS, type Classifier, modelClassifier } from './lessons-classify.js';
 import {
   type Anchorer,
+  CARD_CHOICES,
+  cardChoices,
   emptyLifecycleTally,
   type Folder,
   type LifecycleTally,
@@ -118,17 +121,21 @@ export type Grouper = (
   input: { corrections: GatherCorrection[]; lessons: GatherLesson[] },
 ) => Promise<LessonGrouping | null>;
 
-export function groupingPrompt(input: {
-  corrections: GatherCorrection[];
-  lessons: GatherLesson[];
-}): string {
+export function groupingPrompt(
+  input: {
+    corrections: GatherCorrection[];
+    lessons: GatherLesson[];
+  },
+  cards: readonly { id: string; purpose: string }[] = [],
+): string {
   return [
     "You are the project's steward. People corrected the project's agents; each correction below says what was wrong.",
     `1. Reject a correction that is not one (\`rejections\`: its \`correction\` id and a \`reason\` of one sentence under ${GROUP_REASON_CHARS} characters): it names nothing the agent did wrong, it is a test or probe, or it is a question, thanks or noise. A rejected correction never feeds a lesson. Reject only what plainly is not a correction.`,
     '2. Link a correction to an existing lesson only when it repeats that lesson (`links`: its `correction` id and the `lesson` number).',
     `3. Group the other corrections that make the same point, ${LESSON_PROPOSE_MIN} or more each, and propose one lesson per group (\`proposals\`): one imperative \`sentence\` an agent can apply, the \`corrections\` ids it came from, and a \`scope\`: \`project\`, \`area\` (with the corrections' \`areaId\`) or \`item_kind\` (with an \`itemKind\`: requirement, workflow, mockup, suggestion, issue or chat) — the narrowest that fits. Where a group replaces an approved lesson, name that lesson's number in \`supersedes\`.`,
     `Every proposal says what it is about in ${ABOUT_WORDS}`,
-    `Every proposal names its \`anchor\`, what the lesson is about, so the change that moves it retires it: ${LESSON_ANCHOR_SHAPE}. Take it from the corrections' items and threads; a group whose anchor they do not show is left for a correction that shows it.`,
+    `Every proposal names its \`anchor\`, what the lesson is about, so the change that moves it retires it: ${LESSON_ANCHOR_SHAPE}. Take it from the corrections' items and threads; a card anchor names only one of the cards below, never an item's id; a group whose anchor they do not show is left for a correction that shows it.`,
+    cardChoices(cards),
     'Corrections on different items make the same point when one general mistake lies behind them: the same rule missed, the same kind of check skipped, the same wording or habit corrected. Say that general rule, not the item.',
     'Leave a correction alone when nothing else makes its point; it waits for a second one.',
     "Before you draft from a correction that carries its thread, read the thread: the person's words answer the posts before them, so the lesson is about what those posts are about (a product's own messages, a record, a step), never by default about the assistant's own reply.",
@@ -143,7 +150,13 @@ export function groupingPrompt(input: {
 export const modelGrouper: Grouper = async (projectId, input) => {
   const answer = await callFastModelObject(
     { surface: 'lessons', projectId, what: 'corrections grouped into lessons' },
-    groupingPrompt(input),
+    groupingPrompt(
+      input,
+      await lessonsPorts().cardsLike(
+        input.corrections.map((c) => c.reason).join(' '),
+        CARD_CHOICES * 2,
+      ),
+    ),
     groupingSchema,
     { maxTokens: groupingBudget(input.corrections.length) },
   );

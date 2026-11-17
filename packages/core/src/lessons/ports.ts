@@ -39,6 +39,14 @@ interface LessonsPorts {
    * door lives in. Without paths, a card anchor is met by a landing naming the card.
    */
   cardOf(cardId: string): Promise<CardText | null>;
+  /**
+   * The cards a lesson may be anchored to that read nearest `text` (its sentence, its corrections), by
+   * the words their door, purpose and situations share with it, nearest first: what the steward is
+   * shown to choose an anchor from, so it never copies an example or names an item's id (ISS-1251 c4).
+   */
+  cardsLike(text: string, limit: number): Promise<readonly { id: string; purpose: string }[]>;
+  /** An issue's key as people read it (`ISS-680`), the ref an applied lesson's issue output is kept under. */
+  issueKeyOf(issueId: string): Promise<string | null>;
   cardPaths?(cardId: string): Promise<readonly string[]>;
 }
 
