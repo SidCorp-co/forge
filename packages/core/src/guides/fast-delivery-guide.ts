@@ -14,7 +14,7 @@ export const FAST_DELIVERY_GUIDE: CoreGuide = {
   title: 'Fast delivery: rate the change, leave debt to the cleanup run',
   summary:
     "Every project delivers fast unless its document says `delivery.fast: false`: a change lands when it builds, deploys healthy and its scoped tests pass; the building run rates the change's impact and records what it leaves unclean as cleanup debt; no landing and no promotion waits on a cleanup report; Audit, the cleanup run in its own window, works the debt and reports what it cleared and what remains.",
-  version: 9,
+  version: 10,
   body: `## Fast delivery: rate the change, leave debt to the cleanup run
 
 Fast delivery is every project's default. A project turns it off with \`delivery.fast: false\` in its
@@ -27,6 +27,9 @@ project document, and then a merge check asks every check and a red is fixed in 
   follows the blast radius: a change that touches shared logic, billing, permissions or data is
   checked wide early, by you, before it lands; the merge check does not ask it, and line count is
   only a secondary signal.
+- **Show a UI change in a box.** A change a person sees is checked in a Forge Box
+  (${guideRef('boxes')}) rather than a private Playwright script: the owner can watch it, and the
+  criterion's clip attaches itself.
 - **Rate the change.** Before you mark the merge, record its system impact:
   \`POST /api/issues/:id/impact\` \`{ type, rating, reason, commit? }\`, \`type\` the surface it
   touches (${types}), \`rating\` \`low\`, \`medium\` or \`high\` (high covers severe), \`reason\` why.

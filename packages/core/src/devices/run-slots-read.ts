@@ -17,6 +17,7 @@ import {
   RUN_DECLARATION_REFUSAL_METADATA_KEY,
   RUN_SESSION_KIND,
 } from '@forge/contracts/agent-sessions';
+import { BOX_MODES } from '@forge/contracts/boxes';
 import type { MasterSubagentSlots } from '@forge/contracts/master-standing';
 import { STARTED_SESSION_STATUSES } from '@forge/contracts/session-machine';
 import { eq, sql } from 'drizzle-orm';
@@ -26,10 +27,11 @@ import { devices } from '../db/schema.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { isRefusal } from '../lib/refusal.js';
 import { readAdmissibleIssues } from './admissible.js';
+import { costOf, freshBoxHealth, readStoredBoxHealth } from './box-health.js';
 import { devicesPorts } from './ports.js';
 import { refuseDevice } from './refusals.js';
 import { endSlotWait, freshSlotWait, recordSlotWait } from './run-slot-wait.js';
-import { type SlotDemand, slotsFor } from './run-slots.js';
+import { type BoxAsk, type BoxPlan, type SlotDemand, slotsFor } from './run-slots.js';
 import { SESSION_SILENCE_TIMEOUT_S } from './session-silence.js';
 
 /** The run-session statuses that hold a subagent slot: a queued declaration runs nothing yet. */
@@ -145,6 +147,71 @@ export function subagentSlotsOf(box: BoxSlots, projectId: string): MasterSubagen
     waiting: Math.max(0, (mine?.wants ?? 0) - (mine?.inUse ?? 0)),
     capacity: box.capacity,
   };
+}
+
+/**
+ * Where every waiting Forge Box request of this device stands (ISS-1276): the same rule, asked with
+ * the device's box room. The projects' urgency is their run demand's; each project's boxes running
+ * or opening are its held count; the boxes told to start after the last health measurement are the
+ * cost it could not have seen; a mode the device serves with no warm box wants one.
+ */
+export async function readBoxAllocation(
+  deviceId: string,
+  opts: { executor?: Executor; now?: Date } = {},
+): Promise<BoxPlan> {
+  const executor = opts.executor ?? db;
+  const now = opts.now ?? new Date();
+  const [[device], rows, box] = await Promise.all([
+    executor
+      .select({ boxHealth: devices.boxHealth, boxHealthAt: devices.boxHealthAt })
+      .from(devices)
+      .where(eq(devices.id, deviceId))
+      .limit(1),
+    devicesPorts().boxDemand(executor, deviceId),
+    readBoxSlots(deviceId, { executor }),
+  ]);
+  const stored = readStoredBoxHealth(device?.boxHealth, device?.boxHealthAt ?? null);
+  const measuredAt = stored?.receivedAt ?? null;
+  const committed = { memoryMb: 0, diskMb: 0, cpuCores: 0 };
+  const held = new Map<string, number>();
+  const asks = new Map<string, BoxAsk[]>();
+  const warmHeld = new Set<string>();
+  for (const r of [...rows].sort((a, b) => a.askedAt.getTime() - b.askedAt.getTime())) {
+    const cost = costOf(stored, r.mode);
+    if (r.state === 'waiting') {
+      if (r.projectId === null) continue;
+      asks.set(r.projectId, [
+        ...(asks.get(r.projectId) ?? []),
+        { boxId: r.id, mode: r.mode, cost },
+      ]);
+      continue;
+    }
+    if (r.projectId === null) warmHeld.add(r.mode);
+    else held.set(r.projectId, (held.get(r.projectId) ?? 0) + 1);
+    if (r.openedAt !== null && (measuredAt === null || r.openedAt > measuredAt)) {
+      committed.memoryMb += cost.memoryMb;
+      committed.diskMb += cost.diskMb;
+      committed.cpuCores += cost.cpuCores;
+    }
+  }
+  const served = stored?.report.modes.filter((m) => m.serves) ?? [];
+  const warmWanted = BOX_MODES.filter(
+    (mode) => !warmHeld.has(mode) && served.some((m) => m.mode === mode),
+  ).map((mode) => ({ mode, cost: costOf(stored, mode) }));
+  const urgent = new Map(box.projects.map((p) => [p.projectId, p.urgent]));
+  const demands: SlotDemand[] = [...new Set([...asks.keys(), ...urgent.keys()])].map((id) => ({
+    projectId: id,
+    wants: box.projects.find((p) => p.projectId === id)?.wants ?? 0,
+    urgent: urgent.get(id) ?? false,
+    boxes: asks.get(id) ?? [],
+  }));
+  const answer = slotsFor(demands, box.capacity ?? 0, {
+    health: freshBoxHealth(stored, now),
+    committed,
+    held,
+    warmWanted,
+  });
+  return answer.boxes;
 }
 
 /** The box's slots for a read: one read per box inside a read request's memo. */

@@ -58,13 +58,13 @@ export const BOX_HOLDING_STATES = [
 
 /**
  * The box's moves. `box.take` and `box.released` are a person's; `box.expired` is the kernel's, when a
- * person's hold went idle for `BOX_LIMITS.holdIdleSeconds`. `box.started` (waiting → opening) is
+ * person's hold went idle for `BOX_LIMITS.holdIdleSeconds`, taken as the recovery move. `box.started` (waiting → opening) is
  * core's allocation, never a caller's. Every move is recorded with who made it and when, in
  * `kernel_transitions` (`entity: "box"`).
  */
 export const BOX_MACHINE = defineMachine({
 	entity: "box",
-	shapes: ["0668fa16"],
+	shapes: ["3ee3cdb7"],
 	design: null,
 	states: BOX_STATES,
 	initial: ["waiting", "opening"],
@@ -97,7 +97,16 @@ export const BOX_MACHINE = defineMachine({
 			permission: "project.write",
 			guards: [],
 		},
-		{ from: "person", to: "agent", act: "box.expired", permission: null, guards: [] },
+		// the kernel's hand-back when a hold went idle: taken as the recovery move, so a person's release
+		// and the sweep's expiry are two records of one edge pair
+		{
+			from: "person",
+			to: "agent",
+			act: "box.expired",
+			permission: null,
+			guards: [],
+			recovery: true,
+		},
 		...(["waiting", "opening", "warm", "agent", "person"] as const).map(
 			(from) => ({
 				from,
@@ -346,10 +355,10 @@ export const BOX_REFUSAL_STATUSES = {
 	BOX_NO_DEVICE: 409,
 } as const satisfies RefusalStatuses<BoxRefusalCode>;
 
-/** The REST and WebSocket doors. `:id` is a box, `:projectId` a project. */
+/** The REST and WebSocket doors. `:id` is a box (a project under `/api/projects`). */
 export const BOX_ROUTES = {
 	/** GET: the project's boxes and its waiting queue. POST: open one (`openBoxRequestSchema`). */
-	ofProject: "/api/projects/:projectId/boxes",
+	ofProject: "/api/projects/:id/boxes",
 	get: "/api/boxes/:id",
 	close: "/api/boxes/:id/close",
 	/** A person takes control; the agent's writes are refused from now. */

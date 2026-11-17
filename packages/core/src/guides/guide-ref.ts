@@ -34,6 +34,7 @@ const GUIDE_SLUGS = [
   'product-role',
   'room-agent',
   'forge-master',
+  'boxes',
 ] as const;
 
 export type GuideSlug = (typeof GUIDE_SLUGS)[number];

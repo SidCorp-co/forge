@@ -1,5 +1,6 @@
 // Every status machine, by the entity its moves are recorded under (`kernel_transitions.entity`).
 
+import { BOX_MACHINE } from "./boxes.js";
 import { WORKFLOW_DESIGN_MACHINE } from "./design-status.js";
 import { FEEDBACK_MACHINE } from "./feedback-machine.js";
 import { ISSUE_MACHINE } from "./issue-machine.js";
@@ -45,6 +46,7 @@ export const MACHINE_ENTITIES = [
 	"recording",
 	"room",
 	"lesson",
+	"box",
 ] as const;
 export type MachineEntity = (typeof MACHINE_ENTITIES)[number];
 
@@ -69,6 +71,7 @@ export const MACHINES = {
 	recording: RECORDING_MACHINE,
 	room: ROOM_MACHINE,
 	lesson: LESSON_MACHINE,
+	box: BOX_MACHINE,
 } as const satisfies { readonly [E in MachineEntity]: StatusMachine<E> };
 
 export type MachineOf<E extends MachineEntity> = (typeof MACHINES)[E];

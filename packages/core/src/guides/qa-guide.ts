@@ -14,7 +14,7 @@ export const QA_GUIDE: CoreGuide = {
   title: "Judging an issue's criteria on the running build",
   summary:
     'The method of a run sent to judge an issue somebody else built: the REST reads for what its verdicts are held to, where to start, the verdict history, how a criterion is exercised and recorded, and which design revision a design issue is judged on.',
-  version: 1,
+  version: 2,
   body: `## Judging an issue's criteria on the running build
 
 This is the method of a run sent to judge one issue somebody else built. It builds nothing, lands
@@ -123,6 +123,10 @@ the lapsed session, the field left blank, the second submit. A criterion exercis
 that works has not been tested. Plant the failure the criterion guards against where you can, and
 watch the probe go red before its green counts. A verdict is worth what its reader can re-run: the
 steps, what you expected, what you observed. Captures go outside the checkout you are judging.
+
+A criterion a person sees is exercised in a Forge Box (${guideRef('boxes')}): open one for the
+issue and criterion, drive it with \`forge-runner box act\` instead of an ad-hoc Playwright script,
+and mark the criterion's span, so the owner can watch you and the clip attaches itself.
 
 A screen is judged at the widths people use it at, not only the one its criterion names: a narrow
 width and the desktop widths 1280x800 and 1440x900, with each side panel the screen has both open

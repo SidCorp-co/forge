@@ -4,6 +4,7 @@
 // REST and has no tool here; this server is for the product layer.
 
 import type { McpToolName } from '@forge/contracts/mcp-tools';
+import { forgeBoxTool } from '../boxes/tool.js';
 import { forgeChannelTool, forgeEcosystemTool } from '../ecosystem/tool.js';
 import { forgeFeedbackTool } from '../forge-door/index.js';
 import type { ContextScopedMcpToolFactory } from '../lib/tool.js';
@@ -65,4 +66,6 @@ export const MCP_TOOLS = {
   forge_module: (ctx) => forgeModuleTool(ctx),
   // A master's or run's audit of its own output (ISS-1251), in the shape a room agent's support.audit takes.
   forge_audit: (ctx) => forgeAuditTool(ctx),
+  // A Forge Box (ISS-1276): a UI test screen an agent drives and a person watches and takes.
+  forge_box: (ctx) => forgeBoxTool(ctx),
 } satisfies Record<McpToolName, ContextScopedMcpToolFactory>;

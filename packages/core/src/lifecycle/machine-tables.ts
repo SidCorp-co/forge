@@ -1,5 +1,13 @@
 import type { MachineEntity } from '@forge/contracts/machines';
-import { agentSessions, devices, issues, jobs, pipelineRuns, runners } from '../db/schema.js';
+import {
+  agentSessions,
+  boxes,
+  devices,
+  issues,
+  jobs,
+  pipelineRuns,
+  runners,
+} from '../db/schema.js';
 import { feedback } from '../db/schema-feedback.js';
 import { lessons } from '../db/schema-lessons.js';
 import { mockups } from '../db/schema-mockups.js';
@@ -36,6 +44,7 @@ interface MachineTables {
   recording: typeof previewRecordings;
   room: typeof pocRooms;
   lesson: typeof lessons;
+  box: typeof boxes;
 }
 
 export type MachineRow<E extends MachineEntity> = MachineTables[E]['$inferSelect'];
@@ -93,6 +102,8 @@ export function machineTable<E extends MachineEntity>(entity: E): MachineTable<E
       return at(pocRooms, 'state');
     case 'lesson':
       return at(lessons);
+    case 'box':
+      return at(boxes, 'state');
     default:
       throw new Error(`lifecycle: no table holds the status of machine \`${entity}\``);
   }

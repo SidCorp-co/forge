@@ -1,3 +1,4 @@
+import type { BoxHealthReport } from '@forge/contracts/box-wire';
 import { type SQL, sql } from 'drizzle-orm';
 import { devices } from '../db/schema.js';
 import { relayCapableRunner } from '../lib/relay-runner.js';
@@ -12,6 +13,7 @@ interface HeartbeatReport {
   gate?: GateReport | undefined;
   binaries?: BinaryReport | undefined;
   disk?: DiskReport | undefined;
+  box?: BoxHealthReport | undefined;
 }
 
 export interface DevicePatch {
@@ -23,6 +25,8 @@ export interface DevicePatch {
   gateReport?: unknown;
   binaryReport?: unknown;
   diskReport?: unknown;
+  boxHealth?: BoxHealthReport;
+  boxHealthAt?: Date;
 }
 
 /**
@@ -49,5 +53,6 @@ export function heartbeatPatch(report: HeartbeatReport, now: Date): DevicePatch 
       ? { binaryReport: storedBinaryReport(report.binaries, now) }
       : {}),
     ...(report.disk !== undefined ? { diskReport: storedDiskReport(report.disk, now) } : {}),
+    ...(report.box !== undefined ? { boxHealth: report.box, boxHealthAt: now } : {}),
   };
 }

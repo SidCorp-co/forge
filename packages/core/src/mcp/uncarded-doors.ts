@@ -111,6 +111,9 @@ export const UNCARDED_DOORS: Readonly<Record<keyof typeof UNCARDED_WHY, readonly
     'POST /api/pipeline-runs/:id/cancel',
     'POST /api/pipeline-runs/:id/pause',
     'POST /api/pipeline-runs/:id/resume',
+    'POST /api/boxes/:id/release',
+    'POST /api/boxes/:id/take',
+    'POST /api/boxes/:id/ticket',
     'POST /api/previews/:id/abandon',
     'POST /api/previews/:id/approve',
     'POST /api/previews/:id/confirm',
@@ -216,6 +219,8 @@ export const UNCARDED_DOORS: Readonly<Record<keyof typeof UNCARDED_WHY, readonly
     'POST /api/widget/session/messages',
   ],
   machine: [
+    'POST /api/boxes/:id/report',
+    'POST /api/boxes/:id/spans/:spanId/clip',
     'PATCH /api/agent-sessions/:id',
     'POST /api/agent-sessions/:id/ack',
     'POST /api/agent-sessions/:id/events',

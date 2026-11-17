@@ -160,6 +160,7 @@ export const OUTBOX_CONSUMERS = {
 	"issue.pushed": ["ws-broadcast"],
 	"conversation.pushed": ["ws-broadcast"],
 	"preview.transitioned": ["ws-broadcast", "org-activity"],
+	"box.changed": ["ws-broadcast"],
 	// the corrections a lesson learns from (REQ-50 BC-1, `core/src/lessons/`)
 	"mockup.transitioned": ["lessons-corrections", "org-activity"],
 	"chat.replied": ["lessons-chat"],

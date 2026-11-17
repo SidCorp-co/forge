@@ -11,6 +11,7 @@ import {
   decodeTunnelFrame,
   encodeTunnelFrame,
   TUNNEL_LIMITS,
+  type TunnelBoxTarget,
   type TunnelFrame,
   type TunnelResetCode,
 } from '@forge/contracts/preview-tunnel';
@@ -173,9 +174,17 @@ const DRAIN_POLL_MS = 10;
 /** Why a request got no stream: the box is away, the queue for one was full, or it waited too long. */
 export type StreamRefusal = 'TUNNEL_DOWN' | 'QUEUE_FULL' | 'WAIT_TIMEOUT' | 'ABORTED';
 
+/**
+ * What a stream reaches: a preview's dev server, or a Forge Box's view or input channel (ISS-1276).
+ * Its key is what the per-preview limits count a stream under: a box's streams count as one preview's.
+ */
+export type StreamTarget = { previewId: string } | TunnelBoxTarget;
+const keyOf = (t: StreamTarget) => ('previewId' in t ? t.previewId : `box:${t.boxId}`);
+
 /** A browser request parked until its preview has a free stream. */
 interface Waiter {
   previewId: string;
+  target: StreamTarget;
   resolve: (open: StreamOpen) => void;
   timer: NodeJS.Timeout;
   signal: AbortSignal | undefined;
@@ -223,10 +232,11 @@ export class Tunnel {
    * `streamWaitSeconds`, or finds `maxQueuedPerPreview` already waiting, is refused by name; an
    * aborted `signal` takes it out of the queue.
    */
-  acquire(previewId: string, signal?: AbortSignal): Promise<StreamOpen> {
+  acquire(target: StreamTarget, signal?: AbortSignal): Promise<StreamOpen> {
+    const previewId = keyOf(target);
     if (signal?.aborted) return Promise.resolve({ ok: false, why: 'ABORTED' });
     if (this.waiters.length === 0 && this.hasRoom(previewId)) {
-      return Promise.resolve({ ok: true, stream: this.open(previewId) });
+      return Promise.resolve({ ok: true, stream: this.open(target) });
     }
     if (this.waitingOf(previewId) >= TUNNEL_LIMITS.maxQueuedPerPreview) {
       return Promise.resolve({ ok: false, why: 'QUEUE_FULL' });
@@ -241,6 +251,7 @@ export class Tunnel {
       };
       const waiter: Waiter = {
         previewId,
+        target,
         resolve,
         timer: setTimeout(
           () => leave({ ok: false, why: 'WAIT_TIMEOUT' }),
@@ -266,7 +277,7 @@ export class Tunnel {
       this.waiters.splice(i, 1);
       clearTimeout(waiter.timer);
       waiter.signal?.removeEventListener('abort', waiter.onAbort);
-      waiter.resolve({ ok: true, stream: this.open(waiter.previewId) });
+      waiter.resolve({ ok: true, stream: this.open(waiter.target) });
     }
   }
 
@@ -278,11 +289,11 @@ export class Tunnel {
     }
   }
 
-  private open(previewId: string): TunnelStream {
+  private open(target: StreamTarget): TunnelStream {
     const id = this.nextId++;
-    const stream = new TunnelStream(this, id, previewId);
+    const stream = new TunnelStream(this, id, keyOf(target));
     this.streams.set(id, stream);
-    this.send({ type: 'open', streamId: id, previewId });
+    this.send({ type: 'open', streamId: id, ...target });
     return stream;
   }
 
@@ -385,7 +396,18 @@ export function openTunnelStream(
 ): Promise<StreamOpen> {
   const tunnel = tunnels.get(deviceId);
   if (!tunnel) return Promise.resolve({ ok: false, why: 'TUNNEL_DOWN' });
-  return tunnel.acquire(previewId, signal);
+  return tunnel.acquire({ previewId }, signal);
+}
+
+/** A stream to a Forge Box's view or input channel over its device's tunnel (ISS-1276). */
+export function openBoxStream(
+  deviceId: string,
+  target: TunnelBoxTarget,
+  signal?: AbortSignal,
+): Promise<StreamOpen> {
+  const tunnel = tunnels.get(deviceId);
+  if (!tunnel) return Promise.resolve({ ok: false, why: 'TUNNEL_DOWN' });
+  return tunnel.acquire(target, signal);
 }
 
 /** The streams open to a preview's dev server, and the requests waiting for one. */

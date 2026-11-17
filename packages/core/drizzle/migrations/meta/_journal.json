@@ -4313,6 +4313,13 @@
       "when": 1841616000000,
       "tag": "0679_a_permission_prompt_a_session_raised_is_a_question_a_person_answers",
       "breakpoints": true
+    },
+    {
+      "idx": 680,
+      "version": "7",
+      "when": 1841702400000,
+      "tag": "0680_a_forge_box_is_a_kernel_record_whose_health_the_device_reports",
+      "breakpoints": true
     }
   ]
 }

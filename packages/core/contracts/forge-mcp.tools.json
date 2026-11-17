@@ -341,6 +341,133 @@
       }
     },
     {
+      "description": "Forge Box: a browser, Android or desktop screen you test a UI in, which a person watches live from Forge and can take over. open {projectId, mode, issueId, criterion, runId, viewport?, url?}: a box, or BOX_SLOT_UNAVAILABLE naming its place and why while it waits. act {boxId, command, runId}: one driver command; a write is refused BOX_HELD_BY_PERSON while a person holds the box, a read always answers. span {boxId, criterion, edge}: mark a criterion's demonstration; its clip and still attach to the issue. close {boxId}; read {boxId}.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "open",
+              "act",
+              "span",
+              "close",
+              "read"
+            ],
+            "type": "string"
+          },
+          "boxId": {
+            "description": "act, span, close, read: the box",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          },
+          "command": {
+            "description": "act: the driver argv, e.g. [\"click\", \"@e22\"]",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "criterion": {
+            "description": "open, span: the criterion number",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "edge": {
+            "description": "span: start or end",
+            "enum": [
+              "start",
+              "end"
+            ],
+            "type": "string"
+          },
+          "issueId": {
+            "description": "open: the issue the box tests",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          },
+          "mode": {
+            "description": "open: browser, android or desktop",
+            "type": "string"
+          },
+          "projectId": {
+            "description": "open: the project",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          },
+          "runId": {
+            "description": "open, act: your run (FORGE_RUN)",
+            "type": "string"
+          },
+          "url": {
+            "description": "open: where a browser box starts",
+            "type": "string"
+          },
+          "viewport": {
+            "additionalProperties": false,
+            "description": "open: a browser box’s size, e.g. 390×844",
+            "properties": {
+              "height": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "width": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "width",
+              "height"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "type": "object"
+      },
+      "name": "forge_box",
+      "x-forge-permission": {
+        "act": {
+          "on": {
+            "resolved": "the box's project, found from the box"
+          },
+          "permission": "project.write"
+        },
+        "close": {
+          "on": {
+            "resolved": "the box's project, found from the box"
+          },
+          "permission": "project.write"
+        },
+        "open": {
+          "on": {
+            "arg": "projectId"
+          },
+          "permission": "project.write"
+        },
+        "read": {
+          "on": {
+            "resolved": "the box's project, found from the box"
+          },
+          "permission": "project.read"
+        },
+        "span": {
+          "on": {
+            "resolved": "the box's project, found from the box"
+          },
+          "permission": "project.write"
+        }
+      }
+    },
+    {
       "description": "Act in a project's ecosystem channel under the credential's own role: a viewer reads, a member writes. Reads: register, inbox, outbox, unanswered (what this side owes a reply to: the work a master takes), read (one document), thread, contracts (a project API page). Writes: draft, reply (a draft answering a number), edit, submit (publishes, or waits at the approve gate), hold and release a conversation, withdraw, supersede, gate (approve or return a document waiting at the approve gate; an admin decides). The author is stamped from the credential and never read from the arguments: in chat the person, via assistant; on /mcp an agent token writes via master and a personal one via cli. Show a person a draft and submit it only once they confirm; hold, withdraw and supersede need a reason. You read only documents this project sends or receives, never another pair or a counterparty internal; in a chat at ecosystem scope you also read those of the person's other projects in that ecosystem, and you still write only as this project. A refusal comes back as { code, path, detail }; say what was refused and why.",
       "inputSchema": {
         "additionalProperties": false,

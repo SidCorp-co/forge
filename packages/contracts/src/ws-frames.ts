@@ -11,6 +11,7 @@ import type {
 	RunnerChange,
 } from "./outbox-events.js";
 import type { AgentSessionLiveFrame } from "./agent-session-live.js";
+import type { BoxChangedFrame } from "./boxes.js";
 import type { PreviewChangedFrame } from "./preview.js";
 import type { OrgActivityFrame } from "./org-activity.js";
 import type { ProjectNowFrame } from "./project-now.js";
@@ -75,6 +76,11 @@ export interface WsFramePayloads extends JobFrames {
 	 * `lib/ws/event-router.ts`, which ends that exception to the rule above.
 	 */
 	"preview.changed": PreviewChangedFrame;
+	/**
+	 * A Forge Box moved or was acted on (ISS-1276): the Boxes page, its feed and the issue's box row
+	 * refetch. Listed ahead of its router as the seam the box web lane builds to, as `preview.changed` was.
+	 */
+	"box.changed": BoxChangedFrame;
 	/** A question was asked, answered, voided or expired: screens showing questions, or the marker a question leaves, refetch. */
 	"question.changed": {
 		questionId: string;

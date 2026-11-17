@@ -4,6 +4,7 @@ import { AGENT_SESSION_REFUSAL_STATUSES } from "./agent-sessions.js";
 import { AGREEMENT_REFUSAL_STATUSES } from "./agreements.js";
 import { ATTACHMENT_REFUSAL_STATUSES } from "./attachments.js";
 import { AUTH_REFUSAL_STATUSES } from "./auth.js";
+import { BOX_REFUSAL_STATUSES } from "./boxes.js";
 import { BODY_REFUSAL_STATUSES } from "./body.js";
 import { CHAT_PROPOSAL_REFUSAL_STATUSES } from "./chat-proposals.js";
 import { CHECK_RUN_REFUSAL_STATUSES } from "./check-runs.js";
@@ -107,6 +108,7 @@ const DECLARED: ReadonlyArray<
 	PLUGIN_VERSION_REFUSAL_STATUSES,
 	PLUGIN_ARCHIVE_REFUSAL_STATUSES,
 	PREVIEW_REFUSAL_STATUSES,
+	BOX_REFUSAL_STATUSES,
 	RECORDING_REFUSAL_STATUSES,
 	RECORD_EVENT_REFUSAL_STATUSES,
 	ROOM_REFUSAL_STATUSES,

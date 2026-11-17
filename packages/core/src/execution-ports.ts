@@ -3,6 +3,7 @@
 // before it (ADR 0008), so what they need from above is handed in here, from the owners' faces.
 
 import { provideAgentSessionsPorts } from './agent-sessions/index.js';
+import { boxDemand, boxHealthBeat } from './boxes/index.js';
 import { cleanupFirePlan } from './cleanup/index.js';
 import { latestIssueCommentWith, postIssueNotice, postIssueNoticeOnce } from './comments/index.js';
 import { registerConversationAgentBridge, resolveProjectHandle } from './conversations/index.js';
@@ -379,6 +380,8 @@ export function provideExecutionPorts(): void {
       (await resolveProjectHandle(tx, projectId)).userId,
     requirementIdOf: (projectId, ref) => requirementIdIn(db, projectId, ref),
     stewardSlotDemand,
+    boxDemand,
+    boxHealthBeat,
   });
 
   provideRunnersPorts({

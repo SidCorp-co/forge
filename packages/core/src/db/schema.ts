@@ -21,6 +21,7 @@ export * from './schema-agreements.js';
 export * from './schema-auth.js';
 export * from './schema-beta-port.js';
 export * from './schema-binding-health.js';
+export * from './schema-boxes.js';
 export * from './schema-builder-facts.js';
 export * from './schema-cleanup.js';
 export * from './schema-comments.js';

@@ -1,7 +1,9 @@
 import type { Server as HttpServer, IncomingMessage } from 'node:http';
 import type { Server as HttpsServer } from 'node:https';
+import { BOX_ROUTES } from '@forge/contracts/boxes';
 import { PREVIEW_ROUTES } from '@forge/contracts/preview';
 import { type WebSocket, WebSocketServer } from 'ws';
+import { acceptBoxUpgrade, closeBoxViewers } from '../boxes/index.js';
 import { AUTH_COOKIE_NAME, cookieValues } from '../credentials/cookie.js';
 import { verifyDeviceToken } from '../credentials/device-credential.js';
 import { verifyUserToken } from '../credentials/jwt.js';
@@ -227,6 +229,11 @@ export function attachWs(
       void acceptPreviewTunnel(req, socket, head);
       return;
     }
+    // a Forge Box's viewer or holder, entering with the one-minute ticket the box door minted (ISS-1276)
+    if (url.pathname === BOX_ROUTES.view || url.pathname === BOX_ROUTES.input) {
+      void acceptBoxUpgrade(req, socket, head);
+      return;
+    }
     if (url.pathname !== '/ws') return;
 
     void (async () => {
@@ -351,6 +358,7 @@ const WS_CLOSE_FALLBACK_MS = 2_000;
 
 export async function closeWs(): Promise<void> {
   closeAllTunnels();
+  closeBoxViewers();
   if (heartbeatTimer) {
     clearInterval(heartbeatTimer);
     heartbeatTimer = null;

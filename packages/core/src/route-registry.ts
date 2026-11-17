@@ -1,6 +1,5 @@
-// The one route-mount registry: every module's routers, imported from its heavy face (routes.ts) and
-// mounted in the order Hono matches them. Order is load-bearing: a router's `use('*')` gates every
-// later router mounted under the same prefix, so the area functions below run in sequence.
+// The one route-mount registry: every module's routers, from its heavy face (routes.ts), mounted in
+// the order Hono matches them, which is load-bearing: a router's `use('*')` gates every later one.
 
 import type { Hono } from 'hono';
 import { orgActivityRoutes } from './activity/routes.js';
@@ -25,6 +24,7 @@ import {
   verifyRoutes,
 } from './auth/routes.js';
 import { automationRoutes } from './automation/routes.js';
+import { boxApiRoutes } from './boxes/routes.js';
 import { cleanupIssueRoutes, cleanupProjectRoutes } from './cleanup/index.js';
 import {
   commentRoutes,
@@ -413,6 +413,7 @@ function mountIssueAndJobRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/issues', cleanupIssueRoutes);
   app.route('/api/issues', issuePreviewRoutes);
   app.route('/api/previews', previewRoutes);
+  app.route('/api', boxApiRoutes);
   app.route('/api/recordings', recordingRoutes);
   app.route('/api/rooms', roomRoutes);
   app.on('POST', '/api/body/preview', BODY_PREVIEW_NEEDS_NO_PERMISSION);

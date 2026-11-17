@@ -9,6 +9,7 @@ import {
   drainWebConversationWindows,
   runTranscriptIndexSweepOnce,
 } from './assistant/index.js';
+import { sweepBoxes } from './boxes/index.js';
 import { runHeartbeatTick } from './conversations/index.js';
 import { sweepAgedDecisions } from './development/index.js';
 import {
@@ -175,8 +176,7 @@ function stewardTimers(): Timer[] {
       ),
     },
     {
-      // REQ-68 BC-8: a non-question decision (sign-off, release, design, proposal) is reminded on day
-      // 3 and its decline proposed on day 14, from each Needs you; hourly, one notice per person
+      // REQ-68 BC-8: a non-question decision: reminded day 3, its decline proposed day 14, hourly
       kind: 'cluster',
       name: 'decision-ages',
       cron: '17 * * * *',
@@ -250,8 +250,7 @@ function conversationDrains(): Timer[] {
       run: drainRoomWindows,
     },
     {
-      // recovery only: a message goes to its room's session as it is recorded (REQ-75 BC-11); this
-      // finds one a crash or a refused write left waiting
+      // recovery only (REQ-75 BC-11): a message a crash or a refused write left reaches its session
       kind: 'process',
       name: 'support.room-drain',
       everyMs: 2_000,
@@ -492,6 +491,7 @@ export function coreTimers(): Timer[] {
       everyMs: 15_000,
       run: logged('preview-sweep: moved', sweepPreviews, (r) => (r as { moved: number }).moved > 0),
     },
+    { kind: 'cluster', name: 'box-sweep', cron: '* * * * *', run: () => sweepBoxes() },
     ...conversationDrains(),
     ...(servesRunnerReleases()
       ? [

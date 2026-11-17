@@ -14,12 +14,14 @@ import {
   patchDeviceRunnerCheckout,
 } from '../runners/index.js';
 import { heartbeatBinaries } from './binary-report.js';
+import { heartbeatBoxHealth } from './box-health.js';
 import { heartbeatDisk } from './disk-report.js';
 import { heartbeatGate } from './gate-report.js';
 import { heartbeatPatch } from './heartbeat-patch.js';
 import { deviceProvisionRoutes } from './me-provisions.js';
 import { listDeviceAssignments } from './me-runners.js';
 import { deviceOrientationRevisions } from './orientation-revision.js';
+import { devicesPorts } from './ports.js';
 import { pushDevice } from './push.js';
 import { deviceProjectAgentConfigs } from './read.js';
 import { refuseDevice } from './refusals.js';
@@ -43,6 +45,8 @@ const heartbeatBodySchema = z
     binaries: z.unknown().optional(),
     // Read by `heartbeatDisk`, for the reason `gate` is.
     disk: z.unknown().optional(),
+    // Read by `heartbeatBoxHealth`, for the reason `gate` is (ISS-1276).
+    box: z.unknown().optional(),
   })
   .strict();
 const DEVICE_OWN = requiresNoPermission(
@@ -68,16 +72,25 @@ deviceAuthRoutes.post(
     const gate = heartbeatGate(input.gate, device.id);
     const binaries = heartbeatBinaries(input.binaries, device.id);
     const disk = heartbeatDisk(input.disk, device);
+    const box = heartbeatBoxHealth(input.box, device.id);
 
     const beat = await recordHeartbeat(
       device.id,
       heartbeatPatch(
-        { ...input, gate: gate.report, binaries: binaries.report, disk: disk.report },
+        {
+          ...input,
+          gate: gate.report,
+          binaries: binaries.report,
+          disk: disk.report,
+          box: box.report,
+        },
         new Date(),
       ),
       input.pool,
     );
     if (!beat) throw unauth();
+    // the boxes this device holds and the room it reported: waiting requests start, gone ones fail
+    if (box.report) await devicesPorts().boxHealthBeat(device.id);
 
     if (wasOffline) {
       await pushDevice({
@@ -98,6 +111,7 @@ deviceAuthRoutes.post(
       ...gate.ack,
       ...binaries.ack,
       ...disk.ack,
+      ...box.ack,
       ...beat.poolAck,
     });
   },

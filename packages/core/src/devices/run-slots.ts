@@ -14,7 +14,19 @@
  *
  * Give-back needs no code: when another project gets work the next answer gives it its floor, a
  * project then over its share is refused its next start at the door, and nothing running stops.
+ *
+ * Forge Boxes ride the same rule (ISS-1276, ADR 0015), as `room`: no second counter, and no count of
+ * boxes at all. A box's capacity is what the device's last health measurement leaves, after its
+ * reserve and the boxes started since that measurement, against what the box's mode costs:
+ * - a project's first box goes before any project's second (its floor), then round-robin by fewest
+ *   held, the urgent first among equals;
+ * - a request that does not fit waits, with its place and the health reason, and a cheaper one
+ *   behind it may still start;
+ * - each served mode keeps one warm box, given room once every request started and none waits.
  */
+
+import type { BoxCost, BoxHealthReport } from '@forge/contracts/box-wire';
+import type { BoxMode, BoxQueuePlace } from '@forge/contracts/boxes';
 
 export interface SlotDemand {
   projectId: string;
@@ -22,7 +34,37 @@ export interface SlotDemand {
   wants: number;
   /** Whether a ready part of it is critical or high. */
   urgent: boolean;
+  /** Its waiting box requests, oldest first. */
+  boxes?: readonly BoxAsk[];
 }
+
+/** One waiting box request and what its mode costs on this device. */
+export interface BoxAsk {
+  boxId: string;
+  mode: BoxMode;
+  cost: BoxCost;
+}
+
+/** What the device holds and measured, for its box requests. */
+export interface BoxRoom {
+  /** The latest health, or why there is none to trust (never reported, or older than fresh). */
+  health: BoxHealthReport | { unmeasured: string };
+  /** The cost of boxes told to start since that measurement, which it cannot have seen. */
+  committed: BoxCost;
+  /** Each project's boxes running or opening now. */
+  held: ReadonlyMap<string, number>;
+  /** Served modes holding no warm box, with their cost. */
+  warmWanted: readonly { mode: BoxMode; cost: BoxCost }[];
+}
+
+/** Which waiting boxes start now, which warm boxes to open, and where each one left waits. */
+export interface BoxPlan {
+  start: string[];
+  warm: BoxMode[];
+  wait: Map<string, BoxQueuePlace>;
+}
+
+export type SlotAnswer = Map<string, number> & { boxes: BoxPlan };
 
 function wholeCount(n: number, what: string): void {
   if (!Number.isInteger(n) || n < 0) {
@@ -30,8 +72,15 @@ function wholeCount(n: number, what: string): void {
   }
 }
 
-/** Each project's slots on a box of `capacity`; a project with no work holds 0. */
-export function slotsFor(projects: readonly SlotDemand[], capacity: number): Map<string, number> {
+/**
+ * Each project's slots on a box of `capacity`; a project with no work holds 0. With `room`, its
+ * `boxes` places every waiting box request too.
+ */
+export function slotsFor(
+  projects: readonly SlotDemand[],
+  capacity: number,
+  room?: BoxRoom,
+): SlotAnswer {
   wholeCount(capacity, 'capacity');
   const slots = new Map<string, number>();
   for (const p of projects) {
@@ -56,5 +105,72 @@ export function slotsFor(projects: readonly SlotDemand[], capacity: number): Map
       }
     }
   }
-  return slots;
+  const boxes = room ? placeBoxes(projects, room) : { start: [], warm: [], wait: new Map() };
+  return Object.assign(slots, { boxes });
+}
+
+const gb = (mb: number) => `${(mb / 1024).toFixed(1)} GB`;
+
+/** Why a box of `cost` does not start now, or null where it fits. */
+function noRoom(room: BoxRoom, used: BoxCost, mode: BoxMode, cost: BoxCost): string | null {
+  const h = room.health;
+  if ('unmeasured' in h) return h.unmeasured;
+  if (h.cpu.pressureSomeAvg10 > h.cpu.ceiling) {
+    return `CPU pressure is ${h.cpu.pressureSomeAvg10}% (PSI some avg10), over the ${h.cpu.ceiling}% ceiling`;
+  }
+  const memory = h.memory.availableMb - h.memory.reserveMb - used.memoryMb;
+  if (cost.memoryMb > memory) {
+    return `available memory ${gb(h.memory.availableMb)} less the ${gb(h.memory.reserveMb)} reserve and ${gb(used.memoryMb)} for boxes starting leaves ${gb(Math.max(0, memory))}; a ${mode} box costs ${gb(cost.memoryMb)}`;
+  }
+  const disk = h.disk.freeMb - h.disk.reserveMb - used.diskMb;
+  if (cost.diskMb > disk) {
+    return `free disk ${gb(h.disk.freeMb)} less the ${gb(h.disk.reserveMb)} reserve and ${gb(used.diskMb)} for boxes starting leaves ${gb(Math.max(0, disk))}; a ${mode} box costs ${gb(cost.diskMb)}`;
+  }
+  return null;
+}
+
+/** The waiting requests in the order they are served: fewest held first, urgent first among equals. */
+function serveOrder(projects: readonly SlotDemand[], room: BoxRoom): BoxAsk[] {
+  const queues = projects
+    .filter((p) => (p.boxes?.length ?? 0) > 0)
+    .map((p) => ({ p, next: 0, held: room.held.get(p.projectId) ?? 0 }));
+  const order: BoxAsk[] = [];
+  for (;;) {
+    const open = queues.filter((q) => q.next < (q.p.boxes?.length ?? 0));
+    if (open.length === 0) return order;
+    open.sort(
+      (a, b) =>
+        a.held - b.held ||
+        Number(b.p.urgent) - Number(a.p.urgent) ||
+        (a.p.projectId < b.p.projectId ? -1 : 1),
+    );
+    const q = open[0] as (typeof open)[number];
+    order.push((q.p.boxes as readonly BoxAsk[])[q.next] as BoxAsk);
+    q.next += 1;
+    q.held += 1;
+  }
+}
+
+function placeBoxes(projects: readonly SlotDemand[], room: BoxRoom): BoxPlan {
+  const used = { ...room.committed };
+  const take = (cost: BoxCost) => {
+    used.memoryMb += cost.memoryMb;
+    used.diskMb += cost.diskMb;
+    used.cpuCores += cost.cpuCores;
+  };
+  const plan: BoxPlan = { start: [], warm: [], wait: new Map() };
+  for (const ask of serveOrder(projects, room)) {
+    const why = noRoom(room, used, ask.mode, ask.cost);
+    if (why === null) {
+      plan.start.push(ask.boxId);
+      take(ask.cost);
+    } else plan.wait.set(ask.boxId, { position: plan.wait.size + 1, reason: why });
+  }
+  // a warm box never takes room a waiting request could have had
+  for (const w of plan.wait.size > 0 ? [] : room.warmWanted) {
+    if (noRoom(room, used, w.mode, w.cost) !== null) continue;
+    plan.warm.push(w.mode);
+    take(w.cost);
+  }
+  return plan;
 }

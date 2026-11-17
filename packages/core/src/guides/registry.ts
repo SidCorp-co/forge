@@ -17,6 +17,7 @@ import {
   ALWAYS_INJECT_GUARANTEE_NOTE,
 } from '@forge/contracts/knowledge';
 import { ASSISTANT_METHOD_GUIDE } from './assistant-method-guide.js';
+import { BOXES_GUIDE } from './boxes-guide.js';
 import { CLEANUP_AUDIT_GUIDE } from './cleanup-audit-guide.js';
 import { CONFORMANCE_GUIDE } from './conformance-guide.js';
 import { DISPATCH_GUIDE } from './dispatch-guide.js';
@@ -350,6 +351,7 @@ section, which is why this migration is what turns the feature on.`,
   RELEASE_TAGS_GUIDE,
   SCRIPT_SCHEDULES_GUIDE,
   MONITORING_GUIDE,
+  BOXES_GUIDE,
   FAST_DELIVERY_GUIDE,
   CLEANUP_AUDIT_GUIDE,
   SUGGESTIONS_GUIDE,

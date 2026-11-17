@@ -2,6 +2,7 @@
 // these events, written to `pipeline_outbox` in the transaction of the act it reports and delivered
 // to its consumers by the outbox worker. A type is listed only while a consumer reads it.
 
+import type { BoxChangedFrame } from "./boxes.js";
 import type { FeedbackSeverity } from "./feedback.js";
 import type { MergedHead } from "./landing-artifacts.js";
 import type { LessonEventPayloads } from "./lessons.js";
@@ -65,6 +66,7 @@ export const OUTBOX_EVENT_TYPES = [
 	"issue.pushed",
 	"conversation.pushed",
 	"preview.transitioned",
+	"box.changed",
 	"mockup.transitioned",
 	"chat.replied",
 	"room.replied",
@@ -283,6 +285,8 @@ export interface OutboxEventPayloads
 	"question.transitioned": TransitionEvent<"question">;
 	/** A preview moved (REQ-39); a failure's `reason` is its `PreviewFailureReason`. */
 	"preview.transitioned": TransitionEvent<"preview">;
+	/** A Forge Box moved or was acted on (ISS-1276): the Boxes page and the issue's box row refetch. */
+	"box.changed": BoxChangedFrame;
 	/** A mockup was accepted or returned; its `reason` is what the decider said. */
 	"mockup.transitioned": TransitionEvent<"mockup">;
 	/**

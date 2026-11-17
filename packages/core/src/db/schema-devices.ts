@@ -65,6 +65,9 @@ export const devices = pgTable(
      * heard it. A condition it is in, like `gateReport`; `devices/disk-report.ts` judges it.
      */
     diskReport: jsonb('disk_report'),
+    /** The box health the runner last reported (`@forge/contracts/box-wire` `BoxHealthReport`, ISS-1276). */
+    boxHealth: jsonb('box_health'),
+    boxHealthAt: timestamp('box_health_at', { withTimezone: true }),
     /**
      * The forge-plugin version a call on this box's token last named in `x-forge-plugin`, and when
      * core heard it (`middleware/plugin-version.ts`). NULL where no call on it has named one.

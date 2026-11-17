@@ -2,6 +2,7 @@
 // (ADR 0008: a kernel imports only kernel and platform modules, never an adapter or a domain). Read
 // only inside a call, never at import.
 
+import type { BoxMode, BoxState } from '@forge/contracts/boxes';
 import type { GateId, ResolvedGate } from '@forge/contracts/gate-profiles';
 import type { PolicyRefusalCode } from '@forge/contracts/project-config';
 import type { Tx } from '../db/client.js';
@@ -110,6 +111,20 @@ interface DevicesPorts {
     executor: Pick<Tx, 'execute'>,
     deviceId: string,
   ): Promise<Map<string, { live: number; waiting: number; urgent: boolean }>>;
+  /** Every Forge Box on the device that is not closed or failed (ISS-1276), for the slot rule. */
+  boxDemand(executor: Pick<Tx, 'execute'>, deviceId: string): Promise<BoxDemandRow[]>;
+  /** A heartbeat stored the device's box health: allocate its waiting boxes and reconcile what it holds. */
+  boxHealthBeat(deviceId: string): Promise<void>;
+}
+
+/** One box the slot rule reads: who asked, what mode, where it stands, and when it was told to start. */
+export interface BoxDemandRow {
+  id: string;
+  projectId: string | null;
+  mode: BoxMode;
+  state: BoxState;
+  askedAt: Date;
+  openedAt: Date | null;
 }
 
 const slot = portSlot<DevicesPorts>('devices', 'provideDevicesPorts');

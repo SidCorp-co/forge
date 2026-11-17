@@ -1,4 +1,6 @@
 export { readAdmissibleForProjects, readAdmissibleIssues } from './admissible.js';
+export { type BoxDevice, boxDeviceOf, projectBoxDevices, runDeviceOf } from './box-devices.js';
+export { modeReportOf, readStoredBoxHealth, type StoredBoxHealth } from './box-health.js';
 export { DEVICE_REST_CARDS } from './cards.js';
 export { readOwedComments } from './comment-inbox.js';
 export {
@@ -21,6 +23,7 @@ export { masterLastBeatSql, masterSilentSql } from './master-silence.js';
 export { recordDevicePluginVersion } from './plugin-version-record.js';
 export { ADMITTED_RUNNER } from './pool-admission.js';
 export { readRunnerPoolRead } from './pool-read-report.js';
+export type { BoxDemandRow } from './ports.js';
 export { provideDevicesPorts } from './ports.js';
 export { runDevicePrune } from './prune.js';
 export { deviceOwnedBy, projectRunnerBuilds } from './read.js';
@@ -29,7 +32,12 @@ export { returnIssuesForRun } from './run-issue-return.js';
 export { handleRunnerSessions } from './run-ledger-ws.js';
 export { reapAbandonedDeclarations } from './run-session-queued.js';
 export { reapDeadRunSessions } from './run-session-reaper.js';
-export { readBoxSlotsForView, refuseRunWithoutSlot, subagentSlotsOf } from './run-slots-read.js';
+export {
+  readBoxAllocation,
+  readBoxSlotsForView,
+  refuseRunWithoutSlot,
+  subagentSlotsOf,
+} from './run-slots-read.js';
 export { subagentOver } from './run-verdict.js';
 export { SESSION_SILENCE_TIMEOUT_MS, SESSION_SILENCE_TIMEOUT_S } from './session-silence.js';
 export { runDeviceStaleSweep } from './stale-detector.js';

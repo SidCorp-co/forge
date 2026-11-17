@@ -98,7 +98,7 @@
   "info": {
     "description": "Every route packages/core/src/index.ts mounts, generated from the running app. A request part is described where a zod validator holds it, and `x-forge-validated` on each operation lists which parts those are. The generator refuses a route whose handlers read a body or a query no validator declares, so a part missing from that list is one the route does not read: a path parameter with no validator is any string, a body declared with rawBody() is not JSON and carries its media type and description only, and `x-forge-input: none` marks an operation that reads no input at all. `x-forge-query-closed` marks a read whose query refuses a key it does not take; every GET carries it, or carries `x-forge-query-open` naming why a third party chooses its keys. `x-forge-refinements` on a schema names each refine() by the message it refuses with; the predicate itself is not described. `x-forge-auth` lists, in the order they run, the gate middlewares mounted on the route, each defined under `x-forge-auth-gates`; an empty list means no gate middleware, and a handler may still check a credential of its own. Every 4XX and 5XX answers `application/problem+json` (`components.responses.Problem`); a success response is undeclared: Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers.",
     "title": "forge-api",
-    "version": "27.1.0",
+    "version": "26.1.0",
     "x-forge-generator": "packages/core/src/contracts-generate.ts"
   },
   "openapi": "3.1.0",
@@ -1062,6 +1062,53 @@
         ]
       }
     },
+    "/api/agent-sessions/abort": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "sessionId": {
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sessionId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireUserOrDevice",
+          "assertEmailVerified"
+        ],
+        "x-forge-permission": {
+          "rule": "agent-sessions/session-access.ts:ensureSessionOwnerOrAdmin",
+          "why": "project.write on the session's project, then its owner or a holder of project.admin (SESSION_OWNER_FORBIDDEN); a conversation turn's session its asker alone"
+        },
+        "x-forge-validated": [
+          "json"
+        ]
+      }
+    },
     "/api/agent-sessions/queue-stats": {
       "get": {
         "parameters": [
@@ -1161,13 +1208,6 @@
                         "type": "null"
                       }
                     ]
-                  },
-                  "priority": {
-                    "enum": [
-                      "now",
-                      "next"
-                    ],
-                    "type": "string"
                   },
                   "sessionId": {
                     "format": "uuid",
@@ -1869,472 +1909,6 @@
         "x-forge-permission": {
           "rule": "agent-sessions/inbox-routes.ts:assertOwnsSession",
           "why": "a paired device, on the session placed on it alone"
-        },
-        "x-forge-validated": [
-          "json",
-          "param"
-        ]
-      }
-    },
-    "/api/agent-sessions/{id}/interrupt": {
-      "post": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "4XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "5XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "default": {
-            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
-          }
-        },
-        "x-forge-auth": [
-          "requireUserOrDevice",
-          "assertEmailVerified"
-        ],
-        "x-forge-permission": {
-          "rule": "agent-sessions/session-access.ts:ensureSessionOwnerOrAdmin",
-          "why": "project.write on the session's project, then its owner or a holder of project.admin (SESSION_OWNER_FORBIDDEN); a conversation turn's session its asker alone"
-        },
-        "x-forge-validated": [
-          "param"
-        ]
-      }
-    },
-    "/api/agent-sessions/{id}/live": {
-      "post": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "properties": {
-                  "items": {
-                    "items": {
-                      "oneOf": [
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "id": {
-                              "anyOf": [
-                                {
-                                  "minLength": 1,
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "kind": {
-                              "const": "message",
-                              "type": "string"
-                            },
-                            "parent": {
-                              "anyOf": [
-                                {
-                                  "minLength": 1,
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            }
-                          },
-                          "required": [
-                            "kind",
-                            "id",
-                            "parent"
-                          ],
-                          "type": "object"
-                        },
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "id": {
-                              "anyOf": [
-                                {
-                                  "minLength": 1,
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "kind": {
-                              "const": "messageEnd",
-                              "type": "string"
-                            },
-                            "parent": {
-                              "anyOf": [
-                                {
-                                  "minLength": 1,
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            }
-                          },
-                          "required": [
-                            "kind",
-                            "id",
-                            "parent"
-                          ],
-                          "type": "object"
-                        },
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "kind": {
-                              "const": "text",
-                              "type": "string"
-                            },
-                            "parent": {
-                              "anyOf": [
-                                {
-                                  "minLength": 1,
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "text": {
-                              "maxLength": 64000,
-                              "minLength": 1,
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "kind",
-                            "text",
-                            "parent"
-                          ],
-                          "type": "object"
-                        },
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "kind": {
-                              "const": "thinking",
-                              "type": "string"
-                            },
-                            "parent": {
-                              "anyOf": [
-                                {
-                                  "minLength": 1,
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "text": {
-                              "maxLength": 64000,
-                              "minLength": 1,
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "kind",
-                            "text",
-                            "parent"
-                          ],
-                          "type": "object"
-                        },
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "kind": {
-                              "const": "status",
-                              "type": "string"
-                            },
-                            "status": {
-                              "anyOf": [
-                                {
-                                  "enum": [
-                                    "requesting",
-                                    "compacting"
-                                  ],
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            }
-                          },
-                          "required": [
-                            "kind",
-                            "status"
-                          ],
-                          "type": "object"
-                        },
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "attempt": {
-                              "maximum": 9007199254740991,
-                              "minimum": 0,
-                              "type": "integer"
-                            },
-                            "delayMs": {
-                              "maximum": 9007199254740991,
-                              "minimum": 0,
-                              "type": "integer"
-                            },
-                            "errorStatus": {
-                              "anyOf": [
-                                {
-                                  "maximum": 9007199254740991,
-                                  "minimum": -9007199254740991,
-                                  "type": "integer"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "kind": {
-                              "const": "retry",
-                              "type": "string"
-                            },
-                            "maxRetries": {
-                              "maximum": 9007199254740991,
-                              "minimum": 0,
-                              "type": "integer"
-                            }
-                          },
-                          "required": [
-                            "kind",
-                            "attempt",
-                            "maxRetries",
-                            "delayMs",
-                            "errorStatus"
-                          ],
-                          "type": "object"
-                        },
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "kind": {
-                              "const": "compacted",
-                              "type": "string"
-                            },
-                            "postTokens": {
-                              "anyOf": [
-                                {
-                                  "maximum": 9007199254740991,
-                                  "minimum": 0,
-                                  "type": "integer"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "preTokens": {
-                              "maximum": 9007199254740991,
-                              "minimum": 0,
-                              "type": "integer"
-                            },
-                            "trigger": {
-                              "enum": [
-                                "manual",
-                                "auto"
-                              ],
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "kind",
-                            "trigger",
-                            "preTokens",
-                            "postTokens"
-                          ],
-                          "type": "object"
-                        },
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "kind": {
-                              "const": "rateLimit",
-                              "type": "string"
-                            },
-                            "limit": {
-                              "type": [
-                                "string",
-                                "null"
-                              ]
-                            },
-                            "resetsAt": {
-                              "anyOf": [
-                                {
-                                  "maximum": 9007199254740991,
-                                  "minimum": -9007199254740991,
-                                  "type": "integer"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "status": {
-                              "minLength": 1,
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "kind",
-                            "status",
-                            "resetsAt",
-                            "limit"
-                          ],
-                          "type": "object"
-                        },
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "kind": {
-                              "const": "context",
-                              "type": "string"
-                            },
-                            "used": {
-                              "anyOf": [
-                                {
-                                  "maximum": 9007199254740991,
-                                  "minimum": 0,
-                                  "type": "integer"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "window": {
-                              "anyOf": [
-                                {
-                                  "maximum": 9007199254740991,
-                                  "minimum": 1,
-                                  "type": "integer"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            }
-                          },
-                          "required": [
-                            "kind",
-                            "used",
-                            "window"
-                          ],
-                          "type": "object"
-                        },
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "kind": {
-                              "const": "ended",
-                              "type": "string"
-                            },
-                            "reason": {
-                              "type": [
-                                "string",
-                                "null"
-                              ]
-                            }
-                          },
-                          "required": [
-                            "kind",
-                            "reason"
-                          ],
-                          "type": "object"
-                        },
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "kind": {
-                              "const": "suggestion",
-                              "type": "string"
-                            },
-                            "text": {
-                              "maxLength": 2000,
-                              "minLength": 1,
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "kind",
-                            "text"
-                          ],
-                          "type": "object"
-                        }
-                      ]
-                    },
-                    "maxItems": 200,
-                    "minItems": 1,
-                    "type": "array"
-                  }
-                },
-                "required": [
-                  "items"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "4XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "5XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "default": {
-            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
-          }
-        },
-        "x-forge-auth": [
-          "requireUserOrDevice",
-          "assertEmailVerified"
-        ],
-        "x-forge-permission": {
-          "rule": "agent-sessions/session-access.ts:assertDeviceOwnsSession",
-          "why": "a paired device, on the session dispatched to it alone"
         },
         "x-forge-validated": [
           "json",
@@ -3558,6 +3132,806 @@
         },
         "x-forge-validated": [
           "json"
+        ]
+      }
+    },
+    "/api/boxes/{id}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the box the path names"
+          },
+          "permission": "project.read"
+        },
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "param",
+          "query"
+        ]
+      }
+    },
+    "/api/boxes/{id}/acts": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "by",
+            "required": false,
+            "schema": {
+              "enum": [
+                "agent",
+                "person"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the box the path names"
+          },
+          "permission": "project.read"
+        },
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "param",
+          "query"
+        ]
+      },
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "command": {
+                    "items": {
+                      "maxLength": 4000,
+                      "type": "string"
+                    },
+                    "maxItems": 64,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "runId": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "command"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the box the path names"
+          },
+          "permission": "project.write"
+        },
+        "x-forge-validated": [
+          "json",
+          "param"
+        ]
+      }
+    },
+    "/api/boxes/{id}/close": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "reason": {
+                    "maxLength": 500,
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the box the path names"
+          },
+          "permission": "project.write"
+        },
+        "x-forge-validated": [
+          "json",
+          "param"
+        ]
+      }
+    },
+    "/api/boxes/{id}/release": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the box the path names"
+          },
+          "permission": "project.write"
+        },
+        "x-forge-validated": [
+          "param"
+        ]
+      }
+    },
+    "/api/boxes/{id}/report": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "detail": {
+                        "maxLength": 4000,
+                        "type": "string"
+                      },
+                      "failure": {
+                        "enum": [
+                          "START_FAILED",
+                          "STREAM_LOST",
+                          "BOX_GONE",
+                          "DEVICE_OFFLINE"
+                        ],
+                        "type": "string"
+                      },
+                      "kind": {
+                        "const": "state",
+                        "type": "string"
+                      },
+                      "offer": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "codec": {
+                            "enum": [
+                              "jpeg-frames",
+                              "scrcpy-h264",
+                              "rfb"
+                            ],
+                            "type": "string"
+                          },
+                          "height": {
+                            "maximum": 8192,
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "width": {
+                            "maximum": 8192,
+                            "minimum": 1,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "codec",
+                          "width",
+                          "height"
+                        ],
+                        "type": "object"
+                      },
+                      "recordingStartedAt": {
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                        "type": "string"
+                      },
+                      "state": {
+                        "enum": [
+                          "ready",
+                          "failed",
+                          "gone"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "state"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "offer",
+                        "type": "string"
+                      },
+                      "offer": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "codec": {
+                            "enum": [
+                              "jpeg-frames",
+                              "scrcpy-h264",
+                              "rfb"
+                            ],
+                            "type": "string"
+                          },
+                          "height": {
+                            "maximum": 8192,
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "width": {
+                            "maximum": 8192,
+                            "minimum": 1,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "codec",
+                          "width",
+                          "height"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "offer"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "actId": {
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                        "type": "string"
+                      },
+                      "durationMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "exitCode": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "const": "act",
+                        "type": "string"
+                      },
+                      "stderr": {
+                        "maxLength": 16384,
+                        "type": "string"
+                      },
+                      "stdout": {
+                        "maxLength": 65536,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "actId",
+                      "exitCode",
+                      "stdout",
+                      "stderr",
+                      "durationMs"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "edge": {
+                        "enum": [
+                          "start",
+                          "end"
+                        ],
+                        "type": "string"
+                      },
+                      "kind": {
+                        "const": "mark",
+                        "type": "string"
+                      },
+                      "offsetMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "spanId": {
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "spanId",
+                      "edge",
+                      "offsetMs"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "detail": {
+                        "maxLength": 4000,
+                        "type": "string"
+                      },
+                      "kind": {
+                        "const": "clip_failed",
+                        "type": "string"
+                      },
+                      "spanId": {
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "spanId",
+                      "detail"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireDevice"
+        ],
+        "x-forge-permission": {
+          "none": "the device's credential; a box its device does not hold is not found (BOX_NOT_FOUND)"
+        },
+        "x-forge-validated": [
+          "json",
+          "param"
+        ]
+      }
+    },
+    "/api/boxes/{id}/spans": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the box the path names"
+          },
+          "permission": "project.read"
+        },
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "param",
+          "query"
+        ]
+      },
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "criterion": {
+                    "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "edge": {
+                    "enum": [
+                      "start",
+                      "end"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "criterion",
+                  "edge"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the box the path names"
+          },
+          "permission": "project.write"
+        },
+        "x-forge-validated": [
+          "json",
+          "param"
+        ]
+      }
+    },
+    "/api/boxes/{id}/spans/{spanId}/clip": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "spanId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {}
+            }
+          },
+          "description": "The span's cut: `clip` (video/webm or video/mp4, within the release page ceiling) and `still` (image/png).",
+          "required": true
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireDevice"
+        ],
+        "x-forge-permission": {
+          "none": "the device's credential; a box its device does not hold is not found (BOX_NOT_FOUND)"
+        },
+        "x-forge-validated": [
+          "param"
+        ]
+      }
+    },
+    "/api/boxes/{id}/take": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the box the path names"
+          },
+          "permission": "project.write"
+        },
+        "x-forge-validated": [
+          "param"
+        ]
+      }
+    },
+    "/api/boxes/{id}/ticket": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "channel": {
+                    "enum": [
+                      "view",
+                      "input"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "channel"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the box the path names"
+          },
+          "permission": "project.read"
+        },
+        "x-forge-validated": [
+          "json",
+          "param"
         ]
       }
     },
@@ -6282,6 +6656,7 @@
                     "type": "string"
                   },
                   "binaries": {},
+                  "box": {},
                   "capabilities": {
                     "additionalProperties": {},
                     "propertyNames": {
@@ -8901,37 +9276,6 @@
                     },
                     "type": "array"
                   },
-                  "permissionPrompt": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "promptId": {
-                        "anyOf": [
-                          {
-                            "maxLength": 200,
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "session": {
-                        "maxLength": 200,
-                        "minLength": 1,
-                        "type": "string"
-                      },
-                      "tool": {
-                        "maxLength": 200,
-                        "minLength": 1,
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "session",
-                      "tool"
-                    ],
-                    "type": "object"
-                  },
                   "plain": {
                     "description": "`plain`: at most three plain lines in the project's content language, for the person who decides: what changes for the user; why now (what waits on it); what you recommend. Name each choice by its outcome; never let an ISS-, REQ- or BC- key carry the meaning",
                     "maxLength": 1000,
@@ -9040,71 +9384,6 @@
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
-        ]
-      }
-    },
-    "/api/devices/me/questions/{questionId}/expire": {
-      "post": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "questionId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "properties": {
-                  "projectId": {
-                    "minLength": 1,
-                    "type": "string"
-                  },
-                  "runId": {
-                    "minLength": 1,
-                    "type": "string"
-                  },
-                  "waitedSeconds": {
-                    "maximum": 86400,
-                    "minimum": 0,
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "runId",
-                  "projectId",
-                  "waitedSeconds"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "4XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "5XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "default": {
-            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
-          }
-        },
-        "x-forge-auth": [
-          "requireDevice"
-        ],
-        "x-forge-permission": {
-          "none": "a paired box’s device credential admits it; each read and write is selected by that device, which the service holds to the projects, sessions and requests it serves"
-        },
-        "x-forge-validated": [
-          "json"
         ]
       }
     },
@@ -10336,88 +10615,6 @@
         "x-forge-validated": [
           "json",
           "param"
-        ]
-      }
-    },
-    "/api/devices/me/session-prompts": {
-      "post": {
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "properties": {
-                  "answer": {
-                    "maxLength": 200,
-                    "minLength": 1,
-                    "type": "string"
-                  },
-                  "by": {
-                    "enum": [
-                      "catalog",
-                      "safe",
-                      "unread"
-                    ],
-                    "type": "string"
-                  },
-                  "needs": {
-                    "anyOf": [
-                      {
-                        "maxLength": 1000,
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "projectId": {
-                    "minLength": 1,
-                    "type": "string"
-                  },
-                  "session": {
-                    "maxLength": 200,
-                    "minLength": 1,
-                    "type": "string"
-                  },
-                  "text": {
-                    "maxLength": 4000,
-                    "minLength": 1,
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "projectId",
-                  "session",
-                  "text",
-                  "by",
-                  "answer"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "4XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "5XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "default": {
-            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
-          }
-        },
-        "x-forge-auth": [
-          "requireDevice"
-        ],
-        "x-forge-permission": {
-          "none": "a paired box’s device credential admits it; each read and write is selected by that device, which the service holds to the projects, sessions and requests it serves"
-        },
-        "x-forge-validated": [
-          "json"
         ]
       }
     },
@@ -27572,6 +27769,156 @@
             "param": "id"
           },
           "permission": "project.admin"
+        },
+        "x-forge-validated": [
+          "json",
+          "param"
+        ]
+      }
+    },
+    "/api/projects/{id}/boxes": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project the path names"
+          },
+          "permission": "project.read"
+        },
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "param",
+          "query"
+        ]
+      },
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "asPerson": {
+                    "type": "boolean"
+                  },
+                  "criterion": {
+                    "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "deviceId": {
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "type": "string"
+                  },
+                  "issueId": {
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "type": "string"
+                  },
+                  "mode": {
+                    "maxLength": 40,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "runId": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "url": {
+                    "maxLength": 2048,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "viewport": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "height": {
+                        "maximum": 3840,
+                        "minimum": 240,
+                        "type": "integer"
+                      },
+                      "width": {
+                        "maximum": 3840,
+                        "minimum": 240,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "width",
+                      "height"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "mode"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project the path names"
+          },
+          "permission": "project.write"
         },
         "x-forge-validated": [
           "json",
@@ -56229,163 +56576,6 @@
                   "thread",
                   "need",
                   "text"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "4XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "5XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "default": {
-            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
-          }
-        },
-        "x-forge-auth": [
-          "requireAuth",
-          "assertEmailVerified"
-        ],
-        "x-forge-permission": {
-          "none": "only the room's own session, under its current turn's token, is admitted (support/access.ts)"
-        },
-        "x-forge-validated": [
-          "json",
-          "param"
-        ]
-      }
-    },
-    "/api/projects/{id}/support/session/terms": {
-      "post": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "properties": {
-                  "aliases": {
-                    "additionalProperties": false,
-                    "description": "the person's word and the thing's other names: vi, code, industry",
-                    "properties": {
-                      "code": {
-                        "items": {
-                          "maxLength": 120,
-                          "minLength": 1,
-                          "type": "string"
-                        },
-                        "maxItems": 8,
-                        "minItems": 1,
-                        "type": "array"
-                      },
-                      "industry": {
-                        "items": {
-                          "maxLength": 120,
-                          "minLength": 1,
-                          "type": "string"
-                        },
-                        "maxItems": 8,
-                        "minItems": 1,
-                        "type": "array"
-                      },
-                      "vi": {
-                        "items": {
-                          "maxLength": 120,
-                          "minLength": 1,
-                          "type": "string"
-                        },
-                        "maxItems": 8,
-                        "minItems": 1,
-                        "type": "array"
-                      }
-                    },
-                    "type": "object",
-                    "x-forge-refinements": [
-                      "send at least one of vi, code, industry"
-                    ]
-                  },
-                  "anchor": {
-                    "description": "where it lives in code, `file.ts:symbol`, where you know it",
-                    "maxLength": 600,
-                    "minLength": 1,
-                    "type": "string"
-                  },
-                  "means": {
-                    "description": "what the term names, in one or two sentences",
-                    "maxLength": 1000,
-                    "minLength": 1,
-                    "type": "string"
-                  },
-                  "message": {
-                    "description": "the person's message naming the thing, as you were handed it (`message`): it is quoted as who named it, and the write runs under their Forge permission",
-                    "maxLength": 64,
-                    "minLength": 1,
-                    "pattern": "^[A-Za-z0-9_-]+$",
-                    "type": "string"
-                  },
-                  "module": {
-                    "description": "the business module the thing belongs to, by its slug",
-                    "maxLength": 128,
-                    "minLength": 1,
-                    "type": "string"
-                  },
-                  "project": {
-                    "description": "a project you follow, by slug; your home project when omitted",
-                    "maxLength": 100,
-                    "minLength": 1,
-                    "type": "string"
-                  },
-                  "quote": {
-                    "description": "the person's own words naming it, as they wrote them",
-                    "maxLength": 600,
-                    "minLength": 1,
-                    "type": "string"
-                  },
-                  "slug": {
-                    "description": "the term's slug, kebab-case: an existing one is rewritten",
-                    "maxLength": 120,
-                    "minLength": 1,
-                    "pattern": "^[a-z0-9][a-z0-9-]*$",
-                    "type": "string"
-                  },
-                  "thread": {
-                    "description": "the thread: the id the message you answer carries as `thread` in what you were handed",
-                    "maxLength": 64,
-                    "minLength": 1,
-                    "pattern": "^[A-Za-z0-9_-]+$",
-                    "type": "string"
-                  },
-                  "title": {
-                    "description": "the term as the project names the thing",
-                    "maxLength": 200,
-                    "minLength": 1,
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "thread",
-                  "message",
-                  "slug",
-                  "title",
-                  "means",
-                  "module",
-                  "quote"
                 ],
                 "type": "object"
               }

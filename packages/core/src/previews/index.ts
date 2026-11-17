@@ -14,4 +14,10 @@ export { provideRoomSettleWriter, type RoomSettleWriter } from './room-port.js';
 export { registerRoomBridge } from './room-turns.js';
 export { sweepPreviews } from './service.js';
 export { itemOf } from './subject-reads.js';
-export { acceptTunnelUpgrade, closeAllTunnels } from './tunnel.js';
+export {
+  acceptTunnelUpgrade,
+  closeAllTunnels,
+  openBoxStream,
+  type StreamOpen,
+  streamEndOf,
+} from './tunnel.js';

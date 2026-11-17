@@ -10,6 +10,7 @@
 import type { CapabilityCard } from '@forge/contracts/capability-cards';
 import type { CardScenario, CardText } from '../lessons/index.js';
 import { roomConductLines } from '../support/index.js';
+import { BOX_SCENARIOS } from './scenarios-boxes.js';
 import { CHANNEL_SCENARIOS } from './scenarios-channel.js';
 import { CONFIG_SCENARIOS } from './scenarios-config.js';
 import { DELIVERY_SCENARIOS } from './scenarios-delivery.js';
@@ -46,6 +47,7 @@ export const CARD_SCENARIOS: readonly CardScenario[] = [
   ...SETUP_SCENARIOS,
   ...PERSON_SCENARIOS,
   ...ROOM_ACT_SCENARIOS,
+  ...BOX_SCENARIOS,
 ];
 
 /** A card's scenarios, in the order the registry holds them. */

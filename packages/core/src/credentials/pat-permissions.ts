@@ -40,6 +40,7 @@ export const PAT_PERMISSION_RESOURCES = {
     reach: 'project',
     prefixes: {
       '/api/pipeline-runs': 1,
+      '/api/boxes': 4,
       '/api/jobs': 1,
       '/api/issue-step-contexts': 1,
       '/api/agent-sessions': 2,

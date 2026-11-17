@@ -208,6 +208,12 @@
       "context": "platform",
       "serves": ["via:comments", "via:issues", "via:memory"]
     },
+    "boxes": {
+      "kind": "domain",
+      "context": "execution",
+      "owns": ["boxActs", "boxSpans", "boxes"],
+      "serves": ["REQ-39", "REQ-40"]
+    },
     "cleanup": {
       "kind": "domain",
       "context": "release",

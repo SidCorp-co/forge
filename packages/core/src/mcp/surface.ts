@@ -58,6 +58,7 @@ const DOOR_GUIDES: Record<McpToolName, GuideSlug | null> = {
   forge_references: null,
   forge_module: null,
   forge_audit: null,
+  forge_box: 'boxes',
 };
 
 const INPUTS = {

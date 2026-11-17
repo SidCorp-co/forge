@@ -193,6 +193,11 @@ export function registerWsBroadcastSubscribers(): void {
     });
   });
 
+  // a Forge Box moved or was acted on (ISS-1276); a warm box no project holds is nobody's room
+  on('box.changed', (p) => {
+    if (p.projectId !== null) frame(projectRoom(p.projectId), 'box.changed', p);
+  });
+
   on('issue.created', (p) => {
     frame(projectRoom(p.projectId), 'issue.created', {
       issueId: p.issueId,
