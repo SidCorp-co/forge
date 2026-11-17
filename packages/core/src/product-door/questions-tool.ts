@@ -90,6 +90,7 @@ const CARDS = {
       'Telling a person a listed question is theirs: list holds every open one, whoever owes it; theirs is project.needs_you.',
     family: 'product.ask',
     audience: ['person'],
+    scenarios: ['a person asking what is being asked of them and of the project'],
   },
   get: {
     purpose: 'Reads one question with every round, and the progress of the issue it parks.',
@@ -109,6 +110,7 @@ const CARDS = {
       'Answering a round get no longer shows last, or retrying after QUESTION_ROUND_STALE without getting it again.',
     family: 'product.ask',
     audience: ['person'],
+    scenarios: ['a person about to answer a question, shown its latest round'],
   },
   answer: {
     purpose: 'Records the answer a person gave you to a question they owe, as their own word.',

@@ -92,6 +92,7 @@ const CARDS = {
     redFlag: 'Saying when the draft is out from a date its progress does not give.',
     family: 'product.release',
     audience: ['person'],
+    scenarios: ['the bot saying no release record existed while the list held it: ISS-1189'],
   },
   get: {
     purpose:
@@ -119,6 +120,7 @@ const CARDS = {
       'Repeating that a release has no record, or shipped nothing, without getting that version.',
     family: 'product.release',
     audience: ['person'],
+    scenarios: ['a release said to hold no record without getting that version: ISS-1189'],
   },
   page: {
     purpose:
@@ -135,6 +137,7 @@ const CARDS = {
       'Reading proof or blockers off the page, which is written for its reader: releases.get holds them.',
     family: 'product.release',
     audience: ['person'],
+    scenarios: ['a release page read for what it does in users’ words'],
   },
   name: {
     purpose: 'Names a drafted or cut release and says in a few sentences what it brings.',
@@ -188,6 +191,7 @@ const CARDS = {
       'Deciding a release no person asked you to decide, or carrying unproven criteria they did not accept.',
     family: 'product.release',
     audience: ['person'],
+    scenarios: ['an approval refused CHECKLIST_INCOMPLETE on 481 unproven criteria: ISS-914'],
   },
 } satisfies Record<(typeof RELEASES_TOOL_ACTIONS)[number], CapabilityCardBody>;
 

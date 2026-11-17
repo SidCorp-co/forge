@@ -71,6 +71,7 @@ export const REQUIREMENT_REST_CARDS = {
       'Withdrawing a proposed revision and writing a new one where returning it to draft was the way.',
     family: 'requirements',
     audience: ['master'],
+    scenarios: ['an author stuck on a proposed revision between two refusals: ISS-766'],
   },
   'POST /api/projects/:id/requirements/:req/repin': {
     purpose:
@@ -88,6 +89,7 @@ export const REQUIREMENT_REST_CARDS = {
       'Re-pinning when no design or contract moved past the baseline (REQUIREMENT_PINS_CURRENT).',
     family: 'requirements',
     audience: ['master'],
+    scenarios: ['a re-pin with nothing moved past the pins: REQUIREMENT_PINS_CURRENT'],
   },
   'POST /api/projects/:id/requirements/:req/issues': {
     purpose:
@@ -127,6 +129,7 @@ export const REQUIREMENT_REST_CARDS = {
     redFlag: 'Asking start-delivery again while the steward’s delivery check has not finished.',
     family: 'requirements',
     audience: ['master'],
+    scenarios: ['start-delivery asked again while its delivery check ran: ISS-1084'],
   },
   'POST /api/projects/:id/requirements/:req/mark-delivered': {
     purpose: 'Moves a requirement in delivery to delivered once every live criterion passes.',
@@ -142,6 +145,7 @@ export const REQUIREMENT_REST_CARDS = {
       'Marking delivered because its issues closed, before every criterion passes on the running build.',
     family: 'requirements',
     audience: ['master'],
+    scenarios: ['a requirement marked delivered once every BC passed on the running build'],
   },
   'POST /api/projects/:id/requirements/:req/accept': {
     purpose: 'Accepts a requirement’s delivery at its head, judged by the acceptance checklist.',
@@ -160,6 +164,9 @@ export const REQUIREMENT_REST_CARDS = {
     redFlag: 'Accepting by decision to clear a gap nobody decided to leave.',
     family: 'requirements',
     audience: ['master'],
+    scenarios: [
+      'a shipped requirement accepted on the running build’s passes, naming its head revision',
+    ],
   },
   'POST /api/projects/:id/requirements/:req/verdicts': {
     purpose:
@@ -211,6 +218,9 @@ export const REQUIREMENT_REST_CARDS = {
     redFlag: 'Dropping a requirement live issues still deliver, before unlinking or dropping them.',
     family: 'requirements',
     audience: ['master'],
+    scenarios: [
+      'a requirement dropped while its issues still delivered it: REQUIREMENT_HAS_LIVE_ISSUES',
+    ],
   },
   'DELETE /api/projects/:id/requirements/:req/issues/:issue': {
     purpose: 'Unlinks an issue from the requirement it was linked as delivering.',
@@ -228,6 +238,7 @@ export const REQUIREMENT_REST_CARDS = {
       'Unlinking an issue to make a refusal go away while it still delivers the requirement.',
     family: 'requirements',
     audience: ['master'],
+    scenarios: ['an issue linked to the wrong requirement: REQUIREMENT_ISSUE_LINKED_ELSEWHERE'],
   },
   'PATCH /api/projects/:id/requirements/:req': {
     purpose: 'Names the person who owns a requirement, or clears its owner.',
@@ -246,6 +257,7 @@ export const REQUIREMENT_REST_CARDS = {
     redFlag: 'Sending a requirement’s text or status here: this door sets only its owner.',
     family: 'requirements',
     audience: ['master'],
+    scenarios: ['an owner who is no member set on a requirement: REQUIREMENT_OWNER_NOT_MEMBER'],
   },
   'POST /api/projects/:id/contract-requests': {
     purpose: 'Asks a provider project for a change to a contract this project consumes.',

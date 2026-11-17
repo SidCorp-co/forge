@@ -57,6 +57,7 @@ const CARDS = {
       'Counting issues.list by hand to say how the project stands: it disagrees with the dashboard.',
     family: 'product.status',
     audience: ['person'],
+    scenarios: ['“how does it stand” answered by counting issues.list: ISS-1183'],
   },
   needs_you: {
     purpose: 'Lists only the decisions waiting on you, each with the recommended answer and why.',
@@ -76,6 +77,7 @@ const CARDS = {
       'Asking a person something without reading needs_you, when it already waits on them with a recommendation.',
     family: 'product.status',
     audience: ['person'],
+    scenarios: ['a person asking what waits on them, answered from needs_you'],
   },
   decisions: {
     purpose: 'Reads the decisions recorded in the project, with who decided, when and why.',

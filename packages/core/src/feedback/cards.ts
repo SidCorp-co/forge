@@ -101,6 +101,7 @@ export const FEEDBACK_REST_CARDS = {
     redFlag: 'Filing a second item about the requirement instead of moving this one to it.',
     family: 'project-feedback',
     audience: ['master'],
+    scenarios: ['items about a screen refiled once a requirement recorded their rule: ISS-264'],
   },
   'POST /api/projects/:id/feedback/:fb/verify': {
     purpose: 'Confirms a resolved feedback item is fixed for its reporter, saying what was seen.',
@@ -146,6 +147,7 @@ export const FEEDBACK_REST_CARDS = {
       'Reopening with “still broken” and nothing of what you ran or saw on the running build.',
     family: 'project-feedback',
     audience: ['master'],
+    scenarios: ['a fix that did not hold reopened with what was run on the build'],
   },
   'POST /api/projects/:id/feedback/:fb/confirm-wait': {
     purpose:
@@ -170,6 +172,7 @@ export const FEEDBACK_REST_CARDS = {
       'Verifying before the event that tests the fix happened, or letting the confirm nudge repeat every pass.',
     family: 'project-feedback',
     audience: ['master', 'run'],
+    scenarios: ['the confirm nudge repeated every pass with no wait recorded: ISS-902 (FB-480)'],
   },
   'POST /api/projects/:id/feedback/:fb/snooze': {
     purpose: 'Parks a new or reopened item out of New until a date, saying why.',
@@ -189,6 +192,7 @@ export const FEEDBACK_REST_CARDS = {
     redFlag: 'Snoozing an item to dodge its triage, with no event the date waits on.',
     family: 'project-feedback',
     audience: ['master'],
+    scenarios: ['a snooze dated in the past: FEEDBACK_SNOOZE_PAST'],
   },
   'POST /api/projects/:id/feedback/:fb/messages': {
     purpose:
@@ -214,6 +218,7 @@ export const FEEDBACK_REST_CARDS = {
     redFlag: 'Writing an issue key, an error code or a table name to a reporter.',
     family: 'project-feedback',
     audience: ['master'],
+    scenarios: ['a reporter told an issue key and an error code: bots-answer-users-by-name'],
   },
   'POST /api/projects/:id/feedback/:fb/verify-ask': {
     purpose:
@@ -231,6 +236,7 @@ export const FEEDBACK_REST_CARDS = {
       'Asking the same reporter again each pass: one ask stays on their bell until they answer.',
     family: 'project-feedback',
     audience: ['master'],
+    scenarios: ['a shipped item’s reporter asked again once, by the steward'],
   },
   'POST /api/projects/:id/feedback/:fb/tell-shipped': {
     purpose:
@@ -249,6 +255,7 @@ export const FEEDBACK_REST_CARDS = {
     redFlag: 'Telling every routed item’s reporter after a release, where most ask on their own.',
     family: 'project-feedback',
     audience: ['run'],
+    scenarios: ['the steward telling reporters whose items asked on their own'],
   },
   'POST /api/projects/:id/feedback/report': {
     purpose: 'Files the top bar’s one-sentence report and screenshot from the page a person is on.',
@@ -265,6 +272,7 @@ export const FEEDBACK_REST_CARDS = {
     redFlag: 'An agent filing through the page’s report door instead of submit with its target.',
     family: 'project-feedback',
     audience: ['person'],
+    scenarios: ['agents filing through the page’s report door: FEEDBACK_KIND_NEEDED'],
   },
   'POST /api/projects/:id/feedback/:fb/messages/preview': {
     purpose: 'Shows how a message to an item’s reporters reads before it is sent.',
@@ -281,5 +289,6 @@ export const FEEDBACK_REST_CARDS = {
       'Previewing a relay (relayed: true), which sends no notice and has nothing to preview.',
     family: 'project-feedback',
     audience: ['master'],
+    scenarios: ['a relay sent to preview: relayed true has none'],
   },
 } satisfies Record<string, CapabilityCardBody>;

@@ -206,6 +206,7 @@ const CARDS = {
       'Giving up on a door, or guessing around it, without saying so: the feature never learns it failed.',
     family: 'forge-feedback',
     audience: ['bot', 'master', 'run'],
+    scenarios: ['a door report naming no door the catalog serves: DOOR_REPORT_UNKNOWN_DOOR'],
   },
   ...FEEDBACK_CARDS,
 } satisfies Record<string, CapabilityCardBody>;

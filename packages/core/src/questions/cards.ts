@@ -112,5 +112,6 @@ export const QUESTION_REST_CARDS = {
     redFlag: 'Writing ids, codes or table names in the plain summary a person decides from.',
     family: 'issue-order',
     audience: ['master'],
+    scenarios: ['an open question reading “No summary” where its person decides'],
   },
 } satisfies Record<string, CapabilityCardBody>;

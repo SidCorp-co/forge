@@ -29,6 +29,7 @@ export const CARDS = {
     redFlag: 'Filing another item for what list with q already holds.',
     family: 'project-feedback',
     audience: ['person', 'bot'],
+    scenarios: ['a person asking what users reported on a requirement'],
   },
   get: {
     purpose:
@@ -52,6 +53,7 @@ export const CARDS = {
       'Telling a requester an item’s phase from a list row, where its own read follows the work it was routed to.',
     family: 'project-feedback',
     audience: ['person', 'bot'],
+    scenarios: ['a requester asking what became of FB-n, answered from its own read'],
   },
   clarify: {
     purpose:
@@ -77,6 +79,7 @@ export const CARDS = {
       'Asking several questions in one call, or asking the reporter what the item already says.',
     family: 'project-feedback',
     audience: ['person'],
+    scenarios: ['a feedback item clarified with several questions in one call'],
   },
   attach: {
     purpose:
@@ -106,6 +109,7 @@ export const CARDS = {
     redFlag: 'Saying redacted: true on an image where something personal shows.',
     family: 'project-feedback',
     audience: ['person'],
+    scenarios: ['approved design images attached so the item’s builder reads them: ISS-879'],
   },
   progress: {
     purpose:
@@ -121,6 +125,7 @@ export const CARDS = {
     redFlag: 'Promising a requester a date the block does not hold.',
     family: 'project-feedback',
     audience: ['person', 'bot'],
+    scenarios: ['a requester asking when their report will be fixed'],
   },
   similar: {
     purpose: 'Finds the feedback items nearest one item, to spot a duplicate before it is triaged.',
@@ -139,5 +144,6 @@ export const CARDS = {
       'Triaging an item into new work without reading similar, or reading a withheld answer as none similar.',
     family: 'project-feedback',
     audience: ['person'],
+    scenarios: ['FB-520 filed as a duplicate of ISS-1005, the similar read never taken'],
   },
 } satisfies Partial<Record<(typeof ACTIONS)[number], CapabilityCardBody>>;

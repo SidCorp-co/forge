@@ -36,6 +36,7 @@ export const RELEASE_REST_CARDS = {
       'Recording a release from the merge alone, before reading that the running app serves it.',
     family: 'release',
     audience: ['master'],
+    scenarios: ['issues closed on runtime-identity verdicts through a hand record: ISS-1062'],
   },
   'POST /api/projects/:projectId/release-batches': {
     purpose:
@@ -81,6 +82,7 @@ export const RELEASE_REST_CARDS = {
     redFlag: 'Aborting with an empty body: the run ends with no reason and its version undecided.',
     family: 'release',
     audience: ['run'],
+    scenarios: ['an abort sent as {}: “aborted by agent” with no reason (ISS-670)'],
   },
   'POST /api/projects/:projectId/release-batches/:runId/carried': {
     purpose:
@@ -97,6 +99,7 @@ export const RELEASE_REST_CARDS = {
     redFlag: 'Declaring what a run left while it is still open, instead of on its own abort.',
     family: 'release',
     audience: ['master'],
+    scenarios: ['a cut refused RELEASE_VERSION_UNDECIDED over an aborted run'],
   },
   'POST /api/projects/:projectId/shipped-in-records': {
     purpose: 'Closes an awaiting_release issue on a shipped release that already holds its commit.',
@@ -124,6 +127,7 @@ export const RELEASE_REST_CARDS = {
       'Cutting a new, empty release for an issue whose commit an older release already shipped.',
     family: 'release',
     audience: ['master'],
+    scenarios: ['late merge marks recorded by hand for days: ISS-846'],
   },
   'POST /api/projects/:projectId/release-batches/:runId/approvals': {
     purpose: 'Opens the approval request a production release waits on, with its evidence.',
@@ -187,6 +191,7 @@ export const RELEASE_REST_CARDS = {
     redFlag: 'Naming the commit you merged rather than the one the running app reports serving.',
     family: 'release',
     audience: ['run'],
+    scenarios: ['the one shipped-commit call, refused for a commit the roster did not hold'],
   },
   'POST /api/projects/:projectId/releases/:version/repair': {
     purpose: 'Repairs a release recorded failed that did ship, keeping the failure on its record.',
@@ -206,6 +211,7 @@ export const RELEASE_REST_CARDS = {
     redFlag: 'Repairing every failed release by routine instead of reporting why runs end failed.',
     family: 'release',
     audience: ['master'],
+    scenarios: ['a failed release repaired by routine instead of reported: ISS-928 (FB-484)'],
   },
   'POST /api/projects/:projectId/release-batches/:runId/finish': {
     purpose: 'Records that a release run released its roster, naming the commit production serves.',
@@ -231,6 +237,7 @@ export const RELEASE_REST_CARDS = {
       'Finishing because the steps ran without throwing, before the approval is decided or the deploy is seen live.',
     family: 'release',
     audience: ['run'],
+    scenarios: ['a release finished while its approval still waited: RELEASE_AWAITING_APPROVAL'],
   },
   'POST /api/projects/:projectId/release-batches/:runId/range': {
     purpose: 'Reports what a release’s commit range ships, from the checkout that cut it.',
@@ -260,6 +267,7 @@ export const RELEASE_REST_CARDS = {
       'Deploying a head the range refused as outside the roster: it ships issues still waiting at the gate.',
     family: 'release',
     audience: ['run'],
+    scenarios: ['a release head outside the roster: RELEASE_RANGE_OUTSIDE_ROSTER'],
   },
   'POST /api/projects/:projectId/release-batches/:runId/range/reads': {
     purpose:
@@ -279,5 +287,6 @@ export const RELEASE_REST_CARDS = {
       'Sending every changed file’s text in the range report instead of only the files this read names.',
     family: 'release',
     audience: ['run'],
+    scenarios: ['the range report’s file texts asked by the release range verb'],
   },
 } satisfies Record<string, CapabilityCardBody>;

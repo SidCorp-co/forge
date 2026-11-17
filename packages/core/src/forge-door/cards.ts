@@ -30,5 +30,6 @@ export const FORGE_DOOR_REST_CARDS = {
       'Polling the claim by hand beside the hook, or posting a claimed answer in the project channel.',
     family: 'forge-feedback',
     audience: ['master', 'run'],
+    scenarios: ['a claimed answer posted in the project channel by the session it was meant for'],
   },
 } satisfies Record<string, CapabilityCardBody>;

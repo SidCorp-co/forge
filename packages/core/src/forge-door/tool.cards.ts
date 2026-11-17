@@ -20,6 +20,7 @@ export const FEEDBACK_CARDS: Readonly<Record<string, CapabilityCardBody>> = {
       'Reporting a Forge defect again because the earlier item is out of sight: list first, then reply on it or reopen it.',
     family: 'forge-feedback',
     audience: ['person', 'master', 'run'],
+    scenarios: ['a master listing the Forge items it reported before filing another'],
   },
   get: {
     purpose: 'Reads one item you reported: what its triage told you and, once shipped, its proof.',
@@ -40,6 +41,7 @@ export const FEEDBACK_CARDS: Readonly<Record<string, CapabilityCardBody>> = {
       'Confirming a shipped item from its phase alone, without reading `shipEvidence` against what you saw (REQ-66 BC-8).',
     family: 'forge-feedback',
     audience: ['person', 'master', 'run'],
+    scenarios: ['a shipped Forge item confirmed from its phase alone: REQ-66 BC-8'],
   },
   progress: {
     purpose: 'Reads only whether work on an item you reported runs, and when it is likely done.',
@@ -54,6 +56,7 @@ export const FEEDBACK_CARDS: Readonly<Record<string, CapabilityCardBody>> = {
     redFlag: 'Telling the forecast as a promised date, where it is a range or plainly none.',
     family: 'forge-feedback',
     audience: ['person', 'master', 'run'],
+    scenarios: ['a master asked when its Forge fix lands, answered from progress'],
   },
   verify: {
     purpose: 'Confirms that a shipped fix to an item you reported holds on the running build.',
@@ -100,6 +103,7 @@ export const FEEDBACK_CARDS: Readonly<Record<string, CapabilityCardBody>> = {
     redFlag: 'Filing a new item for a fix that did not hold, so the old one reads resolved.',
     family: 'forge-feedback',
     audience: ['person', 'master', 'run'],
+    scenarios: ['a Forge fix that did not hold, reopened with what was run: ISS-749'],
   },
   reply: {
     purpose: 'Answers back once to the answer standing on an item you reported.',
@@ -120,5 +124,6 @@ export const FEEDBACK_CARDS: Readonly<Record<string, CapabilityCardBody>> = {
     redFlag: 'Replying in pieces: the second reply to one answer is refused.',
     family: 'forge-feedback',
     audience: ['person', 'master', 'run'],
+    scenarios: ['a second reply to one answer: FEEDBACK_REPLY_SPENT (ISS-749)'],
   },
 };

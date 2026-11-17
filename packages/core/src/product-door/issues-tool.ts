@@ -239,6 +239,7 @@ const CARDS = {
       'Reading closed as live: an issue closes when its criteria are met, and whether it is live is the release record’s.',
     family: 'product.status',
     audience: ['person'],
+    scenarios: ['issue keys sent as ISS602, #602 and ISS-602x: ISS-891'],
   },
   get: {
     purpose:
@@ -297,6 +298,9 @@ const CARDS = {
       'Asking the person whether to file, or listing criteria only in the description: the first parks routine work on him, the second leaves the issue with no criterion.',
     family: 'product.status',
     audience: ['person'],
+    scenarios: [
+      'a client asking the person before filing, criteria left in the description: ISS-1183',
+    ],
   },
 } satisfies Record<(typeof ISSUES_TOOL_ACTIONS)[number], CapabilityCardBody>;
 

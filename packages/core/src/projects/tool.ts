@@ -87,6 +87,7 @@ const CARDS = {
     redFlag: 'Telling a person a project does not exist because a fenced token does not list it.',
     family: 'product.status',
     audience: ['person'],
+    scenarios: ['a project matched by its slug before setting up another: FB-596'],
   },
   get: {
     purpose: 'Reads one project: your role, its members, its labels and its base branch.',
@@ -104,6 +105,7 @@ const CARDS = {
       'Answering where a project deploys from get, which holds no environments: config.get reads them.',
     family: 'product.status',
     audience: ['person'],
+    scenarios: ['where a project deploys answered from get, which holds no environments: FB-596'],
   },
   create: {
     purpose:
@@ -125,6 +127,7 @@ const CARDS = {
       'Stopping at slug and name as if that were the whole project: its description, repository and environments come from config.write.',
     family: 'setup',
     audience: ['person'],
+    scenarios: ['gwork set up over MCP, its repository thought unsettable: FB-596'],
   },
 } satisfies Record<(typeof ACTIONS)[number], CapabilityCardBody>;
 

@@ -30,6 +30,7 @@ export const CARDS = {
     redFlag: 'Telling a person a date or done that `progress.says` does not hold.',
     family: 'product.requirement',
     audience: ['person'],
+    scenarios: ['a person’s question on what waits answered with a date the read did not hold'],
   },
   get: {
     purpose:
@@ -53,6 +54,9 @@ export const CARDS = {
       'Revising from memory without get: baseRevision goes stale (REQUIREMENT_REVISION_STALE) and the criteria codes are lost.',
     family: 'product.requirement',
     audience: ['person'],
+    scenarios: [
+      'REQ-75’s criteria lost to a revision written from memory: REQUIREMENT_REVISION_STALE',
+    ],
   },
   similar: {
     purpose: 'Finds the requirements nearest a wish, so a wish already covered is revised there.',
@@ -75,6 +79,7 @@ export const CARDS = {
       'Reading provider_not_configured or withheld_by_policy as none similar, and drafting a duplicate (ISS-117).',
     family: 'product.requirement',
     audience: ['person'],
+    scenarios: ['provider_not_configured read as none similar, then a duplicate drafted: ISS-117'],
   },
   create: {
     purpose: 'Drafts a new requirement at revision 1, with its criteria and why it is wanted.',
@@ -97,6 +102,7 @@ export const CARDS = {
     redFlag: 'Drafting a second requirement for a wish one already covers: revise that one.',
     family: 'product.requirement',
     audience: ['person'],
+    scenarios: ['REQ-14 drafted as a duplicate of REQ-11: ISS-117'],
   },
   revise: {
     purpose:
@@ -186,6 +192,7 @@ export const CARDS = {
       'Withdrawing another author’s draft without requirements.approve, or one still proposed, which its approver returns first.',
     family: 'product.requirement',
     audience: ['person'],
+    scenarios: ['a draft that blocked a new revision: REQUIREMENT_REVISION_OPEN'],
   },
   link_design: {
     purpose: 'Links an existing workflow design to a requirement, so its next agree pins it.',
@@ -203,6 +210,7 @@ export const CARDS = {
     redFlag: 'Reading the link as pinned: only the next agree pins the design’s approved revision.',
     family: 'product.requirement',
     audience: ['person'],
+    scenarios: ['a design drawn after its requirement, traced before it was linked'],
   },
   trace_criterion: {
     purpose: 'Traces one business criterion onto the steps and edges of a linked design.',
@@ -250,6 +258,7 @@ export const CARDS = {
       'Giving a date the block does not hold, or none where eta says why no date can be given.',
     family: 'product.requirement',
     audience: ['person'],
+    scenarios: ['a person asking when a requirement is done, answered from progress'],
   },
   unlink_design: {
     purpose: 'Removes a design’s link to a requirement, and every criterion’s trace onto it.',
@@ -265,6 +274,7 @@ export const CARDS = {
       'Unlinking to clear a stale trace, which drops every criterion’s trace: trace_criterion rewrites one.',
     family: 'product.requirement',
     audience: ['person'],
+    scenarios: ['a design unlinked from the requirement it did not serve'],
   },
   answer: {
     purpose: 'Answers a question standing on a requirement, in the person’s own words.',
