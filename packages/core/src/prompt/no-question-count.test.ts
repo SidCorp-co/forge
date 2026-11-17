@@ -1,5 +1,7 @@
+// @direct-test-of packages/contracts/src/suggestions.ts
 // @direct-test-of packages/core/src/intake/prompt.ts
 // @direct-test-of packages/core/src/onboarding/agent-writes.ts
+// @direct-test-of packages/core/src/pipeline/step-handoff-schema.ts
 // @direct-test-of packages/core/src/questionnaires/index.ts
 // @direct-test-of packages/core/src/questionnaires/read.ts
 // @direct-test-of packages/core/src/steward/door-ask.ts
@@ -7,7 +9,8 @@
 // REQ-67 r2 BC-4): an agent asks the questions it needs, each with a recommended answer. No prompt,
 // guide, tool description or refusal that asks a person something may put a count on those
 // questions again. Each served guide is read as served, and the source of every module that asks is
-// read whole, so a count written as a literal, a constant in a template or a comment all go red.
+// read whole, so a count written as a literal, a constant in a template or a comment all go red; and
+// no route schema in core or contracts caps the array a question field holds.
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -97,6 +100,43 @@ const SOURCES = [
   ...ASKING_CONTRACTS.map((f) => join(CONTRACTS, f)),
 ];
 
+/**
+ * A route schema caps the questions it carries when the array a question field holds is chained with
+ * `.max(` (ISS-904 c1 on dev.708: a step handoff's `openQuestions` `.max(10)`, a requirement spec's
+ * `.max(50)`). A card's `items` and `answers` are its questions only in the card's own sources. A
+ * bound on each question's text, or on the list's bytes, is no count.
+ */
+const QUESTION_FIELDS = /\b(openQuestions|questions|asks|clarifications|unknowns)\??\s*[:=]\s*/g;
+const CARD_FIELDS = /\b(items|answers)\??\s*[:=]\s*/g;
+const CARD_SOURCES = /(?:contracts\/src\/onboarding\.ts|core\/src\/questionnaires\/)/;
+
+/** The expression from `from` to its end, with every bracketed part emptied: `z.array().max()`. */
+function outerChain(text: string, from: number): string {
+  let depth = 0;
+  let out = '';
+  for (const c of text.slice(from)) {
+    if (depth === 0 && (c === ',' || c === ';')) break;
+    if ('([{'.includes(c)) depth += 1;
+    else if (')]}'.includes(c)) depth -= 1;
+    if (depth < 0) break;
+    if (depth === 0 || (depth === 1 && '([{'.includes(c))) out += c;
+  }
+  return out.replace(/\s+/g, '');
+}
+
+function cappedQuestionFields(path: string, text: string): string[] {
+  const fields = CARD_SOURCES.test(path) ? [QUESTION_FIELDS, CARD_FIELDS] : [QUESTION_FIELDS];
+  return fields.flatMap((field) =>
+    [...text.matchAll(field)].flatMap((m) => {
+      const chain = outerChain(text, (m.index ?? 0) + m[0].length);
+      if (!/\.array\(/.test(chain) || !/\)\.max\(/.test(chain)) return [];
+      return [`${path}:${text.slice(0, m.index).split('\n').length}: ${m[1]} ${chain}`];
+    }),
+  );
+}
+
+const SCHEMA_SOURCES = [...sourcesUnder(SRC), ...sourcesUnder(CONTRACTS)];
+
 describe('no question count returns to what asks a person (ISS-904)', () => {
   it('reads every asking module, so a moved file cannot pass by matching nothing', () => {
     expect(SOURCES.length).toBeGreaterThan(200);
@@ -140,5 +180,36 @@ describe('no question count returns to what asks a person (ISS-904)', () => {
     );
     // a bound on a card's payload is no count of what it asks
     expect(countsIn('(at least one item; 1048576 bytes of JSON at most)')).toEqual([]);
+  });
+
+  it('no route schema caps the questions a field carries', () => {
+    expect(SCHEMA_SOURCES).toContain(join(SRC, 'pipeline/step-handoff-schema.ts'));
+    expect(SCHEMA_SOURCES).toContain(join(CONTRACTS, 'suggestions.ts'));
+    const found = SCHEMA_SOURCES.flatMap((path) =>
+      cappedQuestionFields(relative(join(SRC, '../..'), path), readFileSync(path, 'utf8')),
+    );
+    expect(found).toEqual([]);
+  });
+
+  it('catches each shape a capped question field was written in', () => {
+    for (const planted of [
+      'openQuestions: z.array(z.string().min(1)).max(10),',
+      '\topenQuestions: z.array(requirementOpenQuestionSchema).max(50).optional(),',
+      'questions: z\n  .array(questionSchema)\n  .min(1)\n  .max(QUESTIONS_MAX),',
+      'const unknowns = z.array(z.string()).max(5);',
+    ]) {
+      expect(cappedQuestionFields('src/any.ts', planted), planted).toHaveLength(1);
+    }
+    expect(
+      cappedQuestionFields('contracts/src/onboarding.ts', 'items: z.array(item).max(15),'),
+    ).toHaveLength(1);
+    for (const left of [
+      'openQuestions: z.array(z.string().min(1).max(2000)).refine(withinBytes),',
+      'question: z.string().trim().min(5).max(2_000),',
+      'options: z.array(option).min(2).max(8),',
+      'items: z.array(label).max(50),',
+    ]) {
+      expect(cappedQuestionFields('src/any.ts', left), left).toEqual([]);
+    }
   });
 });
