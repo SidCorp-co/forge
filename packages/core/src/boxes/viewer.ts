@@ -269,30 +269,60 @@ async function serveInput(ws: WebSocket, boxId: string, deviceId: string, userId
   });
   ws.on('close', () => stream.end());
   stream.on('error', () => ws.close(1011, 'box input stream ended'));
-  ws.on('message', async (data, isBinary) => {
+  ws.on('message', (data, isBinary) => {
     if (isBinary) return;
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(data.toString());
-    } catch {
-      parsed = null;
-    }
-    const input = boxInputSchema.safeParse(parsed);
-    if (!input.success) {
-      ws.send(
-        JSON.stringify({
-          type: 'refused',
-          detail: input.error.issues[0]?.message ?? 'not a BoxInput',
-        }),
-      );
-      return;
-    }
-    if (!(await recordPersonInput(boxId, userId, input.data))) {
-      end();
-      return;
-    }
-    stream.write(`${JSON.stringify(input.data)}\n`);
+    void holderLine(boxId, userId, data.toString(), {
+      refuse: (detail) => ws.send(JSON.stringify({ type: 'refused', detail })),
+      forward: (line) => stream.write(line),
+      notHeld: end,
+      unrecorded: () => {
+        stream.end();
+        ws.close(1011, 'box input could not be recorded');
+      },
+    });
   });
+}
+
+/**
+ * One line the holder sent: refused back where it is no `BoxInput`, else recorded and only then
+ * forwarded; the socket ends where the hold is over, or where the record could not be written, so an
+ * input is never forwarded unrecorded and a failed write never escapes the socket's handler.
+ */
+export async function holderLine(
+  boxId: string,
+  userId: string,
+  text: string,
+  to: {
+    refuse: (detail: string) => void;
+    forward: (line: string) => void;
+    notHeld: () => void;
+    unrecorded: () => void;
+  },
+): Promise<void> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    parsed = null;
+  }
+  const input = boxInputSchema.safeParse(parsed);
+  if (!input.success) {
+    to.refuse(input.error.issues[0]?.message ?? 'not a BoxInput');
+    return;
+  }
+  let held: boolean;
+  try {
+    held = await recordPersonInput(boxId, userId, input.data);
+  } catch (err) {
+    logger.warn({ err, boxId }, 'box input: a holder input could not be recorded; the socket ends');
+    to.unrecorded();
+    return;
+  }
+  if (!held) {
+    to.notHeld();
+    return;
+  }
+  to.forward(`${JSON.stringify(input.data)}\n`);
 }
 
 export function closeBoxViewers(): void {
