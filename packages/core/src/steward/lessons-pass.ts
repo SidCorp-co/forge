@@ -149,7 +149,7 @@ export function groupingPrompt(
     `Every proposal says what it is about in ${ABOUT_WORDS}`,
     `Every proposal names its \`anchor\`, what the lesson is about, so the change that moves it retires it: ${LESSON_ANCHOR_SHAPE}. Take it from the corrections' items and threads; a card anchor names only one of the cards below, never an item's id; a group whose anchor they do not show is left for a correction that shows it.`,
     cardChoices(cards),
-    `Every proposal names its \`module\`: the slug of the business module below that the lesson is about, as its corrections' items and threads show, or null where none fits, and the lesson waits Unplaced for an agent to place.\nModules:\n${input.modules.map(moduleLine).join('\n') || '(none: every \`module\` is null)'}`,
+    `Every proposal names its \`module\`: the slug of the business module below that the lesson is about, as its corrections' items and threads show, or null where none fits, and the lesson waits Unplaced for an agent to place.\nModules:\n${input.modules.map(moduleLine).join('\n') || '(none: every `module` is null)'}`,
     'Corrections on different items make the same point when one general mistake lies behind them: the same rule missed, the same kind of check skipped, the same wording or habit corrected. Say that general rule, not the item.',
     'Leave a correction alone when nothing else makes its point; it waits for a second one.',
     "Before you draft from a correction that carries its thread, read the thread: the person's words answer the posts before them, so the lesson is about what those posts are about (a product's own messages, a record, a step), never by default about the assistant's own reply.",

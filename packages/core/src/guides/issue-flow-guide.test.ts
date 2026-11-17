@@ -101,7 +101,9 @@ describe('the landing teaches recording what the work named, at the mark', () =>
     expect(flat(DISPATCH_GUIDE.body)).toContain(
       "Record the terms and rules the work named under its module, as the mark's `moduleMap` says",
     );
-    expect(DIRECT_ORDER).toContain('each mark answers `moduleMap`: write them there');
+    expect(DIRECT_ORDER).toContain(
+      'Each mark answers `moduleMap`: write there the terms and rules',
+    );
   });
 
   // ISS-1256 c9: on 2026-11-17 the step read "each term a person used" and "Met none, write none",
@@ -118,9 +120,7 @@ describe('the landing teaches recording what the work named, at the mark', () =>
     expect(guide).not.toContain('Met none, write none');
     expect(dispatch).toContain("each builder's report names them");
     expect(dispatch).toContain('Comment what landed and which you wrote');
-    expect(DIRECT_ORDER).toContain(
-      "Each builder's report names the terms and rules its work named (the names its issue, criteria, decision or code give a thing; the limits it settled)",
-    );
+    expect(DIRECT_ORDER).toContain("the terms and rules each builder's report names");
     expect(DIRECT_ORDER).toContain('say in the landing comment which you wrote');
   });
 });

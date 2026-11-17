@@ -30,6 +30,7 @@ import { rowsOf } from '../db/raw-sql.js';
 import { listIssueStanding } from '../issues/index.js';
 import { cardFreshness } from '../lessons/index.js';
 import { doorCallsOf } from '../lib/door-catalog.js';
+import { landingSaid } from './landing-said.js';
 import {
   capabilityModules,
   type MapModule,
@@ -37,7 +38,6 @@ import {
   mapModules,
   moduleNamed,
 } from './module-map-nodes.js';
-import { landingSaid } from './landing-said.js';
 
 const DAY_MS = 86_400_000;
 
@@ -511,7 +511,12 @@ export async function landingMapOf(projectId: string, issueId: string): Promise<
   const id = rowsOf<{ id: string }>(placed)[0]?.id;
   const module = id ? modules.byId.get(id) : undefined;
   const counts = { total: roots.length, empty };
-  const at = { base: `/api/projects/${projectId}`, issueId, roots: roots.map((r) => r.slug), empty };
+  const at = {
+    base: `/api/projects/${projectId}`,
+    issueId,
+    roots: roots.map((r) => r.slug),
+    empty,
+  };
   // ISS-1269: with no module at all there is nowhere to place it, and creating one is an admin's act
   if (!module) return { module: null, modules: counts, said: landingSaid({ ...at, module: null }) };
   const within = (e: Item) => {

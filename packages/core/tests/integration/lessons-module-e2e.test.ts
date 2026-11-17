@@ -10,7 +10,13 @@
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { createTestModule, rows } from '../helpers/factories.js';
-import { correction, openLessonsWorld, ownProject, pass, proposal } from '../helpers/lessons-world.js';
+import {
+  correction,
+  openLessonsWorld,
+  ownProject,
+  pass,
+  proposal,
+} from '../helpers/lessons-world.js';
 
 openLessonsWorld();
 
@@ -32,11 +38,17 @@ describe("the steward's grouping places each lesson it drafts (ISS-1256 c9)", ()
     const tally = await pass({
       project: own.id,
       seen: (input) =>
-        handed.push(...((input as { modules: { slug: string }[] }).modules ?? []).map((m) => m.slug)),
-      proposals: [{ ...proposal('Declare a run before its builder.', [a, b]), module: 'execution' }],
+        handed.push(
+          ...((input as { modules: { slug: string }[] }).modules ?? []).map((m) => m.slug),
+        ),
+      proposals: [
+        { ...proposal('Declare a run before its builder.', [a, b]), module: 'execution' },
+      ],
     });
     expect(handed.sort()).toEqual(['execution', 'platform']);
-    expect(await placeOf(own.id, 'Declare a run before its builder.')).toEqual({ slug: 'execution' });
+    expect(await placeOf(own.id, 'Declare a run before its builder.')).toEqual({
+      slug: 'execution',
+    });
     expect(tally.placed).toBe(1);
   });
 
