@@ -2,20 +2,44 @@
 //! `/ws/preview-tunnel` while it holds a preview, carrying one stream per browser connection. Core
 //! opens every stream; the box connects it to the preview's port on its own loopback, from its own
 //! record of the preview and never from the frame, and copies bytes both ways without reading them.
+//! A stream to a Forge Box's channel (ISS-1276) goes to whatever that box's endpoints connect it to:
+//! the box's own loopback stream for `view`, its input translator for `input`.
 
 use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::sync::{mpsc, watch, Notify};
 use tokio_tungstenite::tungstenite::{client::IntoClientRequest, http::header, Message};
 
-use crate::codec::{self, Frame, ResetCode};
+use crate::codec::{self, Channel, Frame, ResetCode, Target};
 
 /// The ports of the previews this box serves now, by preview id.
 pub type Ports = Arc<Mutex<HashMap<String, u16>>>;
+
+/// One end of a stream on this box: a loopback socket, or a box's own pipe.
+pub trait Duplex: AsyncRead + AsyncWrite + Send + Unpin {}
+impl<T: AsyncRead + AsyncWrite + Send + Unpin> Duplex for T {}
+pub type Conn = Box<dyn Duplex>;
+pub type Connecting = Pin<Box<dyn Future<Output = Result<Conn, ResetCode>> + Send>>;
+
+/// The Forge Boxes this device runs, as the tunnel reaches them (ISS-1276). The box is named by
+/// core's frame; the endpoint is the runner's own record of it, never anything the frame carries.
+pub trait BoxEndpoints: Send + Sync + 'static {
+    /// Connect one stream to a box's channel, or the reason it cannot be.
+    fn connect(&self, box_id: &str, channel: Channel) -> Connecting;
+}
+
+/// What an open can reach: the previews' ports, and the boxes where this runner runs them.
+#[derive(Clone)]
+pub struct Targets {
+    pub ports: Ports,
+    pub boxes: Option<Arc<dyn BoxEndpoints>>,
+}
 
 pub struct TunnelConfig {
     /// `wss://<core>/ws/preview-tunnel`.
@@ -33,7 +57,7 @@ const PING_EVERY: Duration = Duration::from_secs(25);
 /// backoff (1 s to 30 s), until `cancel`.
 pub async fn run(
     cfg: TunnelConfig,
-    ports: Ports,
+    targets: Targets,
     mut wanted: watch::Receiver<bool>,
     mut cancel: watch::Receiver<bool>,
 ) {
@@ -49,7 +73,7 @@ pub async fn run(
             Ok(ws) => {
                 backoff = 1;
                 tracing::info!("[preview] tunnel connected");
-                if serve(ws, &ports, &mut wanted, &mut cancel).await {
+                if serve(ws, &targets, &mut wanted, &mut cancel).await {
                     return;
                 }
                 tracing::info!("[preview] tunnel closed");
@@ -108,7 +132,7 @@ impl Streams {
 /// One connected tunnel, until it drops (`false`: redial) or `cancel` (`true`: stop).
 async fn serve(
     ws: Socket,
-    ports: &Ports,
+    targets: &Targets,
     wanted: &mut watch::Receiver<bool>,
     cancel: &mut watch::Receiver<bool>,
 ) -> bool {
@@ -138,7 +162,7 @@ async fn serve(
         tokio::select! {
             msg = source.next() => match msg {
                 Some(Ok(Message::Binary(bytes))) => {
-                    on_message(&bytes, &mut streams, ports, &out_tx, &done_tx);
+                    on_message(&bytes, &mut streams, targets, &out_tx, &done_tx);
                 }
                 Some(Ok(Message::Ping(data))) => { let _ = out_tx.try_send(Message::Pong(data)); }
                 Some(Ok(Message::Close(_))) | None | Some(Err(_)) => break false,
@@ -165,7 +189,7 @@ async fn serve(
 fn on_message(
     bytes: &[u8],
     streams: &mut Streams,
-    ports: &Ports,
+    targets: &Targets,
     out: &mpsc::Sender<Message>,
     done: &mpsc::UnboundedSender<u32>,
 ) {
@@ -187,8 +211,8 @@ fn on_message(
     };
     let stream = frame.stream();
     let inbound = match frame {
-        Frame::Open { preview_id, .. } => {
-            return open(stream, preview_id, streams, ports, out, done, reset);
+        Frame::Open { target, .. } => {
+            return open(stream, target, streams, targets, out, done, reset);
         }
         Frame::Data { bytes, .. } => Inbound::Data(bytes),
         Frame::Window { delta, .. } => Inbound::Window(delta),
@@ -210,9 +234,9 @@ fn on_message(
 
 fn open(
     stream: u32,
-    preview: String,
+    target: Target,
     streams: &mut Streams,
-    ports: &Ports,
+    targets: &Targets,
     out: &mpsc::Sender<Message>,
     done: &mpsc::UnboundedSender<u32>,
     reset: impl Fn(u32, ResetCode),
@@ -220,24 +244,50 @@ fn open(
     if streams.by_id.contains_key(&stream) {
         return reset(stream, ResetCode::Protocol);
     }
+    let key = target.key();
     if streams.by_id.len() >= codec::MAX_STREAMS_PER_TUNNEL
-        || streams.count_of(&preview) >= codec::MAX_STREAMS_PER_PREVIEW
+        || streams.count_of(&key) >= codec::MAX_STREAMS_PER_PREVIEW
     {
         return reset(stream, ResetCode::StreamLimit);
     }
-    let port = ports
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
-        .get(&preview)
-        .copied();
-    let Some(port) = port else {
-        return reset(stream, ResetCode::PreviewNotRunning);
+    let connecting: Connecting = match target {
+        Target::Preview(preview) => {
+            let port = targets
+                .ports
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .get(&preview)
+                .copied();
+            let Some(port) = port else {
+                return reset(stream, ResetCode::PreviewNotRunning);
+            };
+            Box::pin(async move {
+                match tokio::time::timeout(
+                    CONNECT_TIMEOUT,
+                    crate::devserver::connect_loopback(port),
+                )
+                .await
+                {
+                    Ok(Ok(tcp)) => Ok(Box::new(tcp) as Conn),
+                    _ => Err(ResetCode::ConnectRefused),
+                }
+            })
+        }
+        Target::Box { box_id, channel } => match &targets.boxes {
+            Some(boxes) => boxes.connect(&box_id, channel),
+            None => return reset(stream, ResetCode::PreviewNotRunning),
+        },
     };
     let (tx, rx) = mpsc::unbounded_channel();
-    streams.by_id.insert(stream, (preview, tx));
+    streams.by_id.insert(stream, (key, tx));
     let (out, done) = (out.clone(), done.clone());
     tokio::spawn(async move {
-        pipe(stream, port, rx, &out).await;
+        match connecting.await {
+            Ok(conn) => pipe(stream, conn, rx, &out).await,
+            Err(code) => {
+                send(&out, Frame::Reset { stream, code }).await;
+            }
+        }
         let _ = done.send(stream);
     });
 }
@@ -280,30 +330,14 @@ async fn send(out: &mpsc::Sender<Message>, frame: Frame) -> bool {
     out.send(Message::Binary(wire(&frame).into())).await.is_ok()
 }
 
-/// One stream: connect to the dev server's loopback port and copy both ways within the credit.
+/// One stream: copy both ways between core and the connected end within the credit.
 async fn pipe(
     stream: u32,
-    port: u16,
+    conn: Conn,
     mut inbound: mpsc::UnboundedReceiver<Inbound>,
     out: &mpsc::Sender<Message>,
 ) {
-    let tcp = match tokio::time::timeout(CONNECT_TIMEOUT, crate::devserver::connect_loopback(port))
-        .await
-    {
-        Ok(Ok(tcp)) => tcp,
-        _ => {
-            send(
-                out,
-                Frame::Reset {
-                    stream,
-                    code: ResetCode::ConnectRefused,
-                },
-            )
-            .await;
-            return;
-        }
-    };
-    let (rd, mut wr) = tcp.into_split();
+    let (rd, mut wr) = tokio::io::split(conn);
     let credit = Arc::new(Credit::default());
     credit.add(codec::INITIAL_WINDOW);
     let activity = Arc::new(Mutex::new(tokio::time::Instant::now()));
@@ -365,10 +399,10 @@ async fn pipe(
     upload.abort();
 }
 
-/// The dev server's bytes to core, as data frames within the credit; `true` once it half-closed.
+/// The connected end's bytes to core, as data frames within the credit; `true` once it half-closed.
 async fn upload(
     stream: u32,
-    mut rd: tokio::net::tcp::OwnedReadHalf,
+    mut rd: tokio::io::ReadHalf<Conn>,
     credit: Arc<Credit>,
     out: mpsc::Sender<Message>,
     activity: Arc<Mutex<tokio::time::Instant>>,

@@ -1,6 +1,7 @@
 //! The preview tunnel's frames, mirroring `packages/contracts/src/preview-tunnel.ts` byte for byte:
 //! a 12-byte big-endian header (version 1, type, flags 0, stream id, length) and, for `open` and
-//! `data`, the payload. The fixtures both sides read
+//! `data`, the payload. An `open` names a preview, or a Forge Box's channel (ISS-1276): its `view`
+//! at the viewer's frame rate, or its holder's `input`. The fixtures both sides read
 //! (`packages/contracts/fixtures/preview-tunnel-frames.json`) hold the two to one encoding.
 
 /// The protocol version; yamux's 0 is refused so the two are never mistaken for each other.
@@ -16,6 +17,8 @@ pub const WINDOW_UPDATE_AT: u32 = 131_072;
 pub const MAX_STREAMS_PER_PREVIEW: usize = 128;
 pub const MAX_STREAMS_PER_TUNNEL: usize = 1024;
 pub const STREAM_IDLE_SECONDS: u64 = 300;
+/// The frame rates a box view stream is opened at (`TUNNEL_BOX_FPS`).
+pub const BOX_FPS: std::ops::RangeInclusive<u32> = 1..=30;
 
 /// Why a stream was torn down; the wire carries the number.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,9 +60,35 @@ impl ResetCode {
     }
 }
 
+/// What an `open` asks the box to connect: a preview's dev server, or one channel of a Forge Box.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Target {
+    Preview(String),
+    Box { box_id: String, channel: Channel },
+}
+
+/// A Forge Box stream's channel (`TunnelBoxTarget`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Channel {
+    /// The box's screen, at the viewer's own rate.
+    View { fps: u32 },
+    /// The holder's `BoxInput` lines.
+    Input,
+}
+
+impl Target {
+    /// The key the per-target stream limit counts under.
+    pub fn key(&self) -> String {
+        match self {
+            Self::Preview(id) => id.clone(),
+            Self::Box { box_id, .. } => format!("box:{box_id}"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Frame {
-    Open { stream: u32, preview_id: String },
+    Open { stream: u32, target: Target },
     Data { stream: u32, bytes: Vec<u8> },
     Window { stream: u32, delta: u32 },
     Close { stream: u32 },
@@ -101,13 +130,8 @@ pub fn encode(frame: &Frame) -> Result<Vec<u8>, String> {
         return Err("tunnel frame streamId 0 is not 1..4294967295".into());
     }
     let (kind, length, payload): (u8, u32, Vec<u8>) = match frame {
-        Frame::Open { preview_id, .. } => {
-            if !is_uuid(preview_id) {
-                return Err(format!(
-                    "tunnel open names previewId \"{preview_id}\", which is not a uuid"
-                ));
-            }
-            let body = serde_json::json!({ "previewId": preview_id }).to_string();
+        Frame::Open { target, .. } => {
+            let body = open_body(target)?.to_string();
             (1, body.len() as u32, body.into_bytes())
         }
         Frame::Data { bytes, .. } => {
@@ -246,22 +270,83 @@ fn decode_open(stream: u32, length: u32, payload: &[u8]) -> Result<Frame, Fault>
             format!("tunnel open payload is {length} bytes; at most {MAX_OPEN_BYTES}"),
         ));
     }
-    let id = serde_json::from_slice::<serde_json::Value>(payload)
+    match serde_json::from_slice::<serde_json::Value>(payload)
         .ok()
-        .and_then(|v| match v.as_object() {
-            Some(o) if o.len() == 1 => o
-                .get("previewId")
-                .and_then(|p| p.as_str())
-                .map(String::from),
-            _ => None,
-        })
-        .filter(|id| is_uuid(id));
-    match id {
-        Some(preview_id) => Ok(Frame::Open { stream, preview_id }),
+        .as_ref()
+        .and_then(open_target)
+    {
+        Some(target) => Ok(Frame::Open { stream, target }),
         None => Err(fault(
             Some(stream),
-            "tunnel open payload is not {\"previewId\": \"<uuid>\"}".into(),
+            format!(
+                "tunnel open payload is not {{\"previewId\": \"<uuid>\"}}, {{\"boxId\": \"<uuid>\", \"channel\": \"view\", \"fps\": {}..{}}} or {{\"boxId\": \"<uuid>\", \"channel\": \"input\"}}",
+                BOX_FPS.start(),
+                BOX_FPS.end()
+            ),
         )),
+    }
+}
+
+/// The open payload's object, refusing by name a target the contract does not allow. Its keys
+/// serialise sorted, which is the order the contract's `JSON.stringify` writes them in.
+fn open_body(target: &Target) -> Result<serde_json::Value, String> {
+    let (id, name) = match target {
+        Target::Preview(id) => (id, "previewId"),
+        Target::Box { box_id, .. } => (box_id, "boxId"),
+    };
+    if !is_uuid(id) {
+        return Err(format!(
+            "tunnel open names {name} \"{id}\", which is not a uuid"
+        ));
+    }
+    Ok(match target {
+        Target::Preview(id) => serde_json::json!({ "previewId": id }),
+        Target::Box {
+            box_id,
+            channel: Channel::Input,
+        } => serde_json::json!({ "boxId": box_id, "channel": "input" }),
+        Target::Box {
+            box_id,
+            channel: Channel::View { fps },
+        } => {
+            if !BOX_FPS.contains(fps) {
+                return Err(format!(
+                    "tunnel open names fps {fps}; a box view runs at {}..{}",
+                    BOX_FPS.start(),
+                    BOX_FPS.end()
+                ));
+            }
+            serde_json::json!({ "boxId": box_id, "channel": "view", "fps": fps })
+        }
+    })
+}
+
+/// The target an open payload names, exactly one of the contract's three shapes.
+fn open_target(body: &serde_json::Value) -> Option<Target> {
+    let o = body.as_object()?;
+    let mut keys: Vec<&str> = o.keys().map(String::as_str).collect();
+    keys.sort_unstable();
+    let uuid = |k: &str| {
+        o.get(k)?
+            .as_str()
+            .filter(|id| is_uuid(id))
+            .map(String::from)
+    };
+    match keys.as_slice() {
+        ["previewId"] => uuid("previewId").map(Target::Preview),
+        ["boxId", "channel"] if o["channel"] == "input" => Some(Target::Box {
+            box_id: uuid("boxId")?,
+            channel: Channel::Input,
+        }),
+        ["boxId", "channel", "fps"] if o["channel"] == "view" => {
+            let fps = u32::try_from(o["fps"].as_u64()?).ok()?;
+            BOX_FPS.contains(&fps).then_some(())?;
+            Some(Target::Box {
+                box_id: uuid("boxId")?,
+                channel: Channel::View { fps },
+            })
+        }
+        _ => None,
     }
 }
 

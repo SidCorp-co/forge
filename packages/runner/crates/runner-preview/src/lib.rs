@@ -100,6 +100,13 @@ struct Inner {
 #[derive(Clone)]
 pub struct Previews(Arc<Inner>);
 
+/// The Forge Boxes the tunnel also carries (ISS-1276): how a stream reaches one, and whether one
+/// runs, which keeps the tunnel up as a preview does.
+pub struct BoxTunnel {
+    pub endpoints: Arc<dyn tunnel::BoxEndpoints>,
+    pub wanted: watch::Receiver<bool>,
+}
+
 /// The lockfile names detection reads (`detectPreviewSettings`).
 const LOCKFILES: [&str; 5] = [
     "pnpm-lock.yaml",
@@ -113,13 +120,14 @@ const PACKAGE_JSON_LIMIT: u64 = 65_536;
 impl Previews {
     /// The previews of a box served by `core`, whose tunnel dials `core_url` while one is held.
     /// `record` is where the dev servers' groups are written down: any an earlier image left
-    /// there are stopped first (see [`groups`]).
+    /// there are stopped first (see [`groups`]). `boxes` are the Forge Boxes the same tunnel carries.
     pub fn start(
         core: CoreClient,
         core_url: &str,
         device_token: &str,
         worktrees: Arc<dyn Worktrees>,
         record: Option<PathBuf>,
+        boxes: Option<BoxTunnel>,
         cancel: watch::Receiver<bool>,
     ) -> Self {
         if let Some(path) = &record {
@@ -138,7 +146,15 @@ impl Previews {
             url: tunnel_url(core_url),
             device_token: device_token.to_string(),
         };
-        tokio::spawn(tunnel::run(cfg, inner.ports.clone(), wanted_rx, cancel));
+        let (endpoints, tunnel_wanted) = match boxes {
+            Some(b) => (Some(b.endpoints), either(wanted_rx, b.wanted)),
+            None => (None, wanted_rx),
+        };
+        let targets = tunnel::Targets {
+            ports: inner.ports.clone(),
+            boxes: endpoints,
+        };
+        tokio::spawn(tunnel::run(cfg, targets, tunnel_wanted, cancel));
         Self(inner)
     }
 
@@ -541,6 +557,23 @@ enum Answer {
     /// Core knows no such preview for this box, or it is closed: its dev server has to stop.
     Closed,
     Unheard,
+}
+
+/// A watch that is true while either is; it ends once both senders are gone.
+fn either(mut a: watch::Receiver<bool>, mut b: watch::Receiver<bool>) -> watch::Receiver<bool> {
+    let (tx, rx) = watch::channel(*a.borrow() || *b.borrow());
+    tokio::spawn(async move {
+        let (mut a_open, mut b_open) = (true, true);
+        while a_open || b_open {
+            tokio::select! {
+                r = a.changed(), if a_open => a_open = r.is_ok(),
+                r = b.changed(), if b_open => b_open = r.is_ok(),
+            }
+            let now = *a.borrow() || *b.borrow();
+            tx.send_if_modified(|w| std::mem::replace(w, now) != now);
+        }
+    });
+    rx
 }
 
 /// `wss://<core>/ws/preview-tunnel` for an `https://<core>` base.

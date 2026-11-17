@@ -46,6 +46,7 @@ pub(crate) fn start(
         device_token,
         Arc::new(LedgerWorktrees),
         record,
+        None,
         cancel_rx.clone(),
     )
 }

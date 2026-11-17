@@ -25,7 +25,7 @@ fn frame_of(v: &serde_json::Value) -> Frame {
     match v["type"].as_str().expect("type") {
         "open" => Frame::Open {
             stream,
-            preview_id: v["previewId"].as_str().expect("previewId").into(),
+            target: target_of(v),
         },
         "data" => Frame::Data {
             stream,
@@ -46,6 +46,22 @@ fn frame_of(v: &serde_json::Value) -> Frame {
         }
         other => panic!("fixture names frame type {other}"),
     }
+}
+
+/// The open frame's target as the fixture writes it: a preview, or a box channel.
+fn target_of(v: &serde_json::Value) -> Target {
+    if let Some(id) = v["previewId"].as_str() {
+        return Target::Preview(id.into());
+    }
+    let box_id = v["boxId"].as_str().expect("previewId or boxId").to_string();
+    let channel = match v["channel"].as_str().expect("channel") {
+        "view" => Channel::View {
+            fps: v["fps"].as_u64().expect("fps") as u32,
+        },
+        "input" => Channel::Input,
+        other => panic!("fixture names box channel {other}"),
+    };
+    Target::Box { box_id, channel }
 }
 
 #[test]
@@ -107,7 +123,29 @@ fn stream_zero_and_a_preview_that_is_not_a_uuid_are_never_sent() {
     assert!(encode(&Frame::Close { stream: 0 }).is_err());
     let open = Frame::Open {
         stream: 1,
-        preview_id: "p-1".into(),
+        target: Target::Preview("p-1".into()),
     };
     assert!(encode(&open).unwrap_err().contains("not a uuid"));
+}
+
+#[test]
+fn a_box_view_past_its_frame_rates_and_a_box_that_is_not_a_uuid_are_never_sent() {
+    let view = |fps| Frame::Open {
+        stream: 1,
+        target: Target::Box {
+            box_id: "0b8e7a52-3c4d-4e6f-8a1b-2c3d4e5f6a7b".into(),
+            channel: Channel::View { fps },
+        },
+    };
+    assert!(encode(&view(0)).unwrap_err().contains("1..30"));
+    assert!(encode(&view(31)).unwrap_err().contains("1..30"));
+    assert!(encode(&view(30)).is_ok());
+    let input = Frame::Open {
+        stream: 1,
+        target: Target::Box {
+            box_id: "b-1".into(),
+            channel: Channel::Input,
+        },
+    };
+    assert!(encode(&input).unwrap_err().contains("boxId"));
 }

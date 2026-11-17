@@ -38,6 +38,10 @@ async fn dev_server(body: Vec<u8>) -> u16 {
 }
 
 async fn world(ports: &[(&str, u16)]) -> World {
+    world_with(ports, None).await
+}
+
+async fn world_with(ports: &[(&str, u16)], boxes: Option<Arc<dyn BoxEndpoints>>) -> World {
     let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
     let url = format!("ws://{}/ws/preview-tunnel", listener.local_addr().unwrap());
     let table: Ports = Arc::new(Mutex::new(
@@ -52,7 +56,11 @@ async fn world(ports: &[(&str, u16)]) -> World {
         url,
         device_token: "box-token".into(),
     };
-    tokio::spawn(run(cfg, table, wanted, cancel));
+    let targets = Targets {
+        ports: table,
+        boxes,
+    };
+    tokio::spawn(run(cfg, targets, wanted, cancel));
     let (sock, _) = listener.accept().await.unwrap();
     // the handshake, read without consuming it, then answered as core answers it
     let mut head = vec![0u8; 4096];
@@ -97,7 +105,7 @@ async fn a_stream_carries_a_request_to_the_dev_server_and_its_answer_back() {
         &mut w.core,
         Frame::Open {
             stream: 1,
-            preview_id: PREVIEW.into(),
+            target: Target::Preview(PREVIEW.into()),
         },
     )
     .await;
@@ -129,7 +137,7 @@ async fn the_box_stops_at_zero_credit_and_resumes_when_core_grants_more() {
         &mut w.core,
         Frame::Open {
             stream: 3,
-            preview_id: PREVIEW.into(),
+            target: Target::Preview(PREVIEW.into()),
         },
     )
     .await;
@@ -191,7 +199,7 @@ async fn an_open_the_box_cannot_serve_is_reset_with_its_reason() {
         &mut w.core,
         Frame::Open {
             stream: 5,
-            preview_id: other.into(),
+            target: Target::Preview(other.into()),
         },
     )
     .await;
@@ -206,7 +214,7 @@ async fn an_open_the_box_cannot_serve_is_reset_with_its_reason() {
         &mut w.core,
         Frame::Open {
             stream: 7,
-            preview_id: PREVIEW.into(),
+            target: Target::Preview(PREVIEW.into()),
         },
     )
     .await;
@@ -245,7 +253,15 @@ async fn the_tunnel_ends_when_the_daemon_that_could_cancel_it_is_gone() {
     };
     let ended = tokio::time::timeout(
         Duration::from_secs(2),
-        tokio::spawn(run(cfg, Ports::default(), wanted, cancel)),
+        tokio::spawn(run(
+            cfg,
+            Targets {
+                ports: Ports::default(),
+                boxes: None,
+            },
+            wanted,
+            cancel,
+        )),
     )
     .await;
     assert!(
@@ -295,7 +311,7 @@ async fn the_box_backstop_refuses_past_its_limit_and_a_reset_gives_every_stream_
             &mut w.core,
             Frame::Open {
                 stream,
-                preview_id: PREVIEW.into(),
+                target: Target::Preview(PREVIEW.into()),
             },
         )
         .await;
@@ -335,7 +351,7 @@ async fn the_box_backstop_refuses_past_its_limit_and_a_reset_gives_every_stream_
             &mut w.core,
             Frame::Open {
                 stream,
-                preview_id: PREVIEW.into(),
+                target: Target::Preview(PREVIEW.into()),
             },
         )
         .await;
@@ -360,7 +376,7 @@ async fn a_stream_the_dev_server_ends_and_core_closes_is_given_back() {
                 &mut w.core,
                 Frame::Open {
                     stream,
-                    preview_id: PREVIEW.into(),
+                    target: Target::Preview(PREVIEW.into()),
                 },
             )
             .await;
@@ -386,4 +402,58 @@ async fn a_stream_the_dev_server_ends_and_core_closes_is_given_back() {
             }
         }
     }
+}
+
+const BOX: &str = "0b8e7a52-3c4d-4e6f-8a1b-2c3d4e5f6a7b";
+
+/// One box whose view answers with its channel's name and the fps it was opened at; any other box
+/// is not running here.
+struct OneBox;
+
+impl BoxEndpoints for OneBox {
+    fn connect(&self, box_id: &str, channel: Channel) -> Connecting {
+        let known = box_id == BOX;
+        Box::pin(async move {
+            if !known {
+                return Err(ResetCode::PreviewNotRunning);
+            }
+            let (ours, theirs) = tokio::io::duplex(1024);
+            let said = format!("{channel:?}");
+            tokio::spawn(async move {
+                let mut ours = ours;
+                let _ = ours.write_all(said.as_bytes()).await;
+            });
+            Ok(Box::new(theirs) as Conn)
+        })
+    }
+}
+
+#[tokio::test]
+async fn a_box_stream_reaches_the_boxs_endpoint_and_an_unknown_box_is_reset() {
+    let mut w = world_with(&[], Some(Arc::new(OneBox))).await;
+    let open = |stream, box_id: &str| Frame::Open {
+        stream,
+        target: Target::Box {
+            box_id: box_id.into(),
+            channel: Channel::View { fps: 12 },
+        },
+    };
+    send(&mut w.core, open(1, BOX)).await;
+    let mut got = Vec::new();
+    loop {
+        match next(&mut w.core, 5000).await.expect("the box answers") {
+            Frame::Data { stream: 1, bytes } => got.extend(bytes),
+            Frame::Close { stream: 1 } => break,
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+    assert_eq!(String::from_utf8_lossy(&got), "View { fps: 12 }");
+    send(&mut w.core, open(2, "9d0e7a52-3c4d-4e6f-8a1b-2c3d4e5f6a7b")).await;
+    assert_eq!(
+        next(&mut w.core, 5000).await,
+        Some(Frame::Reset {
+            stream: 2,
+            code: ResetCode::PreviewNotRunning
+        })
+    );
 }

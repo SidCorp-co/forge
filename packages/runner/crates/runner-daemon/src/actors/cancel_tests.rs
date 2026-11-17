@@ -131,6 +131,7 @@ fn frame_ctx(client: CoreClient, pool: pool_jobs::PoolPanes) -> FrameCtx {
             "device-token",
             Arc::new(NoWorktrees),
             None,
+            None,
             watch::channel(false).1,
         ),
     }
