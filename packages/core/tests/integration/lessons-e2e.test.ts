@@ -258,7 +258,6 @@ describe('an approved lesson reaches every agent in its scope by retrieval, and 
       ok(
         await say('member', 'POST', at('/knowledge/search'), {
           query: 'dosage milligrams',
-          strategy: 'keyword',
         }),
       ).knowledge as Doc[];
     expect((await search()).map((h) => h.slug)).toContain(`lesson-${n}`);
