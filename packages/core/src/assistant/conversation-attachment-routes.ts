@@ -19,7 +19,7 @@ import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { createUploadTicket, UPLOAD_TICKET_TTL_MS } from '../uploads/index.js';
 import { ROOM_READ, ROOM_WRITE } from './conversation-declarations.js';
-import { isTurnRunning, nothingHereToStop, stopConversationTurns } from './conversation-stops.js';
+import { stopConversationTurns } from './conversation-stops.js';
 
 const attachmentTicketSchema = z
   .object({
@@ -97,11 +97,10 @@ conversationAttachmentRoutes.get(
 );
 
 /**
- * End the turn this room is running.
- *
- * Only a turn THIS core holds open can be ended here. A turn handed to a paired
- * box is that session's to cancel, and a room running nothing is told so by
- * name rather than answered 200 over a stop that stopped nothing.
+ * End the turn this room is running: one this core holds, or the Agent turn a
+ * paired box runs, interrupted as a session's Stop is (ISS-1268). A room running
+ * nothing is told so by name rather than answered 200 over a stop that stopped
+ * nothing.
  */
 conversationAttachmentRoutes.post(
   '/:id/stop',
@@ -111,11 +110,6 @@ conversationAttachmentRoutes.post(
     const { id } = c.req.valid('param');
     await writableConversation(id, c.get('userId'));
 
-    if (!isTurnRunning(id)) {
-      const refusal = await nothingHereToStop(id);
-      if (refusal) throw refusal;
-    }
-
-    return c.json({ conversationId: id, stopped: stopConversationTurns(id) }, 200);
+    return c.json({ conversationId: id, stopped: await stopConversationTurns(id) }, 200);
   },
 );

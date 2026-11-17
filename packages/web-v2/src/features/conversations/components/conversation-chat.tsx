@@ -158,6 +158,8 @@ export function ConversationChat({
   const streaming = busy || progress != null;
 
   const { stage, doing } = turnNow(progress, streaming, t);
+  // an Agent turn a box runs is stopped from the room too (ISS-1268)
+  const agentRunning = roomQ.data?.agentTurns?.some((turn) => turn.state === "running") ?? false;
   const acts = useActOffers({ messages, progress });
   const { cardsFor } = ui;
   const { offersFor } = acts;
@@ -234,7 +236,7 @@ export function ConversationChat({
           sticky: false,
           attachments: CONVERSATION_ATTACHMENTS,
           placeholder,
-          ...(progress && resolvedId ? { onStop: () => stop.mutate(resolvedId), stopping: stop.isPending } : {}),
+          ...((progress || agentRunning) && resolvedId ? { onStop: () => stop.mutate(resolvedId), stopping: stop.isPending } : {}),
           ...(initialDraft ? { initialValue: initialDraft } : {}),
           footerControl: (
             <ComposerFooter

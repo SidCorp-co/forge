@@ -14,6 +14,7 @@ export {
   sessionRoleRefusal,
   undeliveredTurnCause,
 } from './interactive-credential.js';
+export { interruptRunningTurn } from './interrupt-turn.js';
 export { liveMasterSessionId } from './master-owner.js';
 export { provideAgentSessionsPorts } from './ports.js';
 export { closeResidentOnBox, pushProjectNow } from './push.js';

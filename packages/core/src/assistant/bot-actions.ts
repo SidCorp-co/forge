@@ -31,7 +31,7 @@ import {
 } from './bot-thread.js';
 import { acceptWebConversationMessage, routeOneWebWindow } from './conversation-send.js';
 import { webSendSubject } from './conversation-send-checks.js';
-import { isTurnRunning, nothingHereToStop, stopConversationTurns } from './conversation-stops.js';
+import { stopConversationTurns } from './conversation-stops.js';
 import { speakerLabelOf } from './read.js';
 import { openWebConversation } from './service.js';
 
@@ -233,9 +233,5 @@ export async function botCancel(caller: BotCaller, i: BotArgs & { thread: string
   const userId = caller.userId;
   await threadIn(i.projectId, thread, userId);
   await writableConversation(thread, userId);
-  if (!isTurnRunning(thread)) {
-    const refusal = await nothingHereToStop(thread);
-    if (refusal) throw refusal;
-  }
-  return { thread, stopped: stopConversationTurns(thread) };
+  return { thread, stopped: await stopConversationTurns(thread) };
 }

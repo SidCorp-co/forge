@@ -4,9 +4,8 @@ import { zValidator } from '../middleware/zod-validator.js';
 import { closeRunIfOneShot, refuseCancellingRelease } from '../pipeline/index.js';
 import { broadcastSession } from './broadcast.js';
 import { OWNER_OR_ADMIN } from './declarations.js';
-import { agentSessionsPorts } from './ports.js';
+import { interruptRunningTurn } from './interrupt-turn.js';
 import { pushSession } from './push.js';
-import { refuseSession } from './refusals.js';
 import { cancelSession } from './service.js';
 import {
   ensureSessionOwnerOrAdmin,
@@ -18,11 +17,8 @@ import { boxOf } from './steer-turn.js';
 
 export const agentSessionLifecycleRoutes = new Hono<{ Variables: AuthVars }>();
 
-// ISS-1268: Stop writes the stream-json `interrupt` control request into the session's running
-// turn on its box (`runner-agent/src/claude_code/control.rs`). The turn ends with its `result` and
-// closes as every turn does, so the session keeps its process and the next message continues it.
-// Nothing here kills a process or moves the session: the old `/abort`, which set it idle and had
-// the box kill it, is gone.
+// ISS-1268: Stop interrupts the session's running turn (`interrupt-turn.ts`); a room's Stop on its
+// Agent turn takes the same call (`assistant/conversation-stops.ts`).
 agentSessionLifecycleRoutes.post(
   '/:id/interrupt',
   zValidator('param', idParamSchema),
@@ -30,25 +26,7 @@ agentSessionLifecycleRoutes.post(
   async (c) => {
     const { id } = c.req.valid('param');
     const { session } = await ensureSessionOwnerOrAdmin(id, c.get('userId'));
-    if (session.status !== 'running') {
-      throw refuseSession(
-        'SESSION_NOT_RUNNING',
-        `session ${id} is ${session.status}, so it has no turn to stop`,
-      );
-    }
-    const deviceId = boxOf(session);
-    const reached = deviceId
-      ? agentSessionsPorts().sendToBoxNow(deviceId, {
-          event: 'agent:interrupt',
-          data: { sessionId: id },
-        })
-      : 0;
-    if (reached === 0) {
-      throw refuseSession(
-        'NO_LIVE_SESSION',
-        `session ${id}'s box ${deviceId ?? '(none recorded)'} is not connected, so its turn cannot be stopped from here`,
-      );
-    }
+    interruptRunningTurn(session);
     return c.json({ ok: true, sessionId: id }, 202);
   },
 );

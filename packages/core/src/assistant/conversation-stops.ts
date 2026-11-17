@@ -3,12 +3,12 @@
  * not a table: a turn another core holds is refused here rather than pretended.
  */
 
+import { interruptRunningTurn, sessionRowById } from '../agent-sessions/index.js';
 import {
   listWindowsForConversation,
   readConversationAgentTurns,
   refuseConversation,
 } from '../conversations/index.js';
-import type { RefusalError } from '../lib/refusal.js';
 
 export const STOPPED_BY_A_PERSON = 'stopped-by-a-person';
 
@@ -38,12 +38,12 @@ export function registerTurnStop(conversationId: string): TurnStopHandle {
   };
 }
 
-export function isTurnRunning(conversationId: string): boolean {
+function isTurnRunning(conversationId: string): boolean {
   return (inFlight.get(conversationId)?.size ?? 0) > 0;
 }
 
-/** End every turn this core runs here, and count them. Zero is what a caller refuses on. */
-export function stopConversationTurns(conversationId: string): number {
+/** End every turn this core runs here, and count them. */
+function stopTurnsHere(conversationId: string): number {
   const held = inFlight.get(conversationId);
   if (!held || held.size === 0) return 0;
   const stopped = held.size;
@@ -52,34 +52,41 @@ export function stopConversationTurns(conversationId: string): number {
 }
 
 /**
- * Why this core cannot stop this room's turn. The registry is this process's
- * own, so the turn may be a paired box's or another core's, and answering
- * "idle" to either tells the caller something this door never read.
+ * End the turn this room is running, and count what was stopped: a turn this core holds, or the
+ * Agent turn a paired box runs, interrupted as a session's Stop is (ISS-1268) — by whoever may
+ * write the room, as before. A turn on another core, or none, is refused by name: answering
+ * "stopped" over either tells the caller something this door never did.
  */
-export async function nothingHereToStop(id: string): Promise<RefusalError | null> {
-  const handed = (await readConversationAgentTurns(id, null)).find(
+export async function stopConversationTurns(id: string): Promise<number> {
+  const here = stopTurnsHere(id);
+  if (here > 0) return here;
+
+  const handed = (await readConversationAgentTurns(id, null)).filter(
     (t) => t.state === 'dispatched' || t.state === 'running',
   );
-  if (handed) {
-    return refuseConversation(
-      'CONVERSATION_TURN_HANDED_OFF',
-      `conversation ${id} handed this turn to a paired box, so there is nothing here to stop — end agent session ${handed.sessionId} instead`,
-    );
+  let interrupted = 0;
+  for (const turn of handed) {
+    // a session deleted since the read has no turn left to stop, and is not counted as stopped
+    const session = await sessionRowById(turn.sessionId);
+    if (!session) continue;
+    interruptRunningTurn(session);
+    interrupted += 1;
   }
+  if (interrupted > 0) return interrupted;
 
   const elsewhere = (await listWindowsForConversation(id, 5)).find(
     (w) => w.claimedAt !== null && w.closedAt === null && w.claimedBy !== null,
   );
   // A turn that registered during those reads is this core's to stop after all.
-  if (isTurnRunning(id)) return null;
+  if (isTurnRunning(id)) return stopTurnsHere(id);
   if (elsewhere) {
-    return refuseConversation(
+    throw refuseConversation(
       'CONVERSATION_TURN_ON_ANOTHER_CORE',
       `conversation ${id} has window ${elsewhere.id} still open under claim "${elsewhere.claimedBy}", and no turn for it is running on this core — a stop reaches only the core running the turn, so this one cannot end it`,
     );
   }
 
-  return refuseConversation(
+  throw refuseConversation(
     'CONVERSATION_NOTHING_RUNNING',
     `conversation ${id} is not answering anything right now, so there was nothing to stop`,
   );
