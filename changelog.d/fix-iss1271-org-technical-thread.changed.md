@@ -1,1 +1,0 @@
-**A room agent's needs go to its project's own thread of the organization's shared operations room.** The thread opens on first need and is kept; a direct message to the owner applies only where asked or no shared room exists.

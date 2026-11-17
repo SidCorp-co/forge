@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.711] - 2026-11-17
+
+Technical needs go to each project's thread in the shared operations room
+
+### Changed
+
+- **A room agent's needs go to its project's own thread of the organization's shared operations room.** The thread opens on first need and is kept; a direct message to the owner applies only where asked or no shared room exists.
+
 ## [0.4.0-dev.710] - 2026-11-17
 
 Judges see every changed file, module maps at landing, open questions uncapped
