@@ -86,7 +86,18 @@ export const TREE: ModuleTreeResponse = {
     children: [mod("devices", "Devices"), mod("runs", "Runs")].map((m) => ({ ...m, path: `execution/${m.slug}` })),
   },
   branches: {
-    term: [RUN_SLOTS, node({ type: "term", ref: "lease", title: "Lease", summary: "The right to hold an issue" })],
+    term: [
+      RUN_SLOTS,
+      // a term whose other names run past a phone's width on one line, as forge-dev's Room sandbox's do
+      node({
+        type: "term",
+        ref: "room-sandbox",
+        title: "Room sandbox",
+        summary: "Each room agent runs its background session inside a long-lived bubblewrap sandbox of its own",
+        // one code name as long as the path it lives at: a line wider than a phone in few words
+        aliases: { code: ["packages/runner/crates/runner-workspace/src/bg_session/room.rs:Host"] },
+      }),
+    ],
     rule: [
       node({
         type: "rule",

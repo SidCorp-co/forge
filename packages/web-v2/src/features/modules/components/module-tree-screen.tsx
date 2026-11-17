@@ -32,7 +32,11 @@ function TreeEntry({ n, selected, onSelect }: { n: TreeNodeView; selected: boole
     <>
       <span className={cn("min-w-0", selected && "font-semibold")}>{n.title}</span>
       {/* the picked node's other names are the rail's, said once */}
-      {n.meta && !selected ? <span className="min-w-0 truncate text-12-5 text-muted">{n.meta}</span> : null}
+      {n.meta && !selected ? (
+        <span className="min-w-0 truncate text-12-5 text-muted" title={n.meta}>
+          {n.meta}
+        </span>
+      ) : null}
       {n.retiring ? <span className="rounded-sm bg-sunken px-1 text-11 font-semibold uppercase text-warn-11">{t("modules.rail.retiring")}</span> : null}
     </>
   );
@@ -93,7 +97,9 @@ function Tree({
     if (at) document.getElementById(`branch-${at}`)?.scrollIntoView?.({ block: "start" });
   }, [at]);
   return (
-    <ul className="grid gap-1" aria-label={t("modules.tree.label")} data-testid="module-tree">
+    // every grid here sizes its one column to the page, never to its widest line: a term's other names
+    // run on one line, truncated, and an auto column would widen to hold them, past a phone's edge
+    <ul className="grid grid-cols-1 gap-1" aria-label={t("modules.tree.label")} data-testid="module-tree">
       {branches.map((b) => (
         <li key={b.branch} id={`branch-${b.branch}`} className="scroll-mt-4" data-testid={`tree-branch-${b.branch}`} data-at={b.branch === at || undefined} data-open={isOpen(b.branch) || undefined}>
           <button
@@ -107,7 +113,7 @@ function Tree({
             {branchLabel(t, b.branch)} <span className="text-12 font-normal tabular-nums text-subtle">{b.count}</span>
           </button>
           {isOpen(b.branch) ? (
-            <ul className="ml-5 grid gap-0.5 border-l border-line-subtle pl-3">
+            <ul className="ml-5 grid grid-cols-1 gap-0.5 border-l border-line-subtle pl-3">
               {b.nodes.map((n) => (
                 <li key={n.id}>
                   <TreeEntry n={n} selected={n.id === selected} onSelect={onSelect} />
@@ -158,10 +164,14 @@ function TreePage({ slug, tree, names }: { slug: string; tree: ModuleTreeRespons
   const code = tree.module.children.map((c) => c.name).join(", ");
   return (
     <div className="lg:flex" data-testid="module-tree-page">
-      <div className="grid min-w-0 flex-1 content-start gap-4 bg-app px-5 py-5 max-md:px-3">
+      <div className="grid min-w-0 flex-1 grid-cols-1 content-start gap-4 bg-app px-5 py-5 max-md:px-3">
         {tree.module.description || code ? (
           <div className="grid gap-1 text-13 text-muted">
-            {tree.module.description ? <p className="line-clamp-2 max-w-3xl">{tree.module.description}</p> : null}
+            {tree.module.description ? (
+              <p className="line-clamp-2 max-w-3xl" title={tree.module.description}>
+                {tree.module.description}
+              </p>
+            ) : null}
             {code ? (
               <p>
                 <span className="font-medium text-fg">{t("modules.tree.code")}</span> {code}

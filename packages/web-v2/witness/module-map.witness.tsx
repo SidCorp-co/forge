@@ -89,7 +89,20 @@ function words(stage: string, root: HTMLElement | null): string[] {
   return [];
 }
 
-const sideways = () => (document.documentElement.scrollWidth > window.innerWidth ? [`the page scrolls sideways: ${document.documentElement.scrollWidth} px in ${window.innerWidth}`] : []);
+/**
+ * Nothing scrolls sideways: not the document, not the shell's scrolling main (whose own overflow the
+ * document's width never shows, ISS-1256 c3 at 390), and no box draws past the window's right edge.
+ */
+function sideways(): string[] {
+  const wrong: string[] = [];
+  const doc = document.documentElement;
+  if (doc.scrollWidth > window.innerWidth) wrong.push(`the page scrolls sideways: ${doc.scrollWidth} px in ${window.innerWidth}`);
+  const main = q("[data-witness=main]");
+  if (main && main.scrollWidth > main.clientWidth) wrong.push(`the main column scrolls sideways: ${main.scrollWidth} px in ${main.clientWidth}`);
+  const past = [...(main?.querySelectorAll<HTMLElement>("*") ?? [])].filter((el) => el.getClientRects().length > 0 && el.getBoundingClientRect().right > window.innerWidth + 0.5 && !el.closest(".sr-only"));
+  for (const el of past.slice(0, 4)) wrong.push(`${el.tagName.toLowerCase()} "${(el.textContent ?? "").trim().slice(0, 40)}" ends at ${Math.round(el.getBoundingClientRect().right)} px`);
+  return wrong;
+}
 
 function pillar(): string[] {
   const wrong: string[] = [];
