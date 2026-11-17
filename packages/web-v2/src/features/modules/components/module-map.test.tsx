@@ -164,6 +164,31 @@ describe("a module's tree and its rail", () => {
     expect(searched).toHaveBeenCalledWith("packages/core/src/devices/run-slots.ts:slotsFor");
   });
 
+  it("on a phone draws a picked node's rail under it in the tree, never below the whole tree", async () => {
+    await tree("/projects/hop/modules/execution?node=term:run-slots");
+    fireEvent.click(within(screen.getByTestId("tree-branch-rule")).getByTestId("tree-branch-toggle"));
+    const [rule] = within(screen.getByTestId("tree-branch-rule")).getAllByTestId("tree-node");
+    fireEvent.click(rule);
+    await waitFor(() => expect(screen.getByTestId("node-rail").dataset.node).toBe("rule:one-slot-minimum"));
+    const picked = screen.getByTestId("module-rail-inline");
+    expect(picked.previousElementSibling?.getAttribute("data-node")).toBe("rule:one-slot-minimum");
+    expect(within(screen.getByTestId("tree-branch-rule")).getByTestId("node-rail")).toBe(screen.getByTestId("node-rail"));
+    expect(screen.queryByTestId("module-rail")).toBeNull();
+  });
+
+  it("on a wide window keeps the rail in its column beside the tree", async () => {
+    const wide = vi.spyOn(window, "matchMedia").mockImplementation(
+      (query: string) => ({ matches: query === "(min-width: 1024px)", media: query, onchange: null, addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false }) as MediaQueryList,
+    );
+    try {
+      const rail = await tree("/projects/hop/modules/execution?node=term:run-slots");
+      expect(rail.closest("[data-testid=module-rail]")).not.toBeNull();
+      expect(screen.queryByTestId("module-rail-inline")).toBeNull();
+    } finally {
+      wide.mockRestore();
+    }
+  });
+
   it("reads a rule owing a re-check as owed, never current", async () => {
     const rail = await tree("/projects/hop/modules/execution?node=rule:one-slot-minimum");
     expect(within(rail).getByTestId("rail-recheck").textContent).toMatch(/^Re-checkOwed since/);

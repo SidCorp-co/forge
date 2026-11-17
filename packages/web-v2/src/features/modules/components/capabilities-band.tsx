@@ -26,7 +26,7 @@ interface CapabilitiesBandProps {
 export function CapabilitiesBand({ use, counts, over }: CapabilitiesBandProps) {
   const t = useCopy();
   const bars = callBarsOf(use.days);
-  const { doors, taught, calls, neverUsed } = use.totals;
+  const { doors, taught, calls } = use.totals;
   return (
     <OverviewBand
       label={t("modules.cap.band.label")}
@@ -34,7 +34,8 @@ export function CapabilitiesBand({ use, counts, over }: CapabilitiesBandProps) {
       figures={[
         { key: "calls", value: calls, label: t("modules.cap.band.callsIn", { n: use.window.days }) },
         { key: "taught", value: `${taught}/${doors}`, label: t("modules.cap.band.taught"), ring: doors > 0 ? taught / doors : 0 },
-        { key: "unused", value: neverUsed, label: t("modules.cap.band.unused") },
+        // the figure is its flow step's count: a door owing a re-check stands there, called or not
+        { key: "unused", value: counts.unused, label: t("modules.cap.band.unused") },
         { key: "over", value: over ?? "–", label: t("modules.cap.band.over") },
       ]}
       flow={CAP_STANDINGS.map((s) => ({ key: s, label: t(`modules.cap.standing.${s}`), count: counts[s], tone: CAP_STANDING_TONE[s] }))}

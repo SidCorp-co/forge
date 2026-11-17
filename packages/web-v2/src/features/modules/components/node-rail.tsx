@@ -49,6 +49,7 @@ export function NodeRail({
   names,
   readsDays,
   onSelect,
+  under = false,
 }: {
   node: ModuleMapNode;
   slug: string;
@@ -57,6 +58,8 @@ export function NodeRail({
   names: ReadonlyMap<string, string>;
   readsDays: number;
   onSelect: (id: string) => void;
+  /** Drawn under its own row in the tree (a phone): the row names it, so the rail does not again. */
+  under?: boolean;
 }) {
   const t = useCopy();
   const aliases = aliasesOf(node);
@@ -64,11 +67,15 @@ export function NodeRail({
   const where = pathNameOf(node.module, names);
   return (
     <div className="grid gap-1" data-testid="node-rail" data-node={`${node.type}:${node.ref}`}>
-      <div className="grid gap-1 pb-3">
-        <span className="text-11 font-semibold uppercase tracking-wide text-muted">{t(`modules.one.${node.type}` as ProductCopyKey)}</span>
-        <h2 className="text-18 font-semibold leading-snug text-fg">{node.title}</h2>
-        {node.summary ? <p className="line-clamp-3 text-13 text-muted">{node.summary}</p> : null}
-      </div>
+      {under ? (
+        node.summary ? <p className="line-clamp-3 pb-2 text-13 text-muted">{node.summary}</p> : null
+      ) : (
+        <div className="grid gap-1 pb-3">
+          <span className="text-11 font-semibold uppercase tracking-wide text-muted">{t(`modules.one.${node.type}` as ProductCopyKey)}</span>
+          <h2 className="text-18 font-semibold leading-snug text-fg">{node.title}</h2>
+          {node.summary ? <p className="line-clamp-3 text-13 text-muted">{node.summary}</p> : null}
+        </div>
+      )}
       {aliases.length > 0 ? (
         <FactsGroup title={t("modules.rail.aliases")}>
           <span className="flex flex-wrap gap-1.5" data-testid="rail-aliases">

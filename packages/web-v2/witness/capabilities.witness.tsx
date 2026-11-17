@@ -1,7 +1,9 @@
 // The module map's Capabilities branch witnessed in the workspace shell (ISS-1251 §7, ISS-1256): it
 // opens on its overview (figures, doors by standing, calls against refusals per day), the project's
 // budgets and reading one line each, then the doors by standing; a door no agent called reads "Teach better / redesign /
-// delete"; a door opens in a drawer; at 390 px nothing scrolls sideways. Each stage prints its words.
+// delete"; a door opens in a drawer; at 390 px nothing scrolls sideways. A door owing a re-check reads
+// so whether or not it was called, as the trees read its card, and each figure agrees with its group
+// (ISS-1256 r5). Each stage prints its words.
 //
 //   pnpm --filter web-v2 witness witness/capabilities.witness.tsx --out <dir>
 
@@ -102,6 +104,8 @@ const EXTRA: CapabilitiesView = {
   lessons: [{ card: "memory.search", number: 7, sentence: "Search memory before designing a fix", status: "approved", invalid: true, invalidBy: "a landing touched memory search", applied: 3, lastAppliedAt: null }],
   freshness: [
     { card: "memory.search", recheckOwed: { since: "2026-11-16T02:00:00Z" }, scenarios: [], proposed: [] },
+    // owed and never called: it stands owing a re-check, as a module tree reads its card
+    { card: "support.member", recheckOwed: { since: "2026-11-16T02:00:00Z" }, scenarios: [], proposed: [] },
     { card: "support.reply", recheckOwed: null, scenarios: [{ name: "a stranger writes", passed: true, at: "2026-11-16T02:00:00Z", change: "ISS-1251 card change", reason: "taught" }, { name: "a member returns", passed: false, at: "2026-11-16T02:00:00Z", change: "ISS-1251 card change", reason: "not taught" }], proposed: [{ field: "redFlag", text: "Replying before reading the member" }] },
   ],
   module: null,
@@ -166,6 +170,14 @@ function face(): string[] {
   if (unused.length === 0) wrong.push("no unused door is drawn");
   for (const u of unused) if (!u.querySelector("[data-testid=cap-standing]")?.textContent?.startsWith("Teach better / redesign / delete")) wrong.push(`an unused door reads ${u.textContent?.slice(0, 60)}`);
   if (!document.querySelector("[data-testid=capabilities-band-chart]")) wrong.push("the overview draws no chart");
+  const owed = EXTRA.freshness.filter((f) => f.recheckOwed).length;
+  const recheck = document.querySelectorAll("[data-testid=cap-door][data-standing=recheck]").length;
+  if (recheck !== owed) wrong.push(`${recheck} doors read re-check owed where ${owed} cards owe one`);
+  // every surface's uncalled doors but those owing a re-check, which stand there
+  const owes = new Set(EXTRA.freshness.filter((f) => f.recheckOwed).map((f) => f.card));
+  const uncalled = DOORS.filter((d) => d.calls === 0 && !owes.has(d.door)).length;
+  const figure = document.querySelector("[data-testid=band-figure][data-key=unused] [data-testid=band-figure-value]")?.textContent;
+  if (figure !== String(uncalled)) wrong.push(`the Unused figure reads ${figure} over ${uncalled} unused doors`);
   return wrong;
 }
 

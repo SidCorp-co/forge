@@ -57,9 +57,12 @@ describe("where a door stands", () => {
     expect(standingOf(door({ calls: 0, byAgent: {} }), null, [], owed)).toBe("recheck");
   });
 
-  it("owes a re-check where a landing touched one of its card's lessons, or its card", () => {
-    expect(standingOf(door(), null, [lesson(), lesson({ number: 8, invalid: true })])).toBe("recheck");
-    expect(standingOf(door(), null, [], { card: "support.member", recheckOwed: { since: "2026-11-16T00:00:00.000Z" }, scenarios: [], proposed: [] })).toBe("recheck");
+  it("owes a re-check exactly where its card's freshness does, the one record a module tree reads too, called or not", () => {
+    const owed = { card: "support.member", recheckOwed: { since: "2026-11-16T00:00:00.000Z" }, scenarios: [], proposed: [] };
+    expect(standingOf(door(), null, [], owed)).toBe("recheck");
+    expect(standingOf(door({ calls: 0, byAgent: {} }), null, [], owed)).toBe("recheck");
+    // a lesson's own flag is not a second source: the card's freshness stays owed while one waits
+    expect(standingOf(door(), null, [lesson(), lesson({ number: 8, invalid: true })])).toBe("inUse");
     expect(standingOf(door(), null, [], { card: "support.member", recheckOwed: null, scenarios: [], proposed: [] })).toBe("inUse");
   });
 

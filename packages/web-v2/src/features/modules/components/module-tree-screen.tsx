@@ -6,8 +6,8 @@
 
 import { FIND_UNPLACED_FILTER } from "@forge/contracts/find";
 import type { ModuleTreeResponse } from "@forge/contracts/module-map";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { DetailHeader, DetailMobileTitle, Icon, SegmentedControl, useMediaQuery, useUrlChoice, useUrlParams } from "@/design";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { DetailHeader, Icon, SegmentedControl, useMediaQuery, useUrlChoice, useUrlParams } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { Link } from "@/lib/navigation/router";
@@ -63,7 +63,20 @@ function openOnArrival(branches: readonly TreeBranchView[], at: TreeBranch | nul
   return new Set([at ?? held ?? first].filter((b): b is TreeBranch => Boolean(b)));
 }
 
-function Tree({ branches, at, selected, onSelect }: { branches: readonly TreeBranchView[]; at: TreeBranch | null; selected: string | null; onSelect: (id: string) => void }) {
+function Tree({
+  branches,
+  at,
+  selected,
+  onSelect,
+  detail,
+}: {
+  branches: readonly TreeBranchView[];
+  at: TreeBranch | null;
+  selected: string | null;
+  onSelect: (id: string) => void;
+  /** The selected node's rail, drawn under it: below 1024px, where no column stands beside the tree. */
+  detail?: ReactNode;
+}) {
   const t = useCopy();
   // every branch reads its name and count; its items open on demand, so the page leads with the map's shape
   const [opened, setOpened] = useState(() => openOnArrival(branches, at, selected));
@@ -98,6 +111,11 @@ function Tree({ branches, at, selected, onSelect }: { branches: readonly TreeBra
               {b.nodes.map((n) => (
                 <li key={n.id}>
                   <TreeEntry n={n} selected={n.id === selected} onSelect={onSelect} />
+                  {detail && n.id === selected ? (
+                    <div id="node-detail" className="my-2 scroll-mt-4 rounded-sm border border-line-subtle bg-surface px-3 py-3" data-testid="module-rail-inline">
+                      {detail}
+                    </div>
+                  ) : null}
                 </li>
               ))}
               {b.nodes.length === 0 ? <li className="px-1.5 py-1 text-13 text-subtle">{t("modules.tree.none")}</li> : null}
@@ -121,15 +139,22 @@ function TreePage({ slug, tree, names }: { slug: string; tree: ModuleTreeRespons
   const t = useCopy();
   const { at, node, select } = useSelection();
   const wide = useMediaQuery("(min-width: 1024px)");
-  const railRef = useRef<HTMLElement>(null);
   const branches = useMemo(() => branchesOf(slug, tree), [slug, tree]);
   const here = useMemo(() => new Set(branches.flatMap((b) => b.nodes.filter((n) => n.node).map((n) => n.id))), [branches]);
   const chosen = selectedOf(branches, at, node);
+  // a pick (a tap on the tree or a relation in the rail) is followed to the node it selects, its
+  // rail drawn under it below 1024px; an arrival keeps the place a count or link opened
+  const pickedRef = useRef(false);
+  useEffect(() => {
+    if (!pickedRef.current || !chosen) return;
+    pickedRef.current = false;
+    document.querySelector(`[data-node="${CSS.escape(chosen.id)}"]`)?.scrollIntoView?.({ block: "start" });
+  }, [chosen]);
   const onSelect = (id: string) => {
+    pickedRef.current = true;
     select(id);
-    // below 1024px the rail stands under the tree: a pick is followed down to it
-    if (!wide) railRef.current?.scrollIntoView?.({ block: "start", behavior: "smooth" });
   };
+  const rail = chosen?.node ? <NodeRail node={chosen.node} slug={slug} here={here} names={names} readsDays={tree.readsWindowDays} onSelect={onSelect} under={!wide} /> : null;
   const code = tree.module.children.map((c) => c.name).join(", ");
   return (
     <div className="lg:flex" data-testid="module-tree-page">
@@ -144,17 +169,13 @@ function TreePage({ slug, tree, names }: { slug: string; tree: ModuleTreeRespons
             ) : null}
           </div>
         ) : null}
-        <Tree branches={branches} at={at} selected={chosen?.id ?? null} onSelect={onSelect} />
+        <Tree branches={branches} at={at} selected={chosen?.id ?? null} onSelect={onSelect} detail={wide ? undefined : rail} />
       </div>
-      <aside ref={railRef} className="min-w-0 flex-none scroll-mt-4 lg:w-88 border-t border-line-subtle bg-surface px-5 py-5 max-md:px-3 lg:border-t-0 lg:border-l" aria-label={t("modules.rail.relations")} data-testid="module-rail">
-        <div className="lg:sticky lg:top-4">
-          {chosen?.node ? (
-            <NodeRail node={chosen.node} slug={slug} here={here} names={names} readsDays={tree.readsWindowDays} onSelect={onSelect} />
-          ) : (
-            <p className="text-13 text-subtle">{t("modules.rail.pick")}</p>
-          )}
-        </div>
-      </aside>
+      {wide ? (
+        <aside className="min-w-0 w-88 flex-none border-l border-line-subtle bg-surface px-5 py-5" aria-label={t("modules.rail.relations")} data-testid="module-rail">
+          <div className="sticky top-4">{rail ?? <p className="text-13 text-subtle">{t("modules.rail.pick")}</p>}</div>
+        </aside>
+      ) : null}
     </div>
   );
 }
@@ -175,8 +196,7 @@ function UnplacedScreen({ projectId, slug }: { projectId: string; slug: string }
   const { at } = useSelection();
   return (
     <div className="min-h-full bg-app" data-testid="module-screen">
-      <DetailHeader back={{ href: modulesHref(slug), label: t("modules.title") }} title={t("modules.unplaced")} />
-      <DetailMobileTitle title={t("modules.unplaced")} />
+      <DetailHeader back={{ href: modulesHref(slug), label: t("modules.title") }} title={t("modules.unplaced")} keepTitle />
       <ViewBar view={null} />
       <QueryBoundary query={q} loadingLabel={t("modules.loadingOne")}>
         {(read) => (
@@ -199,8 +219,8 @@ function ModuleScreen({ projectId, slug, moduleSlug }: { projectId: string; slug
   const doors = useMemo(() => new Set(tree?.branches.capability.map((c) => c.ref) ?? []), [tree]);
   return (
     <div className="min-h-full bg-app" data-testid="module-screen">
-      <DetailHeader back={{ href: modulesHref(slug), label: t("modules.title") }} title={tree?.module.name ?? names.get(moduleSlug) ?? t("modules.loadingOne")} />
-      <DetailMobileTitle title={tree?.module.name ?? names.get(moduleSlug) ?? t("modules.loadingOne")} />
+      {/* the module's name stays in the bar on a phone too: the tree is long, and a column title scrolls away */}
+      <DetailHeader back={{ href: modulesHref(slug), label: t("modules.title") }} title={tree?.module.name ?? names.get(moduleSlug) ?? t("modules.loadingOne")} keepTitle />
       <ViewBar view={view} onView={setView} />
       <QueryBoundary query={q} loadingLabel={t("modules.loadingOne")}>
         {(read) => (view === "capabilities" ? <CapabilitiesBranch projectId={projectId} only={doors} /> : <TreePage slug={slug} tree={read} names={names} />)}

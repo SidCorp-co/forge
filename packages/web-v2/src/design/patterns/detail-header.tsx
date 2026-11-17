@@ -50,9 +50,15 @@ interface DetailHeaderProps {
   trail?: { href: string; label: string }[];
   /** A switch between the page's views, for a page that has more than one. */
   views?: ReactNode;
+  /**
+   * The title stays in the bar at every width, for a page with no key, badge or action to make room
+   * for: its name never scrolls away with the column (a module page on a phone, ISS-1256). Such a page
+   * renders no `DetailMobileTitle`.
+   */
+  keepTitle?: boolean;
 }
 
-export function DetailHeader({ back, itemKey, title, badge, action, keyTitle, trail, views }: DetailHeaderProps) {
+export function DetailHeader({ back, itemKey, title, badge, action, keyTitle, trail, views, keepTitle }: DetailHeaderProps) {
   const t = useCopy();
   return (
     <>
@@ -106,7 +112,7 @@ export function DetailHeader({ back, itemKey, title, badge, action, keyTitle, tr
           </span>
         }
       >
-        <span className="max-column-wide:hidden">{title}</span>
+        <span className={keepTitle ? undefined : "max-column-wide:hidden"}>{title}</span>
       </PageTitle>
       {action ? <TopBarActions>{action}</TopBarActions> : null}
     </>

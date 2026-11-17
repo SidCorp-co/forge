@@ -57,9 +57,14 @@ export interface CapDoor {
   freshness: CapabilityFreshnessRow | null;
 }
 
-export function standingOf(row: DoorUseRow, feedback: CapabilityFeedbackRow | null, lessons: readonly CapabilityLessonRow[], freshness: CapabilityFreshnessRow | null = null): CapStanding {
-  // dev.701: support.member owed a re-check and read only as unused, so the count said 3 of 7
-  if (freshness?.recheckOwed || lessons.some((l) => l.invalid)) return "recheck";
+/**
+ * Where a door stands. A re-check owed reads first and from core's one record of it, the card's
+ * freshness, which a module tree's capability node reads too (`labels/module-map-read.ts`), so this
+ * page and the trees count the same doors (ISS-1256, L-91): ranked under "unused", or widened by a
+ * lesson's own flag, it counted 3 where the trees counted 1.
+ */
+export function standingOf(row: DoorUseRow, feedback: CapabilityFeedbackRow | null, _lessons: readonly CapabilityLessonRow[], freshness: CapabilityFreshnessRow | null = null): CapStanding {
+  if (freshness?.recheckOwed) return "recheck";
   if (row.calls === 0) return "unused";
   if (row.refused * MISUSE_SHARE >= row.calls || (feedback?.reports ?? 0) > 0) return "misused";
   if (!row.card) return "untaught";

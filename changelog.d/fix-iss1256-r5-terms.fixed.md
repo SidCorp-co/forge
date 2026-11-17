@@ -1,0 +1,1 @@
+**Agents are told what a module holds at the moment their work lands, so terms and rules get written.** On a phone, a tapped node's detail opens under it and the bar keeps the module's name; re-check counts agree.

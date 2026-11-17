@@ -2,7 +2,8 @@
 // tree with the rail of the term Run slots, and the ⌘K search for "chia slot", each at 1440 and 390 px
 // in light and dark. Each stage prints its first screen's words; a probe names what the map must show:
 // the Unplaced row, a count opening its tree at its branch, the rail's relations, the term found first
-// by its other name, and no page scrolling sideways.
+// by its other name, and no page scrolling sideways. A tapped node's rail stands in view at every width,
+// and the bar keeps the module's name on a phone (ISS-1256 r5).
 //
 //   pnpm --filter web-v2 witness witness/module-map.witness.tsx --out <dir>
 
@@ -113,6 +114,27 @@ function search(): string[] {
 
 const dialog = () => q("[role=dialog]");
 
+/** Tap the first rule: its rail must stand in the window, and the bar must still name the module. */
+async function pick(): Promise<string[]> {
+  const branch = q("[data-testid=tree-branch-rule]");
+  if (!branch) return ["no Rules branch to open"];
+  if (!branch.dataset.open) branch.querySelector<HTMLElement>("[data-testid=tree-branch-toggle]")?.click();
+  await settle(300);
+  branch.querySelector<HTMLElement>("[data-testid=tree-node]")?.click();
+  await settle(900);
+  const wrong: string[] = [];
+  const rail = q("[data-testid=node-rail]");
+  if (rail?.dataset.node !== "rule:one-slot-minimum") wrong.push(`the rail shows ${rail?.dataset.node} after the tap`);
+  // the tapped node and its rail stand together in the window: a rail scrolled to below the whole tree
+  // leaves the node it describes out of view
+  const node = q('[data-testid=tree-node][data-node="rule:one-slot-minimum"]')?.getBoundingClientRect();
+  const top = rail?.getBoundingClientRect().top ?? -1;
+  const inView = (y: number | undefined) => y !== undefined && y >= 0 && y <= window.innerHeight - 120;
+  if (!inView(node?.top) || !inView(top)) wrong.push(`the tapped node sits at ${Math.round(node?.top ?? -1)} px and its rail at ${Math.round(top)} px, in a ${window.innerHeight} px window`);
+  if (!q("header")?.innerText.includes("Execution")) wrong.push("the bar does not name the module");
+  return wrong;
+}
+
 window.__witness = {
   cases: [
     { name: "desktop", width: 1440 },
@@ -123,6 +145,7 @@ window.__witness = {
     { name: "pillar-light", run: async () => (theme("light"), await settle(900), [...sideways(), ...pillar(), ...words("pillar", q("[data-witness=page]"))]) },
     { name: "pillar-dark", run: async () => (theme("dark"), await settle(), sideways()) },
     { name: "tree-light", run: async () => (theme("light"), address("?node=term%3Arun-slots"), show.view("tree"), await settle(900), [...sideways(), ...tree(), ...words("tree", q("[data-witness=page]"))]) },
+    { name: "tree-pick-light", run: async () => [...(await pick()), ...sideways()] },
     { name: "tree-dark", run: async () => (theme("dark"), await settle(), sideways()) },
     { name: "search-light", run: async () => (theme("light"), address(""), show.view("search"), await settle(1200), [...search(), ...words("search", dialog())]) },
     { name: "search-dark", run: async () => (theme("dark"), await settle(), search()) },
