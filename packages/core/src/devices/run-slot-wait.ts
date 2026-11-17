@@ -15,6 +15,11 @@
 
 import { MASTER_SESSION_KIND } from '@forge/contracts/agent-sessions';
 import { sql } from 'drizzle-orm';
+import {
+  dropSessionMetadataKey,
+  liveMasterSessionId,
+  mergeSessionMetadata,
+} from '../agent-sessions/index.js';
 import { db, type Tx } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
@@ -58,19 +63,16 @@ export async function recordSlotWait(args: {
     ...(args.requirement ? { requirement: args.requirement } : {}),
     at: new Date().toISOString(),
   };
-  const rows = (await db.execute(sql`
-    UPDATE agent_sessions
-       SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), ARRAY[${SLOT_WAIT_METADATA_KEY}::text],
-                                ${JSON.stringify(wait)}::jsonb, true)
-     WHERE device_id = ${args.deviceId} AND project_id = ${args.projectId} AND ${LIVE_MASTER}
-     RETURNING id`)) as unknown as Array<{ id: string }>;
-  if (rows.length === 0) {
+  const master = await liveMasterSessionId(args);
+  if (!master) {
     logger.warn(
       { deviceId: args.deviceId, projectId: args.projectId, issueKeys: args.issueKeys },
       'run-slot-wait: a declare was refused for a slot on a box holding no live master for the project, so no wait is kept',
     );
+    return false;
   }
-  return rows.length > 0;
+  await mergeSessionMetadata(master, { [SLOT_WAIT_METADATA_KEY]: wait });
+  return true;
 }
 
 /** The project's master wait on this box while it is fresh; null where none waits or it lapsed. */
@@ -100,8 +102,10 @@ export async function freshSlotWait(deviceId: string, projectId: string): Promis
  * transaction): the master's wait is over. Inside the open, so a rolled-back open keeps it.
  */
 export async function endSlotWait(tx: Tx, deviceId: string, projectId: string): Promise<void> {
-  await tx.execute(sql`
-    UPDATE agent_sessions SET metadata = metadata - ${SLOT_WAIT_METADATA_KEY}::text
+  const [held] = (await tx.execute(sql`
+    SELECT id::text AS id FROM agent_sessions
      WHERE device_id = ${deviceId} AND project_id = ${projectId} AND ${LIVE_MASTER}
-       AND metadata ? ${SLOT_WAIT_METADATA_KEY}::text`);
+       AND metadata ? ${SLOT_WAIT_METADATA_KEY}::text
+     LIMIT 1`)) as unknown as Array<{ id: string }>;
+  if (held) await dropSessionMetadataKey(held.id, SLOT_WAIT_METADATA_KEY, tx);
 }

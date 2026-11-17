@@ -71,6 +71,7 @@ export {
   beatSession,
   claimSessionMarker,
   claimSessionMetadataDelivery,
+  dropSessionMetadataKey,
   endLapsedResidency,
   insertSessionRow,
   mergeSessionMetadata,

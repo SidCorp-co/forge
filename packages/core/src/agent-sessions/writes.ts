@@ -33,6 +33,20 @@ export async function mergeSessionMetadata(
     .where(eq(agentSessions.id, agentSessionId));
 }
 
+/** Remove one key from a session's metadata where it is set; no other key is touched. */
+export async function dropSessionMetadataKey(
+  agentSessionId: string,
+  key: string,
+  tx: Tx = db,
+): Promise<void> {
+  await tx
+    .update(agentSessions)
+    .set({ metadata: sql`${agentSessions.metadata} - ${key}::text` })
+    .where(
+      and(eq(agentSessions.id, agentSessionId), sql`${agentSessions.metadata} ? ${key}::text`),
+    );
+}
+
 /**
  * Stamp `deliveredAt` under one metadata key, once: false when another writer already stamped it.
  */
