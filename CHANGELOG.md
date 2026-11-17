@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.717] - 2026-11-17
+
+Releases list only their own checks; lessons passes settle after room audits
+
+### Fixed
+
+- **The steward's lessons pass runs again.** A room reply's failed audit no longer stops it, and the capabilities read shows each project's last pass: where it stopped and which judges gave no answer.
+- **A release lists only its own issues' criteria.** One judging run across several releases no longer piles every issue onto the newest, and a release whose open criteria were all skipped waits on an admin, not the master.
+
 ## [0.4.0-dev.716] - 2026-11-17
 
 Modules search opens the right term; module pages fit a phone; channel handoffs between projects
