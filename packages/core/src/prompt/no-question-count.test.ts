@@ -1,3 +1,4 @@
+// @direct-test-of packages/contracts/src/
 // @direct-test-of packages/contracts/src/suggestions.ts
 // @direct-test-of packages/core/src/intake/prompt.ts
 // @direct-test-of packages/core/src/onboarding/agent-writes.ts
