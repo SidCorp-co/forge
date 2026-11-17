@@ -19,7 +19,6 @@ export function memoryNoteGateFor(projectId: string): PreCall {
         topK: EXISTING_TOP_K,
         sourceFilter: ['note'],
         strategy: 'semantic',
-        surface: 'web',
         // the gate reads only the notes' text: their cites are read for no person
         reader: 'own-project',
       });

@@ -1,25 +1,12 @@
-import type { MemoryStanding, RerankReport } from '@forge/contracts/memory';
+import type { MemoryStanding } from '@forge/contracts/memory';
 import type { MemorySource } from '../db/schema.js';
-import {
-  EmbeddingUnavailableError,
-  embedQuery,
-  fastModelConfigured,
-} from '../integrations/llm/index.js';
+import { embedQuery } from '../integrations/llm/index.js';
 import { env } from '../lib/env.js';
 import { logger } from '../lib/logger.js';
-import { RETRIEVAL_FLAGS, type RetrievalFlags } from '../lib/retrieval-flags.js';
 import { clampTopK } from '../lib/search-fusion.js';
-import { expandIssueRelations } from './expand-relations.js';
 import { noteWindowDays, standingOf } from './note-lifetime.js';
 import { foldBySubject, sameSubjectPairs } from './one-per-subject.js';
-import { inRerankHoldout, rerankHits, rerankPoolSize } from './rerank.js';
-import {
-  hybridSearchMemories,
-  keywordSearchMemories,
-  type MemoryHit,
-  searchMemories,
-  touchMemories,
-} from './search.js';
+import { keywordSearchMemories, type MemoryHit, searchMemories, touchMemories } from './search.js';
 import { type CiteReader, resolveCitations } from './stale-refs.js';
 
 /**
@@ -31,19 +18,15 @@ import { type CiteReader, resolveCitations } from './stale-refs.js';
  * Strategies (memory-v2 phase 1):
  *  - `semantic` (default) — cosine over embeddings. Scores are similarity
  *    (≈0..1); existing consumers threshold on these (knowledge dedup fact
- *    uses > 0.8), which is why the default did NOT change to hybrid.
+ *    uses > 0.8).
  *  - `keyword`  — Postgres FTS. No embedding call; exact-identifier recall.
- *  - `hybrid`   — both in parallel, weighted RRF fusion. Degrades to
- *    keyword-only when the embeddings service is down (`degraded: true`).
+ * The find door fuses the two by rank itself (`find/rank.ts`).
  *
  * Does NOT check authorization on `projectId` — callers must verify project membership
  * before invoking this function. `reader` decides which other projects a hit's cites are read in.
  */
 
-type MemorySearchStrategy = 'semantic' | 'keyword' | 'hybrid';
-
-const memorySearchSurfaces = ['agent', 'web'] as const;
-type MemorySearchSurface = (typeof memorySearchSurfaces)[number];
+type MemorySearchStrategy = 'semantic' | 'keyword';
 
 interface RunMemorySearchInput {
   projectId: string;
@@ -51,7 +34,6 @@ interface RunMemorySearchInput {
   topK?: number | undefined;
   sourceFilter?: MemorySource[] | undefined;
   strategy?: MemorySearchStrategy | undefined;
-  surface: MemorySearchSurface;
   /** Who the hits are read for: a cite in a project they may not read is never read (REQ-30 BC-10). */
   reader: CiteReader;
   /**
@@ -74,18 +56,7 @@ interface MemorySearchResult {
   took_ms: number;
   /** What the query's embedding took, over every attempt; absent when none was made here (a keyword search, or a vector the caller supplied). */
   embedMs?: number;
-  /** Strategy actually executed — differs from the request when degraded. */
   strategy: MemorySearchStrategy;
-  /** True when hybrid fell back to keyword because embeddings were down. */
-  degraded?: boolean;
-  /** True when the fast model ordered the hits; read them by position, `score` is still the RRF value. */
-  reranked: boolean;
-  /** Present whenever a rerank was attempted: the path that ordered the hits, the model version, and a degradation when the model path was not taken. */
-  rerank?: RerankReport;
-  /** Present only on an eligible search that was deliberately left in RRF order as the pilot's control. */
-  rerankHoldout?: true;
-  /** True when rows carrying `via` were appended after the ranked hits. */
-  expanded: boolean;
   /** How many retrieved hits were moved below the fresh ones because they name a record that no longer resolves (`staleRefs`). Absent when none were. */
   demotedStale?: number;
   /**
@@ -96,16 +67,6 @@ interface MemorySearchResult {
   withheldForRecheck?: number;
   /** How many retrieved entries were folded into the entry answering their subject (its `duplicates`). Absent when none were. */
   duplicatesFolded?: number;
-}
-
-/** What one search did beyond retrieving — the fields the response carries. */
-interface SearchOutcome {
-  reranked: boolean;
-  rerank?: RerankReport;
-  rerankHoldout?: true;
-  expanded: boolean;
-  demotedStale?: number;
-  withheldForRecheck?: number;
 }
 
 /**
@@ -180,24 +141,10 @@ async function withStaleRefs(
   }
 }
 
-function rerankEligible(input: RunMemorySearchInput, flags: RetrievalFlags): boolean {
-  return (
-    input.strategy === 'hybrid' &&
-    input.surface === 'agent' &&
-    flags.rerank &&
-    fastModelConfigured()
-  );
-}
-
 async function retrieve(
   input: RunMemorySearchInput,
   poolTopK: number,
-): Promise<{
-  hits: MemoryHit[];
-  resolved: MemorySearchStrategy;
-  degraded: boolean;
-  embedMs?: number;
-}> {
+): Promise<{ hits: MemoryHit[]; resolved: MemorySearchStrategy; embedMs?: number }> {
   const requested: MemorySearchStrategy = input.strategy ?? 'semantic';
   const base = {
     projectId: input.projectId,
@@ -206,101 +153,31 @@ async function retrieve(
   };
   if (requested === 'keyword') {
     const hits = await keywordSearchMemories({ ...base, query: input.query });
-    return { hits, resolved: requested, degraded: false };
+    return { hits, resolved: requested };
   }
   const embedStarted = Date.now();
-  const attempted = input.queryVec === undefined;
-  const embedMsNow = () => (attempted ? { embedMs: Date.now() - embedStarted } : {});
-  try {
-    const queryVec = input.queryVec ?? (await embedQuery({ surface: 'memory' }, input.query));
-    const embedMs = embedMsNow();
-    if (requested === 'hybrid') {
-      const fused = await hybridSearchMemories({
-        ...base,
-        topK: poolTopK,
-        queryVec,
-        query: input.query,
-      });
-      return {
-        hits: fused.hits,
-        resolved: requested,
-        degraded: false,
-        ...embedMs,
-      };
-    }
-    return {
-      hits: await searchMemories({ ...base, queryVec }),
-      resolved: requested,
-      degraded: false,
-      ...embedMs,
-    };
-  } catch (err) {
-    if (!(err instanceof EmbeddingUnavailableError) || requested !== 'hybrid') throw err;
-    const embedMs = embedMsNow();
-    logger.warn(
-      { projectId: input.projectId, err: (err as Error).message, ...embedMs },
-      'memory.search: embeddings unavailable, hybrid degraded to keyword',
-    );
-    const hits = await keywordSearchMemories({ ...base, query: input.query });
-    return { hits, resolved: 'keyword', degraded: true, ...embedMs };
-  }
-}
-
-async function expand(
-  input: RunMemorySearchInput,
-  hits: MemoryHit[],
-  topK: number,
-): Promise<MemoryHit[]> {
-  try {
-    return await expandIssueRelations({ projectId: input.projectId, hits, topK });
-  } catch (err) {
-    logger.warn(
-      { err: (err as Error).message, projectId: input.projectId },
-      'memory.search: relation expansion failed, returning ranked hits only',
-    );
-    return [];
-  }
+  const queryVec = input.queryVec ?? (await embedQuery({ surface: 'memory' }, input.query));
+  return {
+    hits: await searchMemories({ ...base, queryVec }),
+    resolved: requested,
+    ...(input.queryVec === undefined ? { embedMs: Date.now() - embedStarted } : {}),
+  };
 }
 
 export async function runMemorySearch(input: RunMemorySearchInput): Promise<MemorySearchResult> {
   const startedAt = Date.now();
   const topK = clampTopK(input.topK);
-  const flags = RETRIEVAL_FLAGS;
-  const eligible = rerankEligible(input, flags);
-  const holdout = eligible && inRerankHoldout();
-  const willRerank = eligible && !holdout;
 
   // a subject held twice takes one slot: the pool is wider than topK so the slot it frees is filled
-  const retrieved = await retrieve(input, willRerank ? rerankPoolSize(topK) : clampTopK(topK * 2));
+  const retrieved = await retrieve(input, clampTopK(topK * 2));
   const subjects = await onePerSubject(input.projectId, retrieved.hits);
   // withheld before the cut to topK, so the slots it frees go to entries in service
   const service = withholdOutOfService(subjects.hits);
-  let hits = service.hits;
-  const outcome: SearchOutcome = { reranked: false, expanded: false };
-  if (service.withheld > 0) outcome.withheldForRecheck = service.withheld;
-  if (holdout) outcome.rerankHoldout = true;
-
-  if (willRerank && retrieved.resolved === 'hybrid') {
-    const result = await rerankHits({ query: input.query, hits, topK });
-    hits = result.hits;
-    outcome.reranked = result.report.path === 'model';
-    outcome.rerank = result.report;
-  } else if (hits.length > topK) {
-    hits = hits.slice(0, topK);
-  }
+  let hits = service.hits.slice(0, topK);
 
   hits = await withStaleRefs(input.projectId, hits, input.reader);
   const demotion = demoteStale(hits);
   hits = demotion.hits;
-  if (demotion.demoted > 0) outcome.demotedStale = demotion.demoted;
-
-  if (flags.expandRelations && hits.length > 0) {
-    const appended = await expand(input, hits, topK);
-    if (appended.length > 0) {
-      hits = [...hits, ...appended];
-      outcome.expanded = true;
-    }
-  }
 
   const windowDays = await noteWindowDays(input.projectId);
   const now = Date.now();
@@ -325,13 +202,8 @@ export async function runMemorySearch(input: RunMemorySearchInput): Promise<Memo
     took_ms: tookMs,
     ...(retrieved.embedMs !== undefined ? { embedMs: retrieved.embedMs } : {}),
     strategy: retrieved.resolved,
-    ...(retrieved.degraded ? { degraded: true } : {}),
-    reranked: outcome.reranked,
-    ...(outcome.rerank ? { rerank: outcome.rerank } : {}),
-    ...(outcome.rerankHoldout ? { rerankHoldout: true as const } : {}),
-    expanded: outcome.expanded,
-    ...(outcome.demotedStale ? { demotedStale: outcome.demotedStale } : {}),
-    ...(outcome.withheldForRecheck ? { withheldForRecheck: outcome.withheldForRecheck } : {}),
+    ...(demotion.demoted > 0 ? { demotedStale: demotion.demoted } : {}),
+    ...(service.withheld > 0 ? { withheldForRecheck: service.withheld } : {}),
     ...(subjects.folded > 0 ? { duplicatesFolded: subjects.folded } : {}),
   };
 }

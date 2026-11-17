@@ -9,7 +9,7 @@ import { db } from '../db/client.js';
 import { cosineDistance } from '../db/pgvector.js';
 import { type MemorySource, memories } from '../db/schema.js';
 import { identifierTsQuery } from '../db/schema-types.js';
-import { clampTopK, fuseHybrid } from '../lib/search-fusion.js';
+import { clampTopK } from '../lib/search-fusion.js';
 import { storedCuration } from './curation.js';
 import { memoryOfLiveIssue } from './live-issue.js';
 
@@ -203,7 +203,7 @@ export async function nearestIssueCopies(input: {
  *
  * Scores are `ts_rank` values — NOT comparable to cosine similarity. Rank
  * within a strategy is meaningful; absolute values across strategies are not,
- * which is why `hybridSearchMemories` fuses by rank (RRF), not by score.
+ * which is why the find door fuses the two by rank (RRF), not by score.
  */
 export async function keywordSearchMemories(input: KeywordSearchInput): Promise<MemoryHit[]> {
   const trimmed = input.query.trim();
@@ -246,21 +246,4 @@ export async function touchMemories(ids: string[]): Promise<void> {
       lastRetrievedAt: sql`now()`,
     })
     .where(inArray(memories.id, ids));
-}
-
-/**
- * Hybrid strategy — dense + keyword in parallel, fused with weighted RRF
- * (`fuseHybrid`). Returned `score` is the fused RRF value
- * (≈0.005–0.03), NOT a cosine similarity — callers that threshold on
- * similarity (e.g. the knowledge dedup fact) must use `strategy:'semantic'`.
- */
-export async function hybridSearchMemories(
-  input: SearchInput & KeywordSearchInput,
-): Promise<{ hits: MemoryHit[] }> {
-  const topK = clampTopK(input.topK);
-  const [semantic, keyword] = await Promise.all([
-    searchMemories(input),
-    keywordSearchMemories(input),
-  ]);
-  return { hits: fuseHybrid(semantic, keyword, topK) };
 }

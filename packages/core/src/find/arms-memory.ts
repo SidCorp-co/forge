@@ -31,7 +31,6 @@ export interface MemoryArm {
   memory: Candidate[];
   decisions: Candidate[];
   issues: Candidate[];
-  degraded: boolean;
   result: MemoryResult | null;
 }
 
@@ -58,7 +57,6 @@ export async function memoryArm(input: {
       strategy,
       ...(strategy === 'semantic' && input.queryVec ? { queryVec: input.queryVec } : {}),
       sourceFilter: input.sources ? [...input.sources] : [...MEMORY_AUTHORED_SOURCES, 'issue'],
-      surface: 'web',
       reader: input.reader,
     });
   const [keyword, semantic] = await Promise.all([
@@ -111,7 +109,6 @@ async function armOf(
     memory: as('memory'),
     decisions: as('decision'),
     issues: (await hydrateIssues(ordered, '')).map((c) => ({ ...c, arm })),
-    degraded: result.degraded === true,
     result,
   };
 }
