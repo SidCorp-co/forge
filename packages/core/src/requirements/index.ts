@@ -79,6 +79,7 @@ export {
   requirementStatesOf,
   standingsOf,
 } from './standing-read.js';
+export { heldByDecision } from './standing-held.js';
 export { runnerBoundIn } from './standing-rows.js';
 export { completionStandingsOf } from './standing-share.js';
 export { type StepChange, stepChangeOf } from './step-notice.js';

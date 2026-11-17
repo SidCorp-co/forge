@@ -3,14 +3,20 @@
  * for (ISS-1278): the one standing read (`read.ts:openStandings`), each wait passing the one test of
  * naming the master (`lib/master-wait.ts:waitNamesMaster`) that the releases' read applies too.
  * Placement and retirement count each as owed work (`masters/verdict.ts:workWaits`), so a page or the
- * steward saying an item waits on the Master and the box saying `nothing_owed` cannot both stand.
+ * steward saying an item waits on the Master and the box saying `nothing_owed` cannot both stand,
+ * unless the master recorded why it waits.
  *
  * A wait naming the master is left out only where its act is counted elsewhere or is not owed yet,
- * each said in {@link LEFT_OUT}.
+ * each said in {@link LEFT_OUT}, or where the master already recorded why it waits (ISS-1282): a
+ * decision on the item, at its own kind's door (`masters/decision-doors.ts`), holding it by a date
+ * to come or a condition, read as a requirement's standing reads one ({@link heldIds}).
  */
 
 import type { ItemStanding, StandingSubject } from '@forge/contracts/steward';
+import { reasonedDecisionsOnItems } from '../comments/index.js';
+import { reasonedDecisionsOn } from '../issues/index.js';
 import { actChain, innermostAct, waitNamesMaster } from '../lib/master-wait.js';
+import { heldByDecision } from '../requirements/index.js';
 import { openStandings } from './read.js';
 
 export interface StandingActOwed {
@@ -52,11 +58,57 @@ function counted(item: ItemStanding): boolean {
   return waitNamesMaster(w) && !actChain(w.says.act).some((a) => Object.hasOwn(LEFT_OUT, a.key));
 }
 
+/** The rule a requirement's standing names where a decision on it holds its wait (`requirements/standing-held.ts:heldRule`). */
+const HELD_RULE = 'requirements.rule.heldByDecision';
+
+type Decided = Parameters<typeof heldByDecision>[0] & { subjectId: string };
+
+/** The newest reasoned decision on each of these items of one kind, by the item's id. */
+async function newestDecisions(
+  kind: 'issue' | 'feedback' | 'workflow',
+  ids: readonly string[],
+): Promise<Map<string, Decided>> {
+  const all: Decided[] =
+    kind === 'issue'
+      ? (await reasonedDecisionsOn(ids)).map((d) => ({ ...d, subjectId: d.issueId }))
+      : await reasonedDecisionsOnItems(kind, ids);
+  const newest = new Map<string, Decided>();
+  for (const d of all) if (!newest.has(d.subjectId)) newest.set(d.subjectId, d);
+  return newest;
+}
+
+/**
+ * The items a decision holds: a requirement's standing already names the hold in its rule; an
+ * issue's, feedback item's or workflow's newest decision is read by the same rule against when its
+ * wait began, so one recorded after it with a date to come or a condition holds it.
+ */
+async function heldIds(items: readonly ItemStanding[], now: Date): Promise<Set<string>> {
+  const held = new Set(
+    items.filter((i) => i.waitingOn.says.rule.key === HELD_RULE).map((i) => i.subject.id),
+  );
+  for (const kind of ['issue', 'feedback', 'workflow'] as const) {
+    const ofKind = items.filter((i) => i.subject.kind === kind);
+    const newest = await newestDecisions(
+      kind,
+      ofKind.map((i) => i.subject.id),
+    );
+    for (const i of ofKind) {
+      const d = newest.get(i.subject.id) ?? null;
+      if (heldByDecision(d, new Date(i.since), now)) held.add(i.subject.id);
+    }
+  }
+  return held;
+}
+
 /** Every open item whose standing waits on the master, with the act it names, as the standing read orders them. */
 export async function standingActsOwed(projectId: string): Promise<StandingActOwed[]> {
-  return (await openStandings(projectId)).filter(counted).map((i) => ({
-    subject: i.subject,
-    key: innermostAct(i.waitingOn.says.act).key,
-    act: i.waitingOn.act,
-  }));
+  const waits = (await openStandings(projectId)).filter(counted);
+  const held = await heldIds(waits, new Date());
+  return waits
+    .filter((i) => !held.has(i.subject.id))
+    .map((i) => ({
+      subject: i.subject,
+      key: innermostAct(i.waitingOn.says.act).key,
+      act: i.waitingOn.act,
+    }));
 }

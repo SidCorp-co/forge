@@ -7,6 +7,10 @@
  * and the verdict on its pane reads that same wait: an idle pane is kept, and an absent one is placed
  * on the next sweep, its reason naming the act. Against real Postgres.
  *
+ * ISS-1282 (FB-710): a decision the master records at the door its wake names for the item's kind,
+ * bounded by a date to come or a condition, holds the item off the owed work; one with neither, or
+ * one written on another item, holds nothing.
+ *
  * @direct-test-of packages/core/src/standing/master-owed.ts
  * @direct-test-of packages/core/src/lib/master-wait.ts
  * @direct-test-of packages/core/src/masters/owed.ts
@@ -18,8 +22,16 @@ import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { judgeMaster } from '../../src/masters/service.js';
-import { openStandings } from '../../src/standing/index.js';
-import { closeWorld, settleOutbox, startQueue, testEnv } from '../helpers/ecosystem-world.js';
+import { openStandings, standingActsOwed } from '../../src/standing/index.js';
+import {
+  closeWorld,
+  ok,
+  type Reply,
+  requester,
+  settleOutbox,
+  startQueue,
+  testEnv,
+} from '../helpers/ecosystem-world.js';
 import {
   bindTestRunner,
   createTestDevice,
@@ -32,6 +44,9 @@ import {
 
 const HOUR = 3600;
 let world = { projectId: '', ownerId: '', deviceId: '', runnerId: '' };
+let say: (method: string, path: string, body?: unknown) => Promise<Reply>;
+let app: Parameters<typeof requester>[0];
+let signUserToken: (userId: string) => Promise<string>;
 
 /** The box's facts on a master that has done nothing for an hour, its pane as given. */
 function facts(pane: 'alive' | 'absent'): MasterFacts {
@@ -94,6 +109,8 @@ async function owedOnly(act: string): Promise<void> {
 
 beforeAll(async () => {
   testEnv();
+  ({ app } = await import('../../src/index.js'));
+  ({ signUserToken } = await import('../../src/credentials/jwt.js'));
   await startQueue();
 }, 120_000);
 
@@ -107,6 +124,8 @@ beforeEach(async () => {
   const projectId = (await createTestProject(ownerId)).id;
   const deviceId = await createTestDevice(ownerId);
   world = { projectId, ownerId, deviceId, runnerId: await bindTestRunner(projectId, deviceId) };
+  const as = requester(app, { owner: await signUserToken(ownerId) });
+  say = (method, path, body) => as('owner', method, path, body);
 });
 
 describe('every open item waiting on the Master is the master’s owed work (ISS-1278 c2)', () => {
@@ -163,5 +182,111 @@ describe('every open item waiting on the Master is the master’s owed work (ISS
     const [wait] = await masterWaits();
     expect(wait).toMatch(/^refunds: /);
     await owedOnly(wait as string);
+  });
+});
+
+/** An agent's draft requirement owner-held by the project's owner: its standing waits on the Master. */
+async function agentDraft(): Promise<{ id: string; key: string }> {
+  const req = await createTestRequirement(world.projectId, 1, 'Exports keep their order');
+  const agent = (await createTestUser({ kind: 'agent' })).id;
+  await db.execute(sql`UPDATE requirements SET owner_id = ${world.ownerId} WHERE id = ${req.id}`);
+  await db.execute(sql`
+    INSERT INTO requirement_revisions (requirement_id, revision, spec, author_id, author_agency)
+    VALUES (${req.id}, 1, '{}'::jsonb, ${agent}, 'agent')
+  `);
+  return req;
+}
+
+/** A decision comment at a requirement's, feedback item's or workflow's own door, as the wake names it. */
+const decideOn = (path: string, reversedWhen?: string) =>
+  say('POST', `/api/projects/${world.projectId}/${path}/comments`, {
+    intent: 'decision',
+    decision: {
+      decision: 'Keep it waiting.',
+      reason: 'The BA who agrees it is not yet a member of the project.',
+      ...(reversedWhen ? { reversedWhen } : {}),
+    },
+  });
+
+/** The sweep owes nothing for the item, and its wake names it nowhere. */
+async function heldOff(key: string): Promise<void> {
+  const answer = await sweep('alive');
+  expect(answer.work.owed, answer.verdict.because).toBe(0);
+  expect(answer.work.nudge ?? '').not.toContain(key);
+}
+
+describe('a decision at its own door holds the item off the master’s owed work (ISS-1282)', () => {
+  it('a requirement: a decision comment naming a condition holds it, its page naming the hold', async () => {
+    const { key } = await agentDraft();
+    await owedOnly(`${key}: propose or drop r1`);
+    ok(await decideOn(`requirements/${key}`, 'until the BA joins the project'), 201);
+    const [standing] = (await openStandings(world.projectId)).filter((i) => i.subject.key === key);
+    expect(standing?.waitingOn.rule).toContain('until the BA joins the project');
+    await heldOff(key);
+  });
+
+  it('a requirement: a decision with neither date nor condition holds nothing (boundary)', async () => {
+    const { key } = await agentDraft();
+    ok(await decideOn(`requirements/${key}`), 201);
+    await owedOnly(`${key}: propose or drop r1`);
+  });
+
+  it('an issue: a decision record at its events door, `until` a condition, holds it', async () => {
+    const { id, key } = await createTestIssue(world.projectId, world.ownerId, 1, {
+      status: 'on_hold',
+      createdAt: hourAgo(),
+    });
+    const fields = [
+      { key: 'decision', value: 'Keep it paused.' },
+      { key: 'why', value: 'The owner paused it for the audit.' },
+      { key: 'until', value: 'the owner resumes it' },
+    ];
+    ok(
+      await say('POST', `/api/issues/${id}/events`, { kind: 'decision', contract: 1, fields }),
+      201,
+    );
+    await heldOff(key);
+  });
+
+  // its triage is the triage line's to name, so the standing acts read is where its hold shows
+  it('a feedback item: a decision comment at its own door, naming a condition, holds it', async () => {
+    const key = await createTestFeedback(world.projectId, world.ownerId, 1);
+    const acted = async () => (await standingActsOwed(world.projectId)).map((a) => a.subject.key);
+    expect(await acted()).toContain(key);
+    ok(await decideOn(`feedback/${key}`, 'until the reporter answers'), 201);
+    expect(await acted()).not.toContain(key);
+  });
+
+  it('a workflow: a decision comment at its own door, dated to come, holds it', async () => {
+    await db.execute(sql`
+      INSERT INTO project_workflows (project_id, flow, kind, revision, document, design_status, written_by_user)
+      VALUES (${world.projectId}, 'refunds', 'flow', 1, '{}'::jsonb, 'draft', ${world.ownerId})
+    `);
+    const nextWeek = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
+    ok(await decideOn('workflows/refunds', nextWeek), 201);
+    await heldOff('refunds');
+  });
+
+  it('a requirement’s wait recorded on another item holds nothing: the FB-710 sequence', async () => {
+    const { key } = await agentDraft();
+    const issue = await createTestIssue(world.projectId, world.ownerId, 2, {
+      status: 'on_hold',
+      createdAt: hourAgo(),
+    });
+    const fields = [
+      { key: 'decision', value: `${key} waits for its BA.` },
+      { key: 'why', value: 'The BA who agrees it is not yet a member of the project.' },
+      { key: 'until', value: 'the BA joins the project' },
+    ];
+    ok(
+      await say('POST', `/api/issues/${issue.id}/events`, {
+        kind: 'decision',
+        contract: 1,
+        fields,
+      }),
+      201,
+    );
+    const answer = await sweep('alive');
+    expect(answer.work.nudge).toContain(`${key}: propose or drop r1`);
   });
 });
