@@ -1,0 +1,1 @@
+**Lessons land where they belong.** A lesson is anchored only to a card the steward was offered or a raiser named; a settled re-anchor makes it valid and foldable; the lessons map's applied example no longer names real lessons.
