@@ -31,6 +31,11 @@ const COUNTS: readonly RegExp[] = [
     'i',
   ),
   /\bone\s+(?:question|clarification|card|questionnaire card|batch)\b[^.\n]{0,40}\bat a time\b/i,
+  // ISS-904 c1 on dev.703: 'Ask one short question at a time' (the widget) and 'ask the person one
+  // short question' (the room agent's decide card and support.decide) slipped the line above
+  /\bone\s+(?:short\s+|brief\s+|single\s+)?(?:question|clarification)\b[^.\n]{0,40}\bat a time\b/i,
+  // a tool asking one question per call is no cap; one *short* question as the whole ask is
+  /\bask(?:s|ing)?\b[^.\n]{0,30}\bone\s+(?:short|brief|single)\s+(?:question|clarification)\b/i,
   /\b(?:at most )?one is open (?:at a time|per)\b/i,
   // ISS-904 c1 on dev.701: the clarify tool still said 'Refused while one is open on the item'
   /\b(?:refused|refuses|wait)\b[^.\n]{0,20}\bwhile (?:one|a question|a clarification) is (?:open|pending|unanswered)\b/i,
@@ -67,6 +72,7 @@ const ASKING_CONTRACTS = [
   'intake-drafts.ts',
   'onboarding.ts',
   'suggestions.ts',
+  'support.ts',
 ];
 
 function sourcesUnder(dir: string): string[] {

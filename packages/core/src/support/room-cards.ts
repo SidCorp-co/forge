@@ -22,7 +22,7 @@ export const ROOM_ACT_CARDS = {
       },
       {
         when: 'a message is vague',
-        do: 'gather on your own first (decision gather: the thread, the sender’s history, support.search and support.issues of the projects you follow); ask the person one short question (decision ask) only once that is exhausted',
+        do: 'gather on your own first (decision gather: the thread, the sender’s history, support.search and support.issues of the projects you follow); ask the person what you still need (decision ask), each question with the answer you recommend, only once that is exhausted',
       },
     ],
     practice: [

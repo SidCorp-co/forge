@@ -999,7 +999,7 @@ export const supportSilentRequestSchema = z.strictObject({
 });
 /**
  * What a room agent decided for a message it was handed (ISS-1243): to answer it, to gather more on
- * its own first, to ask the person one short question, or to stay silent.
+ * its own first, to ask the person what it still needs, or to stay silent.
  */
 export const SUPPORT_ROUTING_DECISIONS = [
 	"answer",
@@ -1047,7 +1047,7 @@ export const supportDecideRequestSchema = z.strictObject({
 	decision: z
 		.enum(SUPPORT_ROUTING_DECISIONS)
 		.describe(
-			"answer it, gather more on your own first, ask the person one short question, or stay silent",
+			"answer it, gather more on your own first, ask the person what you still need (each question with the answer you recommend), or stay silent",
 		),
 	project: supportProjectSlugSchema
 		.optional()

@@ -1,6 +1,6 @@
 // A room agent's routing decision for a message it was handed (ISS-1243): which project the message
 // concerns, what the choice rested on, how sure the agent is, and whether it answers, gathers more,
-// asks one short question or stays silent, and why. It is kept on the room as one `routing_decided`
+// asks the person what it still needs or stays silent, and why. It is kept on the room as one `routing_decided`
 // action of the turn that made it, so the turn record reads it and turns are counted by it; a turn
 // that ends with none reads "no decision recorded", never a silence. A silence decided here is the
 // message's stated silence too (`staySilent`), so the message is settled and never handed again.
