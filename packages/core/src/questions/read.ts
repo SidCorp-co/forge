@@ -436,6 +436,8 @@ export async function answerOf(questionId: string) {
     answeredAt: answered.answeredAt,
     answeredBy: answered.answeredBy,
     round: answered.round,
+    /** What the person said with it: a relayed permission prompt's deny reaches the session as its reason (ISS-1268 B3). */
+    note: answered.note ?? null,
     /** The answer says the issue still waits on this, so a run reading it does not carry on (ISS-257). */
     stillWaits: answered.hold ?? null,
   };

@@ -75,11 +75,29 @@ const askBodySchema = z.object({
   sensitive: z.boolean().optional(),
   about: questionAboutRequestSchema.optional(),
   plain: plainDecisionSchema.optional(),
+  /**
+   * The Claude Code permission prompt this asks a person to allow or deny, as the box's relay hook
+   * read it (ISS-1268 B3): the resident session's name, the tool, and Claude Code's prompt id.
+   */
+  permissionPrompt: z
+    .strictObject({
+      session: z.string().trim().min(1).max(200),
+      tool: z.string().trim().min(1).max(200),
+      promptId: z.string().max(200).nullish(),
+    })
+    .optional(),
 });
 
 type AskBody = z.infer<typeof askBodySchema>;
 
 const answerQuerySchema = z.object({ runId: z.string().optional() });
+
+/** The box ending a relayed permission prompt it denied at its own bound (ISS-1268 B3). */
+const expireBodySchema = z.strictObject({
+  runId: z.string().min(1),
+  projectId: z.string().min(1),
+  waitedSeconds: z.number().int().min(0).max(24 * 60 * 60),
+});
 
 import { type ResolvedLeaseKey, readDeviceIssueLease, resolveLeaseKey } from '../issues/index.js';
 import { releaseHoldsOf, releaseJobHold } from '../jobs/index.js';
@@ -334,10 +352,27 @@ devicePoolRoutes.post(
     fieldShape('about', 'QUESTION_ABOUT_SHAPE', QUESTION_ABOUT_SHAPE_SENTENCE),
   ),
   async (c) => {
-    const body = c.req.valid('json');
+    const { permissionPrompt, ...body } = c.req.valid('json');
     await assertDeviceBoundToProject(c.get('device').id, body.projectId);
+    if (permissionPrompt && body.issueId) {
+      throw new HTTPException(400, {
+        message:
+          'a relayed permission prompt is asked on no issue: it stands on the session that raised it (`permissionPrompt.session`), so drop `issueId`',
+        cause: { code: 'QUESTION_SHAPE_INVALID' },
+      });
+    }
     const q = await devicesPorts().questions.askQuestion({
       ...body,
+      ...(permissionPrompt
+        ? {
+            origin: {
+              kind: 'permission_prompt',
+              session: permissionPrompt.session,
+              tool: permissionPrompt.tool,
+              promptId: permissionPrompt.promptId ?? null,
+            },
+          }
+        : {}),
       id: body.id,
       projectId: body.projectId,
       prompt: body.prompt,
@@ -370,6 +405,35 @@ devicePoolRoutes.get(
     });
     if (!waiter) throw notFound('question');
     return c.json({ answer: await devicesPorts().questions.answerOf(questionId) });
+  },
+);
+
+/**
+ * The box's relay hook denied a permission prompt nobody answered within its bound, and ends the
+ * question it asked so no later answer reads as acted on; core tells the project's admins (ISS-1268 B3).
+ */
+devicePoolRoutes.post(
+  '/me/questions/:questionId/expire',
+  requireDevice(),
+  DEVICE_OWN,
+  zValidator('json', expireBodySchema),
+  async (c) => {
+    const questionId = c.req.param('questionId');
+    const body = c.req.valid('json');
+    const deviceId = c.get('device').id;
+    const waiter = await devicesPorts().questions.waiterFor({
+      questionId,
+      deviceId,
+      runId: body.runId,
+    });
+    if (!waiter) throw notFound('question');
+    const ended = await devicesPorts().questions.expirePermissionPrompt({
+      questionId,
+      projectId: body.projectId,
+      deviceId,
+      waitedSeconds: body.waitedSeconds,
+    });
+    return c.json(ended);
   },
 );
 

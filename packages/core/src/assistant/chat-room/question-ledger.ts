@@ -36,11 +36,12 @@ export interface OwedRound {
 
 /**
  * A question decided signed in to Forge — a channel approve gate, decided in Attention and on the
- * document's gate panel, or one asked in a web chat, answered there. No room is owed its rounds, so
- * a project with no room is the normal case for it and never an undeliverable alert.
+ * document's gate panel; a relayed permission prompt, allowed or denied in Approvals (ISS-1268 B3);
+ * or one asked in a web chat, answered there. No room is owed its rounds, so a project with no room
+ * is the normal case for it and never an undeliverable alert.
  */
 export const decidedOnTheWeb = sql`coalesce(
-  ${agentQuestions.origin} ->> 'kind' = 'channel_gate'
+  ${agentQuestions.origin} ->> 'kind' in ('channel_gate', 'permission_prompt')
   or (${agentQuestions.origin} ->> 'kind' = 'conversation' and ${agentQuestions.origin} ->> 'adapter' = 'web'),
   false
 )`;

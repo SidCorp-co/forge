@@ -90,12 +90,13 @@ function refuseAnswerTo(row: QuestionRow, args: AnswerInput, now: Date): Questio
   if (
     args.note !== undefined &&
     row.origin?.kind !== 'channel_gate' &&
+    row.origin?.kind !== 'permission_prompt' &&
     !decision &&
     !agentsReason
   ) {
     throw refuseQuestion(
       'QUESTION_NOTE_NOT_TAKEN',
-      'a note travels only with an answer that carries it somewhere, and this question carries none — a channel gate, a steward decision and an agent deciding what a person was asked take one; here, answer with the option alone',
+      'a note travels only with an answer that carries it somewhere, and this question carries none — a channel gate, a relayed permission prompt, a steward decision and an agent deciding what a person was asked take one; here, answer with the option alone',
     );
   }
   if (current.round !== args.round) {

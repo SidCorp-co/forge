@@ -171,6 +171,11 @@ export async function resolveQuestionDestination(
       `rocketchat.question-destination: ${input.origin.number} waits at a channel approve gate, which is decided signed in to Forge; question-ledger.ts:owedRounds never owes it to a room, so reaching here is a defect`,
     );
   }
+  if (input.origin.kind === 'permission_prompt') {
+    throw new Error(
+      `rocketchat.question-destination: ${input.origin.session}'s permission prompt is allowed or denied signed in to Forge; question-ledger.ts:owedRounds never owes it to a room, so reaching here is a defect`,
+    );
+  }
   return conversationDestination(input, input.origin);
 }
 

@@ -98,6 +98,7 @@ import {
   answeredOnIssuesSince,
   answerOf,
   askQuestion,
+  expirePermissionPrompt,
   issuesAPersonOwes,
   questionsOwedToAgents,
   registerWaiter,
@@ -300,6 +301,7 @@ const deviceQuestions = {
   registerWaiter,
   waiterFor,
   answerOf,
+  expirePermissionPrompt,
 };
 
 export function provideExecutionPorts(): void {

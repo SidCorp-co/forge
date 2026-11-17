@@ -72,6 +72,13 @@ interface DevicesPorts {
     registerWaiter(args: { questionId: string; deviceId: string; runId: string }): Promise<void>;
     waiterFor(args: { questionId: string; deviceId: string; runId: string }): Promise<unknown>;
     answerOf(questionId: string): Promise<unknown>;
+    /** End a relayed permission prompt nobody answered within the box's bound (ISS-1268 B3). */
+    expirePermissionPrompt(args: {
+      questionId: string;
+      projectId: string;
+      deviceId: string;
+      waitedSeconds: number;
+    }): Promise<{ id: string; status: 'void'; voidReason: string }>;
   };
   comments: {
     postIssueNotice(notice: DeviceNotice, tx?: Tx): Promise<unknown>;

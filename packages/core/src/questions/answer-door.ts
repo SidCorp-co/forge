@@ -84,7 +84,7 @@ export async function assertTokenMayAnswer(token: {
   if (!seen) throw notFound('question not found');
   if (token.agentUserId || token.agency === 'agent') {
     if (seen.blockerKind === 'master_or_peer') return;
-    const owing = { serious: seen.serious, rule: seen.rule };
+    const owing = { serious: seen.serious, rule: seen.rule, origin: seen.origin };
     const why = await agentDecidesWhy(seen.projectId as string, owing);
     if (why === null) throw owedByPerson(owing);
     if (!token.note?.trim()) throw reasonRequired(why);

@@ -51,6 +51,8 @@ export const notificationTypes = [
   'decision_reminder',
   // REQ-34 BC-21, ISS-456: a question a step asks one person reaches their bell when it is asked
   'question_asked',
+  // ISS-1268 B3: a relayed permission prompt nobody answered was denied at the box's bound
+  'permission_relay_timeout',
 ] as const;
 export type NotificationType = (typeof notificationTypes)[number];
 

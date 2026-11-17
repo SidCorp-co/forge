@@ -148,6 +148,12 @@ export type QuestionOrigin =
       askedByKey: string | null;
     }
   | { kind: 'channel_gate'; documentId: string; number: string }
+  /**
+   * A Claude Code permission prompt a resident session raised, relayed by the runner's
+   * `PermissionRequest` hook for a person to allow or deny (ISS-1268 B3): `session` is the session's
+   * name, `tool` what it asked to run, `promptId` Claude Code's own id for the prompt where it sent one.
+   */
+  | { kind: 'permission_prompt'; session: string; tool: string; promptId: string | null }
   | { kind: 'unresolved'; reason: string };
 
 export type QuestionnaireLanding =
@@ -290,6 +296,12 @@ export const agentQuestions = pgTable(
           and ${t.origin} ? 'number'
           and ${t.issueId} is null
           and ${t.agentSessionId} is null
+        )
+        or (
+          ${t.origin} ->> 'kind' = 'permission_prompt'
+          and ${t.origin} ? 'session'
+          and ${t.origin} ? 'tool'
+          and ${t.issueId} is null
         )
         or (
           ${t.origin} ->> 'kind' = 'conversation'

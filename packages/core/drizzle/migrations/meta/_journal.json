@@ -4306,6 +4306,13 @@
       "when": 1841529600000,
       "tag": "0678_a_box_write_names_its_session_and_an_invalid_lesson_reads_invalid",
       "breakpoints": true
+    },
+    {
+      "idx": 679,
+      "version": "7",
+      "when": 1841616000000,
+      "tag": "0679_a_permission_prompt_a_session_raised_is_a_question_a_person_answers",
+      "breakpoints": true
     }
   ]
 }

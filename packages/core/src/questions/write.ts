@@ -86,7 +86,8 @@ export type AskInput = {
   parkDeadlineAt?: Date;
   /** This round's material is private to whoever asked, so it is put to them in a direct room. */
   sensitive?: boolean;
-  origin?: Extract<QuestionOrigin, { kind: 'channel_gate' }>;
+  /** A channel gate's document, or the permission prompt a resident session raised (ISS-1268 B3). */
+  origin?: Extract<QuestionOrigin, { kind: 'channel_gate' | 'permission_prompt' }>;
   /** The design revision whose decision answers this question; only a park names one. */
   awaitsDesign?: AwaitedDesign;
   /** The issue whose merge mark answers this question; only a park names one. */
@@ -387,9 +388,9 @@ export async function reaskSupersededDesignQuestions(
 }
 
 async function insertQuestion(executor: QuestionExecutor, input: AskInput, about?: QuestionAbout) {
-  if (input.origin && (input.agentSessionId || input.issueId)) {
+  if (input.origin && (input.issueId || (input.origin.kind === 'channel_gate' && input.agentSessionId))) {
     throw new Error(
-      'questions: a channel gate question belongs to no session and no issue, and this one names one',
+      `questions: a ${input.origin.kind} question belongs to no issue${input.origin.kind === 'channel_gate' ? ' and no session' : ''}, and this one names one`,
     );
   }
   const origin = input.origin ?? (await resolveAskOrigin(executor, input.agentSessionId));

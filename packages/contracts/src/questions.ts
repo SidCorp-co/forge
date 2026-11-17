@@ -64,6 +64,13 @@ export const QUESTION_REFUSAL_CODES = [
 	"QUESTION_OPTION_TAKES_NO_TEXT",
 ] as const;
 export type QuestionRefusalCode = (typeof QUESTION_REFUSAL_CODES)[number];
+
+/**
+ * What a relayed permission prompt's question ends with when nobody allowed or denied it within the
+ * box's bound and the box denied the call itself (ISS-1268 B3): its `ended_reason`, which the
+ * project's admins are told.
+ */
+export const PERMISSION_RELAY_TIMEOUT = "PERMISSION_RELAY_TIMEOUT";
 export const QUESTION_REFUSAL_STATUSES = {
 	QUESTION_ROUND_STALE: 409,
 	QUESTION_ABOUT_SHAPE: 400,

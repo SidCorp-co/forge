@@ -10,8 +10,14 @@
 // The notice is a `task` on the item's one bell row (`emit.ts:itemGroupOf`, ISS-1192), so a second
 // question on the same item reads the row as new again, and the three-day reminder joins that row
 // (`steward/decision-upkeep.ts`). Its answer or its void resolves it.
+//
+// A relayed Claude Code permission prompt (ISS-1268 B3) names no item and no person, and is still told
+// at once: it is a grant only a person gives while a session waits on it, so it rings the project's
+// admins, who hold its allow. Its end by the box's timeout is told them too, as its own notice: the
+// call was denied with nobody having answered, and that is never silent.
 
 import { questionAskedResolutionKey } from '@forge/contracts/notifications';
+import { PERMISSION_RELAY_TIMEOUT } from '@forge/contracts/questions';
 import type { OutboxEventPayload as Payload } from '@forge/contracts/outbox-events';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -20,6 +26,7 @@ import { logger } from '../lib/logger.js';
 import { consume } from '../outbox/index.js';
 import { resolveNotifications } from './auto-resolve.js';
 import { emitNotification } from './emit.js';
+import { projectAdminUserIds } from './project-admins.js';
 
 const PROMPT_MAX = 300;
 
@@ -36,12 +43,19 @@ interface AskedRow {
   item_key: string | null;
   /** The person the item names: the requirement's author, the feedback item's reporter; null for an agent. */
   person: string | null;
+  /** The session a relayed permission prompt stops; null on every other question. */
+  prompt_session: string | null;
+  ended_reason: string | null;
+  void_reason: string | null;
 }
 
 async function askedRowOf(questionId: string): Promise<AskedRow | null> {
   const [row] = rowsOf<AskedRow>(
     await db.execute(sql`
       SELECT q.id, q.project_id, q.status, q.blocker_kind, q.asked_by, q.requirement_id, q.feedback_id,
+             CASE WHEN q.origin ->> 'kind' = 'permission_prompt' THEN q.origin ->> 'session' END
+               AS prompt_session,
+             q.ended_reason, q.void_reason,
              (q.steps -> -1 ->> 'round')::int AS round,
              q.steps -> -1 ->> 'prompt' AS prompt,
              coalesce((SELECT 'REQ-' || r.req_seq FROM requirements r WHERE r.id = q.requirement_id),
@@ -68,6 +82,7 @@ const clipped = (text: string) =>
 export async function tellAsked(questionId: string): Promise<'told' | 'nobody'> {
   const q = await askedRowOf(questionId);
   if (q?.status !== 'open' || q.blocker_kind !== 'human') return 'nobody';
+  if (q.prompt_session) return tellAdmins(q, 'question_asked', clipped((q.prompt ?? '').trim()));
   if (!q.requirement_id && !q.feedback_id) return 'nobody';
   if (!q.person) {
     logger.info(
@@ -91,6 +106,44 @@ export async function tellAsked(questionId: string): Promise<'told' | 'nobody'> 
   return 'told';
 }
 
+/** Rings the project's admins about a relayed permission prompt: asked, or denied at the box's bound. */
+async function tellAdmins(
+  q: AskedRow,
+  type: 'question_asked' | 'permission_relay_timeout',
+  title: string,
+): Promise<'told' | 'nobody'> {
+  const recipients = await projectAdminUserIds(q.project_id);
+  if (recipients.length === 0) {
+    logger.warn(
+      { question: q.id, session: q.prompt_session },
+      'questions: a relayed permission prompt has no project admin to ring; Needs you still lists it',
+    );
+    return 'nobody';
+  }
+  await emitNotification({
+    recipients,
+    projectId: q.project_id,
+    type,
+    title,
+    ...(type === 'question_asked'
+      ? {
+          resolutionKey: questionAskedResolutionKey(q.id),
+          dedupeKey: `question-asked:${q.id}:r${q.round ?? 1}`,
+        }
+      : { dedupeKey: `permission-relay-timeout:${q.id}` }),
+  });
+  return 'told';
+}
+
+/** Tells the project's admins that the box denied a relayed permission prompt nobody answered in time. */
+export async function tellRelayTimedOut(questionId: string): Promise<'told' | 'nobody'> {
+  const q = await askedRowOf(questionId);
+  if (!q?.prompt_session || q.status !== 'void' || q.ended_reason !== PERMISSION_RELAY_TIMEOUT) {
+    return 'nobody';
+  }
+  return tellAdmins(q, 'permission_relay_timeout', clipped(q.void_reason ?? PERMISSION_RELAY_TIMEOUT));
+}
+
 export function registerQuestionNotifications(): void {
   const name = 'notify-questions';
   consume('question.asked', { name, handle: (p) => tellAsked(p.questionId).then(() => undefined) });
@@ -105,6 +158,7 @@ export function registerQuestionNotifications(): void {
     name,
     handle: async (p) => {
       await resolveNotifications(questionAskedResolutionKey(p.id), 'No longer asked');
+      await tellRelayTimedOut(p.id);
     },
   });
 }

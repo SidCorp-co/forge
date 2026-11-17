@@ -13,12 +13,22 @@ import { readProjectRule } from '../knowledge/index.js';
 import { refuser } from '../lib/refusal.js';
 import { readGateProfile } from '../project-config/index.js';
 
-/** What makes a question a person's, as its row carries it: serious, and the rule it names. */
+/** What makes a question a person's, as its row carries it: serious, the rule it names, its origin. */
 export interface Owing {
   serious: boolean;
   /** The slug of the project rule naming a person's act that this question asks for (ISS-869). */
   rule?: string | null | undefined;
+  /** Where it was asked: a relayed permission prompt is a person's on any profile (ISS-1268 B3). */
+  origin?: { kind: string } | null | undefined;
 }
+
+/**
+ * Whether the question relays a Claude Code permission prompt (ISS-1268 B3). What the prompt guards is
+ * a grant only a person gives: Claude Code would not run the call under the session's own bypass, so
+ * no agent, the session's own master included, allows it in their place.
+ */
+export const isPermissionPrompt = (owing: Pick<Owing, 'origin'>): boolean =>
+  owing.origin?.kind === 'permission_prompt';
 
 /**
  * Why an agent may decide a question on `projectId` itself, or null where it is a person's: it names
@@ -26,7 +36,7 @@ export interface Owing {
  * serious. A stored rule was checked when the question was asked (`owedBlockerOf`).
  */
 export async function agentDecidesWhy(projectId: string, owing: Owing): Promise<string | null> {
-  if (owing.rule) return null;
+  if (owing.rule || isPermissionPrompt(owing)) return null;
   const profile = await readGateProfile(projectId);
   if (profile === 'strict') {
     return owing.serious
@@ -38,6 +48,9 @@ export async function agentDecidesWhy(projectId: string, owing: Owing): Promise<
 
 /** Why a question is a person's, as a refusal of an agent's answer or void says it. */
 export function personsBecause(owing: Owing): string {
+  if (isPermissionPrompt(owing)) {
+    return 'this question relays a Claude Code permission prompt, which only a person grants';
+  }
   return owing.rule
     ? `this question names the project rule \`${owing.rule}\`, which asks a person's act`
     : `this question is marked serious (${SERIOUS}) on a strict project`;
@@ -96,8 +109,19 @@ export async function owedBlockerOf(input: {
   decides?: true | undefined;
   askedByRun?: true | undefined;
   askedByAgent?: true | undefined;
+  origin?: { kind: string } | null | undefined;
 }): Promise<QuestionBlockerKind> {
   if (input.rule !== undefined) await checkRule(input.projectId, input.rule, input.blockerKind);
+  if (isPermissionPrompt(input)) {
+    if (input.blockerKind !== 'human') {
+      throw refuse(
+        'QUESTION_SHAPE_INVALID',
+        `a relayed permission prompt is a person's to allow or deny, and this one is asked of \`${input.blockerKind}\`: ask it with \`blockerKind: "human"\``,
+        '/blockerKind',
+      );
+    }
+    return 'human';
+  }
   if (input.blockerKind !== 'human') return input.blockerKind;
   const serious = input.serious === true;
   if (input.decides) return decisionOwedBy(input.projectId, serious);
