@@ -116,7 +116,7 @@ function ViewEntry({ box, label, fps, overlay, fit = "page", codec, round, onRec
   const phase = useViewSocket(ticket.data?.url ?? null, codec, fps, { img, canvas, rfb: rfbTarget }, onFault);
   if (fault) return <Fault fault={fault} />;
   const size = phase.at === "live" && phase.width > 0 ? phase : (box.view ?? box.viewport);
-  const known = ["jpeg-frames", "scrcpy-h264", "rfb"].includes(codec);
+  const known = (Object.values(BOX_VIEW_CODECS) as string[]).includes(codec);
   return (
     <div className="grid gap-2" data-testid="box-view" data-codec={codec} data-phase={phase.at} data-fit={fit}>
       <RefusedLine label={t("boxes.view.ticketFailed")} error={ticket.error} className="text-13 text-danger-11" />
