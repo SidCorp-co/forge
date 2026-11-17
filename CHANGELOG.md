@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.718] - 2026-11-17
+
+Old releases served through a later one stop asking to be promoted
+
+### Fixed
+
+- **An old landed release no longer asks to be promoted once production serves its work.** Where a later production release carries it, it reads done, naming that release, so nobody promotes an older build over the live one.
+
 ## [0.4.0-dev.717] - 2026-11-17
 
 Releases list only their own checks; lessons passes settle after room audits
