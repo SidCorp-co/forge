@@ -11,7 +11,9 @@ export const TUNNEL_VERSION = 1;
 export const TUNNEL_HEADER_BYTES = 12;
 
 /**
- * `open`: core asks for a new stream to a preview; payload is UTF-8 JSON `{"previewId": uuid}`.
+ * `open`: core asks for a new stream to a preview; payload is UTF-8 JSON `{"previewId": uuid}`, or to
+ * a Forge Box's channel (ISS-1276, `./box-wire.ts`): `{"boxId": uuid, "channel": "view", "fps": n}`
+ * or `{"boxId": uuid, "channel": "input"}`, which the runner copies to that box's loopback endpoint.
  * `data`: bytes of the stream. `window`: the sender may send `length` more bytes on the stream.
  * `close`: the sender writes no more (half-close, a TCP FIN). `reset`: the stream is gone at
  * once; `length` holds a `TunnelResetCode`.
@@ -75,10 +77,22 @@ export const TUNNEL_LIMITS = {
 
 export type TunnelFrame =
 	| { type: "open"; streamId: number; previewId: string }
+	| ({ type: "open"; streamId: number } & TunnelBoxTarget)
 	| { type: "data"; streamId: number; bytes: Uint8Array }
 	| { type: "window"; streamId: number; delta: number }
 	| { type: "close"; streamId: number }
 	| { type: "reset"; streamId: number; code: TunnelResetCode };
+
+/**
+ * A Forge Box stream's target (ISS-1276): `view` carries the box's screen at the viewer's `fps`,
+ * `input` the holder's input lines. `./box-wire.ts` says what each carries per mode.
+ */
+export type TunnelBoxTarget =
+	| { boxId: string; channel: "view"; fps: number }
+	| { boxId: string; channel: "input" };
+
+/** The most frames a second a box view stream is opened at, and the fewest. */
+export const TUNNEL_BOX_FPS = { min: 1, max: 30 } as const;
 
 /** Why bytes are not a frame; the receiver resets the stream it names, or drops the message. */
 export type TunnelDecodeFault = {
@@ -118,14 +132,7 @@ export function encodeTunnelFrame(frame: TunnelFrame): Uint8Array {
 	let length = 0;
 	switch (frame.type) {
 		case "open":
-			if (!UUID.test(frame.previewId)) {
-				throw new RangeError(
-					`tunnel open names previewId "${frame.previewId}", which is not a uuid`,
-				);
-			}
-			payload = new TextEncoder().encode(
-				JSON.stringify({ previewId: frame.previewId }),
-			);
+			payload = new TextEncoder().encode(JSON.stringify(openBody(frame)));
 			length = payload.byteLength;
 			break;
 		case "data":
@@ -224,14 +231,14 @@ export function decodeTunnelFrame(
 					`tunnel open payload is ${length} bytes; at most ${TUNNEL_LIMITS.maxOpenBytes}`,
 				);
 			}
-			const previewId = openPreviewId(payload);
-			if (previewId === null) {
+			const target = openTarget(payload);
+			if (target === null) {
 				return fault(
 					streamId,
-					'tunnel open payload is not {"previewId": "<uuid>"}',
+					'tunnel open payload is not {"previewId": "<uuid>"}, {"boxId": "<uuid>", "channel": "view", "fps": 1..30} or {"boxId": "<uuid>", "channel": "input"}',
 				);
 			}
-			return { ok: true, frame: { type, streamId, previewId } };
+			return { ok: true, frame: { type, streamId, ...target } };
 		}
 		case "data":
 			if (length === 0 || length > TUNNEL_LIMITS.maxDataBytes) {
@@ -260,19 +267,67 @@ export function decodeTunnelFrame(
 	}
 }
 
-function openPreviewId(payload: Uint8Array): string | null {
+type OpenFrame = Extract<TunnelFrame, { type: "open" }>;
+
+/** The open payload's object, refusing by name a target this contract does not allow. */
+function openBody(frame: OpenFrame): Record<string, unknown> {
+	if ("previewId" in frame) {
+		if (!UUID.test(frame.previewId)) {
+			throw new RangeError(
+				`tunnel open names previewId "${frame.previewId}", which is not a uuid`,
+			);
+		}
+		return { previewId: frame.previewId };
+	}
+	if (!UUID.test(frame.boxId)) {
+		throw new RangeError(
+			`tunnel open names boxId "${frame.boxId}", which is not a uuid`,
+		);
+	}
+	if (frame.channel === "input")
+		return { boxId: frame.boxId, channel: "input" };
+	if (
+		!Number.isInteger(frame.fps) ||
+		frame.fps < TUNNEL_BOX_FPS.min ||
+		frame.fps > TUNNEL_BOX_FPS.max
+	) {
+		throw new RangeError(
+			`tunnel open names fps ${frame.fps}; a box view runs at ${TUNNEL_BOX_FPS.min}..${TUNNEL_BOX_FPS.max}`,
+		);
+	}
+	return { boxId: frame.boxId, channel: "view", fps: frame.fps };
+}
+
+type OpenTarget = { previewId: string } | TunnelBoxTarget;
+
+function openTarget(payload: Uint8Array): OpenTarget | null {
 	try {
 		const body: unknown = JSON.parse(
 			new TextDecoder("utf-8", { fatal: true }).decode(payload),
 		);
+		if (typeof body !== "object" || body === null) return null;
+		const o = body as Record<string, unknown>;
+		const keys = Object.keys(o).sort().join(",");
+		if (keys === "previewId") {
+			return typeof o.previewId === "string" && UUID.test(o.previewId)
+				? { previewId: o.previewId }
+				: null;
+		}
+		if (typeof o.boxId !== "string" || !UUID.test(o.boxId)) return null;
+		if (keys === "boxId,channel" && o.channel === "input") {
+			return { boxId: o.boxId, channel: "input" };
+		}
 		if (
-			typeof body !== "object" ||
-			body === null ||
-			Object.keys(body).length !== 1
-		)
-			return null;
-		const id = (body as { previewId?: unknown }).previewId;
-		return typeof id === "string" && UUID.test(id) ? id : null;
+			keys === "boxId,channel,fps" &&
+			o.channel === "view" &&
+			typeof o.fps === "number" &&
+			Number.isInteger(o.fps) &&
+			o.fps >= TUNNEL_BOX_FPS.min &&
+			o.fps <= TUNNEL_BOX_FPS.max
+		) {
+			return { boxId: o.boxId, channel: "view", fps: o.fps };
+		}
+		return null;
 	} catch {
 		return null;
 	}
