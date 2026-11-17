@@ -77,4 +77,14 @@ export const ROOM_ACT_SCENARIOS: readonly CardScenario[] = [
     good: 'propose it with the work it helped; never a page read once',
     teaches: [/A source earns its place by repeated use/i],
   },
+  {
+    name: 'the owner asks what the box’s per-project run limit is called (“chia slot”), and no term holds the word',
+    card: 'support.term',
+    source:
+      'the owner, 2026-11-16: asked what "run slots" are called and nothing held the word; the room guide then sent a person’s word through support.record (ISS-1256 c9)',
+    situation: 'A person calls a thing of the product by a word of their own',
+    bad: 'the word was passed on through support.record, which files a defect, feature or request, and no term was written',
+    good: 'find it first, then write it with support.term, citing their message, under its module',
+    teaches: [/write with support\.term/i, /never pass a word on through support\.record/i],
+  },
 ];
