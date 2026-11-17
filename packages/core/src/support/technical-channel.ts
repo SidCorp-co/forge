@@ -1,10 +1,14 @@
 // A project's one technical channel (ISS-1243 item 13, owner 2026-11-15): every permission or
 // approval a room agent needs, every technical finding and every ask of the owner is raised there,
-// and nowhere else, so a work thread is told only the answer or that it is in hand. The project
-// document names it (`technicalChannel`): the project's own thread of the operations room its
-// organization shares (Forge-Communicate, as that room's binding records it), or a direct message
-// to one person, the owner the room's binding names by default. Where neither can be reached it is
-// refused by name, naming the key that fixes it; nothing falls back to the asker's thread.
+// and nowhere else, so a work thread is told only the answer or that it is in hand. By default it is
+// the project's own thread of the operations room its organization shares (`scope: forge`; at
+// SidCorp, Forge-Communicate, owner 2026-11-17, ISS-1271), opened on its first need and recorded on
+// that room's binding (`project-thread.ts`). Only where the organization has no such room is it a
+// direct message to the owner the asking room's binding names. The project document's
+// `technicalChannel` overrides it: `{ kind: "dm", user? }` for a direct message, `{ kind: "thread" }`
+// for the shared room's thread, refused by name where the organization binds none. A channel that
+// cannot be reached is refused by name, naming the key that fixes it; nothing falls back to the
+// asker's thread.
 
 import type { TechnicalChannel, TechnicalNeed } from '@forge/contracts/support-technical';
 import {
@@ -13,14 +17,14 @@ import {
   sendFixedReply,
 } from '../integrations/rocketchat/index.js';
 import { readProjectDocument } from '../project-config/index.js';
-import { findProjectSlugs, orgSiblingProjects, projectName } from '../projects/index.js';
+import { findProjectSlugs, projectName } from '../projects/index.js';
 import { grantsOf, supportConfigOf } from './grants.js';
 import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
+import { projectThreadFor, sharedRoomOf } from './project-thread.js';
 import { roomLanguage } from './report-thread.js';
-import { roomIsBound } from './rooms.js';
 import { screenForThread } from './screen.js';
-import { insertAction, type RoomRow, roomsOfProject } from './store.js';
-import { postInThread, projectThreadOfRoom, roomAuth, scrubbedForRoom } from './thread.js';
+import { insertAction, type RoomRow } from './store.js';
+import { postInThread, roomAuth, scrubbedForRoom } from './thread.js';
 
 /** The tool a raised need is recorded under on the asker's thread. */
 export const TECHNICAL = 'technical';
@@ -29,11 +33,14 @@ export const TECHNICAL = 'technical';
 const KEY =
   'the project document\'s `technicalChannel` ({ kind: "thread" } for its own thread of the shared operations room, or { kind: "dm", user } for a direct message)';
 
-/** Absent, the channel is a direct message to the owner the room's binding names. */
-const OWNER_DM: TechnicalChannel = { kind: 'dm' };
-
+/**
+ * The project's channel as it stands: the one its document names, else its thread of the operations
+ * room its organization shares where one is bound, else a direct message to the owner.
+ */
 export async function technicalChannelOf(projectId: string): Promise<TechnicalChannel> {
-  return (await readProjectDocument(projectId))?.document.technicalChannel ?? OWNER_DM;
+  const named = (await readProjectDocument(projectId))?.document.technicalChannel;
+  if (named) return named;
+  return (await sharedRoomOf(projectId)) ? { kind: 'thread' } : { kind: 'dm' };
 }
 
 /**
@@ -47,35 +54,27 @@ export type Raised = Outcome<{
   thread: string | null;
 }>;
 
-/** The operations room every project of the organization shares, recording this project's thread. */
-async function sharedThreadOf(
-  projectId: string,
-): Promise<{ room: RoomRow; thread: string } | null> {
-  for (const home of await orgSiblingProjects(projectId)) {
-    for (const room of await roomsOfProject(home.id)) {
-      if (room.kind !== 'operations' || room.scope !== 'forge') continue;
-      if (!(await roomIsBound(room))) continue;
-      const thread = await projectThreadOfRoom(room, projectId);
-      if (thread) return { room, thread };
-    }
-  }
-  return null;
-}
-
 async function postInSharedThread(room: RoomRow, text: string, path: string): Promise<Raised> {
-  const at = await sharedThreadOf(room.projectId);
-  if (!at) {
-    const slug = (await findProjectSlugs([room.projectId])).get(room.projectId) ?? room.projectId;
+  const shared = await sharedRoomOf(room.projectId);
+  if (!shared) {
     return no(
       'SUPPORT_TECHNICAL_CHANNEL_UNNAMED',
       path,
-      `this project's technical channel is its own thread of the operations room its organization shares, and no bound room of scope forge records a thread for ${slug} (\`operations.threads[rid].${slug}\` on that room's binding); record it there, or name a direct message in ${KEY}. Nothing was raised.`,
+      `this project's technical channel is its own thread of the operations room its organization shares, and its organization binds no operations room of scope forge; bind one, or name a direct message in ${KEY}. Nothing was raised.`,
     );
   }
-  const posted = await postInThread({ room: at.room, thread: at.thread, text });
+  const at = await projectThreadFor(shared, room.projectId);
+  if (!at.ok) {
+    return no(
+      'SUPPORT_TECHNICAL_CHANNEL_UNREACHABLE',
+      path,
+      `this project's own thread of ${shared.rid}, the operations room its organization shares, could not be opened (${at.why}), so nothing was raised; try again, or name a direct message in ${KEY}.`,
+    );
+  }
+  const posted = await postInThread({ room: shared, thread: at.thread, text });
   return {
     ok: true,
-    value: { channel: 'thread', rid: at.room.rid, messageId: posted.messageId, thread: at.thread },
+    value: { channel: 'thread', rid: shared.rid, messageId: posted.messageId, thread: at.thread },
   };
 }
 
