@@ -25,6 +25,7 @@ export {
 } from './recovery-stats.js';
 export { agentSessionEventsRetention } from './retention.js';
 export { provideRoomDirectTurn, type RoomDirectTurn } from './room-direct-turn.js';
+export { provideRoomTurnLive } from './room-live.js';
 export { sessionAudienceById, sessionRowById, sessionStatusesByIds } from './session-access.js';
 export {
   agentRefusalText,

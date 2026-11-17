@@ -3,7 +3,8 @@ import type { AgentSessionKind, AgentSessionTurnRole } from '../db/schema.js';
 import { publishEphemeral } from '../lib/ephemeral.js';
 import { logger } from '../lib/logger.js';
 import { pushSession } from './push.js';
-import { sessionAudience } from './session-access.js';
+import { showRoomTurnLive } from './room-live.js';
+import { conversationTurnAskerOf, sessionAudience } from './session-access.js';
 
 interface SessionLite {
   id: string;
@@ -141,8 +142,9 @@ export function broadcastTurnSync(
 
 /**
  * A running turn's live items (ISS-1268), to the session's audience (`audienceOf`): a conversation
- * turn's asker alone, a person's chat's readers, or a project-wide session's rooms. Ephemeral
- * (`lib/ephemeral.ts`): nothing is stored, and the turn's transcript replaces them once it lands.
+ * turn's asker, a person's chat's readers, or a project-wide session's rooms. A room turn's other
+ * readers are shown it too, without its words (`room-live.ts`). Ephemeral (`lib/ephemeral.ts`):
+ * nothing is stored, and the turn's transcript replaces them once it lands.
  */
 export function broadcastLive(
   session: SessionLite,
@@ -159,4 +161,8 @@ export function broadcastLive(
     .catch((err: unknown) =>
       logger.warn({ err, sessionId: session.id }, 'live frame: no audience was read'),
     );
+  const asker = conversationTurnAskerOf(session);
+  if (conversationId !== null && asker !== undefined) {
+    showRoomTurnLive(session, conversationId, asker, items);
+  }
 }

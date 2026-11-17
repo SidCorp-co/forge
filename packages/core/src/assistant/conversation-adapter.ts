@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { provideRoomTurnLive } from '../agent-sessions/index.js';
 import type {
   ConversationAdapterPorts,
   ConversationHistoryMessage,
@@ -77,7 +78,8 @@ export async function publishEphemeralByViewer(
   frames: {
     event: string;
     askerUserId: string | null;
-    forAsker: unknown;
+    /** Null where the asker is sent the frame by another route (a session's own audience). */
+    forAsker: unknown | null;
     /** Null where the room's view did not change since the last frame it was given. */
     forRoom: unknown | null;
   },
@@ -86,12 +88,27 @@ export async function publishEphemeralByViewer(
   const asker =
     frames.askerUserId !== null && userIds.includes(frames.askerUserId) ? frames.askerUserId : null;
   const room = userIds.filter((u) => u !== asker);
-  if (asker !== null) {
+  if (asker !== null && frames.forAsker !== null) {
     publishEphemeral({ userIds: [asker] }, { event: frames.event, data: frames.forAsker });
   }
   if (room.length > 0 && frames.forRoom !== null) {
     publishEphemeral({ userIds: room }, { event: frames.event, data: frames.forRoom });
   }
+}
+
+/**
+ * Hands the session kernel the room's view of an Agent turn in flight (ISS-1268): its other readers,
+ * the people its delivery reaches, are shown the frame its asker was already sent, without its words.
+ */
+export function registerRoomTurnLive(): void {
+  provideRoomTurnLive(({ conversationId, askerUserId, event, frame }) =>
+    publishEphemeralByViewer(conversationId, {
+      event,
+      askerUserId,
+      forAsker: null,
+      forRoom: frame,
+    }),
+  );
 }
 
 /** Push to every person who may currently see this room, through the outbox. */
