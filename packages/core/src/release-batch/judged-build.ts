@@ -17,7 +17,7 @@
 import { judgedOnOf } from '@forge/contracts/delivery-policy';
 import type { JudgedBuild, JudgedBuildIssue } from '@forge/contracts/verdict-identity';
 import { db } from '../db/client.js';
-import { type Carriage, carriageKey, shipsWithdrawnOf } from '../issues/index.js';
+import { type Carriage, carriageKey, issueDisplayIds, shipsWithdrawnOf } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { productionOf, readProjectDocument } from '../project-config/index.js';
 import { ANCESTRY_PAIRS_MAX, type AncestryPair, pairKey } from '../runners/index.js';
@@ -68,6 +68,8 @@ export interface JudgedBuildDeps {
   environment?(projectId: string): Promise<string | null>;
   /** Each release run's kept range reading (`shipped-range.ts:keptRangesOf`); absent, none is kept. */
   ranges?(runIds: readonly string[]): Promise<Map<string, KeptRange>>;
+  /** The issue's key, as a commit subject names it (`ISS-1252`); absent, none is read. */
+  keyOf?(issueId: string): Promise<string | null>;
 }
 
 const LIVE_DEPS: JudgedBuildDeps = {
@@ -85,6 +87,7 @@ const LIVE_DEPS: JudgedBuildDeps = {
     return held ? (productionOf(held.document)?.name ?? null) : null;
   },
   ranges: keptRangesOf,
+  keyOf: async (issueId) => (await issueDisplayIds([issueId])).get(issueId) ?? null,
 };
 
 // Ancestry between two commits never changes, so an answer is kept for the process, bounded.

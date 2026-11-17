@@ -764,6 +764,17 @@ const RangeChangeSchema = z.strictObject({
 	change: z.enum(RELEASE_RANGE_CHANGES),
 });
 
+/** At most this many commits go with one range report. */
+export const RANGE_COMMITS_MAX = 5_000;
+
+/** One commit of a release's range: its subject line and the paths it changed against its first parent. */
+export const RangeCommitSchema = z.strictObject({
+	sha: z.string().regex(COMMIT, "a range commit is a full 40-hex commit"),
+	subject: z.string().max(2_000),
+	paths: z.array(z.string().trim().min(1).max(1000)).max(20_000),
+});
+export type RangeCommit = z.infer<typeof RangeCommitSchema>;
+
 /** The release run asks which of its range's changed files the reader reads. */
 export const ReleaseRangeReadsBodySchema = z.strictObject({
 	changes: z.array(RangeChangeSchema).max(20_000),
@@ -779,6 +790,18 @@ export const ReleaseRangeReportSchema = z.strictObject({
 	base: z.string().regex(COMMIT, "base is a full 40-hex commit"),
 	head: z.string().regex(COMMIT, "head is a full 40-hex commit"),
 	changes: z.array(RangeChangeSchema).max(20_000),
+	/**
+	 * Each commit of `base..head`, its subject and the files it changed, so the files of an issue
+	 * that landed over several commits are the paths of every commit whose subject names it (ISS-1259).
+	 * Absent from a runner that predates it: the range is kept, and no issue's files are read from it.
+	 */
+	commits: z
+		.array(RangeCommitSchema)
+		.max(
+			RANGE_COMMITS_MAX,
+			`a range report names at most ${RANGE_COMMITS_MAX} commits`,
+		)
+		.optional(),
 	files: z
 		.array(
 			z.strictObject({

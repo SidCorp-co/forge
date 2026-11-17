@@ -12,12 +12,14 @@
  *
  * @direct-test-of packages/core/src/release-batch/range-outside.ts
  * @direct-test-of packages/core/src/release-batch/shipped-range.ts
+ * @direct-test-of packages/core/src/release-batch/range-kept.ts
  * @direct-test-of packages/core/src/release-batch/queries.ts
  */
 
 import { sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
+import { keptRangesOf } from '../../src/release-batch/shipped-range.js';
 import { api, userToken } from '../helpers/api.js';
 import { createTestProject, createTestUser, rows, truncateAll } from '../helpers/factories.js';
 import { declareProductionDocument, releaseWorld } from '../helpers/release-world.js';
@@ -113,8 +115,14 @@ async function world() {
   return { runId: String(r.body.runId), roster, later };
 }
 
-const report = (runId: string, head: string) =>
-  call('POST', `/release-batches/${runId}/range`, { base: BASE, head, changes: [], files: [] });
+const report = (runId: string, head: string, extra: Record<string, unknown> = {}) =>
+  call('POST', `/release-batches/${runId}/range`, {
+    base: BASE,
+    head,
+    changes: [],
+    files: [],
+    ...extra,
+  });
 
 async function runMetadata(runId: string) {
   const [row] = await rows<{ tag: unknown; range: unknown }>(sql`
@@ -141,12 +149,18 @@ describe('a head carrying a gate issue outside the roster is refused by name bef
   it('keeps a head at the roster own top commit, with the tag owed there and nothing unchecked', async () => {
     const w = await world();
 
-    const r = await report(w.runId, R2);
+    // each commit with its subject and files: what an issue landed over several commits changed (ISS-1259)
+    const commits = [
+      { sha: R1, subject: 'feat(a): one (ISS-1)', paths: ['packages/contracts/src/support.ts'] },
+      { sha: R2, subject: 'fix(b): two (ISS-1)', paths: ['packages/core/src/x.ts'] },
+    ];
+    const r = await report(w.runId, R2, { commits });
 
     expect(r.status, JSON.stringify(r.body)).toBe(200);
     expect(r.body).toMatchObject({ state: 'read', head: R2, unchecked: [] });
     const kept = await runMetadata(w.runId);
     expect(kept?.tag).toMatchObject({ commit: R2, from: 'range' });
+    expect((await keptRangesOf([w.runId])).get(w.runId)).toMatchObject({ head: R2, commits });
     const batch = await call('GET', `/release-batches/${w.runId}`);
     expect(batch.body.rangeUnchecked).toEqual([]);
   });

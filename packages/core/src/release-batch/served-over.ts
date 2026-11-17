@@ -4,14 +4,26 @@ import type { JudgedBuildDeps } from './judged-build.js';
 import type { KeptRange } from './shipped-range.js';
 import type { ShippedReleaseRun } from './shipped-releases.js';
 
+/** Whether a commit's subject names the issue `key`: `ISS-12` names ISS-12, never ISS-120. */
+function names(subject: string, key: string): boolean {
+  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?<![A-Za-z0-9-])${escaped}(?![0-9])`, 'i').test(subject);
+}
+
 /**
  * Whether `live`, served where a later deploy put it, carries the change at `head` unchanged
  * (ISS-1259): it descends from `head`, and the files the commits it adds change touch none of the
- * files the issue's merge mark names. Read from Forge's own rows, never a host or a box (a read path,
- * ISS-774): descent from the source host's kept answer (`served-ancestry.ts`) or the release record,
- * where both are releases and the later shipped after; the added files from each later release's kept
- * range (`shipped-range.ts:keptRangesOf`), chained from `head` to `live`. What none of these holds is
- * `unread`, named, never guessed.
+ * issue's changed files. Read from Forge's own rows, never a host or a box (a read path, ISS-774):
+ * descent from the source host's kept answer (`served-ancestry.ts`) or the release record, where both
+ * are releases and the later shipped after; the added files from each later release's kept range
+ * (`shipped-range.ts:keptRangesOf`), chained from `head` to `live`.
+ *
+ * The issue's files are those of every commit whose subject names it in the kept range of each release
+ * that carried it, with the paths its merge mark names: an issue landed over several commits (a batch,
+ * a fold, a round after a reopen) changed more than its mark commit did. A carrying release whose range
+ * kept no commits leaves that set partial, so an untouched answer there is `unread`, never
+ * `unchanged`; a file it does hold that an added commit changes is `touched` either way. What none of
+ * these holds is `unread`, named, never guessed.
  */
 export async function servedOver(
   issue: JudgedBuildIssue,
@@ -66,14 +78,29 @@ export async function servedOver(
       `it descends from \`${head}\` (${descent}), but \`${from < 0 ? head : live}\` is no release Forge verified, so no kept release range names the files its added commits change`,
     );
   }
-  const files = [...new Set((issue.mergedPaths?.changes ?? []).map((c) => c.path))];
+  const carrying = releases.slice(0, from + 1).filter((r) => r.issueIds.includes(issue.id));
+  const later = releases.slice(from + 1, to + 1);
+  const ranges =
+    (await deps.ranges?.([...carrying, ...later].map((r) => r.runId))) ??
+    new Map<string, KeptRange>();
+  const key = (await deps.keyOf?.(issue.id)) ?? null;
+  const own = new Set((issue.mergedPaths?.changes ?? []).map((c) => c.path));
+  // releases whose range names no commits: this issue's files there are not known
+  const partial: string[] = [];
+  for (const r of carrying) {
+    const commits = ranges.get(r.runId)?.commits;
+    if (!key || !commits) {
+      partial.push(r.version);
+      continue;
+    }
+    for (const c of commits) if (names(c.subject, key)) for (const p of c.paths) own.add(p);
+  }
+  const files = [...own];
   if (files.length === 0) {
     return unread(
-      "this issue's merge mark names none of the files its landing changed, so none can be weighed",
+      `this issue's merge mark names none of the files its landing changed, and no commit of ${carrying.length > 0 ? `the release${carrying.length === 1 ? '' : 's'} that carried it (${carrying.map((r) => r.version).join(', ')})` : 'a release that carried it'} is read naming it, so none can be weighed`,
     );
   }
-  const later = releases.slice(from + 1, to + 1);
-  const ranges = (await deps.ranges?.(later.map((r) => r.runId))) ?? new Map<string, KeptRange>();
   const changed = new Set<string>();
   let at = head;
   for (const r of later) {
@@ -98,6 +125,11 @@ export async function servedOver(
       'touched',
       `\`${live}\` descends from \`${head}\` (${descent}), but the commits it adds (${versions}) change ${touched.map((f) => `\`${f}\``).join(', ')}, of this issue's changed files, so it does not carry this issue's change unchanged`,
       touched,
+    );
+  }
+  if (partial.length > 0) {
+    return unread(
+      `it descends from \`${head}\` (${descent}) and the commits it adds (${versions}) change none of the ${files.length} file${files.length === 1 ? '' : 's'} Forge holds of this issue, but ${key ? `the range of release ${partial.join(', ')}, which carried it, kept no commits (a \`forge-runner release range\` older than ISS-1259 reported it)` : 'this issue has no key a commit subject could name'}, so the files of its whole landing are not all known`,
     );
   }
   return answer(

@@ -25,6 +25,7 @@
 
 import { posix } from 'node:path';
 import type {
+  RangeCommit,
   ReleaseRangeBase,
   ReleaseRangeReport,
   ReleaseShipped,
@@ -33,6 +34,7 @@ import { eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
 import { writeRunMetadata } from '../pipeline/index.js';
+import { changedOf, commitsOf } from './range-kept.js';
 import { outsideSentence, readOutsideLandings, uncheckedOf } from './range-outside.js';
 import { refuseRelease } from './refuse.js';
 import { oweReleaseTag } from './release-tag.js';
@@ -402,7 +404,11 @@ export async function recordRange(args: {
   const shipped = await shippedBetween(reportedHost(report), report.base, report.head);
   const read: ReleaseShipped =
     shipped.state === 'read' ? { ...shipped, unchecked: outside.unchecked } : shipped;
-  const changed = read.state === 'read' ? { changed: report.changes } : {};
+  // each commit with its subject and files, so an issue's files are every commit naming it (ISS-1259)
+  const changed =
+    read.state === 'read'
+      ? { changed: report.changes, ...(report.commits ? { commits: report.commits } : {}) }
+      : {};
   await writeRunMetadata(args.runId, {
     merge: { [KEY]: { ...read, ...changed, reportedAt: new Date().toISOString() } },
     touch: true,
@@ -410,25 +416,6 @@ export async function recordRange(args: {
   // the head the run reports is the commit it cut: its tag is owed there, before the deploy (REQ-63 BC-13)
   await oweReleaseTag(args.runId, report.head, 'range');
   return read;
-}
-
-const CHANGES: ReadonlySet<string> = new Set(['added', 'changed', 'removed']);
-
-/**
- * The files a kept reading says its range changed, or null where it was kept before the files were
- * (or holds one that is not a changed file, which says the same: the list cannot be trusted whole).
- */
-function changedOf(value: unknown): RangeChange[] | null {
-  const raw = (value as { changed?: unknown } | null)?.changed;
-  if (!Array.isArray(raw)) return null;
-  const out: RangeChange[] = [];
-  for (const c of raw) {
-    const path = (c as { path?: unknown })?.path;
-    const change = (c as { change?: unknown })?.change;
-    if (typeof path !== 'string' || typeof change !== 'string' || !CHANGES.has(change)) return null;
-    out.push({ path, change: change as RangeChange['change'] });
-  }
-  return out;
 }
 
 function storedOf(value: unknown): ReleaseShipped | null {
@@ -500,18 +487,20 @@ export async function readRange(
   return { shipped: stored, changed: changedOf(row?.range) };
 }
 
-/** A release run's kept range: where it starts and ends, and the files it changed (null where the
- *  reading was kept without them). */
+/** A release run's kept range: where it starts and ends, the files it changed, and each commit with
+ *  its subject and files (each null where the reading was kept without them). */
 export interface KeptRange {
   base: string;
   head: string;
   changed: RangeChange[] | null;
+  commits?: RangeCommit[] | null;
 }
 
 /**
  * Each of `runIds`' kept range reading, where its run reported one read, in one statement: what a
- * judged build reads of the files the releases after it changed (`judged-build.ts`, ISS-1259). A run
- * that kept none, or kept it `unread`, is absent.
+ * judged build reads of the files the releases after it changed, and of the commits the releases that
+ * carried the issue attribute to it (`served-over.ts`, ISS-1259). A run that kept none, or kept it
+ * `unread`, is absent.
  */
 export async function keptRangesOf(runIds: readonly string[]): Promise<Map<string, KeptRange>> {
   const out = new Map<string, KeptRange>();
@@ -523,7 +512,12 @@ export async function keptRangesOf(runIds: readonly string[]): Promise<Map<strin
   for (const row of rows) {
     const stored = storedOf(row.range);
     if (stored?.state !== 'read') continue;
-    out.set(row.id, { base: stored.base, head: stored.head, changed: changedOf(row.range) });
+    out.set(row.id, {
+      base: stored.base,
+      head: stored.head,
+      changed: changedOf(row.range),
+      commits: commitsOf(row.range),
+    });
   }
   return out;
 }

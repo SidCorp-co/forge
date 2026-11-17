@@ -103,6 +103,18 @@ describe("a release run's range report is refused unless whole", () => {
 			}).success,
 		).toBe(false);
 	});
+	it("takes each commit whole with its subject and files, and refuses an abbreviated one (ISS-1259)", () => {
+		const commit = { sha: BUILD, subject: "fix: x (ISS-1)", paths: ["a.ts"] };
+		expect(
+			ReleaseRangeReportSchema.safeParse({ ...ok, commits: [commit] }).success,
+		).toBe(true);
+		expect(
+			ReleaseRangeReportSchema.safeParse({
+				...ok,
+				commits: [{ ...commit, sha: "abc1234" }],
+			}).success,
+		).toBe(false);
+	});
 });
 
 describe("drafted highlights are judged before they show (BC-2, BC-3, BC-13)", () => {
