@@ -92,6 +92,16 @@ type AskBody = z.infer<typeof askBodySchema>;
 
 const answerQuerySchema = z.object({ runId: z.string().optional() });
 
+/** A dialog the box read on a resident session and answered itself (ISS-1268 C2). */
+const sessionPromptSchema = z.strictObject({
+  projectId: z.string().min(1),
+  session: z.string().trim().min(1).max(200),
+  text: z.string().min(1).max(4000),
+  needs: z.string().max(1000).nullish(),
+  by: z.enum(['catalog', 'safe', 'unread']),
+  answer: z.string().trim().min(1).max(200),
+});
+
 /** The box ending a relayed permission prompt it denied at its own bound (ISS-1268 B3). */
 const expireBodySchema = z.strictObject({
   runId: z.string().min(1),
@@ -405,6 +415,27 @@ devicePoolRoutes.get(
     });
     if (!waiter) throw notFound('question');
     return c.json({ answer: await devicesPorts().questions.answerOf(questionId) });
+  },
+);
+
+/**
+ * The box's watcher read a dialog standing on a resident session that its relay never answered and
+ * answered it within one cycle, from its dialog catalog or with Escape; the project's admins are told
+ * with the session, the text it read and what the session needs (ISS-1268 C2).
+ */
+devicePoolRoutes.post(
+  '/me/session-prompts',
+  requireDevice(),
+  DEVICE_OWN,
+  zValidator('json', sessionPromptSchema),
+  async (c) => {
+    const body = c.req.valid('json');
+    await assertDeviceBoundToProject(c.get('device').id, body.projectId);
+    const told = await devicesPorts().questions.raiseSessionPrompt({
+      ...body,
+      needs: body.needs ?? null,
+    });
+    return c.json({ told });
   },
 );
 

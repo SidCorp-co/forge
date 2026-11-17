@@ -72,6 +72,15 @@ interface DevicesPorts {
     registerWaiter(args: { questionId: string; deviceId: string; runId: string }): Promise<void>;
     waiterFor(args: { questionId: string; deviceId: string; runId: string }): Promise<unknown>;
     answerOf(questionId: string): Promise<unknown>;
+    /** Tell the project's admins of a dialog the box answered on a resident session (ISS-1268 C2). */
+    raiseSessionPrompt(raised: {
+      projectId: string;
+      session: string;
+      text: string;
+      needs: string | null;
+      by: 'catalog' | 'safe' | 'unread';
+      answer: string;
+    }): Promise<'told' | 'nobody'>;
     /** End a relayed permission prompt nobody answered within the box's bound (ISS-1268 B3). */
     expirePermissionPrompt(args: {
       questionId: string;

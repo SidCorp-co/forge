@@ -23,6 +23,7 @@ export const NOTIFICATION_TYPES = [
 	"decision_reminder",
 	"question_asked",
 	"permission_relay_timeout",
+	"session_prompt_answered",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
@@ -52,6 +53,7 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
 	decision_reminder: "Decision waiting",
 	question_asked: "Question for you",
 	permission_relay_timeout: "Prompt denied",
+	session_prompt_answered: "Dialog answered",
 };
 
 /** What a delivery names, read from the record's references by core, never from its text. */
@@ -265,6 +267,16 @@ const NOTIFICATION_CONTRACT: Record<
 	 * answered within the box's bound, and the box denied the call (ISS-1268 B3): never a silent wait.
 	 */
 	permission_relay_timeout: {
+		severity: "warning",
+		channels: ["bell", "toast"],
+		kind: "signal",
+		tier: "ticket",
+	},
+	/**
+	 * A dialog the runner read on a resident session and answered itself within one watcher cycle:
+	 * one that slipped past the permission relay, or a startup dialog (ISS-1268 C2).
+	 */
+	session_prompt_answered: {
 		severity: "warning",
 		channels: ["bell", "toast"],
 		kind: "signal",

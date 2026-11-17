@@ -6,6 +6,7 @@ export { registerFeedbackNotifications } from './notify-feedback.js';
 export { registerNotifyMentionsSubscriber } from './notify-mentions.js';
 export { registerQuestionNotifications } from './notify-questions.js';
 export { registerRequirementNotifications } from './notify-requirements.js';
+export { type SessionPromptRaised, tellSessionPrompt } from './notify-session-prompt.js';
 export { registerTransitionNotifications } from './notify-transitions.js';
 export {
   claimOpsAlert,

@@ -53,6 +53,8 @@ export const notificationTypes = [
   'question_asked',
   // ISS-1268 B3: a relayed permission prompt nobody answered was denied at the box's bound
   'permission_relay_timeout',
+  // ISS-1268 C2: a dialog the runner read on a resident session and answered itself
+  'session_prompt_answered',
 ] as const;
 export type NotificationType = (typeof notificationTypes)[number];
 

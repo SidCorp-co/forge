@@ -63,7 +63,7 @@ import {
 import { formatIssueRef } from './lib/issue-ref.js';
 import { liveChecksOf, provideMastersPorts } from './masters/index.js';
 import { foreignScriptChars } from './memory/index.js';
-import { emitNotification } from './notifications/index.js';
+import { emitNotification, tellSessionPrompt } from './notifications/index.js';
 import { currentOnboardingBrief } from './onboarding/index.js';
 import { landedWorkOwed, wedgedWorkOwed } from './pipeline/index.js';
 import { registerRoomBridge } from './previews/index.js';
@@ -302,6 +302,7 @@ const deviceQuestions = {
   waiterFor,
   answerOf,
   expirePermissionPrompt,
+  raiseSessionPrompt: tellSessionPrompt,
 };
 
 export function provideExecutionPorts(): void {

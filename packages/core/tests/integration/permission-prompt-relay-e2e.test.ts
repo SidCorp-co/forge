@@ -5,13 +5,16 @@
  * on any gate profile: the project's admins are rung at once, an agent's answer is refused, and a
  * person's allow or deny reads back on the box's waiter with the note it carried. Nobody answering
  * within the box's bound, the box ends it at `POST .../:id/expire`: the question is void with
- * `PERMISSION_RELAY_TIMEOUT` and the admins are told the call was denied.
+ * `PERMISSION_RELAY_TIMEOUT` and the admins are told the call was denied. A dialog that slipped past
+ * the relay, which the box's watcher read and answered itself (C2), is told the admins at
+ * `POST /api/devices/me/session-prompts`, naming the session, the text and what it needs.
  */
 
 // @direct-test-of packages/core/src/devices/pool-routes.ts
 // @direct-test-of packages/core/src/questions/permission-prompt.ts
 // @direct-test-of packages/core/src/questions/owed.ts
 // @direct-test-of packages/core/src/notifications/notify-questions.ts
+// @direct-test-of packages/core/src/notifications/notify-session-prompt.ts
 
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
@@ -200,5 +203,35 @@ describe('a relayed prompt nobody answers', () => {
       waitedSeconds: 300,
     });
     expect(res.status).toBe(404);
+  });
+});
+
+describe('a dialog the box answered on a session itself', () => {
+  it('rings the admins with the session, the dialog it read and the answer', async () => {
+    ok(
+      await say('box', 'POST', '/api/devices/me/session-prompts', {
+        projectId,
+        session: 'forge-master-forge',
+        text: 'New MCP server found in this project\n❯ 1. Use this and all future MCP servers',
+        needs: 'approve the project MCP server',
+        by: 'safe',
+        answer: 'Escape',
+      }),
+    );
+    await settleOutbox();
+    expect((await bell('session_prompt_answered')).map((n) => n.title)).toContainEqual(
+      expect.stringMatching(/^forge-master-forge stood on «New MCP server found.*Escape, the safe answer/),
+    );
+  });
+
+  it('refuses an answer it does not know by name', async () => {
+    const res = await say('box', 'POST', '/api/devices/me/session-prompts', {
+      projectId,
+      session: 'forge-master-forge',
+      text: 'x',
+      by: 'enter',
+      answer: 'Enter',
+    });
+    expect(res.status).toBe(400);
   });
 });

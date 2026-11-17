@@ -10243,6 +10243,88 @@
         ]
       }
     },
+    "/api/devices/me/session-prompts": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "answer": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "by": {
+                    "enum": [
+                      "catalog",
+                      "safe",
+                      "unread"
+                    ],
+                    "type": "string"
+                  },
+                  "needs": {
+                    "anyOf": [
+                      {
+                        "maxLength": 1000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "projectId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "session": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "text": {
+                    "maxLength": 4000,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "projectId",
+                  "session",
+                  "text",
+                  "by",
+                  "answer"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireDevice"
+        ],
+        "x-forge-permission": {
+          "none": "a paired box’s device credential admits it; each read and write is selected by that device, which the service holds to the projects, sessions and requests it serves"
+        },
+        "x-forge-validated": [
+          "json"
+        ]
+      }
+    },
     "/api/devices/me/skills": {
       "get": {
         "parameters": [
