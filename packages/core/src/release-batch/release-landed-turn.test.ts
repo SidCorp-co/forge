@@ -140,6 +140,7 @@ describe('a landed release whose work a later production release carries', () =>
     judgedOn: null,
     released,
     landing: null,
+    served: null,
   });
   const landedPart = (version: string): Part => ({
     version,

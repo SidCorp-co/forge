@@ -49,6 +49,7 @@ const facts = (n: number): ReleaseFacts => ({
   judgedOn: null,
   released: null,
   landing: null,
+  served: null,
 });
 
 const step = (n: number) => ({
