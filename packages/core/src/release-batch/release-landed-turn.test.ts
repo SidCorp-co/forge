@@ -5,8 +5,11 @@
  *
  * @direct-test-of packages/core/src/release-batch/release-view.ts
  */
+import type { ReleasedLine } from '@forge/contracts/released-line';
 import { describe, expect, it } from 'vitest';
+import type { ReleaseFacts } from './release-facts.js';
 import { releaseOwesOf } from './release-owes.js';
+import { type Part, type Shared, summaryOf } from './release-read-views.js';
 import { turnOf } from './release-view.js';
 
 const POLICY = (strict: boolean) => ({
@@ -109,5 +112,102 @@ describe('a landed release whose every open criterion is recorded skipped', () =
 
   it('is stuck, naming the permission, where nobody holds project.admin', () => {
     expect(skipped('agent', []).waitingOn).toMatchObject({ kind: 'none' });
+  });
+});
+
+// ISS-1288, FB-713: adminhub-fe 0.52.0 landed on release/stg in October; a later release production
+// serves carries its work, yet it still asked an approver to "review 0.52.0 and promote it to
+// production", which would put an older build over the one live. Read through the release read,
+// so the line it is read from (`released-line.ts:servedThrough`) is the one under test.
+describe('a landed release whose work a later production release carries', () => {
+  const at = (day: number) => new Date(Date.UTC(2026, 9, day));
+  // 0.52.0 landed off production; 0.60.0 shipped on it after, carrying 0.52.0; 0.61.0 landed after
+  // 0.60.0 at a higher version, so nothing production serves carries it
+  const LINE: ReleasedLine = {
+    why: 'its production `prod` declares no source probe',
+    live: { version: '0.60.0', at: at(20) },
+    shipped: new Map([
+      ['0.52.0', { at: at(5), carried: true, carries: [] }],
+      ['0.60.0', { at: at(20), carried: true, carries: ['0.52.0'] }],
+      ['0.61.0', { at: at(25), carried: false, carries: ['0.52.0', '0.60.0'] }],
+    ]),
+  };
+  const facts = (released: ReleasedLine | null): ReleaseFacts => ({
+    issues: new Map(),
+    requirements: new Map(),
+    cutters: new Map(),
+    judge: null,
+    judgedOn: null,
+    released,
+    landing: null,
+  });
+  const landedPart = (version: string): Part => ({
+    version,
+    runId: `run-${version}`,
+    state: 'landed',
+    issueIds: [],
+    openedAt: at(1),
+    releasedAt: at(5),
+    attempts: [],
+    approvals: [],
+    gates: [],
+    verification: null,
+    commit: null,
+    cuts: [],
+    continuedAs: null,
+    naming: null,
+    mergeSteps: null,
+    landedOn: 'release/stg',
+    shippedFailing: null,
+    unapproved: null,
+    tag: null,
+    draftApproval: null,
+    draftDecidable: false,
+  });
+  const shared = (required: boolean, released: ReleasedLine | null = LINE): Shared => ({
+    projectId: 'p1',
+    ownerDeploys: false,
+    current: '0.60.0',
+    required,
+    production: true,
+    viewer: { userId: 'u1', agency: 'human', isAdmin: true, mayApprove: true },
+    approvers: [{ id: 'u1', name: 'Bea', kind: 'human' }],
+    admins: ['Bea'],
+    policy: POLICY(false),
+    facts: facts(released),
+    contentLanguage: 'en',
+    provider: null,
+    changeRequestLinks: [],
+  });
+
+  it('reads done naming the release production serves it through, and asks no one to promote it', () => {
+    for (const required of [true, false]) {
+      const s = summaryOf(landedPart('0.52.0'), shared(required));
+      expect(s.waitingOn).toMatchObject({
+        kind: 'none',
+        who: 'Nobody',
+        rule: 'landed on release/stg; production serves it through 0.60.0',
+      });
+      expect(s.attentionGroup).toBe('done');
+      expect(s.waitingOn.act).not.toContain('promote');
+    }
+  });
+
+  it('still asks its approver, or its cutter, where no later production release carries it', () => {
+    const asked = summaryOf(landedPart('0.61.0'), shared(true));
+    expect(asked.attentionGroup).not.toBe('done');
+    expect(asked.waitingOn).toMatchObject({
+      kind: 'you',
+      act: 'review 0.61.0 and promote it to production',
+    });
+    // no approval asked: its cutter, here the master, promotes it
+    expect(summaryOf(landedPart('0.61.0'), shared(false)).waitingOn).toMatchObject({
+      kind: 'agent',
+      act: 'review 0.61.0 and promote it to production',
+    });
+    // a project whose production reads the commit it serves reads no line: today's turn stands
+    expect(summaryOf(landedPart('0.52.0'), shared(true, null)).waitingOn).toMatchObject({
+      act: 'review 0.52.0 and promote it to production',
+    });
   });
 });

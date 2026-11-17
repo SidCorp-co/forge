@@ -1785,6 +1785,10 @@ export const SAID = {
 		en: "landed on {branch}; production serves it once it is promoted",
 		vars: { branch: "name" },
 	},
+	"releases.rule.landedServedThrough": {
+		en: "landed on {branch}; production serves it through {live}",
+		vars: { branch: "name", live: "version" },
+	},
 	"releases.rule.landedDelivered": {
 		en: "landed on {branch}, its delivery: no production and no approval asked",
 		vars: { branch: "name" },

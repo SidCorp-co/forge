@@ -167,6 +167,7 @@ function turnFor(p: Part, s: Shared, criteria: Weighed) {
     merges: p.mergeSteps ? unmergedSteps(p.mergeSteps, s.changeRequestLinks).length : null,
     promotion: Boolean((p.runMetadata as { promotion?: unknown } | null | undefined)?.promotion),
     landedOn: p.landedOn,
+    released: s.facts.released,
     required: s.required,
     production: s.production === true,
     approval: approvalFacts(p),

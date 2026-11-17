@@ -1,4 +1,5 @@
 import { isDecisionActOn } from '@forge/contracts/needs-you-decisions';
+import { type ReleasedLine, servedThrough } from '@forge/contracts/released-line';
 import type {
   ReleaseAttemptStage,
   ReleaseAttentionGroup,
@@ -62,6 +63,8 @@ interface TurnFacts {
   promotion?: boolean;
   /** The branch a recorded landing put it on, off production's branch; null on any other release. */
   landedOn: string | null;
+  /** The release line, which says whether production serves it through a later release (ISS-1288). */
+  released?: ReleasedLine | null;
   /** `release.approval.required` of the project document. */
   required: boolean;
   /** Whether the project document declares a production environment; absent reads as none. */
@@ -113,6 +116,7 @@ interface TurnFacts {
 type Turn = Standing<ReleaseAttentionGroup, ReleaseWaitingKind>;
 
 const NOBODY = nobodyWaits(say('releases.rule.ended'));
+const doneOn = (rule: Said): Turn => ({ attentionGroup: 'done', waitingOn: nobodyWaits(rule) });
 
 const IN_FLIGHT_ACT: Record<ReleaseAttemptStage, Said> = {
   deploy: say('standing.act.deploying'),
@@ -347,14 +351,13 @@ function approvalTurn(f: TurnFacts): Turn {
 }
 
 /**
- * A release that landed on a branch production does not deploy from. Production does not serve it:
- * where the project requires a release approval, a holder of releases.approve reviews it and
- * promotes it, and until then it is theirs. Where none is required and no production is declared,
- * the landing is the delivery (owner ruling 2026-10-22) and nobody owes anything. Where none is
- * required and production is declared, production does not serve it yet: whoever cuts its releases
- * promotes it, and it is never read done (ISS-709, judge K104). On a project
- * naming its testing environment, the review waits until every carried criterion passes there
- * (`untestedTurn`).
+ * A release that landed on a branch production does not deploy from. Where production serves a
+ * later release carrying it, its work is live through that one: it reads done naming it, and nobody
+ * promotes an older build over it (ISS-1288). Otherwise production does not serve it: a holder of
+ * releases.approve reviews and promotes it where the project requires a release approval; with none
+ * required and no production declared, the landing is the delivery (owner ruling 2026-10-22); with
+ * production declared, whoever cuts its releases promotes it (ISS-709, judge K104). A project naming
+ * its testing environment holds the review until each criterion passes there (`untestedTurn`).
  */
 /** A landed release with production declared and no approval asked: its cutter promotes it. */
 function promotionTurn(f: TurnFacts, branch: string): Turn {
@@ -375,12 +378,9 @@ function promotionTurn(f: TurnFacts, branch: string): Turn {
 
 function landedTurn(f: TurnFacts): Turn {
   const branch = f.landedOn ?? '';
-  if (!f.required && !f.production) {
-    return {
-      attentionGroup: 'done',
-      waitingOn: nobodyWaits(say('releases.rule.landedDelivered', { branch })),
-    };
-  }
+  if (!f.required && !f.production) return doneOn(say('releases.rule.landedDelivered', { branch }));
+  const live = servedThrough(f.released, f.version);
+  if (live) return doneOn(say('releases.rule.landedServedThrough', { branch, live }));
   if (!f.required) return promotionTurn(f, branch);
   const untested = untestedTurn(f);
   if (untested) return untested;

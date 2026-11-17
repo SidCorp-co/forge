@@ -1,0 +1,1 @@
+**An old landed release no longer asks to be promoted once production serves its work.** Where a later production release carries it, it reads done, naming that release, so nobody promotes an older build over the live one.

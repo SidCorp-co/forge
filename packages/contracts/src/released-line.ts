@@ -176,15 +176,36 @@ export function versionsCountedOn(
 	if (version === null) return new Set();
 	const later =
 		line && releaseHoldsIssue(line, version, issueId) !== false
-			? [...line.shipped]
-					.filter(([, s]) => s.carries.includes(version))
-					.map(([v]) => v)
+			? carriersOf(line, version)
 			: [];
 	return new Set([
 		version,
 		...(line?.shipped.get(version)?.carries ?? []),
 		...later,
 	]);
+}
+
+/** Every shipped release the record says carries release `version` (`ReleasedLine.shipped[].carries`): the later ones. */
+function carriersOf(line: ReleasedLine, version: string): string[] {
+	return [...line.shipped]
+		.filter(([, s]) => s.carries.includes(version))
+		.map(([v]) => v);
+}
+
+/**
+ * The later release production serves that carries release `version`, by the same reading
+ * `versionsCountedOn` names a later release by (ISS-1288, FB-713: adminhub-fe 0.52.0, landed on
+ * release/stg, its work served in production through a later release, still asked to be promoted).
+ * Null where no line is read, none is live, `version` is the live one, or the live one does not
+ * carry it (a landing recorded after it, or at a higher version).
+ */
+export function servedThrough(
+	line: ReleasedLine | null | undefined,
+	version: string,
+): string | null {
+	const live = line?.live?.version;
+	if (!line || !live || live === version) return null;
+	return carriersOf(line, version).includes(live) ? live : null;
 }
 
 /** Why a release a verdict names is refused: no version, no place for one, or none recorded. */
