@@ -54,7 +54,18 @@ describe("the widget form against the contract", () => {
   it("clears an optional field the form emptied, since the binding write keeps a key the patch leaves out", () => {
     const parsed = parseForm({ ...EMPTY_FORM, origins: ["https://shop.example.com"] }, SITE_KEY);
     if (!parsed.config) throw new Error("the form did not parse");
-    expect(patchOf(parsed.config)).toEqual({ ...parsed.config, title: null, greeting: null, accent: null, limits: null });
+    expect(patchOf(parsed.config)).toEqual({ ...parsed.config, title: null, greeting: null, greetings: null, accent: null, limits: null });
+  });
+
+  it("keeps a greeting written for a language beside the one greeting, and reads it back", () => {
+    const parsed = parseForm(
+      { ...EMPTY_FORM, origins: ["https://shop.example.com"], greeting: "Hi!", greetings: { vi: " Xin chao! " } },
+      SITE_KEY,
+    );
+    expect(parsed.config).toMatchObject({ greeting: "Hi!", greetings: { vi: "Xin chao!" } });
+    if (!parsed.config) throw new Error("the form did not parse");
+    expect(formOf(parsed.config).greetings).toEqual({ vi: "Xin chao!" });
+    expect(parseForm({ ...EMPTY_FORM, origins: ["https://shop.example.com"] }, SITE_KEY).config).not.toHaveProperty("greetings");
   });
 
   it("reads a saved config back into the form, and embeds the loader beside the web", () => {

@@ -1,13 +1,14 @@
 import type { WidgetPublicConfig } from "@forge/contracts/widget";
 import { Button, Field, Input, Spinner } from "@/design";
-import { useCopy } from "@/lib/i18n/interface-language";
 import { type FormEvent, useState } from "react";
 import type { Shown } from "../refusal";
 import { RefusalNote } from "./refusal-note";
+import { useWidgetCopy, useWidgetGreeting } from "../language";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function Greeting({ greeting }: { greeting: string | null }) {
+function Greeting({ config }: { config: WidgetPublicConfig }) {
+  const greeting = useWidgetGreeting(config);
   return greeting ? <p className="fg-body whitespace-pre-line text-fg">{greeting}</p> : null;
 }
 
@@ -26,7 +27,7 @@ export function AskVisitor({
   refusal: Shown | null;
   onStart: (visitor: { email?: string }) => void;
 }) {
-  const t = useCopy();
+  const t = useWidgetCopy();
   const required = config.identity.mode === "email";
   const [email, setEmail] = useState(keptEmail ?? "");
   const [touched, setTouched] = useState(false);
@@ -42,7 +43,7 @@ export function AskVisitor({
 
   return (
     <form className="flex flex-1 flex-col justify-end gap-4 p-4" onSubmit={submit} noValidate data-testid="widget-gate">
-      <Greeting greeting={config.greeting} />
+      <Greeting config={config} />
       {refusal && <RefusalNote refusal={refusal} />}
       <Field
         label={required ? t("widget.gate.email") : t("widget.gate.emailOptional")}
@@ -69,10 +70,10 @@ export function AskVisitor({
 
 /** Signed mode: the page signs its own user in, so the frame waits for it and asks nothing. */
 export function WaitForSignIn({ config, refusal }: { config: WidgetPublicConfig; refusal: Shown | null }) {
-  const t = useCopy();
+  const t = useWidgetCopy();
   return (
     <div className="flex flex-1 flex-col justify-end gap-4 p-4" data-testid="widget-wait">
-      <Greeting greeting={config.greeting} />
+      <Greeting config={config} />
       {refusal ? (
         <RefusalNote refusal={refusal} />
       ) : (

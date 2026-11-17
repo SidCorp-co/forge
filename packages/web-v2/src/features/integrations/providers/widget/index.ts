@@ -12,7 +12,7 @@ export const widget: ProviderModule = {
   secretPlaceholder: null,
   drillable: true,
   agentPathKind: "none",
-  bindingKeys: ["siteKey", "allowedOrigins", "identity", "title", "greeting", "accent", "limits"],
+  bindingKeys: ["siteKey", "allowedOrigins", "identity", "title", "greeting", "greetings", "accent", "limits"],
   target: (config) => text(config, "siteKey"),
   section: () => import("./section").then((m) => ({ default: m.WidgetSettings })),
   connectionSection: null,

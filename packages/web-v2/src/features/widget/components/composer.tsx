@@ -1,6 +1,6 @@
 import { IconButton, Textarea } from "@/design";
-import { useCopy } from "@/lib/i18n/interface-language";
 import { type FormEvent, type KeyboardEvent, useState } from "react";
+import { useWidgetCopy } from "../language";
 
 /** How many characters before the cap the count starts showing. */
 const SHOW_LEFT_UNDER = 200;
@@ -15,7 +15,7 @@ export function Composer({
   disabled: boolean;
   onSend: (text: string) => void;
 }) {
-  const t = useCopy();
+  const t = useWidgetCopy();
   const [text, setText] = useState("");
   const typed = text.trim();
   const left = maxChars - text.length;

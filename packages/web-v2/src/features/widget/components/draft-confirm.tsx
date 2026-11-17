@@ -1,10 +1,9 @@
 import type { WidgetFeedbackDraft, WidgetFiled } from "@forge/contracts/widget";
 import { Badge, Button, Kicker } from "@/design";
-import { useCopy } from "@/lib/i18n/interface-language";
-import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import type { Shown } from "../refusal";
 import { FiledLink } from "./filed-link";
 import { RefusalNote } from "./refusal-note";
+import { useWidgetCopy, type WidgetCopyKey } from "../language";
 
 function Said({ label, text }: { label: string; text: string | null }) {
   if (!text) return null;
@@ -16,7 +15,7 @@ function Said({ label, text }: { label: string; text: string | null }) {
   );
 }
 
-const kindKey = (kind: WidgetFeedbackDraft["kind"]): ProductCopyKey => `widget.draft.kind.${kind}`;
+const kindKey = (kind: WidgetFeedbackDraft["kind"]): WidgetCopyKey => `widget.draft.kind.${kind}`;
 
 /**
  * What the assistant proposes to file, for the visitor to send or discard: the title and what they
@@ -38,7 +37,7 @@ export function DraftConfirm({
   onSend: () => void;
   onDiscard: () => void;
 }) {
-  const t = useCopy();
+  const t = useWidgetCopy();
   if (draft.state === "discarded")
     return (
       <p className="fg-caption self-center text-subtle" data-testid="widget-draft" data-state="discarded">

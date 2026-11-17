@@ -2,11 +2,12 @@ import { WIDGET_IDENTITY_MODES, WIDGET_LIMIT_DEFAULTS, type WidgetIdentityMode }
 import { Button, Disclosure, Field, IconButton, Input, Radio, RadioGroup, Textarea } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
-import { type FieldErrors, LIMIT_KEYS, type LimitKey, limitBounds, type WidgetForm } from "./config";
+import { type FieldErrors, GREETING_LANGUAGES, type GreetingLanguage, LIMIT_KEYS, type LimitKey, limitBounds, type WidgetForm } from "./config";
 
 const ACCENT = /^#[0-9a-fA-F]{6}$/;
 const modeKey = (mode: WidgetIdentityMode): ProductCopyKey => `integrations.widget.mode.${mode}`;
 const limitKey = (key: LimitKey): ProductCopyKey => `integrations.widget.limit.${key}`;
+const greetingInKey = (language: GreetingLanguage): ProductCopyKey => `integrations.widget.greetingIn.${language}`;
 
 function OriginsField({
   origins,
@@ -136,6 +137,21 @@ export function WidgetFields({ form, errors, set }: { form: WidgetForm; errors: 
           onChange={(e) => set({ ...form, greeting: e.target.value })}
         />
       </Field>
+      {GREETING_LANGUAGES.map((language) => (
+        <Field
+          key={language}
+          label={t(greetingInKey(language))}
+          error={errors.greetingIn?.includes(language) ? t("integrations.widget.greetingInvalid") : undefined}
+        >
+          <Textarea
+            rows={2}
+            maxLength={400}
+            lang={language}
+            value={form.greetings[language]}
+            onChange={(e) => set({ ...form, greetings: { ...form.greetings, [language]: e.target.value } })}
+          />
+        </Field>
+      ))}
       <LimitsField form={form} errors={errors} set={set} />
     </div>
   );

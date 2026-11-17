@@ -3,7 +3,9 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithQuery } from "@/test/render";
+import widgetEnglish from "@/lib/i18n/copy/widget.json";
 import { WidgetFrame } from "./components/widget-frame";
+import { WIDGET_WORDS } from "./language";
 
 // The frame a client page embeds, over a core that answers the widget contract: each identity mode
 // opens its session the way the binding asks, the live stream folds into the chat, a draft is sent or
@@ -41,6 +43,7 @@ let replies: Record<string, { status?: number; body: unknown }> = {};
 const configOf = (mode: WidgetIdentityMode): WidgetPublicConfig => ({
   title: "Kettle Co. help",
   greeting: "Hi! What went wrong?",
+  greetings: { vi: "Xin chao! Co gi chua on?" },
   accent: "#0f766e",
   identity: { mode },
   messageMaxChars: 4000,
@@ -380,5 +383,48 @@ describe("the widget frame's refusals", () => {
     await userEvent.type(screen.getByLabelText("Message"), "Hello?{Enter}");
     expect(await screen.findByText("This chat has expired. Start a new one.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Start chat" })).toBeInTheDocument();
+  });
+});
+
+// ISS-1277: the widget is another product's surface, so it speaks the locale its host page names.
+describe("the widget frame's language", () => {
+  const VI = WIDGET_WORDS.vi;
+
+  it("draws its words, its close and the site's greeting in Vietnamese for a page that names vi", async () => {
+    core("anonymous");
+    renderWithQuery(<WidgetFrame siteKey={SITE_KEY} />);
+    await screen.findByText("Kettle Co. help");
+    await fromHost({ type: "context", context: { url: `${HOST}/kettle`, locale: "vi-VN" } });
+    expect(screen.getByRole("button", { name: VI["widget.gate.start"] })).toBeInTheDocument();
+    expect(screen.getByLabelText(VI["widget.gate.emailOptional"])).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: VI["widget.frame.close"] })).toBeInTheDocument();
+    expect(screen.getByText("Xin chao! Co gi chua on?")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Start chat" })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: VI["widget.gate.start"] }));
+    expect(await screen.findByRole("textbox", { name: VI["widget.chat.message"] })).toBeInTheDocument();
+    await fromHost({ type: "context", context: { url: `${HOST}/kettle`, locale: "en-GB" } });
+    expect(screen.getByRole("textbox", { name: "Message" })).toBeInTheDocument();
+  });
+
+  it("draws English, naming the locale in a console warning, for a language it writes no copy in", async () => {
+    core("anonymous");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    renderWithQuery(<WidgetFrame siteKey={SITE_KEY} />);
+    await screen.findByText("Kettle Co. help");
+    expect(warn).not.toHaveBeenCalled();
+    await fromHost({ type: "context", context: { url: `${HOST}/kettle`, locale: "fr-FR" } });
+    expect(screen.getByRole("button", { name: "Start chat" })).toBeInTheDocument();
+    expect(screen.getByText("Hi! What went wrong?")).toBeInTheDocument();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('no copy is written in locale "fr-FR"'));
+  });
+
+  it("holds every widget word in Vietnamese, none blank, each with its English slots", () => {
+    const english = widgetEnglish.en as Record<string, string>;
+    expect(Object.keys(VI).sort()).toEqual(Object.keys(english).sort());
+    const placeholders = (text: string) => (text.match(/\{\w+\}/g) ?? []).sort();
+    for (const [key, text] of Object.entries(VI) as [keyof typeof VI, string][]) {
+      expect(text.trim(), key).not.toBe("");
+      expect(placeholders(text), key).toEqual(placeholders(english[key] ?? ""));
+    }
   });
 });

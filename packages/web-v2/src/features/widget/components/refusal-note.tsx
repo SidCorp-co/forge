@@ -1,11 +1,11 @@
 import { Banner } from "@/design";
-import { useCopy } from "@/lib/i18n/interface-language";
 import type { ReactNode } from "react";
 import { refusalKey, type Shown } from "../refusal";
+import { useWidgetCopy } from "../language";
 
 /** A refusal in the visitor's words: its plain sentence, core's detail for a limit, and the code to quote. */
 export function RefusalNote({ refusal, action }: { refusal: Shown; action?: ReactNode }) {
-  const t = useCopy();
+  const t = useWidgetCopy();
   return (
     <div className="flex flex-col gap-1" data-testid="widget-refusal" data-code={refusal.rawCode ?? refusal.code}>
       <Banner tone={refusal.code === "WIDGET_LIMIT_REACHED" ? "attention" : "danger"} action={action}>

@@ -1,6 +1,5 @@
 import { WIDGET_SITE_KEY_PATTERN, type WidgetPublicConfig } from "@forge/contracts/widget";
 import { Button, IconButton, Spinner } from "@/design";
-import { useCopy } from "@/lib/i18n/interface-language";
 import { type ReactNode, useEffect, useRef } from "react";
 import { accentStyle } from "../accent";
 import { type HostChannel, useHostChannel } from "../hooks/host";
@@ -10,6 +9,7 @@ import { type Shown, shownOf } from "../refusal";
 import { Conversation } from "./conversation";
 import { RefusalNote } from "./refusal-note";
 import { AskVisitor, WaitForSignIn } from "./visitor-gate";
+import { useWidgetCopy, WidgetLocale } from "../language";
 
 const SITE_UNKNOWN: Shown = { code: "WIDGET_SITE_UNKNOWN", rawCode: "WIDGET_SITE_UNKNOWN", detail: null };
 
@@ -26,7 +26,7 @@ function FrameChrome({
   focusKey: string;
   children: ReactNode;
 }) {
-  const t = useCopy();
+  const t = useWidgetCopy();
   const rootRef = useRef<HTMLDivElement>(null);
   // the page opened the frame, or the step changed under the visitor: focus moves to what they act on
   useEffect(() => {
@@ -39,7 +39,13 @@ function FrameChrome({
         <span className="size-2.5 flex-none rounded-full bg-primary" aria-hidden />
         <h1 className="fg-label min-w-0 flex-1 truncate">{title}</h1>
         {host.parentOrigin && (
-          <IconButton icon="x" size="sm" aria-label={t("widget.frame.close")} onClick={() => host.tell({ type: "close" })} />
+          <IconButton
+            icon="x"
+            variant="secondary"
+            className="size-10"
+            aria-label={t("widget.frame.close")}
+            onClick={() => host.tell({ type: "close" })}
+          />
         )}
       </header>
       <main className="flex min-h-0 flex-1 flex-col">{children}</main>
@@ -49,7 +55,7 @@ function FrameChrome({
 }
 
 function Visitor({ siteKey, config, host }: { siteKey: string; config: WidgetPublicConfig; host: HostChannel }) {
-  const t = useCopy();
+  const t = useWidgetCopy();
   const session = useVisitorSession(siteKey, config.identity.mode, host);
   const view = session.view;
   const body = (() => {
@@ -91,12 +97,21 @@ function Visitor({ siteKey, config, host }: { siteKey: string; config: WidgetPub
 }
 
 /**
- * The page the loader's iframe opens: the binding's public config, then who the visitor is, then the
- * conversation. Every refusal is shown by its code, from a site key that is not one onward.
+ * The page the loader's iframe opens, in the language its host page names: the binding's public
+ * config, then who the visitor is, then the conversation. Every refusal is shown by its code, from a
+ * site key that is not one onward.
  */
 export function WidgetFrame({ siteKey }: { siteKey: string }) {
-  const t = useCopy();
   const host = useHostChannel();
+  return (
+    <WidgetLocale locale={host.context?.locale}>
+      <FrameBody siteKey={siteKey} host={host} />
+    </WidgetLocale>
+  );
+}
+
+function FrameBody({ siteKey, host }: { siteKey: string; host: HostChannel }) {
+  const t = useWidgetCopy();
   const wellFormed = WIDGET_SITE_KEY_PATTERN.test(siteKey);
   const config = useWidgetConfig(siteKey, wellFormed);
   if (!wellFormed || config.isError)

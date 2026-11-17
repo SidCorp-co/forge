@@ -1,14 +1,20 @@
 import {
+  WIDGET_LANGUAGES,
   WIDGET_LIMIT_DEFAULTS,
   WIDGET_SITE_KEY_PREFIX,
   type WidgetBindingConfig,
   type WidgetIdentityMode,
+  type WidgetLanguage,
   widgetBindingConfigSchema,
   widgetLimitsSchema,
 } from "@forge/contracts/widget";
 
 // The widget binding's form, read from and written to the contract's `widgetBindingConfigSchema`:
 // every save is parsed by that schema first, and what it refuses is shown on the field it names.
+
+/** The languages a site writes a greeting of its own in; English reads the one greeting. */
+export const GREETING_LANGUAGES = WIDGET_LANGUAGES.filter((l): l is Exclude<WidgetLanguage, "en"> => l !== "en");
+export type GreetingLanguage = (typeof GREETING_LANGUAGES)[number];
 
 export const LIMIT_KEYS = Object.keys(WIDGET_LIMIT_DEFAULTS) as (keyof typeof WIDGET_LIMIT_DEFAULTS)[];
 export type LimitKey = (typeof LIMIT_KEYS)[number];
@@ -18,6 +24,8 @@ export interface WidgetForm {
   mode: WidgetIdentityMode;
   title: string;
   greeting: string;
+  /** The greeting in each other language the widget writes; blank greets with `greeting`. */
+  greetings: Record<GreetingLanguage, string>;
   accent: string;
   /** As typed; blank keeps the default. */
   limits: Record<LimitKey, string>;
@@ -25,7 +33,9 @@ export interface WidgetForm {
 
 const NO_LIMITS = Object.fromEntries(LIMIT_KEYS.map((k) => [k, ""])) as Record<LimitKey, string>;
 
-export const EMPTY_FORM: WidgetForm = { origins: [""], mode: "anonymous", title: "", greeting: "", accent: "", limits: NO_LIMITS };
+const NO_GREETINGS = Object.fromEntries(GREETING_LANGUAGES.map((l) => [l, ""])) as Record<GreetingLanguage, string>;
+
+export const EMPTY_FORM: WidgetForm = { origins: [""], mode: "anonymous", title: "", greeting: "", greetings: NO_GREETINGS, accent: "", limits: NO_LIMITS };
 
 /** The bounds the contract puts on a limit, read off its schema so the two cannot drift. */
 export function limitBounds(key: LimitKey): { min: number; max: number } {
@@ -49,6 +59,7 @@ export function formOf(config: Record<string, unknown>): WidgetForm {
     mode: c.identity?.mode ?? "anonymous",
     title: c.title ?? "",
     greeting: c.greeting ?? "",
+    greetings: Object.fromEntries(GREETING_LANGUAGES.map((l) => [l, c.greetings?.[l] ?? ""])) as Record<GreetingLanguage, string>,
     accent: c.accent ?? "",
     limits: Object.fromEntries(LIMIT_KEYS.map((k) => [k, c.limits?.[k] === undefined ? "" : String(c.limits[k])])) as Record<
       LimitKey,
@@ -58,6 +69,8 @@ export function formOf(config: Record<string, unknown>): WidgetForm {
 }
 
 export type FieldErrors = Partial<Record<"origins" | "title" | "greeting" | "accent" | LimitKey, string>> & {
+  /** Each language whose greeting the schema refused. */
+  greetingIn?: GreetingLanguage[];
   /** The index of each origin the schema refused. */
   originAt?: number[];
 };
@@ -71,12 +84,16 @@ export function parseForm(form: WidgetForm, siteKey: string): Parsed {
   const limits = Object.fromEntries(
     LIMIT_KEYS.filter((k) => !blank(form.limits[k])).map((k) => [k, Number(form.limits[k].trim())]),
   );
+  const greetings = Object.fromEntries(
+    GREETING_LANGUAGES.filter((l) => !blank(form.greetings[l])).map((l) => [l, form.greetings[l].trim()]),
+  );
   const candidate = {
     siteKey,
     allowedOrigins: form.origins.map((o) => o.trim()).filter((o) => o !== ""),
     identity: { mode: form.mode },
     ...(blank(form.title) ? {} : { title: form.title.trim() }),
     ...(blank(form.greeting) ? {} : { greeting: form.greeting.trim() }),
+    ...(Object.keys(greetings).length > 0 ? { greetings } : {}),
     ...(blank(form.accent) ? {} : { accent: form.accent.trim() }),
     ...(Object.keys(limits).length > 0 ? { limits } : {}),
   };
@@ -89,6 +106,7 @@ export function parseForm(form: WidgetForm, siteKey: string): Parsed {
       if (typeof at === "number") errors.originAt = [...(errors.originAt ?? []), at];
       else errors.origins = issue.message;
     } else if (head === "limits" && typeof at === "string") errors[at as LimitKey] = issue.message;
+    else if (head === "greetings") errors.greetingIn = [...(errors.greetingIn ?? []), ...GREETING_LANGUAGES.filter((l) => l === at)];
     else if (head === "title" || head === "greeting" || head === "accent") errors[head] = issue.message;
     else errors.origins = issue.message;
   }
@@ -100,7 +118,7 @@ export function parseForm(form: WidgetForm, siteKey: string): Parsed {
  * the form cleared, since the binding write keeps a key the patch leaves out.
  */
 export function patchOf(config: WidgetBindingConfig): Record<string, unknown> {
-  return { title: null, greeting: null, accent: null, limits: null, ...config };
+  return { title: null, greeting: null, greetings: null, accent: null, limits: null, ...config };
 }
 
 /** The script tag a client page embeds, pointing at this web's own loader. */

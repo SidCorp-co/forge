@@ -10,6 +10,8 @@
  * inline styles, so no style leaks either way.
  *
  *   ForgeWidget.setContext({ productId, appVersion, extra, title, url, locale })
+ *     `locale` (the browser's where unset) is also the language the widget speaks, by its base
+ *     language: Vietnamese or English, and English with a console warning for any other.
  *   ForgeWidget.identify({ userId, ts, sig, email, name })
  *   ForgeWidget.open() / ForgeWidget.close() / ForgeWidget.toggle()
  *

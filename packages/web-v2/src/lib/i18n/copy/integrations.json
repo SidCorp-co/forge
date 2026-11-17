@@ -415,6 +415,7 @@
     "integrations.widget.greeting": "Greeting",
     "integrations.widget.greetingPlaceholder": "What can we help with?",
     "integrations.widget.greetingInvalid": "Up to 400 characters.",
+    "integrations.widget.greetingIn.vi": "Greeting in Vietnamese",
     "integrations.widget.accent": "Accent",
     "integrations.widget.accentInvalid": "A colour written as #rrggbb.",
     "integrations.widget.limits": "Limits",

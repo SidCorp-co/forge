@@ -1,7 +1,7 @@
 import type { WidgetFiled } from "@forge/contracts/widget";
 import { Button, Icon } from "@/design";
-import { useCopy } from "@/lib/i18n/interface-language";
 import { useState } from "react";
+import { useWidgetCopy } from "../language";
 
 /** The status link as an address a person can open from anywhere: core's, resolved against the web origin. */
 export function absoluteLink(statusUrl: string): string {
@@ -18,7 +18,7 @@ export function absoluteLink(statusUrl: string): string {
  * Where core holds no link for it, the report reads sent without one.
  */
 export function FiledLink({ title, filed }: { title: string; filed: WidgetFiled | null }) {
-  const t = useCopy();
+  const t = useWidgetCopy();
   const [copied, setCopied] = useState<"yes" | "failed" | null>(null);
   const link = filed ? absoluteLink(filed.statusUrl) : null;
 

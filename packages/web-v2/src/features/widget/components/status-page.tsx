@@ -1,18 +1,18 @@
 import { WIDGET_STATUS_TOKEN_PATTERN, type WidgetStatus } from "@forge/contracts/widget";
 import { Badge, Kicker, Spinner } from "@/design";
-import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
-import type { ProductCopyKey } from "@/lib/i18n/product-copy";
+import { useTimeFormat } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 import { useWidgetStatus } from "../hooks/queries";
 import { type Shown, shownOf } from "../refusal";
 import { RefusalNote } from "./refusal-note";
+import { useWidgetCopy, type WidgetCopyKey } from "../language";
 
 const STEPS = ["received", "triaged", "in_progress", "shipped"] as const;
-const phaseKey = (phase: WidgetStatus["phase"]): ProductCopyKey => `widget.status.phase.${phase}`;
+const phaseKey = (phase: WidgetStatus["phase"]): WidgetCopyKey => `widget.status.phase.${phase}`;
 const UNKNOWN: Shown = { code: "WIDGET_STATUS_UNKNOWN", rawCode: "WIDGET_STATUS_UNKNOWN", detail: null };
 
 function Steps({ phase }: { phase: WidgetStatus["phase"] }) {
-  const t = useCopy();
+  const t = useWidgetCopy();
   const at = STEPS.indexOf(phase as (typeof STEPS)[number]);
   return (
     <ol className="flex flex-col gap-0 sm:flex-row sm:gap-2" aria-label={t("widget.status.steps")} data-testid="widget-status-steps">
@@ -38,7 +38,7 @@ function Steps({ phase }: { phase: WidgetStatus["phase"] }) {
 }
 
 function StatusView({ status }: { status: WidgetStatus }) {
-  const t = useCopy();
+  const t = useWidgetCopy();
   const time = useTimeFormat();
   return (
     <article className="flex flex-col gap-6" data-testid="widget-status" data-phase={status.phase}>
@@ -64,7 +64,7 @@ function StatusView({ status }: { status: WidgetStatus }) {
 
 /** A visitor's private status link: where what they sent stands, in one plain sentence, and nothing more. */
 export function WidgetStatusPage({ token }: { token: string }) {
-  const t = useCopy();
+  const t = useWidgetCopy();
   const wellFormed = WIDGET_STATUS_TOKEN_PATTERN.test(token);
   const status = useWidgetStatus(token, wellFormed);
   return (

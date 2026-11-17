@@ -1,6 +1,6 @@
 import type { WidgetRefusalCode } from "@forge/contracts/widget";
-import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { WidgetRefusal, WidgetUnreachable } from "./api";
+import { type WidgetCopyKey } from "./language";
 
 /**
  * A refusal as the visitor is shown it: a widget code by its own plain sentence, a code core sent
@@ -22,6 +22,6 @@ export function shownOf(err: unknown): Shown {
   return { code: "other", rawCode: null, detail: null };
 }
 
-export function refusalKey(code: Shown["code"]): ProductCopyKey {
+export function refusalKey(code: Shown["code"]): WidgetCopyKey {
   return `widget.refused.${code}`;
 }

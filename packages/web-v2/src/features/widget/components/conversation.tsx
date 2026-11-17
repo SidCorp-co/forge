@@ -1,6 +1,5 @@
 import type { WidgetMessage, WidgetPublicConfig } from "@forge/contracts/widget";
 import { Banner, Button, Spinner } from "@/design";
-import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 import { useEffect, useRef, useState } from "react";
 import { WidgetRefusal } from "../api";
@@ -11,6 +10,7 @@ import { type Shown, shownOf } from "../refusal";
 import { Composer } from "./composer";
 import { DraftConfirm } from "./draft-confirm";
 import { RefusalNote } from "./refusal-note";
+import { useWidgetCopy, useWidgetGreeting } from "../language";
 
 interface Outgoing {
   id: string;
@@ -19,7 +19,7 @@ interface Outgoing {
 }
 
 function Bubble({ from, text, pending, failed }: { from: WidgetMessage["role"]; text: string; pending?: boolean; failed?: boolean }) {
-  const t = useCopy();
+  const t = useWidgetCopy();
   const mine = from === "visitor";
   return (
     <li className={cn("flex", mine ? "justify-end" : "justify-start")} data-role={from}>
@@ -53,7 +53,8 @@ export function Conversation({
   host: HostChannel;
   onEnded: (why: Shown) => void;
 }) {
-  const t = useCopy();
+  const t = useWidgetCopy();
+  const greeting = useWidgetGreeting(config);
   const history = useWidgetHistory(token);
   const live = useLive(token, { assistantReplied: host.noteAssistantReply, ended: onEnded });
   const send = useSendMessage(token, host.context);
@@ -102,7 +103,7 @@ export function Conversation({
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="widget-conversation">
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
-        {config.greeting && messages.length === 0 && <Bubble from="assistant" text={config.greeting} />}
+        {greeting && messages.length === 0 && <Bubble from="assistant" text={greeting} />}
         {history.isLoading && <Spinner size={16} />}
         {history.isError && <RefusalNote refusal={shownOf(history.error)} />}
         <ol className="flex flex-col gap-2" aria-label={t("widget.chat.label")} role="log" aria-live="polite">
