@@ -14,7 +14,7 @@ export const REQUIREMENT_LIFECYCLE_GUIDE: CoreGuide = {
   title: 'Requirements: revisions, agreement, baselines and delivery',
   summary:
     "How a requirement (REQ-n) is written in immutable revisions with stable business criteria (BC-n), proposed, accepted and agreed under a baseline pinning its designs — by its checklist and the project's master outside a strict profile, by a holder of requirements.approve where the project's gates keep a person —, re-pinned, deferred, moved into delivery and to delivered by an act, accepted (by its checklist or by decision) or dropped; and why an issue planned against it reads changed-since-plan.",
-  version: 12,
+  version: 13,
   doors: ['POST /api/projects/:id/requirements/:req/issues'],
   body: `## Requirements: revisions, agreement, baselines and delivery
 
@@ -22,9 +22,10 @@ A requirement (REQ-n) is the business intent a set of issues delivers. Its text 
 it lives in numbered revisions, and each revision carries business criteria under stable codes
 (BC-1, BC-2, …) that issues trace their own criteria to: an issue criterion traces one where its
 line opens with the tag, \`(REQ-n BC-m) <statement>\`, and nowhere else.
-\`POST /api/issues/:id/criteria/traces { codes }\` ADDS a criterion per code to the issue, worded as
-the BC; it takes only BCs of the issue's own requirement, since a criterion proves a BC of its own
-issue's requirement. A BC no linked issue was built for (a later revision added it) is traced by
+\`POST /api/issues/:id/criteria/traces { ties: [{ n, code }] }\` TIES the issue's existing line n to a
+BC, keeping its verdicts; \`POST /api/issues/:id/criteria/traces { codes }\` ADDS a criterion per code
+to the issue, worded as the BC, for a BC no line says; it takes only BCs of the issue's own
+requirement, since a criterion proves a BC of its own issue's requirement. A BC no linked issue was built for (a later revision added it) is traced by
 none: its standing asks for an issue of its own under the requirement, or a revision. The door is
 \`/api/projects/:id/requirements\`: each act below is a route under \`…/requirements/:req\`
 (\`revisions\`, \`revisions/:n/propose|accept|return\`, \`agree\`, \`repin\`, \`defer\`, \`undefer\`,

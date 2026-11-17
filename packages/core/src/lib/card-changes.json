@@ -190,9 +190,9 @@
     "by": "ISS-1251"
   },
   "POST /api/issues/:id/criteria/traces": {
-    "hash": "4babd2facd6908d4",
+    "hash": "9923502a6df101e6",
     "on": "2026-11-17",
-    "by": "ISS-1251"
+    "by": "ISS-1283"
   },
   "POST /api/issues/:id/dependencies": {
     "hash": "477dedf06a6d2efc",

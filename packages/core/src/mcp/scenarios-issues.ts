@@ -17,6 +17,16 @@ export const ISSUE_SCENARIOS: readonly CardScenario[] = [
     teaches: [/name the catalogued slug the change follows/i],
   },
   {
+    name: 'codes sent to tie existing lines, adding copies: epod ISS-187',
+    card: 'POST /api/issues/:id/criteria/traces',
+    source: 'FB-711 (epod ISS-187), FB-230 before it',
+    situation:
+      'A closed issue has three proven criteria for its requirement’s BC-1..BC-3, traced to none',
+    bad: 'sent codes BC-1..BC-3, which added three unjudged copies the closed issue keeps',
+    good: 'tie each line by number, keeping its id and verdicts',
+    teaches: [/tie each line by number/i, /keeps its id and verdicts/i],
+  },
+  {
     name: 'BC codes traced that the requirement’s head no longer holds',
     card: 'POST /api/issues/:id/criteria/traces',
     source: `${USE}: 43 traces, 4 refused, codes the requirement’s live head does not hold`,

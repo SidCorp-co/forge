@@ -232,9 +232,23 @@ describe('the trace route is taught where a trace is written (FB-209)', () => {
     },
   );
 
-  it('says the route ties no criterion already written, and how one is tied', () => {
-    const text = prose('issue-flow');
-    expect(text).toContain('It ties no criterion you wrote');
-    expect(text).toContain('send `requirementCriterionId` on PUT');
+  // ISS-1283 (FB-711, epod ISS-187): an agent with proven lines sent their codes and got copies
+  it.each(['issue-flow', 'requirement-lifecycle'])(
+    '%s teaches tying an existing line first, and adding by code second',
+    (slug) => {
+      const text = prose(slug);
+      const tie = text.indexOf('criteria/traces { ties: [{ n, code');
+      const add = text.indexOf('criteria/traces { codes');
+      expect(tie).toBeGreaterThan(-1);
+      expect(add).toBeGreaterThan(tie);
+      expect(text).toMatch(/TIES (the issue's existing )?line n to/);
+      expect(text).toMatch(/keep(s the criterion's id and|ing its) verdicts/);
+    },
+  );
+
+  it('names the refusal that sends an add of a line already worded to the tie', () => {
+    expect(prose('issue-flow')).toContain(
+      'refused `CRITERIA_TRACE_WORDED`, naming that line to tie',
+    );
   });
 });

@@ -322,21 +322,32 @@ export const ISSUE_REST_CARDS = {
     scenarios: ['an old promise left standing for a re-judge to fail: ISS-1240'],
   },
   'POST /api/issues/:id/criteria/traces': {
-    purpose: 'Adds one criterion per requirement BC code, worded as the BC and traced to it.',
+    purpose:
+      'Ties existing criteria to requirement BC codes by number; adds a criterion per code only where no line says it.',
     situations: [
       {
-        when: 'an issue must prove its requirement’s BCs and has no criterion tracing them',
+        when: 'the issue already has criteria that prove its requirement’s BCs, at any status, closed too',
+        do: 'tie each line by number, `ties: [{ n, code }]`; it keeps its id and verdicts',
+      },
+      {
+        when: 'BCs have no criterion of the issue saying them',
         do: 'add them by code; each is worded as the BC’s current wording',
       },
     ],
-    practice: ['It ties no criterion you wrote: tag your own line `(REQ-n BC-m)` for that.'],
-    example: { codes: ['BC-3', 'BC-4'] },
-    // forge: 4 of 43 traces refused, codes the requirement's live head does not hold
+    practice: [
+      'An add of a code a line already says is refused CRITERIA_TRACE_WORDED, naming the line to tie.',
+    ],
+    example: { ties: [{ n: 2, code: 'BC-2' }], codes: ['BC-4'] },
+    // epod ISS-187 (FB-711, FB-230 before it): codes sent meaning "tie mine" added unjudged copies
+    // beside proven lines, kept forever on a closed issue
     redFlag:
-      'Tracing BC codes the requirement no longer holds, or writing the BC’s text by hand beside the trace.',
+      'Sending `codes` for BCs your lines already prove: that adds unjudged copies, which a closed issue keeps.',
     family: 'issue-work',
     audience: ['run', 'master'],
-    scenarios: ['BC codes traced that the requirement’s head no longer holds'],
+    scenarios: [
+      'codes sent to tie existing lines, adding copies: epod ISS-187',
+      'BC codes traced that the requirement’s head no longer holds',
+    ],
   },
   'POST /api/issues/:id/merge/correction': {
     purpose: 'Replaces a closed issue’s landing commit in place, moving no status.',

@@ -25,7 +25,7 @@ export const ISSUE_FLOW_GUIDE: CoreGuide = {
   title: 'Taking one issue from open to awaiting_release',
   summary:
     'The method a run follows for one issue or a batch, every tracker act a REST call: read it whole, take it, write criteria (a plan where the work needs one), build in its own tree, prove it, land, mark the merge, move it to `awaiting_release`, and close it once its criteria are met in scope.',
-  version: 21,
+  version: 22,
   doors: [
     'POST /api/questions',
     'POST /api/issues/:id/transition',
@@ -144,10 +144,15 @@ another requirement: a criterion proves a BC of its own issue's requirement. The
 \`kept\` names the verdicts on unchanged wordings, \`voided\` those on reworded or removed ones, which
 stop counting.
 
-To trace by code, \`POST /api/issues/:id/criteria/traces { codes: ['BC-n', …] }\` ADDS one
-criterion per code, worded as the BC and traced to its current wording; a criterion already tracing
-an earlier wording of it is re-added under its own number. It ties no criterion you wrote: open that
-line with its tag, or send \`requirementCriterionId\` on PUT. It takes only BCs of the issue's own
+To tie criteria you already have, \`POST /api/issues/:id/criteria/traces { ties: [{ n, code: 'BC-n' }, …] }\`
+TIES line n to the BC's current wording: it keeps the criterion's id and verdicts and opens its line
+with the tag, closed issues included; a line already tracing a BC is refused \`CRITERIA_TIE_TRACED\`
+(move a trace with PUT). Only for a BC no line says, \`POST /api/issues/:id/criteria/traces { codes: ['BC-n', …] }\`
+ADDS one criterion per code, worded as the BC and traced to its current wording; a criterion already
+tracing an earlier wording of it is re-added under its own number. A code a live line already words
+(the same words once its lead tag, case, runs of spaces and a closing full stop are set aside) is
+refused \`CRITERIA_TRACE_WORDED\`, naming that line to tie, and nothing is written: an added copy
+starts unjudged, and a closed issue keeps it. It takes only BCs of the issue's own
 requirement, the codes read on it alone, at any status but \`dropped\`, on an agent's token; a BC of
 another requirement is proven by an issue linked to that requirement.
 
