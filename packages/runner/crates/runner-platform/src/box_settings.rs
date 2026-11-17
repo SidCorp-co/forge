@@ -116,14 +116,6 @@ impl BoxSettings {
     }
 }
 
-/// The tools `[box]` pins.
-pub const PINNED_TOOLS: [&str; 4] = [
-    "agent-browser",
-    "agent-desktop",
-    "agent-device",
-    "android-image",
-];
-
 #[cfg(test)]
 mod tests {
     use super::*;

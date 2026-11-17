@@ -63,16 +63,6 @@ pub fn incarnation_of(s: &BgSession) -> String {
     )
 }
 
-/// The names of the background sessions a process runs now.
-pub async fn live_names() -> Result<Vec<String>, RosterError> {
-    Ok(roster::list()
-        .await?
-        .into_iter()
-        .filter(|s| s.is_background() && s.is_live())
-        .filter_map(|s| s.name)
-        .collect())
-}
-
 /// Stop every live session named `name`, and answer for none running after: a stop that did not
 /// take is said, never read as taken (ISS-1208).
 pub async fn kill(name: &str) -> Result<(), String> {
