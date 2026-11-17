@@ -127,23 +127,31 @@ pub async fn ensure_avd(env: &Env, s: &BoxSettings) -> Result<String, String> {
     let avdmanager = env
         .sdk_bin("cmdline-tools/latest/bin/avdmanager")
         .ok_or("the SDK has no cmdline-tools/latest/bin/avdmanager")?;
+    // avdmanager falls back to the user's own AVD home when the named one does not exist yet, so
+    // it is made first and the AVD's directory is named outright
+    let home = env
+        .avd_home
+        .clone()
+        .ok_or("no AVD home to make the base AVD in")?;
+    std::fs::create_dir_all(&home).map_err(|e| format!("cannot make {}: {e}", home.display()))?;
+    let avd_dir = home.join(format!("{}.avd", s.android_avd));
     let mut cmd = tokio::process::Command::new(avdmanager);
-    cmd.args([
-        "create",
-        "avd",
-        "-n",
-        &s.android_avd,
-        "-k",
-        &s.android_image,
-        "-d",
-        "pixel_6",
-    ])
-    .env("ANDROID_HOME", env.sdk.clone().unwrap_or_default())
-    .stdin(std::process::Stdio::piped())
-    .kill_on_drop(true);
-    if let Some(home) = &env.avd_home {
-        cmd.env("ANDROID_AVD_HOME", home);
-    }
+    cmd.arg("create")
+        .arg("avd")
+        .arg("-p")
+        .arg(&avd_dir)
+        .args([
+            "-n",
+            &s.android_avd,
+            "-k",
+            &s.android_image,
+            "-d",
+            "pixel_6",
+        ])
+        .env("ANDROID_HOME", env.sdk.clone().unwrap_or_default())
+        .env("ANDROID_AVD_HOME", &home)
+        .stdin(std::process::Stdio::piped())
+        .kill_on_drop(true);
     let mut child = cmd
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -162,6 +170,13 @@ pub async fn ensure_avd(env: &Env, s: &BoxSettings) -> Result<String, String> {
             "avdmanager exited {}: {}",
             out.status,
             String::from_utf8_lossy(&out.stderr)
+        ));
+    }
+    if env.avd(s).0.is_none() {
+        return Err(format!(
+            "avdmanager made no {}.ini in {}: it wrote the AVD somewhere this runner does not read",
+            s.android_avd,
+            home.display()
         ));
     }
     Ok(format!(

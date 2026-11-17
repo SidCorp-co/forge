@@ -219,6 +219,11 @@ impl Boxes {
         if !r.left.is_empty() {
             tracing::error!("[box] {id}: processes outlived the reap: {:?}", r.left);
         }
+        for dir in self.0.ctx.socket_dirs(id) {
+            if dir.exists() {
+                let _ = std::fs::remove_dir_all(&dir);
+            }
+        }
         r
     }
 

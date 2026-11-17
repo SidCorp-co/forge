@@ -32,6 +32,18 @@ impl Ctx {
     pub fn box_dir(&self, box_id: &str) -> PathBuf {
         self.data_dir.join("boxes").join(box_id)
     }
+
+    /// The short directories a box's sockets live in (agent-browser's, a desktop's runtime dir),
+    /// under `[box] socket_root`: a socket path holds at most 103 bytes. Removed on close.
+    pub fn socket_dirs(&self, box_id: &str) -> [PathBuf; 2] {
+        let short: String = box_id
+            .chars()
+            .filter(|c| c.is_ascii_hexdigit())
+            .take(8)
+            .collect();
+        let root = &self.settings.socket_root;
+        [root.join(&short), root.join(format!("{short}-x"))]
+    }
 }
 
 pub struct Spec {
@@ -90,6 +102,7 @@ impl Running {
                     node_dir: env
                         .which("node")
                         .and_then(|n| n.parent().map(Path::to_path_buf)),
+                    avd_home: env.avd_home.clone(),
                 };
                 ctx.emulator_ports.start_adb(&tools.adb).await;
                 let port = ctx.emulator_ports.pick()?;
@@ -133,7 +146,7 @@ impl Running {
                     n,
                     spec.viewport,
                     dir.join("session.mkv"),
-                    dir.join("run"),
+                    ctx.socket_dirs(&spec.box_id)[1].clone(),
                 );
                 let opened = d.open(&ctx.x).await;
                 ctx.displays.release(n);

@@ -84,6 +84,8 @@ pub struct Tools {
     pub scrcpy_version: String,
     /// The directory of the node agent-device runs on.
     pub node_dir: Option<PathBuf>,
+    /// Where the base AVD is, as doctor found it.
+    pub avd_home: Option<PathBuf>,
 }
 
 pub struct Android {
@@ -193,6 +195,9 @@ impl Android {
         .env("ANDROID_SDK_ROOT", &self.tools.sdk)
         .stdout(log.try_clone().map_err(|e| e.to_string())?)
         .stderr(log);
+        if let Some(home) = &self.tools.avd_home {
+            emu.env("ANDROID_AVD_HOME", home);
+        }
         let child = emu
             .spawn()
             .map_err(|e| format!("the emulator did not start: {e}"))?;
