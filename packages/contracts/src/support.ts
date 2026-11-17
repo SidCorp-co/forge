@@ -933,6 +933,8 @@ export const SUPPORT_ACTIONS = [
 	"reference_add",
 	"reference_cite",
 	"reference_propose",
+	// a term a person names, written into the project's glossary under its module (ISS-1256)
+	"term",
 ] as const;
 
 export const supportSearchRequestSchema = z.strictObject({

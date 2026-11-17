@@ -77,6 +77,7 @@ import {
 } from '@forge/contracts/support-references';
 import { supportAuditRequestSchema } from '@forge/contracts/support-reply-audit';
 import { supportTechnicalRequestSchema } from '@forge/contracts/support-technical';
+import { supportTermRequestSchema } from '@forge/contracts/support-terms';
 import { z } from 'zod';
 
 /** A Rocket.Chat group id, as a channel agent's brief and each message it is handed name it. */
@@ -182,6 +183,7 @@ const REQUESTS = {
   reference_add: supportReferenceAddRequestSchema,
   reference_cite: supportReferenceCiteRequestSchema,
   reference_propose: supportReferenceProposeRequestSchema,
+  term: supportTermRequestSchema,
 } as const satisfies Record<(typeof ACTIONS)[number], z.ZodType>;
 
 /** Each action's request as `forge_describe` answers it, its entry below naming exactly these (ISS-1033). */
@@ -271,6 +273,11 @@ const inputSchema = z.strictObject({
   followReleases: supportReferenceAddRequestSchema.shape.followReleases,
   shared: supportReferenceAddRequestSchema.shape.shared,
   evidence: supportReferenceProposeRequestSchema.shape.evidence.optional(),
+  // a term a person names (ISS-1256): the fields its act takes beside the ones above
+  ...supportTermRequestSchema.pick({ slug: true, means: true, module: true, quote: true }).partial()
+    .shape,
+  aliases: supportTermRequestSchema.shape.aliases,
+  anchor: supportTermRequestSchema.shape.anchor,
   // a field two acts' requests both take, each judged by its own act's request: a record's or a
   // draft's kind, or a reference source's; a page's or a source's address; a one-line why, or what a
   // source teaches
@@ -352,6 +359,7 @@ const SIGNATURES = [
   `reference_add { thread, message, project?, kind: ${REFERENCE_KINDS.join(' | ')}, url, why, areas, title?, priority?, followReleases?, shared? }`,
   'reference_cite { source, ref, verdict: take | reject, why, about?, project? }',
   'reference_propose { kind, url, why, areas, evidence, title?, priority?, followReleases?, project? }',
+  'term { thread, message, slug, title, means, module, quote, aliases?, anchor?, project? }',
 ];
 
 /** What every act shares, said once in the description and in a refusal. */

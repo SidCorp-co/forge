@@ -68,3 +68,4 @@ export {
   selectOnDemandSourcesFromKnowledge,
   updateKnowledgeLinks,
 } from './service.js';
+export { upsertKnowledgeEntry } from './upsert.js';

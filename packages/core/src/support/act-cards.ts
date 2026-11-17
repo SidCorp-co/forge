@@ -14,6 +14,7 @@ import type { OperationsAction } from '@forge/contracts/support-operations';
 import { OPS_ACT_CARDS } from './ops-cards.js';
 import { REFERENCE_ACT_CARDS } from './reference-cards.js';
 import { ROOM_ACT_CARDS } from './room-cards.js';
+import { TERM_ACT_CARDS } from './term-cards.js';
 import { WORK_ACT_CARDS } from './work-cards.js';
 
 /** An act of forge_support: a support group's, a channel agent's, or an operations room's. */
@@ -23,6 +24,7 @@ export const SUPPORT_ACT_CARDS: Readonly<Partial<Record<SupportAction, Capabilit
   ...ROOM_ACT_CARDS,
   ...WORK_ACT_CARDS,
   ...REFERENCE_ACT_CARDS,
+  ...TERM_ACT_CARDS,
   ...OPS_ACT_CARDS,
 };
 

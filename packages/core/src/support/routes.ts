@@ -64,6 +64,7 @@ import { mountReferenceSessionRoutes } from './reference-routes.js';
 import { mountReplyVerdictRoutes } from './reply-audit/index.js';
 import { mountRoutingRoutes } from './routing-routes.js';
 import { act, SESSION_ONLY } from './session-door.js';
+import { mountTermSessionRoutes } from './term-routes.js';
 import { supportTurnsOf } from './turns.js';
 
 /**
@@ -473,6 +474,7 @@ mountRunReadRoutes(supportRoutes);
 mountPromiseRoutes(supportRoutes);
 mountMasterAskRoutes(supportRoutes);
 mountReferenceSessionRoutes(supportRoutes);
+mountTermSessionRoutes(supportRoutes);
 mountRoutingRoutes(supportRoutes);
 mountOwnerRoutes(supportRoutes);
 mountReplyVerdictRoutes(supportRoutes);

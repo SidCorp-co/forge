@@ -31,6 +31,7 @@ const HAND_ON = [
   'reference_add',
   'reference_cite',
   'reference_propose',
+  'term',
 ] as const;
 
 export function operationsBrief(input: {

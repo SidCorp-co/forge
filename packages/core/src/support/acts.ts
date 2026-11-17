@@ -45,6 +45,7 @@ import { readImage } from './images.js';
 import { endLastResortWait } from './last-resort.js';
 import { noteReleaseRead, unreadLiveClaim } from './live-claims.js';
 import { askMaster } from './master-ask.js';
+import { recordNotGranted } from './not-granted.js';
 import { type OperationsActInput, type OpsOutcome, operationsAct } from './ops-acts.js';
 import { runRead } from './ops-read.js';
 import { no } from './outcome.js';
@@ -68,8 +69,9 @@ import { search } from './search.js';
 import { listTools, readThread, reply, runDiagnose, staySilent } from './service.js';
 import { inFlightOf } from './shared-picture.js';
 import { linkMember } from './speaker-link.js';
-import { insertAction, type RoomRow } from './store.js';
+import type { RoomRow } from './store.js';
 import { raiseTechnical } from './technical-channel.js';
+import { type TermActInput, termAct } from './term-act.js';
 import { TOP_LEVEL } from './thread.js';
 import { noteSessionAct } from './turn-acts.js';
 import { turnOfRequest } from './turn-of-act.js';
@@ -174,6 +176,7 @@ export type SupportActInput =
   | ({ action: 'audit' } & SupportAuditRequest)
   | ({ action: 'owner_forge_act' } & SupportForgeActRequest)
   | ReferenceActInput
+  | TermActInput
   | {
       action: 'read';
       name: string;
@@ -271,27 +274,6 @@ function hintOf(input: SupportActInput, rid: string | undefined): RoomHint {
 /** The acts that post in the thread they name: each posts the session's own words. */
 const POSTS = new Set<SupportActInput['action']>(['reply', 'route', 'ask_owner']);
 
-/** An ability refusal, recorded once per act on the thread it was asked in; nothing is posted. */
-async function recordNotGranted(
-  room: RoomRow,
-  thread: string,
-  action: string,
-  out: { ok: false; refusals: { code: string; detail: string }[] },
-): Promise<void> {
-  const refusal = out.refusals.find((r) => r.code === 'SUPPORT_ABILITY_NOT_GRANTED');
-  if (!refusal) return;
-  await insertAction({
-    roomId: room.id,
-    projectId: room.projectId,
-    conversationId: null,
-    thread,
-    kind: 'refused',
-    actorKind: 'core',
-    tool: action,
-    output: { code: refusal.code, detail: refusal.detail, posted: false },
-  });
-}
-
 /** The acts both kinds of room take: every bound channel keeps its record (REQ-75 r6). */
 const SHARED = new Set<SupportActInput['action']>([
   'reply',
@@ -322,6 +304,8 @@ const SHARED = new Set<SupportActInput['action']>([
   'guide',
   // and reads a project's reference sources first, cites a use, and adds or proposes one (ISS-1252)
   ...REFERENCE_ACTS,
+  // and writes a term a person names into the project's glossary (ISS-1256)
+  'term',
 ]);
 
 const OPERATION_ACTIONS: readonly string[] = OPERATIONS_ACTIONS;
@@ -492,6 +476,8 @@ async function act(
     case 'reference_cite':
     case 'reference_propose':
       return referenceAct(room, input);
+    case 'term':
+      return termAct(room, input);
     case 'owner_sign_in':
       return startOwnerSignIn(room, {
         thread: input.thread,
