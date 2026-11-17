@@ -105,6 +105,8 @@
     "common.failureCause.provider_subscription_disabled": "Provider subscription disabled",
     "common.failureCause.provider_usage_limit": "Provider usage limit",
     "common.failureCause.queue_timeout": "Queue timed out",
+    "common.failureCause.release_cancelled_without_abort": "Release cancelled, no abort",
+    "common.failureCause.release_not_shipped": "Release not shipped",
     "common.failureCause.repo_root_contention": "Repository busy",
     "common.failureCause.residency_expired": "Residency expired",
     "common.failureCause.resume_failed": "Resume failed",

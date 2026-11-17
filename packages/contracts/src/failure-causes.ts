@@ -102,6 +102,13 @@ export const FAILURE_CAUSES = [
 	"manual_ops_stale_chat_schedule",
 	/** a person cancelled it. 7 sessions. */
 	"user_cancelled",
+	/** a release run closed `completed` with nothing recording it shipped. Writer:
+	 *  pipeline/runs-cascade.ts:unshippedReleaseCause, on the run's own `metadata.failure`. */
+	"release_not_shipped",
+	/** a release run cancelled with no abort recording who ended it or why. Writer:
+	 *  pipeline/runs-cascade.ts:unshippedReleaseCause; run 1417a8d3 (0.4.0-dev.698) read
+	 *  `unclassified` over it on forge-dev, 2026-11-17. */
+	"release_cancelled_without_abort",
 	/** nothing matched. First-class and counted, never a silent fallback. */
 	"unclassified",
 ] as const;
@@ -167,6 +174,8 @@ export const FAILURE_CAUSE_PRESENTATION: Record<
 	migration_zombie_cleanup: "cleanup",
 	manual_ops_stale_chat_schedule: "cleanup",
 	user_cancelled: "swept",
+	release_not_shipped: "failure",
+	release_cancelled_without_abort: "failure",
 	unclassified: "failure",
 };
 

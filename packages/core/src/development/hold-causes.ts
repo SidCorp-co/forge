@@ -50,6 +50,8 @@ const FAILURE: Readonly<Record<FailureCause, SaidPlainKey>> = {
   migration_zombie_cleanup: 'overview.hold.cause.failure.migrationZombieCleanup',
   manual_ops_stale_chat_schedule: 'overview.hold.cause.failure.manualOpsStaleChatSchedule',
   user_cancelled: 'overview.hold.cause.failure.userCancelled',
+  release_not_shipped: 'overview.hold.cause.failure.releaseNotShipped',
+  release_cancelled_without_abort: 'overview.hold.cause.failure.releaseCancelledWithoutAbort',
   unclassified: 'overview.hold.cause.failure.unclassified',
 };
 

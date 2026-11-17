@@ -100,6 +100,19 @@ describe('a failed run with no job or session names the failure its own close re
     expect(d?.outcome).toMatchObject({ cause: 'heartbeat_timeout', classified: true, detail });
   });
 
+  // forge-dev run 1417a8d3 (release 0.4.0-dev.698): a release cancelled with no abort recorded its
+  // own cause, which the standing read unclassified, being no FAILURE_CAUSES cause
+  it.each(['release_cancelled_without_abort', 'release_not_shipped'])(
+    'reads a release run closed unshipped as %s',
+    (code) => {
+      const detail =
+        'core cancelled release 0.4.0-dev.698, and no abort recorded who ended it or why';
+      const d = finalOf(swept({ code, detail }));
+      expect(d && sayEn(d.rule)).toBe(`failed: ${code}`);
+      expect(d?.outcome).toMatchObject({ cause: code, classified: true, detail });
+    },
+  );
+
   it('still reads unclassified where nothing recorded a cause', () => {
     const d = finalOf(swept(null));
     expect(d && sayEn(d.rule)).toBe('failed with no FAILURE_CAUSES cause recorded: unclassified');

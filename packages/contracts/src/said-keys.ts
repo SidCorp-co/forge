@@ -2730,6 +2730,12 @@ export const SAID = {
 		en: "An operator closed a stale chat schedule",
 	},
 	"overview.hold.cause.failure.userCancelled": { en: "A person cancelled it" },
+	"overview.hold.cause.failure.releaseNotShipped": {
+		en: "The release closed with nothing recording it shipped",
+	},
+	"overview.hold.cause.failure.releaseCancelledWithoutAbort": {
+		en: "The release was cancelled with no abort on record",
+	},
 	"overview.hold.cause.failure.unclassified": {
 		en: "It failed for a reason Forge could not name",
 	},

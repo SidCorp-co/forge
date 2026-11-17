@@ -404,6 +404,8 @@ export const ENUM_LABELS = {
 		migration_zombie_cleanup: "Cleaned up by a migration",
 		manual_ops_stale_chat_schedule: "Stale chat schedule cleaned up",
 		user_cancelled: "Cancelled by a person",
+		release_not_shipped: "Release not shipped",
+		release_cancelled_without_abort: "Release cancelled, no abort",
 		unclassified: "Unclassified",
 	},
 	/** Where a share link stands (contracts `shares.ts:SHARE_STATES`). */
