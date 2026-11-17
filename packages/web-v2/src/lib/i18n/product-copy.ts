@@ -52,13 +52,15 @@ export function englishOnly(language?: string | null): InterfaceLanguage {
 
 export type Copy = (key: ProductCopyKey, vars?: Record<string, string | number>) => string;
 
+/** `template` with each `{name}` slot filled from `vars`; a slot `vars` does not name stays as written. */
+export function fillSlots(template: string, vars?: Record<string, string | number>): string {
+  return vars ? template.replace(/\{(\w+)\}/g, (slot, name: string) => String(vars[name] ?? slot)) : template;
+}
+
 /** A reader of the chrome, filling `{name}` slots from `vars`. */
 export function productCopy(language?: string | null): Copy {
   englishOnly(language);
-  return (key, vars) => {
-    const template = EN[key];
-    return vars ? template.replace(/\{(\w+)\}/g, (slot, name: string) => String(vars[name] ?? slot)) : template;
-  };
+  return (key, vars) => fillSlots(EN[key], vars);
 }
 
 /** The locale dates and day names are written in: en-GB, a 24-hour clock with the day before the month. */

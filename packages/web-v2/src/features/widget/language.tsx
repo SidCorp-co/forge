@@ -1,6 +1,6 @@
 import { WIDGET_LANGUAGES, type WidgetLanguage, type WidgetPublicConfig, widgetGreetingOf, widgetLanguageOf } from "@forge/contracts/widget";
 import { createContext, type ReactNode, use, useEffect, useMemo } from "react";
-import { type ProductCopyKey, productCopy } from "@/lib/i18n/product-copy";
+import { fillSlots, type ProductCopyKey, productCopy } from "@/lib/i18n/product-copy";
 import viFile from "./copy-vi.json";
 
 // The widget is a surface another product's end users see, not Forge's own chrome, so it speaks the
@@ -20,10 +20,7 @@ export const WIDGET_WORDS: Record<Exclude<WidgetLanguage, "en">, Record<WidgetCo
 export function widgetCopy(language: WidgetLanguage): WidgetCopy {
   if (language === "en") return productCopy("en");
   const words = WIDGET_WORDS[language];
-  return (key, vars) => {
-    const template = words[key];
-    return vars ? template.replace(/\{(\w+)\}/g, (slot, name: string) => String(vars[name] ?? slot)) : template;
-  };
+  return (key, vars) => fillSlots(words[key], vars);
 }
 
 const WidgetLanguageContext = createContext<WidgetLanguage>("en");
