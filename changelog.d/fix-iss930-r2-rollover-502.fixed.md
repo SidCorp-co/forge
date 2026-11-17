@@ -1,1 +1,0 @@
-**Updating Forge no longer answers "bad gateway" for a moment.** While the old server stops, every request is told to retry shortly until traffic has moved away from it, instead of reaching a server that already closed.

@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.706] - 2026-11-17
+
+Deploys no longer show callers a 502 for writes that landed
+
+### Fixed
+
+- **Updating Forge no longer answers "bad gateway" for a moment.** While the old server stops, every request is told to retry shortly until traffic has moved away from it, instead of reaching a server that already closed.
+
 ## [0.4.0-dev.705] - 2026-11-17
 
 The room agent and help widget ask every question they need
