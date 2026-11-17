@@ -58,7 +58,7 @@ describe("the nav model", () => {
     expect(product.slice(0, 3)).toEqual(["Feedback", "Requirements", "Releases"]);
     expect(PROJECT_ITEMS.map((it) => it.sub)).not.toEqual(expect.arrayContaining(["/questions"]));
     expect(PROJECT_ITEMS.map((it) => it.sub)).not.toEqual(expect.arrayContaining(["/lessons"]));
-    expect(groups[1]?.items.map((it) => it.label)).toEqual(["Overview", "Issues", "Modules", "Agents / Runs", "Contracts", "Automation"]);
+    expect(groups[1]?.items.map((it) => it.label)).toEqual(["Overview", "Issues", "Modules", "Agents / Runs", "Boxes", "Contracts", "Automation"]);
     expect(PROJECT_ITEMS.map((it) => it.label)).not.toContain("Development");
   });
 

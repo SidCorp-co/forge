@@ -109,7 +109,7 @@ export function IssuePageMain(props: {
             </div>
             {/* the box testing this issue now, and Reproduce opening one (ISS-1276) */}
             <div className="border-b border-line-divider py-4 empty:hidden" data-highlight="box">
-              <IssueBox projectId={issue.projectId} issueId={issue.id} slug={slug} canWrite={canWrite} />
+              <IssueBox projectId={projectId} issueId={issue.id} slug={slug} canWrite={canWrite} />
             </div>
             <IssueChanges issue={issue} slug={slug} developer={developer} />
             <div className="pt-4">

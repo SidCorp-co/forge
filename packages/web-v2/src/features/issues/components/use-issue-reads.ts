@@ -1,4 +1,5 @@
 
+import { useProjectBoxes } from "@/features/boxes";
 import { useIssueForecast } from "@/features/forecast";
 import { useMockups } from "@/features/mockups";
 import { usePreview } from "@/features/previews";
@@ -44,6 +45,8 @@ export function useIssueReads(id: string, projectId: string) {
   useReleaseRoster(projectId);
   useIssuePatterns(canonicalId, projectId);
   usePreview(canonicalId, projectId);
+  // the box testing it, which its box line reads (ISS-1276)
+  useProjectBoxes(projectId);
   const issue = issueQ.data;
   return {
     issueQ,
