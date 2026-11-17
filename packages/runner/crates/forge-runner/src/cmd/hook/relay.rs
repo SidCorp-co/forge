@@ -180,11 +180,10 @@ async fn wait_for(
 ) -> Decision {
     let (question, waiter) = (question.to_string(), waiter.to_string());
     let started = Instant::now();
+    let mut unread: Option<String> = None;
     loop {
-        if let Ok(Some((option, by, note))) = core.answer(&question, &waiter).await {
-            if let Some(d) = Decision::of_answer(option.as_deref(), by, note) {
-                return d;
-            }
+        if let Some(d) = read_answer(core, &question, &waiter, &mut unread).await {
+            return d;
         }
         if started.elapsed() + poll > wait {
             break;
@@ -192,10 +191,8 @@ async fn wait_for(
         tokio::time::sleep(poll).await;
     }
     // a last read: an answer given in the final poll still counts as given
-    if let Ok(Some((option, by, note))) = core.answer(&question, &waiter).await {
-        if let Some(d) = Decision::of_answer(option.as_deref(), by, note) {
-            return d;
-        }
+    if let Some(d) = read_answer(core, &question, &waiter, &mut unread).await {
+        return d;
     }
     if let Err(e) = core.expire(&question, &waiter, project_id, wait).await {
         eprintln!(
@@ -203,7 +200,40 @@ async fn wait_for(
              was not told: {e}"
         );
     }
-    Decision::TimedOut { waited: wait }
+    Decision::TimedOut {
+        waited: wait,
+        unread,
+    }
+}
+
+/// One read of the answer: the decision where a person gave one; else `None`, keeping in
+/// `unread` why a read that reached no decision failed, so a timeout never reads as unanswered
+/// where the answer could not be seen.
+async fn read_answer(
+    core: &impl Core,
+    question: &str,
+    waiter: &str,
+    unread: &mut Option<String>,
+) -> Option<Decision> {
+    match core.answer(question, waiter).await {
+        Ok(Some((option, by, note))) => {
+            let d = Decision::of_answer(option.as_deref(), by, note);
+            if d.is_none() {
+                *unread = Some(format!(
+                    "option {:?} is neither {} nor {}",
+                    option.as_deref().unwrap_or(""),
+                    permission_relay::ALLOW,
+                    permission_relay::DENY
+                ));
+            }
+            d
+        }
+        Ok(None) => None,
+        Err(e) => {
+            *unread = Some(e);
+            None
+        }
+    }
 }
 
 /// The session's name as the roster lists it, else its conversation id.
@@ -289,6 +319,7 @@ mod tests {
         reads: RefCell<usize>,
         expired: RefCell<Vec<(String, String, u64)>>,
         refuse_ask: bool,
+        fail_answer: bool,
     }
 
     impl Core for Planted {
@@ -315,6 +346,9 @@ mod tests {
             _: &str,
         ) -> Result<Option<(Option<String>, Option<String>, Option<String>)>, String> {
             *self.reads.borrow_mut() += 1;
+            if self.fail_answer {
+                return Err("core answered 502".into());
+            }
             Ok(match self.answer_on_read {
                 Some((n, option, note)) if *self.reads.borrow() >= n => Some((
                     Some(option.into()),
@@ -424,7 +458,13 @@ mod tests {
             None,
         )
         .await;
-        assert_eq!(d, Decision::TimedOut { waited: wait });
+        assert_eq!(
+            d,
+            Decision::TimedOut {
+                waited: wait,
+                unread: None
+            }
+        );
         let out: serde_json::Value = serde_json::from_str(&permission_relay::output(&d)).unwrap();
         assert_eq!(out["hookSpecificOutput"]["decision"]["behavior"], "deny");
         assert!(out["hookSpecificOutput"]["decision"]["message"]
@@ -439,6 +479,33 @@ mod tests {
         );
         assert_eq!(expired[0].0, "q-1");
         assert!(expired[0].1.ends_with("|proj"));
+    }
+
+    #[tokio::test]
+    async fn a_timeout_whose_answer_could_not_be_read_records_why_never_that_nobody_answered() {
+        let core = Planted {
+            fail_answer: true,
+            ..Planted::default()
+        };
+        let p = permission_relay::prompt_in(RM);
+        let d = relay(
+            &core,
+            "proj",
+            "forge-chat-y",
+            &p,
+            Duration::from_millis(30),
+            Duration::from_millis(10),
+            None,
+        )
+        .await;
+        assert!(!d.allows());
+        let line = d.record_line(&p.asked);
+        assert!(
+            line.starts_with("denied at the relay timeout Bash")
+                && line.ends_with("(its answer could not be read: core answered 502)"),
+            "{line}"
+        );
+        assert_eq!(core.expired.borrow().len(), 1);
     }
 
     #[tokio::test]

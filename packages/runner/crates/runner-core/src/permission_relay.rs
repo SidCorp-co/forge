@@ -196,8 +196,13 @@ pub enum Decision {
         by: Option<String>,
         note: Option<String>,
     },
-    /// Nobody answered within the wait: the box denied it.
-    TimedOut { waited: Duration },
+    /// Nobody answered within the wait: the box denied it. `unread` is why the answer could not
+    /// be read back the last time it was not (a read core failed, an option that is neither), so
+    /// the record never says nobody answered where the box could not see an answer.
+    TimedOut {
+        waited: Duration,
+        unread: Option<String>,
+    },
     /// The prompt could not be asked at all, so nobody could answer it: the box denied it.
     Unasked { why: String },
 }
@@ -229,7 +234,7 @@ impl Decision {
                 Some(n) if !n.is_empty() => format!("Denied from Forge by a person: {n}"),
                 _ => "Denied from Forge by a person. Do not repeat the same call; find another way or report it.".into(),
             }),
-            Decision::TimedOut { waited } => Some(format!(
+            Decision::TimedOut { waited, .. } => Some(format!(
                 "[PERMISSION_RELAY_TIMEOUT] This permission prompt was relayed to Forge and nobody \
                  allowed or denied it within {} s, so the Forge runner denied it. The project's admins \
                  were told. Do not repeat the same call; carry on without it, or ask for it on Forge.",
@@ -252,9 +257,15 @@ impl Decision {
             Decision::Unasked { .. } => "denied, not relayed",
         };
         let tool = asked.tool.as_deref().unwrap_or("a tool call");
-        crate::degraded::clip(&match asked.what.as_deref() {
+        let line = match asked.what.as_deref() {
             Some(what) => format!("{verb} {tool}: {what}"),
             None => format!("{verb} {tool}"),
+        };
+        crate::degraded::clip(&match self {
+            Decision::TimedOut {
+                unread: Some(why), ..
+            } => format!("{line} (its answer could not be read: {why})"),
+            _ => line,
         })
     }
 }
@@ -395,7 +406,10 @@ mod tests {
 
     #[test]
     fn a_timeout_denies_by_name_and_the_hook_outlives_the_wait() {
-        let d = Decision::TimedOut { waited: RELAY_WAIT };
+        let d = Decision::TimedOut {
+            waited: RELAY_WAIT,
+            unread: None,
+        };
         assert!(!d.allows());
         let m = d.message().unwrap();
         assert!(
