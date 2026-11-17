@@ -47,7 +47,7 @@ fn a_body_sent_to_a_session_is_not_sent_there_again_and_sends_are_paced() {
 /// writes each message it takes to its own transcript as 2.1.322 does, or takes it and writes
 /// nothing where `silent`.
 #[cfg(target_os = "linux")]
-mod fake {
+pub(in crate::bg_session) mod fake {
     use super::*;
     use tokio::io::AsyncReadExt as _;
 

@@ -44,6 +44,9 @@ pub const UPDATER_OFF: (&str, &str) = ("DISABLE_AUTOUPDATER", "1");
 #[derive(Debug, Clone, Default)]
 pub struct BgLaunch {
     pub name: String,
+    /// Only the servers `mcp_config` names: a room agent's checkout `.mcp.json` would otherwise
+    /// hold it on a startup dialog (measured in a room, ISS-1268 BR `a2d`).
+    pub strict_mcp: bool,
     pub cwd: PathBuf,
     /// The runner-written settings file ([`write_settings`]).
     pub settings: PathBuf,
@@ -81,6 +84,9 @@ impl BgLaunch {
         if let Some(p) = &self.mcp_config {
             a.push("--mcp-config".into());
             a.push(p.to_string_lossy().into_owned());
+            if self.strict_mcp {
+                a.push("--strict-mcp-config".into());
+            }
         }
         if let Some(sp) = self
             .append_system_prompt
@@ -223,7 +229,12 @@ async fn claude(args: &[String], cwd: Option<&Path>) -> Result<String, String> {
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
     }
-    let verb = args.first().map_or("", String::as_str);
+    output(cmd, args.first().map_or("", String::as_str)).await
+}
+
+/// What `cmd`, a `claude <verb> …`, printed, answered whole once it exits 0 within
+/// [`COMMAND_WITHIN`].
+pub(crate) async fn output(mut cmd: tokio::process::Command, verb: &str) -> Result<String, String> {
     let out = tokio::time::timeout(COMMAND_WITHIN, cmd.output())
         .await
         .map_err(|_| format!("`claude {verb}` did not end within {COMMAND_WITHIN:?}"))?

@@ -29,6 +29,12 @@ pub fn pre_trust(dir: &Path) -> Result<bool, String> {
     trust_in(&json, dir)
 }
 
+/// Record `dir` as trusted in the Claude Code config directory `claude_dir`, one other than this
+/// process's own: a room agent's private one (ISS-1268 BR).
+pub fn pre_trust_in(claude_dir: &Path, dir: &Path) -> Result<bool, String> {
+    trust_in(&claude_dir.join(".claude.json"), dir)
+}
+
 /// Best-effort wrapper for the callers that must not fail over this: a session
 /// started in an untrusted folder is worse than one started in a trusted one,
 /// and both are better than a workspace that never reaches `ready`.

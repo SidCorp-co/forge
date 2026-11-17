@@ -8,6 +8,8 @@
 //!   stands in the session's transcript.
 //! - [`launch`]: the `claude --bg` a session is started or resumed with, the settings file it
 //!   reads, and `stop` / `respawn` / `attach` by its short id.
+//! - [`room`]: a room agent's session, which runs inside a sandbox of its own holding its own
+//!   background service, reached with `nsenter` and sent to over a socket under the room's dirs.
 //! - [`version`]: the Claude Code version this box is pinned to, refused by name where the
 //!   installed one differs.
 //!
@@ -19,9 +21,11 @@
 pub mod canary;
 pub mod launch;
 pub mod peer;
+pub mod pidns;
 pub mod prompt;
 pub mod relay;
 pub mod resident;
+pub mod room;
 pub mod roster;
 pub mod version;
 

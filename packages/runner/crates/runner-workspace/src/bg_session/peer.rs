@@ -89,6 +89,8 @@ pub struct Record {
     pub socket: PathBuf,
     pub cwd: Option<PathBuf>,
     pub proc_start: Option<String>,
+    /// The pid namespace `pid` is in (`pidDomain`): a room agent's is its sandbox's.
+    pub pid_domain: Option<String>,
     pub updated_at: i64,
 }
 
@@ -127,12 +129,22 @@ pub fn check_record(raw: &Value) -> Result<Record, Refused> {
         proc_start: field("procStart")
             .and_then(Value::as_str)
             .map(str::to_string),
+        pid_domain: field("pidDomain")
+            .and_then(Value::as_str)
+            .map(str::to_string),
         updated_at: field("updatedAt").and_then(Value::as_i64).unwrap_or(0),
     })
 }
 
-/// Whether `pid` runs now, and is the process the record was written by.
-fn alive(pid: u32, proc_start: Option<&str>) -> bool {
+/// Whether the record's process runs now, in whichever pid namespace it names, and is the process
+/// the record was written by.
+fn alive(rec: &Record) -> bool {
+    super::pidns::host_pid(rec.pid, rec.pid_domain.as_deref())
+        .is_some_and(|pid| alive_here(pid, rec.proc_start.as_deref()))
+}
+
+/// Whether `pid`, a pid of this box's, runs now and is the process that started at `proc_start`.
+fn alive_here(pid: u32, proc_start: Option<&str>) -> bool {
     #[cfg(target_os = "linux")]
     {
         let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else {
@@ -177,7 +189,7 @@ pub fn resolve_in(sessions: &Path, session_id: &str) -> Result<Record, Refused> 
             continue;
         }
         match check_record(&raw) {
-            Ok(r) if alive(r.pid, r.proc_start.as_deref()) => found.push(r),
+            Ok(r) if alive(&r) => found.push(r),
             Ok(_) => {}
             Err(e) => unknown = Some(e),
         }
@@ -493,4 +505,4 @@ async fn write(_: &Path, rec: &Record, _: &Value) -> Result<(), Refused> {
 
 #[cfg(test)]
 #[path = "peer_tests.rs"]
-mod tests;
+pub(super) mod tests;
