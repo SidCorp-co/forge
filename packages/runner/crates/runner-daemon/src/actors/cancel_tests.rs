@@ -117,6 +117,11 @@ fn which_tmux() -> bool {
 fn frame_ctx(client: CoreClient, pool: pool_jobs::PoolPanes) -> FrameCtx {
     let base = client.base().to_string();
     let client_for_previews = Arc::new(client);
+    let boxes = runner_box::Boxes::start(
+        client_for_previews.clone(),
+        runner_platform::box_settings::BoxSettings::default(),
+        None,
+    );
     FrameCtx {
         client: client_for_previews.clone(),
         runner: Arc::new(ClaudeCodeRunner::new(base.clone(), "device-token", 1)),
@@ -131,9 +136,10 @@ fn frame_ctx(client: CoreClient, pool: pool_jobs::PoolPanes) -> FrameCtx {
             "device-token",
             Arc::new(NoWorktrees),
             None,
-            None,
+            Some(boxes.tunnel()),
             watch::channel(false).1,
         ),
+        boxes,
     }
 }
 

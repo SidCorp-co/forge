@@ -85,6 +85,9 @@ pub struct Conditions {
     /// room's project by the session it serves, and why none can be made where that is so. `None`
     /// where this box runs no room agents as background sessions, which says nothing.
     pub chat_rooms: Option<serde_json::Value>,
+    /// The device's headroom for Forge Boxes and the modes it serves (ISS-1276, `box-wire.ts`
+    /// `boxHealthReportSchema`). `None` sends no `box` key: nothing was measured this beat.
+    pub boxes: Option<serde_json::Value>,
 }
 
 /// What core answered a beat with.
@@ -193,6 +196,9 @@ pub(crate) fn heartbeat_body(
     }
     if let Some(rooms) = &conditions.chat_rooms {
         body["capabilities"]["chatRooms"] = rooms.clone();
+    }
+    if let Some(boxes) = &conditions.boxes {
+        body["box"] = boxes.clone();
     }
     body
 }
@@ -351,6 +357,27 @@ mod tests {
             last: None,
             by_reason: Vec::new(),
         }
+    }
+
+    /// ISS-1276: the device's box health rides the beat as `box`, exactly as measured, and a beat
+    /// that measured nothing sends no `box` key, which core reads as "changes nothing".
+    #[test]
+    fn a_measured_box_health_rides_the_beat_and_an_unmeasured_one_sends_no_key() {
+        let health = serde_json::json!({
+            "memory": { "availableMb": 12288, "reserveMb": 16384 },
+            "cpu": { "pressureSomeAvg10": 72.5, "ceiling": 60.0 },
+            "disk": { "freeMb": 90000, "reserveMb": 20480 },
+            "kvm": true,
+            "modes": [],
+            "held": [],
+        });
+        let conditions = Conditions {
+            boxes: Some(health.clone()),
+            ..Conditions::default()
+        };
+        assert_eq!(heartbeat_body("1.0.0", None, &conditions)["box"], health);
+        let none = heartbeat_body("1.0.0", None, &Conditions::default());
+        assert!(none.get("box").is_none(), "{none}");
     }
 
     /// ISS-946, ISS-1268 BR: core prints a channel agent's attach command from what the box says

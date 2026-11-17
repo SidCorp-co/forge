@@ -256,10 +256,12 @@ pub(crate) async fn cred_watch(
 pub(crate) fn spawn_heartbeat(
     client: &Arc<CoreClient>,
     revisions: watch::Sender<Option<heartbeat::Revisions>>,
+    boxes: runner_box::Boxes,
     cancel: &watch::Receiver<bool>,
 ) {
     let disk = spawn_headroom(cancel.clone());
-    tokio::spawn(heartbeat(client.clone(), disk, revisions, cancel.clone()));
+    let cancel = cancel.clone();
+    tokio::spawn(heartbeat(client.clone(), disk, revisions, boxes, cancel));
 }
 
 /// The heartbeat, carrying the gate, pool-read and binary conditions and the
@@ -270,6 +272,7 @@ async fn heartbeat(
     client: Arc<CoreClient>,
     disk: watch::Receiver<Option<Vec<runner_proto::disk::Root>>>,
     revisions: watch::Sender<Option<heartbeat::Revisions>>,
+    boxes: runner_box::Boxes,
     cancel: watch::Receiver<bool>,
 ) {
     // The verdict this loop last shouted about, so a gate failing open says so
@@ -282,6 +285,7 @@ async fn heartbeat(
         let conditions = heartbeat::Conditions {
             disk: disk.borrow().clone(),
             chat_rooms: runner_agent::claude_code::room::chat_room_facts(),
+            boxes: boxes.health(),
             ..heartbeat_conditions(
                 runner_platform::config::config_dir().as_deref(),
                 agent_activity::now_ms(),
@@ -651,6 +655,7 @@ fn heartbeat_conditions(
         dialogs: runner_core::dialog_answer::report(dir),
         disk: None,
         chat_rooms: None,
+        boxes: None,
     }
 }
 

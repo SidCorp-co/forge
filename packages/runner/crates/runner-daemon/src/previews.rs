@@ -1,6 +1,7 @@
-//! The daemon's part in live previews (REQ-39): it starts `runner_preview` with this box's ledger
-//! as the map from run session to worktree, hands it the control frames, and stops its dev servers
-//! when the frame loop ends.
+//! The daemon's part in live previews (REQ-39) and Forge Boxes (ISS-1276), which share the preview
+//! tunnel: it starts `runner_preview` with this box's ledger as the map from run session to
+//! worktree and `runner_box` with its `[box]` settings, hands them the control frames, and stops
+//! their dev servers and boxes when the frame loop ends.
 
 use std::sync::Arc;
 
@@ -27,6 +28,19 @@ pub(crate) async fn serve_frames(
         }
     }
     ctx.previews.stop_all().await;
+    ctx.boxes.stop_all().await;
+}
+
+/// This device's Forge Boxes, the ids it holds recorded beside its config so the next image reaps
+/// what this one left.
+pub(crate) fn boxes(
+    client: &CoreClient,
+    cfg: &runner_platform::config::Config,
+) -> runner_box::Boxes {
+    let record = runner_platform::config::base_dir()
+        .ok()
+        .map(|d| d.join("boxes-held.json"));
+    runner_box::Boxes::start(Arc::new(client.clone()), cfg.boxes.clone(), record)
 }
 
 /// This box's previews (REQ-39), recording their dev servers beside the ledger so the image after a
@@ -35,6 +49,7 @@ pub(crate) fn start(
     client: &CoreClient,
     core_url: &str,
     device_token: &str,
+    boxes: &runner_box::Boxes,
     cancel_rx: &watch::Receiver<bool>,
 ) -> runner_preview::Previews {
     let record = runner_core::ledger::Ledger::default_path()
@@ -46,7 +61,7 @@ pub(crate) fn start(
         device_token,
         Arc::new(LedgerWorktrees),
         record,
-        None,
+        Some(boxes.tunnel()),
         cancel_rx.clone(),
     )
 }
@@ -72,3 +87,6 @@ impl runner_preview::Worktrees for LedgerWorktrees {
             .map(|r| r.worktree_path)
     }
 }
+
+#[cfg(test)]
+mod never_sudo_tests;

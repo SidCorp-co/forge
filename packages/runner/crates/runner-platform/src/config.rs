@@ -49,6 +49,10 @@ pub struct Config {
     #[serde(default)]
     pub plugins: PluginSettings,
 
+    /// The Forge Boxes this device runs (ISS-1276): pinned tool versions and resource limits.
+    #[serde(default, rename = "box")]
+    pub boxes: crate::box_settings::BoxSettings,
+
     /// project-slug -> local repo binding. One runner is registered per binding.
     #[serde(default)]
     pub bindings: HashMap<String, Binding>,

@@ -1477,6 +1477,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "runner-box"
+version = "0.18.0"
+dependencies = [
+ "dirs-next",
+ "futures-util",
+ "jiff",
+ "nix",
+ "runner-platform",
+ "runner-preview",
+ "runner-transport",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-tungstenite",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "runner-core"
 version = "0.18.0"
 dependencies = [
@@ -1502,6 +1521,7 @@ dependencies = [
  "jiff",
  "nix",
  "runner-agent",
+ "runner-box",
  "runner-core",
  "runner-platform",
  "runner-preview",

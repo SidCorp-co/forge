@@ -20,5 +20,5 @@ mod request;
 pub use build::{build, RequestSpec, SlugSources};
 pub use exit::{usage_failure, EXIT_TAXONOMY};
 pub use field::reads_stdin;
-pub use form::FormField;
+pub use form::{encode as encode_form, FormField, Part as FormPart};
 pub use request::{run, Body, Request, Response};

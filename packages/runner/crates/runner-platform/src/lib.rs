@@ -1,3 +1,4 @@
+pub mod box_settings;
 pub mod clock;
 pub mod config;
 pub mod confine;

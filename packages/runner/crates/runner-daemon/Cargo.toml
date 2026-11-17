@@ -13,6 +13,7 @@ runner-core = { path = "../runner-core" }
 runner-workspace = { path = "../runner-workspace" }
 runner-agent = { path = "../runner-agent" }
 runner-preview = { path = "../runner-preview" }
+runner-box = { path = "../runner-box" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }

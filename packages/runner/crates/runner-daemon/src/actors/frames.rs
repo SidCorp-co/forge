@@ -15,6 +15,8 @@ pub(crate) struct FrameCtx {
     pub(crate) pool: pool_jobs::PoolPanes,
     /// The live previews this box serves (REQ-39).
     pub(crate) previews: runner_preview::Previews,
+    /// The Forge Boxes this device runs (ISS-1276).
+    pub(crate) boxes: runner_box::Boxes,
 }
 
 /// Route one frame from core. Nothing here blocks the frame loop.
@@ -28,6 +30,7 @@ pub(crate) fn on_frame(frame: Frame, ctx: &FrameCtx) {
         wake_tx,
         pool,
         previews,
+        boxes,
     } = ctx;
     match frame.event.as_str() {
         "job.cancel" => {
@@ -88,6 +91,7 @@ pub(crate) fn on_frame(frame: Frame, ctx: &FrameCtx) {
         "agent:close" | "agent:interrupt" | "agent:steer" => on_chat_control(frame, client, runner),
         event if box_frames::takes(event) => box_frames::on_frame(frame, client, cfg),
         event if runner_preview::FRAMES.contains(&event) => previews.on_frame(event, frame.data),
+        event if runner_box::FRAMES.contains(&event) => boxes.on_frame(event, frame.data),
         "master.wake" => match master::Wake::of_frame(&frame.data) {
             Ok(wake) => {
                 if wake_tx.try_send(wake).is_err() {

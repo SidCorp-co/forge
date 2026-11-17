@@ -732,7 +732,8 @@ pub async fn run(
         },
         cancel_rx.clone(),
     ));
-    actors::spawn_heartbeat(&client, revisions, &cancel_rx);
+    let boxes = previews::boxes(&client, &cfg);
+    actors::spawn_heartbeat(&client, revisions, boxes.clone(), &cancel_rx);
 
     spawn_ctrl_c(cancel_tx.clone());
 
@@ -764,7 +765,8 @@ pub async fn run(
         spawn_panes_and_master(&client, &cfg, &masters, drain, &activity, &cancel_rx)?;
 
     let ctx = actors::FrameCtx {
-        previews: previews::start(&client, &core_url, &device_token, &cancel_rx),
+        previews: previews::start(&client, &core_url, &device_token, &boxes, &cancel_rx),
+        boxes,
         client,
         runner,
         masters,
