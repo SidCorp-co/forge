@@ -417,15 +417,43 @@ export class SupportWorld {
     `);
   }
 
+  /**
+   * Wait until nothing the test set moving still runs: the outbox has no delivery due and the box
+   * acts on no frame, held over five reads 100 ms apart. A box ack or turn end still being answered
+   * can hand the box its next turn (`inject.ts:onInjectRefused`, `dispatch.ts:onSupportTurnEnded`);
+   * a box closed under it reads as a turn that never reached it, and a query run after the file's
+   * database closed fails CONNECTION_ENDED.
+   */
+  async settleMoving(ms = 20_000): Promise<void> {
+    const until = Date.now() + ms;
+    let quiet = 0;
+    while (quiet < 5) {
+      if (Date.now() > until) {
+        throw new Error(`the world was still moving after ${ms}ms: the box was acting on a frame`);
+      }
+      await settleOutbox();
+      quiet = !this.box || this.box.quiet() ? quiet + 1 : 0;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  }
+
   async stop(): Promise<void> {
     const { stopRocketChatManager } = await import('../../src/integrations/rocketchat/index.js');
     await stopRocketChatManager();
+    // the box goes only once nothing moving can still hand it a turn; still moving is a failure too
+    const moving = !this.core
+      ? []
+      : await this.settleMoving().then(
+          () => [],
+          (err: unknown) => [err],
+        );
     this.box?.close();
     await this.chat?.close();
     await this.product?.close();
     if (this.core) await stopCore(this.core);
     await closeWorld();
     const failed: unknown[] = [
+      ...moving,
       ...(this.box?.errors ?? []),
       ...this.undelivered.map(
         (u) =>
@@ -439,7 +467,7 @@ export class SupportWorld {
     if (failed.length) {
       throw new AggregateError(
         failed,
-        `the session box failed, was never handed a turn, or a member message was dropped: ${failed.length} in all`,
+        `the world was still moving at its stop, the session box failed, was never handed a turn, or a member message was dropped: ${failed.length} in all`,
       );
     }
   }

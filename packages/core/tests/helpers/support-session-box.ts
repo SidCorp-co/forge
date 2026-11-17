@@ -200,10 +200,20 @@ export class SessionBox {
   });
   private turnSeq = 0;
   private readonly running = new Map<string, Running>();
+  /** Frames core sent that this box is still acting on: each may be a call to core still open. */
+  private handling = 0;
 
   /** No turn of any session is running on this box. */
   idle(): boolean {
     return this.running.size === 0;
+  }
+
+  /**
+   * The box is acting on no frame core sent it. An ack or a turn end it is still sending can make
+   * core hand it the next turn, so a world stops the box only once this has held a while.
+   */
+  quiet(): boolean {
+    return this.handling === 0;
   }
 
   constructor(
@@ -227,16 +237,22 @@ export class SessionBox {
       const failed = (err: unknown) => {
         if (!this.closed) this.errors.push(err);
       };
+      const handle = (work: Promise<void>) => {
+        this.handling += 1;
+        work.catch(failed).finally(() => {
+          this.handling -= 1;
+        });
+      };
       if (frame.event === 'agent:start' || frame.event === 'agent:send') {
-        this.run(frame).catch(failed);
+        handle(this.run(frame));
       } else if (frame.event === 'session.send') {
-        this.inject(frame.data).catch(failed);
+        handle(this.inject(frame.data));
       } else if (
         frame.event === 'host.command' ||
         frame.event === 'ops.read' ||
         frame.event === 'build.push'
       ) {
-        this.act(frame.event, frame.data).catch(failed);
+        handle(this.act(frame.event, frame.data));
       }
     });
     this.control = ws;
