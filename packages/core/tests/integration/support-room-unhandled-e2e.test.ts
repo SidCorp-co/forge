@@ -60,7 +60,7 @@ describe('ISS-1046: a member message the room cannot take is never lost silently
     const [runner] = await rows<{ device_id: string }>(
       sql`SELECT device_id FROM runners WHERE project_id = ${w.projectId}::uuid LIMIT 1`,
     );
-    const work = await readMasterWork(String(runner?.device_id), w.projectId);
+    const { work } = await readMasterWork(String(runner?.device_id), w.projectId);
     // one cause, one line: both messages counted on it, not one line each
     expect(work.owedLine).toContain(`2 in room ${w.chat.rid}, HANDLE_HAS_NO_NAME`);
     expect(work.owedLine.match(/could not take member messages/g)).toHaveLength(1);

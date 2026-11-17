@@ -205,7 +205,7 @@ beforeAll(async () => {
   });
   say = requester(app, { owner: await signUserToken(ownerId), master: pat.plaintext });
   const { readMasterWork } = await import('../../src/masters/owed.js');
-  nudge = async () => (await readMasterWork(deviceId, projectId)).nudge;
+  nudge = async () => (await readMasterWork(deviceId, projectId)).work.nudge;
 }, 120_000);
 
 afterAll(async () => {
