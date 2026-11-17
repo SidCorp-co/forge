@@ -3,6 +3,7 @@ import type { IssueBlocker } from "@forge/contracts/issue-standing";
 import type { ParkThreadQuestion } from "@forge/contracts/park";
 import type { ComponentProps } from "react";
 import { DetailLeadEnd, type RecordView, RecordViewSwitch } from "@/design";
+import { IssueBox } from "@/features/boxes";
 import { useIssueForecast } from "@/features/forecast";
 import { IssuePreview } from "@/features/previews";
 import { StewardNoteLines, useStewardNote } from "@/features/standing";
@@ -105,6 +106,10 @@ export function IssuePageMain(props: {
                 hasLiveRun={(issue.agentSessions ?? []).some((s) => s.status === "running")}
                 row={!developer}
               />
+            </div>
+            {/* the box testing this issue now, and Reproduce opening one (ISS-1276) */}
+            <div className="border-b border-line-divider py-4 empty:hidden" data-highlight="box">
+              <IssueBox projectId={issue.projectId} issueId={issue.id} slug={slug} canWrite={canWrite} />
             </div>
             <IssueChanges issue={issue} slug={slug} developer={developer} />
             <div className="pt-4">

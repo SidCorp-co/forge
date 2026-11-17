@@ -190,6 +190,12 @@ function routeRunFrame(env: WsFrame, qc: QueryClient): boolean {
 			if (data?.issueId) scheduleInvalidation(qc, ["preview", data.issueId]);
 			return true;
 		}
+		// A Forge Box moved or was acted on (ISS-1276): the project's boxes, and that box's feed and spans.
+		case "box.changed": {
+			if (data.projectId) scheduleInvalidation(qc, ["boxes", data.projectId]);
+			scheduleInvalidation(qc, ["box", data.boxId]);
+			return true;
+		}
 		// ISS-197 — recoveryStats refresh on the sessions panel.
 		case "session.recoveryChanged": {
 			scheduleInvalidation(qc, ["agent-sessions"]);
