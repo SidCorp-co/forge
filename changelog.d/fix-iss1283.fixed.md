@@ -1,1 +1,0 @@
-**An agent can tie criteria it already has to its requirement's business criteria.** A tied criterion keeps its verdicts, even on a closed issue; adding one a line already says is refused, naming that line.

@@ -9,6 +9,16 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.720] - 2026-11-17
+
+Criteria traces stop copying, verdict identity warnings, rule requirements ready on examples
+
+### Fixed
+
+- **An agent can tie criteria it already has to its requirement's business criteria.** A tied criterion keeps its verdicts, even on a closed issue; adding one a line already says is refused, naming that line.
+- **A requirement verdict that no release counts now says so.** It is still stored, and the answer warns that it counts on no release and names the release or commit that would.
+- **A rule requirement is agreed on its examples.** A rule linking no workflow design passes the ready checklist once its example table has a row; without one, it names the missing examples. Other kinds still need a design.
+
 ## [0.4.0-dev.719] - 2026-11-17
 
 Later-build passes count, fresh pull requests cut, issue keys named, masters told where waits go

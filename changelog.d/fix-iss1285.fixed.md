@@ -1,1 +1,0 @@
-**A rule requirement is agreed on its examples.** A rule linking no workflow design passes the ready checklist once its example table has a row; without one, it names the missing examples. Other kinds still need a design.
