@@ -155,3 +155,114 @@ async fn an_interrupt_ends_the_running_turn_and_the_session_answers_the_next_mes
     runner.close(&"k".to_string()).await;
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// ISS-1268 A3 on a real Claude Code: a throwaway `claude -p` stream-json session adopted as this
+/// runner adopts one, Stop written mid-reply, and the same session answering the next message.
+/// Spends a few cents of a model; run by hand: `cargo test -p runner-agent real_claude -- --ignored --nocapture`.
+#[tokio::test]
+#[ignore = "runs a real claude process"]
+async fn real_claude_stops_within_two_seconds_and_continues_the_session() {
+    let runner = ClaudeCodeRunner::new("http://127.0.0.1:9", "t", 4);
+    let mut cmd = tokio::process::Command::new("claude");
+    cmd.args([
+        "-p",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--include-partial-messages",
+        "--input-format",
+        "stream-json",
+        "--replay-user-messages",
+        "--model",
+        "haiku",
+        "--permission-mode",
+        "bypassPermissions",
+        "--strict-mcp-config",
+        "--mcp-config",
+        r#"{"mcpServers":{}}"#,
+    ])
+    .current_dir(std::env::temp_dir())
+    .stdin(std::process::Stdio::piped())
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped());
+    own_session(&mut cmd);
+    let mut child = cmd.spawn().expect("claude is on PATH");
+    let mut stdin = child.stdin.take().unwrap();
+    stdin
+        .write_all(
+            user_message_line("Write a 1500-word essay on the history of tea. Use no tools.")
+                .as_bytes(),
+        )
+        .await
+        .unwrap();
+    let (tx, mut rx) = mpsc::channel::<RunnerEvent>(4096);
+    let spawned = Spawned {
+        job_id: "real".into(),
+        child,
+        stdin,
+        egress: None,
+        mcp_path: std::env::temp_dir().join("absent-real.json"),
+        bearer_dir: None,
+        invoked_with_resume: false,
+        permit: None,
+        keep_resident: false,
+        model: None,
+        project_slug: None,
+        checkout: crate::CheckoutView::Write,
+        siblings: Vec::new(),
+        repo_path: std::env::temp_dir(),
+    };
+    runner.adopt(spawned, tx).await.unwrap();
+    let mut sid = None;
+    loop {
+        match rx.recv().await {
+            Some(RunnerEvent::ClaudeSessionId(s)) => sid = Some(s),
+            Some(RunnerEvent::Stdout(l))
+                if l.pointer("/event/delta/type") == Some(&Value::from("text_delta")) =>
+            {
+                break
+            }
+            Some(_) => {}
+            None => panic!("claude ended before it replied"),
+        }
+    }
+    let asked = std::time::Instant::now();
+    runner
+        .interrupt(&"real".to_string())
+        .await
+        .expect("the interrupt is written");
+    let ended = tokio::time::timeout(Duration::from_secs(2), next_terminal(&mut rx))
+        .await
+        .expect("the real turn did not end within 2 s of Stop");
+    let took = asked.elapsed();
+    assert!(matches!(ended, RunnerEvent::Done), "{ended:?}");
+    let (tx2, mut rx2) = mpsc::channel::<RunnerEvent>(4096);
+    Runner::send(
+        &runner,
+        &"real".to_string(),
+        "In five words: what were you writing about?".into(),
+        tx2,
+    )
+    .await
+    .unwrap();
+    let mut answer = String::new();
+    let mut same_session = None;
+    loop {
+        match tokio::time::timeout(Duration::from_secs(60), rx2.recv())
+            .await
+            .expect("no answer in 60 s")
+        {
+            Some(RunnerEvent::Stdout(l)) if l["type"] == "result" => {
+                same_session = l["session_id"].as_str().map(str::to_string);
+                answer = l["result"].as_str().unwrap_or_default().to_string();
+            }
+            Some(RunnerEvent::Done) => break,
+            Some(RunnerEvent::Failed { error }) => panic!("{error}"),
+            Some(_) => {}
+            None => panic!("the session ended"),
+        }
+    }
+    assert_eq!(same_session, sid, "the next message ran in another session");
+    eprintln!("[ISS-1268 A3 real claude] Stop to the turn's end: {took:?}; session {sid:?} answered next: {answer:?}");
+    runner.close(&"real".to_string()).await;
+}
