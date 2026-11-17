@@ -31,7 +31,7 @@ import {
   releasesTheMasterNames,
 } from './owed-release-gate.js';
 import { reviewsLine } from './owed-reviews.js';
-import { standingActsLine, standingActsWork } from './owed-standings.js';
+import { standingActsDue, standingActsLine, standingActsWork } from './owed-standings.js';
 import { stewardAsksLine } from './owed-steward-asks.js';
 import { type TriageOwed, triagesLine, triagesTheMasterTakes } from './owed-triages.js';
 import { DIRECT_NUDGE, DIRECT_ORDER, NUDGE } from './pass-order.js';
@@ -442,16 +442,22 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
   const releaseHolds = await ports.releaseHoldsOwed(projectId);
   const endedRunHolds = await ports.endedRunHolds(projectId);
   const carried = new Set(carriers.map((c) => c.key));
-  const requests = (
-    (await ports.masterGate(projectId)).mode === 'enforce'
-      ? []
-      : await ports.requestsWaiting(projectId)
-  ).filter((r) => r.kind !== 'issue' || !carried.has(r.key));
+  const admittedOnly = (await ports.masterGate(projectId)).mode === 'enforce';
+  const requests = (admittedOnly ? [] : await ports.requestsWaiting(projectId)).filter(
+    (r) => r.kind !== 'issue' || !carried.has(r.key),
+  );
   const breakdownsDue = breakdowns.filter((b) => !held.has(b.key));
   const warnedNotes = await ports.releaseNotesWarned(projectId, contentLanguage);
   const lastPass = await lastFinishedPassStart(projectId);
   const answers = lastPass ? await ports.answersSince(projectId, lastPass) : [];
   const mode = await ports.masterMode(projectId);
+  // the lists that name an item's own act: a standing act on an item one of them names is named there
+  const naming = { requests, carriers, triages, confirms, revisions, intakeFailures, designs };
+  const standingDue = standingActsDue(standingActs, admittedOnly, {
+    ...naming,
+    ...{ designApprovals, breakdownsDue, releaseNotes, warnedNotes, marks: merges.marks },
+    ...{ landedWork, wedgedWork, releaseHolds, reviews },
+  });
   const work = masterWork(
     admissible.items,
     {
@@ -470,7 +476,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
       releaseMerges,
       releaseApprovals,
       releaseActs,
-      standingActs,
+      standingActs: standingDue,
       answers,
       stewardAsks,
       questions,
@@ -494,7 +500,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
   );
   const waits = [
     ...releaseActs.map((r) => ({ on: r.version, act: r.act })),
-    ...standingActs.map((a) => ({ on: a.subject.key, act: a.act })),
+    ...standingDue.map((a) => ({ on: a.subject.key, act: a.act })),
   ];
   return { work, waits };
 }
