@@ -16,6 +16,7 @@ runner-transport = { path = "../runner-transport" }
 runner-core = { path = "../runner-core" }
 runner-workspace = { path = "../runner-workspace" }
 runner-daemon = { path = "../runner-daemon" }
+runner-box = { path = "../runner-box" }
 clap = { workspace = true }
 tokio = { workspace = true }
 anyhow = { workspace = true }

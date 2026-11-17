@@ -74,6 +74,7 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     }
 
     ensure_service(&args, interactive)?;
+    super::forge_box_setup::for_setup(&Config::load()?, interactive).await?;
 
     println!("\nRunning doctor…\n");
     super::doctor::run(

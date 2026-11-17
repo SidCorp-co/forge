@@ -64,6 +64,8 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
 
     update_row(&ctx, &cfg).await;
     failed |= pool_record_rows(&cfg);
+    // the modes this device serves are reported, not required: a device may serve none
+    super::forge_box::doctor_rows(&cfg);
 
     // End-to-end online checks: heartbeat (token + reachability) and the
     // server-side assignment reconciliation. Gated behind `--offline`.

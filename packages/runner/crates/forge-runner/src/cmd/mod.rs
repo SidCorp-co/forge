@@ -8,6 +8,8 @@ pub mod doctor;
 mod doctor_plugins;
 mod doctor_repo_mcp;
 pub mod egress_bridge;
+pub mod forge_box;
+mod forge_box_setup;
 pub mod gate;
 pub mod git_credential;
 pub mod hook;

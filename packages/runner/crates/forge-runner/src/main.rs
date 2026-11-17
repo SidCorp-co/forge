@@ -35,6 +35,8 @@ enum Command {
     Login(cmd::login::Args),
     /// Bind a project slug to a local repo path.
     Bind(cmd::bind::Args),
+    /// Forge Boxes: drive one through core (`box act`), and this device's box setup and doctor.
+    Box(cmd::forge_box::Args),
     /// Run the runner daemon (connect, register, accept jobs).
     Start(cmd::start::Args),
     /// Show connection + runner status.
@@ -114,6 +116,7 @@ async fn main() -> anyhow::Result<()> {
         Command::JudgeLogin(a) => cmd::judge_login::run(ctx, a).await,
         Command::Login(a) => cmd::login::run(ctx, a).await,
         Command::Bind(a) => cmd::bind::run(ctx, a).await,
+        Command::Box(a) => cmd::forge_box::run(ctx, a).await,
         Command::Start(a) => cmd::start::run(ctx, a).await,
         Command::Status(a) => cmd::status::run(ctx, a).await,
         Command::Logs(a) => cmd::logs::run(ctx, a).await,
