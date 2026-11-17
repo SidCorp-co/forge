@@ -24,9 +24,10 @@ which = { workspace = true }
 sha2 = { workspace = true }
 hex = { workspace = true }
 base64 = { workspace = true }
+vt100 = "0.15"
 
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.31", features = ["signal", "process", "fs"] }
+nix = { version = "0.31", features = ["signal", "process", "fs", "term"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 # `LockFileEx` over one byte past a file's end, which `std::fs::File::lock` cannot express.

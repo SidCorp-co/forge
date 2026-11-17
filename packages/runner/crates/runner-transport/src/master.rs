@@ -293,6 +293,33 @@ pub async fn report_limit(
     Ok(())
 }
 
+/// A dialog this box read on a resident session and answered itself (ISS-1268 C2), told to the
+/// project's admins: `by` is `catalog`, `safe` (Escape on a dialog it does not know) or `unread`.
+pub struct SessionPrompt<'a> {
+    pub project_id: &'a str,
+    pub session: &'a str,
+    pub text: &'a str,
+    pub needs: Option<&'a str>,
+    pub by: &'a str,
+    pub answer: &'a str,
+}
+
+pub async fn report_session_prompt(client: &CoreClient, p: &SessionPrompt<'_>) -> Result<()> {
+    let text: String = p.text.chars().take(4000).collect();
+    let needs: Option<String> = p.needs.map(|n| n.chars().take(1000).collect());
+    let body = serde_json::json!({
+        "projectId": p.project_id,
+        "session": p.session,
+        "text": text,
+        "needs": needs,
+        "by": p.by,
+        "answer": p.answer,
+    });
+    let req = client.post("/api/devices/me/session-prompts").json(&body);
+    status::send_within(req, "me/session-prompts", CALL_DEADLINE).await?;
+    Ok(())
+}
+
 /// The newest decisive record this box read in its masters' conversations, as
 /// it wrote it. Whether it is fresh, new to core, or a lifting is core's
 /// (`devices/master-limit.ts:masterLimitAction`).

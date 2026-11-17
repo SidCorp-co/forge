@@ -18,7 +18,6 @@ use std::time::Duration;
 use tokio::process::Command;
 
 pub mod chat_pane;
-pub mod deny;
 mod launch;
 mod pane_env;
 mod submit;

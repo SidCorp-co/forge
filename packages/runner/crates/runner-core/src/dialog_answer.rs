@@ -9,11 +9,13 @@
 //! never allows: what the dialog guards is the person's to grant, and the box
 //! is not that person.
 //!
-//! A dialog no hook answered — raised under an older daemon, or while this one
-//! restarted — is answered by the daemon's sweep instead, through the pane's
-//! keys and with the same reason (`runner_daemon::standing_dialogs`, ISS-280).
+//! A resident master's session is not answered that way (ISS-1268): its own
+//! relay hook asks a person on Forge (`permission_relay`), and a prompt that
+//! stands on it is read and answered by the daemon's watcher
+//! (`runner_daemon::prompt_watch`). The keystroke sweep over the box's panes
+//! (ISS-280) is gone with the panes.
 //!
-//! Each answer is a line beside `config.toml`, naming which of the two gave it,
+//! Each answer is a line beside `config.toml`, naming which path gave it,
 //! and the heartbeat carries the count per project to core, so
 //! `masters/standing` says how often the box answered and what it answered last.
 
@@ -51,8 +53,6 @@ pub struct Asked {
 pub enum Via {
     /// The pane's `PermissionRequest` hook, as the dialog was raised.
     Hook,
-    /// The daemon's sweep, which found the dialog already standing on the pane.
-    Sweep,
     /// A resident session's relay hook: asked of a person on Forge (`permission_relay`, ISS-1268).
     Relay,
     /// The runner's watcher, which read a prompt standing on a resident session and answered it
@@ -64,23 +64,8 @@ impl Via {
     pub fn wire(self) -> &'static str {
         match self {
             Via::Hook => "hook",
-            Via::Sweep => "sweep",
             Via::Relay => "relay",
             Via::Watcher => "watcher",
-        }
-    }
-}
-
-impl Asked {
-    /// What a dialog drawn on a pane asked, read off its head: the first line
-    /// names the call (`Bash command`, `Overwrite file`), the rest what it names.
-    pub fn of_dialog(head: &[String]) -> Self {
-        let rest = head.get(1..).unwrap_or_default().join(" \u{b7} ");
-        Asked {
-            tool: head.first().cloned(),
-            what: (!rest.is_empty()).then(|| one_line(&rest)),
-            agent: None,
-            agent_type: None,
         }
     }
 }
@@ -302,22 +287,18 @@ mod tests {
     }
 
     #[test]
-    fn a_swept_dialog_is_named_off_its_head_and_recorded_as_the_sweep_s() {
-        let head: Vec<String> = ["Bash command", "Delete victim.txt", "rm -f victim.txt"]
-            .map(String::from)
-            .to_vec();
-        let a = Asked::of_dialog(&head);
-        assert_eq!(
-            reason(&a),
-            "denied Bash command: Delete victim.txt \u{b7} rm -f victim.txt"
-        );
-        assert_eq!(reason(&Asked::of_dialog(&[])), "denied a tool call");
+    fn each_answer_is_recorded_naming_the_path_that_gave_it() {
+        let a = Asked {
+            tool: Some("tool permission".into()),
+            what: Some("Bash command".into()),
+            ..Asked::default()
+        };
         let dir = std::env::temp_dir().join(format!(
             "forge-dialog-via-{}-{}",
             std::process::id(),
             crate::agent_activity::now_ms()
         ));
-        record(&dir, 1_000, Some("p1"), &a, Via::Sweep);
+        record(&dir, 1_000, Some("p1"), &a, Via::Watcher);
         record(&dir, 2_000, Some("p1"), &Asked::default(), Via::Hook);
         let body = std::fs::read_to_string(answers_path(&dir)).unwrap();
         let _ = std::fs::remove_dir_all(&dir);
@@ -325,7 +306,7 @@ mod tests {
             .lines()
             .map(|l| serde_json::from_str::<serde_json::Value>(l).unwrap()["via"].to_string())
             .collect();
-        assert_eq!(via, ["\"sweep\"", "\"hook\""]);
+        assert_eq!(via, ["\"watcher\"", "\"hook\""]);
     }
 
     #[test]
@@ -338,7 +319,7 @@ mod tests {
         assert!(report(&dir).is_empty(), "no record is no answers");
         let asked = asked_in(DOC_PAYLOAD.as_bytes());
         record(&dir, 1_000, Some("p1"), &asked, Via::Hook);
-        record(&dir, 2_000, Some("p2"), &Asked::default(), Via::Sweep);
+        record(&dir, 2_000, Some("p2"), &Asked::default(), Via::Watcher);
         record(&dir, 3_000, Some("p1"), &asked, Via::Hook);
         let got = report(&dir);
         let _ = std::fs::remove_dir_all(&dir);

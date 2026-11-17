@@ -19,6 +19,7 @@
 pub mod canary;
 pub mod launch;
 pub mod peer;
+pub mod prompt;
 pub mod relay;
 pub mod resident;
 pub mod roster;

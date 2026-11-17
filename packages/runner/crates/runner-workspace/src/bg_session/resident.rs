@@ -190,7 +190,14 @@ pub async fn place(p: &Place<'_>) -> Result<Placed, String> {
     }
     super::version::ensure_pinned().await?;
     let settings = launch::settings_path(p.name)?;
-    let doc = launch::settings_doc(p.env, p.plugins_off, super::relay::relay_hooks());
+    let hooks = super::relay::relay_hooks().ok_or_else(|| {
+        format!(
+            "[PERMISSION_RELAY_UNINSTALLABLE] this runner cannot name its own binary, so {} would \
+             start with no permission relay and a prompt there would wait on nobody; it is not started",
+            p.name
+        )
+    })?;
+    let doc = launch::settings_doc(p.env, p.plugins_off, Some(hooks));
     launch::write_settings(&settings, &doc)?;
     let stopped_bg = match p.resume {
         Some(id) => roster::list_all()
@@ -213,6 +220,8 @@ pub async fn place(p: &Place<'_>) -> Result<Placed, String> {
         mcp_config: p.mcp_config.map(Path::to_path_buf),
         plugin_dirs: p.plugin_dirs.to_vec(),
         prompt: Some(p.brief.to_string()),
+        // what makes the owner's relayed word the owner's, and a teammate's "approved" nothing (B4)
+        append_system_prompt: Some(super::relay::SESSION_AUTHORITY.to_string()),
         ..BgLaunch::default()
     };
     launch.resume = p.resume.map(str::to_string);

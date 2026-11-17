@@ -182,11 +182,12 @@ saw and judges none of it:
   - Whether a dispatch is allowed (`packages/runner/crates/runner-core/src/dispatch_gate.rs:decide`):
     it needs the declarations this box holds and the roles its plugin copy ships, in a `PreToolUse`
     hook. It moves when core holds the shipped-role set per box.
-  - That every permission dialog on a placed pane is denied with the fixed
-    `packages/runner/crates/runner-core/src/dialog_answer.rs:REPHRASE` text, by the pane's
-    `PermissionRequest` hook and by `packages/runner/crates/runner-daemon/src/standing_dialogs.rs`
-    for one already standing (ISS-272, ISS-280). A hook cannot wait on a round trip, so it moves
-    when core serves the text the box carries.
+  - That every permission dialog on a placed run's pane is denied with the fixed
+    `packages/runner/crates/runner-core/src/dialog_answer.rs:REPHRASE` text by the pane's
+    `PermissionRequest` hook (ISS-272). It moves when core serves the text the box carries. A
+    master's session relays its prompt to core instead, as a question a person answers
+    (`packages/runner/crates/runner-core/src/permission_relay.rs`, ISS-1268), and a prompt standing
+    there is read and answered by `packages/runner/crates/runner-daemon/src/prompt_watch.rs`.
 
   The account limit is no longer here: the box sends the newest decisive record it read to
   `POST /api/devices/me/limit/record` and core decides freshness, report and clear

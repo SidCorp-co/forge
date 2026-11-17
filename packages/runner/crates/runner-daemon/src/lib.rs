@@ -35,6 +35,7 @@ pub mod pool_jobs;
 pub mod pool_reads;
 mod previews;
 mod probation;
+pub mod prompt_watch;
 pub mod recovery;
 pub mod recovery_ports;
 pub mod run_record;
@@ -42,7 +43,6 @@ pub mod serving;
 pub mod session_ledger;
 pub mod session_tokens;
 pub mod skill_pull;
-pub mod standing_dialogs;
 pub mod wake_source;
 
 use runner_agent::chat;

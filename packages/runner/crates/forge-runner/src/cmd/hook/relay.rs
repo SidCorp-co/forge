@@ -69,6 +69,58 @@ impl Core for Device {
     }
 }
 
+/// The canary's core (ISS-1268 C1 checks 4 and 5): files in a directory the canary answers,
+/// `permission_relay::CANARY_DIR_ENV`.
+pub struct CanaryDir(pub std::path::PathBuf);
+
+impl Core for CanaryDir {
+    async fn ask(&self, ask: Ask<'_>) -> Result<String, String> {
+        let body = serde_json::json!({
+            "id": ask.id,
+            "prompt": ask.prompt,
+            "runId": ask.run_id,
+            "options": ask.options,
+            "permissionPrompt": ask.permission_prompt,
+        });
+        let path = self.0.join(format!("req-{}.json", ask.id));
+        std::fs::write(&path, body.to_string()).map_err(|e| format!("{}: {e}", path.display()))?;
+        Ok(ask.id.to_string())
+    }
+
+    async fn answer(
+        &self,
+        question_id: &str,
+        _: &str,
+    ) -> Result<Option<(Option<String>, Option<String>, Option<String>)>, String> {
+        let Ok(text) = std::fs::read_to_string(self.0.join(format!("dec-{question_id}.json")))
+        else {
+            return Ok(None);
+        };
+        let v: serde_json::Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+        let s = |k: &str| {
+            v.get(k)
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string)
+        };
+        Ok(Some((s("option"), Some("canary".into()), s("note"))))
+    }
+
+    async fn expire(
+        &self,
+        question_id: &str,
+        _: &str,
+        _: &str,
+        waited: Duration,
+    ) -> Result<(), String> {
+        let path = self.0.join(format!("expired-{question_id}.json"));
+        std::fs::write(
+            &path,
+            serde_json::json!({ "waited": waited.as_secs() }).to_string(),
+        )
+        .map_err(|e| format!("{}: {e}", path.display()))
+    }
+}
+
 /// Ask `p` of a person on `project_id` for `session`, and wait at most `wait` for the answer.
 pub async fn relay(
     core: &impl Core,
@@ -77,6 +129,7 @@ pub async fn relay(
     p: &Prompt,
     wait: Duration,
     poll: Duration,
+    mark: Option<&std::path::Path>,
 ) -> Decision {
     let id = uuid::Uuid::new_v4().to_string();
     let waiter = permission_relay::waiter(p, &id);
@@ -106,6 +159,26 @@ pub async fn relay(
         Ok(q) => q,
         Err(why) => return Decision::Unasked { why },
     };
+    let held = mark.zip(p.session_id.as_deref());
+    if let Some((dir, sid)) = &held {
+        permission_relay::mark_inflight(dir, sid, &question);
+    }
+    let decided = wait_for(core, project_id, &question, &waiter, wait, poll).await;
+    if let Some((dir, sid)) = &held {
+        permission_relay::clear_inflight(dir, sid);
+    }
+    decided
+}
+
+async fn wait_for(
+    core: &impl Core,
+    project_id: &str,
+    question: &str,
+    waiter: &str,
+    wait: Duration,
+    poll: Duration,
+) -> Decision {
+    let (question, waiter) = (question.to_string(), waiter.to_string());
     let started = Instant::now();
     loop {
         if let Ok(Some((option, by, note))) = core.answer(&question, &waiter).await {
@@ -153,12 +226,34 @@ pub async fn run(ctx: &Ctx, payload: &[u8]) -> String {
         .ok()
         .filter(|p| !p.is_empty());
     let session = session_name(&p).await;
+    if let Some(dir) = std::env::var_os(permission_relay::CANARY_DIR_ENV) {
+        let wait = std::env::var(permission_relay::CANARY_WAIT_ENV)
+            .ok()
+            .and_then(|w| w.parse().ok())
+            .map_or(RELAY_WAIT, Duration::from_secs);
+        let dir = std::path::PathBuf::from(dir);
+        let core = CanaryDir(dir.clone());
+        let d = relay(&core, "canary", &session, &p, wait, POLL, Some(&dir)).await;
+        return permission_relay::output(&d);
+    }
     let decision = match (&project, client(ctx)) {
         (None, _) => Decision::Unasked {
             why: "the session names no FORGE_PROJECT_ID to ask on".into(),
         },
         (_, Err(why)) => Decision::Unasked { why },
-        (Some(project), Ok(core)) => relay(&core, project, &session, &p, RELAY_WAIT, POLL).await,
+        (Some(project), Ok(core)) => {
+            let mark = config_dir();
+            relay(
+                &core,
+                project,
+                &session,
+                &p,
+                RELAY_WAIT,
+                POLL,
+                mark.as_deref(),
+            )
+            .await
+        }
     };
     if let Some(dir) = config_dir() {
         dialog_answer::record_line(
@@ -264,6 +359,7 @@ mod tests {
             &p,
             Duration::from_secs(5),
             Duration::ZERO,
+            None,
         )
         .await;
         assert_eq!(
@@ -302,6 +398,7 @@ mod tests {
             &p,
             Duration::from_secs(5),
             Duration::ZERO,
+            None,
         )
         .await;
         let out: serde_json::Value = serde_json::from_str(&permission_relay::output(&d)).unwrap();
@@ -324,6 +421,7 @@ mod tests {
             &p,
             wait,
             Duration::from_millis(10),
+            None,
         )
         .await;
         assert_eq!(d, Decision::TimedOut { waited: wait });
@@ -357,6 +455,7 @@ mod tests {
             &p,
             Duration::from_secs(60),
             Duration::ZERO,
+            None,
         )
         .await;
         let m = d.message().unwrap();

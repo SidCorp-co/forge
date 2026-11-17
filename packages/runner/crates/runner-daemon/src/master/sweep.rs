@@ -100,9 +100,12 @@ pub async fn run(
             "[master] the control capability map cannot be resolved on this box — no master pane can be minted a capability, and none will be started"
         );
     }
-    let mut dialogs = crate::standing_dialogs::BoxDialogs::new();
+    // a prompt standing on a master's session is read and answered within one of these ticks,
+    // and told to Forge (ISS-1268 C2); the relay hook answers it first where it can
+    let mut prompts = crate::prompt_watch::PromptWatch::default();
+    let mut prompt_tick = tokio::time::interval(crate::prompt_watch::EVERY);
+    prompt_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     let mut panes = master_pass::PaneBeat::default();
-    dialogs.pass(&client).await;
     let mut passes = tokio::time::interval(master_pass::TICK);
     passes.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     let sweep_due = tokio::time::sleep(delay);
@@ -115,8 +118,10 @@ pub async fn run(
                 }
                 master_pass::beat_panes(&client, &shared.masters, &shared.activity, &mut panes).await;
             }
+            _ = prompt_tick.tick() => {
+                prompts.pass(&client).await;
+            }
             _ = &mut sweep_due => {
-                dialogs.pass(&client).await;
                 delay = sweep(&client, &cfg, &shared.borrowed(), &adopted, &mut ledger, tokens.as_ref())
                     .await;
                 last_sweep = Instant::now();
@@ -128,7 +133,6 @@ pub async fn run(
                     tokio::time::sleep(WAKE_FLOOR - since).await;
                 }
                 tracing::info!("[master] wake ({}) — sweeping now", w.describe());
-                dialogs.pass(&client).await;
                 delay = sweep(&client, &cfg, &shared.borrowed(), &adopted, &mut ledger, tokens.as_ref())
                     .await;
                 last_sweep = Instant::now();

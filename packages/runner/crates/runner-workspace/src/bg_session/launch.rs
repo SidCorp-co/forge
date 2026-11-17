@@ -270,6 +270,9 @@ pub fn settings_doc(
     }
     if let Some(hooks) = relay_hooks {
         doc["hooks"] = hooks;
+        // the checkout-wide PermissionRequest hook then answers nothing beside the relay (ISS-1268 B3)
+        let (key, on) = super::relay::RELAY_ENV;
+        doc["env"][key] = on.into();
     }
     doc
 }
@@ -348,6 +351,16 @@ mod tests {
         assert_eq!(doc["env"]["DISABLE_AUTOUPDATER"], "1");
         assert_eq!(doc["enabledPlugins"]["forge@forge-local"], false);
         assert!(doc.get("hooks").is_none());
+        assert!(doc["env"].get("FORGE_PERMISSION_RELAY").is_none());
+        let relayed = settings_doc(
+            &[],
+            &[],
+            Some(serde_json::json!({ "PermissionRequest": [] })),
+        );
+        assert_eq!(
+            relayed["env"]["FORGE_PERMISSION_RELAY"], "1",
+            "a relayed session's checkout-wide hook would deny beside its relay"
+        );
     }
 
     #[test]

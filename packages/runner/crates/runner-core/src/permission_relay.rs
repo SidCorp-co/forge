@@ -12,6 +12,7 @@
 //! This module is what can be said without a network: the hook block a session's settings take, the
 //! question asked, the decision printed. `forge-runner hook --relay` runs it.
 
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use crate::dialog_answer::Asked;
@@ -115,18 +116,57 @@ pub fn options(p: &Prompt) -> serde_json::Value {
     ])
 }
 
-/// The one call an answer binds to: Claude Code's prompt id, else the session, tool and what it
-/// names. An allow names this call, never the next one.
+/// The one call an answer binds to: the session, Claude Code's prompt id, the tool and what it
+/// names. The prompt id alone is the turn's, shared by every prompt in it (measured on 2.1.322:
+/// two dangerous-rm prompts of one turn carried one `prompt_id`), so an allow names this call,
+/// never the next one.
 pub fn fingerprint(p: &Prompt) -> String {
-    match p.prompt_id.as_deref() {
-        Some(id) => format!("permission-prompt:{id}"),
-        None => format!(
-            "permission-prompt:{}:{}:{}",
-            p.session_id.as_deref().unwrap_or("-"),
-            p.asked.tool.as_deref().unwrap_or("-"),
-            p.asked.what.as_deref().unwrap_or("-")
-        ),
+    format!(
+        "permission-prompt:{}:{}:{}:{}",
+        p.session_id.as_deref().unwrap_or("-"),
+        p.prompt_id.as_deref().unwrap_or("-"),
+        p.asked.tool.as_deref().unwrap_or("-"),
+        p.asked.what.as_deref().unwrap_or("-")
+    )
+}
+
+/// Where a relay waiting on a person marks its session, under the box's config dir: the
+/// roster reads `waiting` / `permission prompt` the whole time the hook waits (measured on
+/// 2.1.322), and the watcher must leave a prompt the relay holds to the relay.
+pub fn inflight_path(config_dir: &Path, session_id: &str) -> PathBuf {
+    let safe: String = session_id
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
+        .collect();
+    config_dir
+        .join("relay-inflight")
+        .join(format!("{safe}.json"))
+}
+
+/// Mark `session_id`'s prompt as held by a relay until [`clear_inflight`].
+pub fn mark_inflight(config_dir: &Path, session_id: &str, question: &str) {
+    let path = inflight_path(config_dir, session_id);
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
     }
+    let _ = std::fs::write(
+        &path,
+        serde_json::json!({ "question": question, "pid": std::process::id() }).to_string(),
+    );
+}
+
+pub fn clear_inflight(config_dir: &Path, session_id: &str) {
+    let _ = std::fs::remove_file(inflight_path(config_dir, session_id));
+}
+
+/// Whether a relay holds `session_id`'s prompt now: marked, and marked within the hook's own
+/// timeout, past which Claude Code has stopped waiting on it whatever the mark says.
+pub fn inflight(config_dir: &Path, session_id: &str) -> bool {
+    std::fs::metadata(inflight_path(config_dir, session_id))
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|at| at.elapsed().ok())
+        .is_some_and(|age| age.as_secs() < HOOK_TIMEOUT_SECS)
 }
 
 /// What core's `permissionPrompt` field carries.
@@ -239,30 +279,57 @@ pub fn output(d: &Decision) -> String {
     .to_string()
 }
 
+/// The canary's relay (ISS-1268 C1 checks 4 and 5): the same hook, answered from files in this
+/// directory instead of Forge, so a candidate Claude Code is judged on the hook contract alone.
+/// `req-<id>.json` is what was asked, `dec-<id>.json` (`{"option", "note"}`) the canary's answer,
+/// `expired-<id>.json` the relay ending it at its timeout.
+pub const CANARY_DIR_ENV: &str = "FORGE_RELAY_CANARY_DIR";
+/// The canary's own relay wait, in seconds; read only together with [`CANARY_DIR_ENV`].
+pub const CANARY_WAIT_ENV: &str = "FORGE_RELAY_CANARY_WAIT_SECS";
+
+fn quote(s: &str, posix: bool) -> String {
+    if posix {
+        format!("'{}'", s.replace('\'', r"'\''"))
+    } else {
+        format!("\"{s}\"")
+    }
+}
+
 /// The `hooks` block a resident session's settings take: every `PermissionRequest` goes to
 /// `forge-runner hook --relay`, which reaches this box's own config through `config_dir`.
 pub fn hooks_block(exe: &str, config_dir: Option<&str>, posix: bool) -> serde_json::Value {
-    let quote = |s: &str| {
-        if posix {
-            format!("'{}'", s.replace('\'', r"'\''"))
-        } else {
-            format!("\"{s}\"")
-        }
-    };
     let env = match config_dir {
         Some(dir) if posix => format!(
             "{}={} ",
             runner_platform::config::CONFIG_DIR_ENV,
-            quote(dir)
+            quote(dir, posix)
         ),
         _ => String::new(),
     };
+    block(format!(
+        "{env}{} hook --event PermissionRequest --relay",
+        quote(exe, posix)
+    ))
+}
+
+/// The canary's hook block: the relay answered from `dir`, waiting `wait` (posix only: the canary
+/// runs where the box's sessions do).
+pub fn canary_hooks_block(exe: &str, dir: &str, wait: Duration) -> serde_json::Value {
+    block(format!(
+        "{CANARY_DIR_ENV}={} {CANARY_WAIT_ENV}={} {} hook --event PermissionRequest --relay",
+        quote(dir, true),
+        wait.as_secs(),
+        quote(exe, true)
+    ))
+}
+
+fn block(command: String) -> serde_json::Value {
     serde_json::json!({
         "PermissionRequest": [{
             "matcher": "*",
             "hooks": [{
                 "type": "command",
-                "command": format!("{env}{} hook --event PermissionRequest --relay", quote(exe)),
+                "command": command,
                 "timeout": HOOK_TIMEOUT_SECS,
             }]
         }]
@@ -290,7 +357,10 @@ mod tests {
             q.starts_with("forge-master-x") && q.contains("`rm -rf $D/nodes`"),
             "{q}"
         );
-        assert_eq!(options(&p)[0]["fingerprint"], "permission-prompt:p-9");
+        assert_eq!(
+            options(&p)[0]["fingerprint"],
+            "permission-prompt:s-1:p-9:Bash:rm -rf $D/nodes"
+        );
         let o = origin("forge-master-x", &p);
         assert_eq!(o["session"], "forge-master-x");
         assert_eq!(o["tool"], "Bash");

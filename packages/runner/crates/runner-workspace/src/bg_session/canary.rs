@@ -452,7 +452,7 @@ async fn watch_until(
     ))
 }
 
-fn transcript_text(sid: &str) -> Option<String> {
+pub(super) fn transcript_text(sid: &str) -> Option<String> {
     let projects = super::claude_dir()?.join("projects");
     let file = format!("{sid}.jsonl");
     std::fs::read_dir(projects)
