@@ -6,7 +6,7 @@
 // the recordings of boxes whose issue ended.
 
 import type { BoxFailure, BoxMode } from '@forge/contracts/boxes';
-import { BOX_LIMITS, BOX_MACHINE } from '@forge/contracts/boxes';
+import { BOX_LIMITS, BOX_MACHINE, BOX_RUNNING_STATES } from '@forge/contracts/boxes';
 import { and, eq, inArray, isNotNull, lt, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { type BoxRow, boxes } from '../db/schema-boxes.js';
@@ -148,7 +148,7 @@ export async function boxHealthBeat(deviceId: string): Promise<void> {
     .where(
       and(
         eq(boxes.deviceId, deviceId),
-        inArray(boxes.state, ['warm', 'agent', 'person']),
+        inArray(boxes.state, [...BOX_RUNNING_STATES]),
         isNotNull(boxes.readyAt),
       ),
     );

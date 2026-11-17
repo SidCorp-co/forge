@@ -42,15 +42,8 @@ export const BOX_STATES = [
 ] as const;
 export type BoxState = (typeof BOX_STATES)[number];
 
-/** The states a box's processes run in: a viewer may enter, an act may reach it. */
+/** The states a box's processes run in: a device that stops listing such a box lost it (`BOX_GONE`). */
 export const BOX_RUNNING_STATES = [
-	"warm",
-	"agent",
-	"person",
-] as const satisfies readonly BoxState[];
-/** The states that hold the device's headroom: running, or told to start. */
-export const BOX_HOLDING_STATES = [
-	"opening",
 	"warm",
 	"agent",
 	"person",
