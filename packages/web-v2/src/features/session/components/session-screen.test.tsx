@@ -90,9 +90,9 @@ describe("a chat session's page", () => {
   });
 });
 
-// ISS-946: a channel agent's session runs in a tmux pane on its box; the page prints the command its
-// owner types to watch it, as the box named it, beside the box's other facts in the Developer view
-describe("a channel agent's session running in a pane", () => {
+// ISS-946, ISS-1268 BR: a channel agent's session runs as a background session in its room; the page
+// prints the command its owner types to watch it, as the box named it, in the Developer view
+describe("a channel agent's session running in its room", () => {
   it("prints the attach command with a copy control in the Developer view", async () => {
     render(roomPaneSession(true));
     await screen.findAllByText("Da xong phan mot.");

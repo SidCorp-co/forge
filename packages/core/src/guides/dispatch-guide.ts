@@ -177,7 +177,8 @@ screens the words for the room's readers and records the post as the master's.
   reads each (\`readers\`). \`rid\` names the room; with none, the project's one room the team reads.
 - **Watching a master.** \`forge-runner master attach <slug>\` opens its session live; it runs as a
   Claude Code background session, and \`forge-runner master say <slug> <text>\` sends it a message.
-- **Watching a channel agent.** \`tmux -S <runner socket> attach -t forge-chat-<slug>\`
+- **Watching a channel agent.** \`forge-runner chat attach <slug>\` opens its session live; it
+  runs as a Claude Code background session in a sandbox of its room's own.
 - **Where in it.** \`thread\` is the id of the thread's first message, the asker's message for a
   result. Take it from the rooms read: each room's \`recentThreads\` names its newest threads, who
   asked in each, when it last moved and the FB-n filed from it. With none the post goes in the

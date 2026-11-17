@@ -20,7 +20,7 @@ import { badRequest, forbidden } from '../middleware/route-errors.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { broadcastSession, broadcastTurnSync } from './broadcast.js';
-import { paneAttachFor } from './chat-pane.js';
+import { roomAttachFor } from './chat-room.js';
 import { syncRunnerHealthFromChatTerminal } from './chat-runner-health.js';
 import { assertCoreKeysKept } from './core-owned-metadata.js';
 import {
@@ -225,7 +225,7 @@ agentSessionRoutes.get(
     }
 
     // a channel agent's pane its owner attaches to, as its box named it (ISS-946)
-    const paneAttach = c.get('principal') === 'device' ? null : await paneAttachFor(row);
+    const paneAttach = c.get('principal') === 'device' ? null : await roomAttachFor(row);
     return c.json({ ...(await withTranscript(row)), paneAttach });
   },
 );

@@ -540,58 +540,56 @@ and the opening names it (`support/prompt.ts:agentOpening`):
 
 These need orbit's binding to grant `deploy` with `deployTargets` naming 1445bbb7.
 
-## A channel agent's session in a pane its owner attaches to (ISS-946)
+## A channel agent's session its owner attaches to (ISS-946, ISS-1268)
 
-The owner, 2026-11-04: watch a channel agent's session by `tmux attach`, as a master is watched; a
-headless view and a log tail were shown and rejected.
+The owner, 2026-11-04: watch a channel agent's session live, as a master is watched; a headless
+view and a log tail were shown and rejected. The owner, 2026-11-17 (ISS-1268): a room agent is a
+Claude Code background session, as a master is, reached over its peer socket; no tmux pane.
 
 **Shape.** A box whose config says `[runner] chat_panes = true` runs a channel agent's one resident
-Claude Code interactive in a tmux session `forge-chat-<slug>` on the runner's socket
-(`runner-workspace/src/terminal.rs:socket_path`), next to `forge-master-<slug>`
-(`runner-agent/src/claude_code/pane.rs:start_in_pane`). A turn takes the pane where core keeps the
-session resident, confines it, and leaves its hooks on (`pane.rs:pane_for`); every other turn, and
-every turn on a box with the switch off, runs headless as above. The pane is refused by name, and the
-session runs headless, where tmux is missing, where the socket path is over the unix bound or the
-name over tmux's (`runner-workspace/src/terminal/chat_pane.rs:chat_pane_on`), or where the pane
-cannot be made; the reason is logged and rides on the heartbeat as `capabilities.chatPanes.unavailable`
-(`pane.rs:pane_refused`). The command is the confined one the headless host builds
-(`claude_code/mod.rs:SessionCommand`), so bwrap and the egress bridge stay; tmux, not the daemon, is
-its parent, so the command and its environment go in a launch file only this user reads, which
-`forge-runner chat-pane-exec` reads, removes, takes the sandbox's ceilings and execs
-(`forge-runner/src/cmd/chat_pane_exec.rs:run`). No Rocket.Chat plugin is needed: turns reach the
-session through the box, and its replies leave through core's doors (`support.reply`), never its
-output. The heartbeat names the socket and each live pane by the session it serves
-(`capabilities.chatPanes`); the session page prints `tmux -S <socket> attach -t forge-chat-<slug>`
-from those alone in its Developer view (`core/src/agent-sessions/chat-pane.ts:paneAttachOf`,
-`web-v2/src/features/session/components/session-header.tsx:PaneAttach`), and the master's guide
-gives the same command (`core/src/guides/dispatch-guide.ts:DISPATCH_GUIDE`).
+Claude Code as a background session `forge-chat-<slug>` inside a sandbox of the room's own
+(`runner-agent/src/claude_code/room.rs:start_in_room`). A turn takes the room where core keeps the
+session resident, confines it, and leaves its hooks on (`room.rs:room_for`); every other turn, and
+every turn on a box with the switch off, runs headless as above. A background session is claimed
+from Claude Code's background service, so the service lives inside the sandbox: the sandbox is the
+headless host's confined view (`claude_code/confine.rs:chat_sandbox`) with the room's own Claude
+Code config, `/tmp` and runtime dir in place of the box's (`confine.rs:room_mounts`), its program a
+holder that keeps its namespaces open (`runner-workspace/src/bg_session/room.rs:HOLDER`), and every
+`claude` command for the room runs in those namespaces (`room.rs:Host::command`, `nsenter`). The
+box's `~/.claude`, where every master's records, keys and transcripts are, and its runtime dir,
+where their peer sockets are, are not in the room's view. A room that cannot be made is said in the
+log and on the heartbeat as `capabilities.chatRooms.unavailable` (`room.rs:room_refused`), and the
+session runs headless. No Rocket.Chat plugin is needed: turns reach the session through the box, and
+its replies leave through core's doors (`support.reply`), never its output. The heartbeat names each
+live room's project by the session it serves (`capabilities.chatRooms`); the session page prints
+`forge-runner chat attach <slug>` from that alone in its Developer view
+(`core/src/agent-sessions/chat-room.ts:roomAttachOf`,
+`web-v2/src/features/session/components/session-header.tsx:PaneAttach`), and the master's guide gives
+the same command (`core/src/guides/dispatch-guide.ts:DISPATCH_GUIDE`).
 
-Measured on the pinned CLI (2.1.319) before building: a message typed while a tool call runs is
-queued and taken into the running turn after the tool result, answered in one reply under one
-`Stop`; one typed while the model writes its last text is queued and answered as a turn of its own
-straight after, under a second `Stop`. The `Stop` hook fires once per turn, in interactive mode,
-naming the session and its transcript. The transcript carries every `assistant` and `user` line and
-each assistant message's `usage`, and no cost; the status line's payload carries Claude Code's own
-running `cost.total_cost_usd`, a fraction of a second after the `Stop`.
+Measured on the pinned CLI (2.1.319) for the pane this replaced: a message given while a tool call
+runs is taken into the running turn after the tool result, answered in one reply under one `Stop`;
+one given while the model writes its last text is queued and answered as a turn of its own straight
+after, under a second `Stop`. The `Stop` hook fires once per turn, naming the session and its
+transcript. The transcript carries every `assistant` and `user` line and each assistant message's
+`usage`, and no cost; the status line's payload carries Claude Code's own running
+`cost.total_cost_usd`, a fraction of a second after the `Stop`. Measured on 2.1.322 in a room
+(ISS-1268 BR): the status line, `UserPromptSubmit` and `Stop` hooks all run inside the room and reach
+the box.
 
-| Headless guarantee | Kept in a pane, by |
+| Headless guarantee | Kept in a room, by |
 |---|---|
-| Turn hand-over (`agent:start`, `agent:send`) | Kept. A new session's first turn is the pane's launch prompt; a resumed session's first turn, and every later one, is typed in with `terminal/typing.rs:send_line` (`pane.rs:pane_send`); a turn is still placed and numbered by `chat.rs:run_turn`, which spawns through `chat.rs:spawn_turn`. |
-| A message written into a running turn (`support/inject.ts`) | Kept. Typed while the turn runs (`pane.rs:pane_inject`), refused where none runs, as a resident's stdin write is; the turn ends only once the session has taken every message typed into it: its `UserPromptSubmit` fired, and no transcript `enqueue` waits for its `remove` or `dequeue` (`claude_code/pane_turn.rs:Tally`). One never reported taken stops holding the turn after 30 s, said in the log. Each is reported applied at the turn's end, as before. |
-| Turn end (`runner-agent/src/chat.rs:close_turn`, on the stream's `result`) | Kept. The pane's `Stop` hook runs `forge-runner hook --chat-pane-events <file>`, which appends the event to a file under Claude Code's own config directory, already bound writable into the sandbox (`runner-core/src/chat_pane_events.rs:append`); the box reads it (`pane.rs:Watch`) and sends `Done`, so `chat.rs:close_turn` writes the same `completed`. The sandbox gets no door into the daemon's control socket. |
-| Lost turns (`support/lost-turns.ts`) and the silence reap (`SESSION_SILENCE_REAP_MS`) | Kept, unchanged: `chat.rs:consume` beats the turn while it runs whichever host runs it. A pane that disappears mid-turn fails the turn by name (`[CHAT_PANE_CLOSED]`). |
-| The turn record and cost and token totals (`agent-sessions/turn-events.ts`, `support/turn-record.ts`) | Kept. The transcript is tailed and its `assistant` and `user` lines posted as the same `stdout` events; at the turn's end a `result` line is posted, its `usage` summed once per assistant message id, its `duration_ms` from the transcript's `turn_duration`, and its `total_cost_usd` the status line's running cost after the `Stop` less the one before the turn (`pane_turn.rs:turn_cost`). The line names both sources under `forge_pane`. A resumed session restores its earlier running cost, so its first turn is measured from the status line it writes on launch, before its prompt is typed in (`pane.rs:first_turn_base`, waited for at most 10 s). Where no status line comes within 3 s of the `Stop`, or none stood before the turn, the cost is left out and `forge_pane.cost.unread` says why: never estimated on the box. Core keeps that reason on the result message's totals (`agent-stream-parser.ts:RunTotals.costUnread`). |
-| One token per turn (`mcp/config/mod.rs:write_refreshable`) | Kept, unchanged: the pane's MCP config reads the same helper file, rewritten before each turn (`claude_code/mod.rs:refresh_bearer`). |
-| The confined session's tool permissions | Kept, and narrower in form: the headless session runs `bypassPermissions` inside the sandbox; a pane runs `dontAsk` with an allow list of the same tools, the built-in ones and each MCP server it was handed (`runner-agent/src/pane_launch.rs:settings`), so a tool outside it is denied, never asked in a pane nobody answers. Never `bypassPermissions`, which a master holds and a session reading strangers' text must not. |
+| Turn hand-over (`agent:start`, `agent:send`) | Kept. A new session's first turn is its launch prompt; a resumed session's first turn, and every later one, is a message on its peer socket delivered only on its receipt (`room.rs:room_send`, `bg_session/peer.rs:send_in`); a turn is still placed and numbered by `chat.rs:run_turn`, which spawns through `chat.rs:spawn_turn`. |
+| A message written into a running turn (`support/inject.ts`) | Kept. Sent `now` while the turn runs (`room.rs:room_inject`), refused where none runs, as a resident's stdin write is; its receipt is the session taking it, and the turn ends only once no transcript `enqueue` waits for its `remove` or `dequeue` (`claude_code/room_turn.rs:Tally`). Each is reported applied at the turn's end, as before. |
+| Turn end (`runner-agent/src/chat.rs:close_turn`, on the stream's `result`) | Kept. The session's `Stop` hook runs `forge-runner hook --chat-pane-events <file>`, which appends the event to a file under the room's own config dir, which the sandbox writes (`runner-core/src/chat_pane_events.rs:append`); the box reads it (`room.rs:Watch`) and sends `Done`, so `chat.rs:close_turn` writes the same `completed`. The sandbox gets no door into the daemon's control socket. |
+| Lost turns (`support/lost-turns.ts`) and the silence reap (`SESSION_SILENCE_REAP_MS`) | Kept, unchanged: `chat.rs:consume` beats the turn while it runs whichever host runs it. A room whose sandbox or session disappears mid-turn fails the turn by name (`[CHAT_ROOM_CLOSED]`). |
+| The turn record and cost and token totals (`agent-sessions/turn-events.ts`, `support/turn-record.ts`) | Kept. The transcript is tailed and its `assistant` and `user` lines posted as the same `stdout` events; at the turn's end a `result` line is posted, its `usage` summed once per assistant message id, its `duration_ms` from the transcript's `turn_duration`, and its `total_cost_usd` the status line's running cost after the `Stop` less the one before the turn (`room_turn.rs:turn_cost`). The line names both sources under `forge_pane`. A resumed session restores its earlier running cost, so its first turn is measured from the status line it writes on waking, before its prompt is sent (`room_first_turn.rs:first_turn_base`, waited for at most 10 s). Where no status line comes within 3 s of the `Stop`, or none stood before the turn, the cost is left out and `forge_pane.cost.unread` says why: never estimated on the box. |
+| One token per turn (`mcp/config/mod.rs:write_refreshable`) | Kept, unchanged: the session's MCP config reads the same helper file, rewritten before each turn (`claude_code/mod.rs:refresh_bearer`), and only the servers it names load (`--strict-mcp-config`). |
+| The confined session's tool permissions | Kept, and narrower in form: the headless session runs `bypassPermissions` inside the sandbox; a room agent runs `dontAsk` with an allow list of the same tools, the built-in ones and each MCP server it was handed (`runner-agent/src/room_launch.rs:settings`), so a tool outside it is denied, never asked. Its settings sit outside its view, bound read-only (`room.rs:RoomDirs::settings`). Never `bypassPermissions`. |
 
-**Not kept, and why.** A pane outlives the daemon; its egress proxy does not. A daemon that stops
-ends every pane (`pane.rs:close_all_panes`), and a pane left from an earlier daemon is ended when
-its session next takes a turn, which resumes it in a new pane.
-
-**Done when** (the issue's own): on forge-dev's runner the pane answers a real room message, its reply
-reaches the room through core, the session page shows the attach command, and each row above is
-shown kept. The last three are built and tested here; the first needs a runner release with
-`chat_panes = true` on the box.
+**Not kept, and why.** The room's sandbox and its egress proxy are the daemon's; a daemon that stops
+ends every room (`room.rs:close_all_rooms`), stopping each session first so its conversation is kept
+in the room, and the session's next turn wakes it in a new sandbox with its saved options.
 
 ## Honest costs
 

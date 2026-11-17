@@ -229,7 +229,7 @@ function SessionActs({
   );
 }
 
-/** The command its owner types to watch a channel agent's session live in its pane (ISS-946), as its box named it, with a copy control. */
+/** The command its owner types to watch a channel agent's session live (`forge-runner chat attach`, ISS-946, ISS-1268), as its box named it, with a copy control. */
 function PaneAttach({ command }: { command: string }) {
   const t = useCopy();
   const [copied, setCopied] = useState(false);

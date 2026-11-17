@@ -192,10 +192,12 @@ describe('the dispatch guide teaches the master to write a pending decision its 
   });
 });
 
-// ISS-946: a channel agent's session runs in a pane on its box, which its owner watches as a master is watched
+// ISS-946, ISS-1268 BR: a channel agent's session runs as a background session in its room, which
+// its owner watches as a master is watched
 describe('the dispatch guide gives the command that attaches to a channel agent', () => {
-  it('names the pane beside the master on the runner socket', () => {
-    expect(DISPATCH_GUIDE.body).toContain('`tmux -S <runner socket> attach -t forge-chat-<slug>`');
+  it("names the room agent's attach, and no tmux pane", () => {
+    expect(DISPATCH_GUIDE.body).toContain('`forge-runner chat attach <slug>`');
+    expect(DISPATCH_GUIDE.body).not.toContain('forge-chat-<slug>`');
   });
 
   // ISS-1268: a master is a background session, opened by project rather than by pane

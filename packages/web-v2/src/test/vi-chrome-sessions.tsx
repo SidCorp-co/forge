@@ -142,7 +142,7 @@ const wrap = (children: React.ReactNode, search = "") => {
 // the agent's working — tool calls, the rail, the report's lenses — is drawn in the Developer view (REQ-43 BC-7)
 const DEV = "?view=developer";
 /** What the box's heartbeat named for the room session's pane, as core composes it. */
-export const ROOM_PANE_ATTACH = "tmux -S '/home/dev/.forge-dev-runner/xdg/forge-runner/tmux.sock' attach -t 'forge-chat-hop'";
+export const ROOM_PANE_ATTACH = "forge-runner chat attach 'hop'";
 /** A channel agent's session page, its pane named (ISS-946); drawn by its own test, not the screen budget. */
 export const roomPaneSession = (developer: boolean) =>
   wrap(<SessionScreen sessionId="s-room" projectSlug="hop" />, developer ? DEV : "");
