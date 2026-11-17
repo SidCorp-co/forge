@@ -225,7 +225,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:usage field:json:value field:json:verdict field:json:criterion field:json:via
     field:json:voidQuestions field:json:unmet
     field:json:workState field:json:workflow field:json:worktree field:json:query
-    field:json:error field:json:origin field:json:contentBase64 field:json:binaries
+    field:json:error field:json:origin field:json:permissionPrompt field:json:contentBase64 field:json:binaries
     field:json:basis field:json:claims
     field:json:endpoint field:json:by field:json:cites field:json:intent field:json:recommended
     field:json:reportedBy field:json:resolves field:json:refused field:json:broken
