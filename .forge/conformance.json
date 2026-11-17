@@ -465,12 +465,6 @@
           "endsWhen": "The guide registry says on each guide whether a pane follows it as its method, and the test reads that field."
         },
         {
-          "file": "packages/core/src/prompt/no-question-count.test.ts",
-          "registry": "core modules",
-          "why": "ASKING_MODULES is a classification, the modules whose text asks a person something; a new module that asks is not scanned until it is added here, which is the stale gap this check exists for.",
-          "endsWhen": "modules.json declares which modules ask a person, or the test scans every module and excuses the ones that ask nobody by name."
-        },
-        {
           "file": "packages/core/src/ws/org-activity-frames.test.ts",
           "registry": "outbox events",
           "why": "The eight events are ISS-951's requirement, the moves the org room must hear; reading them from OUTBOX_CONSUMERS would assert the table against itself.",
