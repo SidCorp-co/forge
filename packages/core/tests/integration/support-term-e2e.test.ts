@@ -46,7 +46,7 @@ const glossary = () =>
          WHERE e.project_id = ${w.projectId}::uuid AND e.kind = 'glossary' ORDER BY e.slug`,
   );
 
-const term = (thread: string, message: string, module = 'execution') => ({
+const term = (thread: string | undefined, message: string | undefined, module = 'execution') => ({
   action: 'term',
   thread,
   message,

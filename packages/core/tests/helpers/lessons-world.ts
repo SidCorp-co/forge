@@ -72,7 +72,7 @@ export async function pass(answer: {
   links?: { correction: string; lesson: number }[];
   proposals?: Doc[];
   rejections?: { correction: string; reason: string }[];
-  seen?: (input: { corrections: Doc[]; lessons: Doc[] }) => void;
+  seen?: (input: { corrections: Doc[]; lessons: Doc[]; modules: Doc[] }) => void;
   review?: Answer<Doc, Doc>;
   settle?: Answer<Doc, Doc>;
   /** What the steward says a lesson owed a check is about, where its record does not say. */

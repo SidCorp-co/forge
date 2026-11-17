@@ -37,10 +37,7 @@ describe("the steward's grouping places each lesson it drafts (ISS-1256 c9)", ()
     const handed: string[] = [];
     const tally = await pass({
       project: own.id,
-      seen: (input) =>
-        handed.push(
-          ...((input as { modules: { slug: string }[] }).modules ?? []).map((m) => m.slug),
-        ),
+      seen: (input) => handed.push(...input.modules.map((m) => String(m.slug))),
       proposals: [
         { ...proposal('Declare a run before its builder.', [a, b]), module: 'execution' },
       ],
