@@ -446,6 +446,7 @@ dependencies = [
  "dirs-next",
  "reqwest",
  "runner-agent",
+ "runner-box",
  "runner-core",
  "runner-daemon",
  "runner-platform",
