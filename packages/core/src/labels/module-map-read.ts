@@ -37,6 +37,7 @@ import {
   mapModules,
   moduleNamed,
 } from './module-map-nodes.js';
+import { landingSaid } from './landing-said.js';
 
 const DAY_MS = 86_400_000;
 
@@ -509,20 +510,10 @@ export async function landingMapOf(projectId: string, issueId: string): Promise<
   const empty = roots.filter((r) => !holding.has(r.id)).length;
   const id = rowsOf<{ id: string }>(placed)[0]?.id;
   const module = id ? modules.byId.get(id) : undefined;
-  const base = `/api/projects/${projectId}`;
-  const write = (slug: string) =>
-    `PUT ${base}/knowledge/<slug> { kind: 'glossary', module: '${slug}', title, body, term: { aliases, namedBy }, anchor: 'file.ts:symbol' }, a rule with kind 'rule' and its source, scope and recheckWhen`;
   const counts = { total: roots.length, empty };
+  const at = { base: `/api/projects/${projectId}`, issueId, roots: roots.map((r) => r.slug), empty };
   // ISS-1269: with no module at all there is nowhere to place it, and creating one is an admin's act
-  if (!module) {
-    return {
-      module: null,
-      modules: counts,
-      said: !roots.length
-        ? `This project defines no module, so nothing can be placed or recorded under one. A module is created with POST ${base}/labels { kind: 'module', name }, which takes project.admin: ask a project admin to lay out the modules first.`
-        : `This issue sits in no module, and ${empty} of ${roots.length} modules hold no term or rule. Place it (PUT ${base}/modules/placements { type: 'issue', ref: '${issueId}', module }), then record each term a person named and each rule this work settled under that module: ${write('<module>')}.`,
-    };
-  }
+  if (!module) return { module: null, modules: counts, said: landingSaid({ ...at, module: null }) };
   const within = (e: Item) => {
     const path = e.moduleId ? modules.byId.get(e.moduleId)?.path : undefined;
     return path !== undefined && (path === module.path || path.startsWith(`${module.path}/`));
@@ -531,13 +522,10 @@ export async function landingMapOf(projectId: string, issueId: string): Promise<
   const terms = here.filter((e) => e.type === 'term').length;
   const rules = here.length - terms;
   const recheckOwed = here.filter((e) => e.recheck).length;
-  const owes =
-    recheckOwed > 0
-      ? `, ${recheckOwed} owing a re-check (fix each: GET ${base}/modules/${module.slug}/map)`
-      : '';
+  const held = { slug: module.slug, name: module.name, terms, rules, recheckOwed };
   return {
-    module: { slug: module.slug, name: module.name, path: module.path, terms, rules, recheckOwed },
+    module: { ...held, path: module.path },
     modules: counts,
-    said: `${module.name} holds ${terms} ${terms === 1 ? 'term' : 'terms'} and ${rules} ${rules === 1 ? 'rule' : 'rules'}${owes}. Record each term a person named and each rule this work settled there: ${write(module.slug)}.`,
+    said: landingSaid({ ...at, module: held }),
   };
 }

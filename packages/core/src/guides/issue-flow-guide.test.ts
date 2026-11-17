@@ -101,8 +101,26 @@ describe('the landing teaches recording what the work named, at the mark', () =>
     expect(flat(DISPATCH_GUIDE.body)).toContain(
       "Record the terms and rules the work named under its module, as the mark's `moduleMap` says",
     );
-    expect(DIRECT_ORDER).toContain(
-      'Each mark answers `moduleMap`: write there every term and rule a landing named.',
+    expect(DIRECT_ORDER).toContain('each mark answers `moduleMap`: write them there');
+  });
+
+  // ISS-1256 c9: on 2026-11-17 the step read "each term a person used" and "Met none, write none",
+  // and four landings wrote none: no person names a thing inside a landing, and the builders who
+  // met the names were never asked for them.
+  it('says what counts as named, that builders report it, and that the landing comment says what was written', () => {
+    const guide = flat(prose);
+    const dispatch = flat(DISPATCH_GUIDE.body);
+    expect(guide).toContain(
+      'A name the issue, its criteria, its decision or its code gives a thing is a glossary entry',
     );
+    expect(guide).toContain('a limit or choice the work settled a rule entry');
+    expect(guide).toContain('The landing comment says which you wrote, or why none.');
+    expect(guide).not.toContain('Met none, write none');
+    expect(dispatch).toContain("each builder's report names them");
+    expect(dispatch).toContain('Comment what landed and which you wrote');
+    expect(DIRECT_ORDER).toContain(
+      "Each builder's report names the terms and rules its work named (the names its issue, criteria, decision or code give a thing; the limits it settled)",
+    );
+    expect(DIRECT_ORDER).toContain('say in the landing comment which you wrote');
   });
 });
