@@ -65,10 +65,12 @@ pub(crate) fn spawn_reader(
                 }
             }
             if json.get("type").and_then(Value::as_str) == Some("result") {
+                // a turn a person stopped (ISS-1268) ended as asked, not in failure
                 let is_error = json
                     .get("is_error")
                     .and_then(Value::as_bool)
-                    .unwrap_or(true);
+                    .unwrap_or(true)
+                    && !control::was_interrupted(&json);
                 {
                     let mut o = outcome.lock().await;
                     o.succeeded = Some(!is_error);

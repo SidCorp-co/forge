@@ -602,23 +602,7 @@ pub(crate) fn on_frame(frame: Frame, ctx: &FrameCtx) {
                 inbox::handle_session_send(&client, runner, masters, &pool, frame.data).await;
             });
         }
-        "agent:close" => match session_id_of(&frame.data) {
-            Some(sid) => {
-                let (client, runner) = (client.clone(), runner.clone());
-                tokio::spawn(async move { chat::handle_close(&client, runner, &sid).await });
-            }
-            None => tracing::warn!(
-                "[chat] agent:close names no sessionId, so no session is closed (frame: {})",
-                frame.data
-            ),
-        },
-        "agent:abort" => {
-            if let Some(sid) = session_id_of(&frame.data) {
-                tracing::info!("[chat] abort session={sid}");
-                let runner = runner.clone();
-                tokio::spawn(async move { chat::handle_abort(runner, &sid).await });
-            }
-        }
+        "agent:close" | "agent:interrupt" | "agent:steer" => on_chat_control(frame, client, runner),
         event if box_frames::takes(event) => box_frames::on_frame(frame, client, cfg),
         event if runner_preview::FRAMES.contains(&event) => previews.on_frame(event, frame.data),
         "master.wake" => match master::Wake::of_frame(&frame.data) {
@@ -645,6 +629,39 @@ pub(crate) fn on_frame(frame: Frame, ctx: &FrameCtx) {
             frame.data
         ),
         other => tracing::debug!("[ws] ignored event {other}"),
+    }
+}
+
+/// A chat session's control frame: core ended its residency, a person stopped its running turn, or
+/// a message goes into that turn (ISS-1268).
+fn on_chat_control(frame: Frame, client: &Arc<CoreClient>, runner: &Arc<ClaudeCodeRunner>) {
+    match frame.event.as_str() {
+        "agent:close" => match session_id_of(&frame.data) {
+            Some(sid) => {
+                let (client, runner) = (client.clone(), runner.clone());
+                tokio::spawn(async move { chat::handle_close(&client, runner, &sid).await });
+            }
+            None => tracing::warn!(
+                "[chat] agent:close names no sessionId, so no session is closed (frame: {})",
+                frame.data
+            ),
+        },
+        "agent:interrupt" => match session_id_of(&frame.data) {
+            Some(sid) => {
+                tracing::info!("[chat] interrupt session={sid}");
+                let runner = runner.clone();
+                tokio::spawn(async move { chat::handle_interrupt(runner, &sid).await });
+            }
+            None => tracing::warn!(
+                "[chat] agent:interrupt names no sessionId, so no turn is stopped (frame: {})",
+                frame.data
+            ),
+        },
+        "agent:steer" => {
+            let runner = runner.clone();
+            tokio::spawn(async move { chat::handle_steer(runner, frame.data).await });
+        }
+        other => tracing::debug!("[ws] {other} is not a chat control frame"),
     }
 }
 

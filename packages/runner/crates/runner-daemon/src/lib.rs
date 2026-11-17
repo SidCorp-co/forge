@@ -4,7 +4,7 @@
 //! which issues are admissible, keep a resident master up for each project
 //! that has some, and nudge it. The runs
 //! are the master's own subagents and never reach this process. Interactive
-//! chat (`agent:start` / `agent:send` / `agent:abort`) is handled out-of-band
+//! chat (`agent:start` / `agent:send` / `agent:interrupt` / `agent:steer`) is handled out-of-band
 //! by `chat`, under its own concurrency budget (ISS-321).
 //!
 //! The job kinds with no issue to rank — `release_batch` and `smoke` — do NOT

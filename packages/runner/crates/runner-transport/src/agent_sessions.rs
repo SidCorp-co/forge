@@ -262,6 +262,30 @@ pub async fn post_events(
     Ok(())
 }
 
+/// `POST /api/agent-sessions/:id/live` (ISS-1268): what a running turn is producing right now —
+/// text and thinking as generated, its status, retries, compaction, context and suggestion — for
+/// the open views to show. Core stores none of it, so it is sent once: a live item that is late is
+/// worth nothing, and the stored transcript carries the final message either way.
+pub async fn post_live(
+    client: &CoreClient,
+    session_id: &str,
+    items: &[Value],
+) -> std::result::Result<(), WriteFailure> {
+    let path = format!("/api/agent-sessions/{session_id}/live");
+    let body = serde_json::json!({ "items": items });
+    match client.post(&path).json(&body).send().await {
+        Ok(r) if r.status().is_success() => Ok(()),
+        Ok(r) => {
+            let status = r.status().as_u16();
+            let text = r.text().await.unwrap_or_default();
+            Err(refusal_of("post_live", status, &text).unwrap_or_else(|| {
+                WriteFailure::Unreached(format!("post_live: {}", status::named(status)))
+            }))
+        }
+        Err(e) => Err(WriteFailure::Unreached(format!("post_live transport: {e}"))),
+    }
+}
+
 pub async fn report_runtime_state(client: &CoreClient, session_id: &str, state: &str) {
     let patch = SessionPatch {
         runtime_state: Some(state.to_string()),

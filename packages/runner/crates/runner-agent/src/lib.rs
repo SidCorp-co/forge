@@ -8,6 +8,7 @@ mod chat_attachments;
 pub mod chat_checkout;
 #[cfg(test)]
 mod chat_checkout_test_repo;
+mod chat_live;
 pub mod chat_turns;
 pub mod claude_code;
 pub mod pane_launch;

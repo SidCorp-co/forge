@@ -6,14 +6,15 @@
 //! `pipeline_run kind='interactive'`, and publishes:
 //!   - `agent:start` `{ sessionId, prompt, projectSlug, repoPath, systemPrompt, model }`
 //!   - `agent:send`  `{ sessionId, message, claudeSessionId, repoPath, projectSlug, model }`
-//!   - `agent:abort` `{ sessionId }`
+//!   - `agent:interrupt` `{ sessionId }`: Stop, the `interrupt` control request (ISS-1268)
+//!   - `agent:steer` `{ sessionId, message, priority }`: a message into the running turn
 //!   - `agent:close` `{ sessionId, reason }`: core ended the session's residency
 //!
 //! A chat session is RESIDENT (ISS-873 phase 1): the first turn spawns a
 //! duplex process whose stdin stays open and every follow-up is written into
 //! it. `--resume` is the fallback for a session this daemon no longer holds —
 //! a restart, core ending its residency, or a model change. Session key = `sessionId`,
-//! so `agent:abort` still maps onto the right process; replies stream back
+//! so `agent:interrupt` maps onto the right process; replies stream back
 //! with `PATCH /api/agent-sessions/:id`, exactly like the desktop.
 //!
 //! Chat never goes through `jobs` or `dispatch::handle`, so it takes no
@@ -33,7 +34,8 @@ use crate::chat_attachments::{
     augment_prompt, cleanup_attachments, stage_attachments, AttachmentRef,
 };
 use crate::chat_checkout;
-use crate::claude_code::{pane, ClaudeCodeRunner, Resident, TurnPlacing};
+use crate::chat_live::{self, LiveBatch, LiveSender};
+use crate::claude_code::{pane, ClaudeCodeRunner, Priority, Resident, TurnPlacing};
 use crate::CheckoutView;
 use crate::Confinement;
 use crate::JobSpec;
@@ -308,26 +310,64 @@ fn handed_credential(token: Option<String>) -> Option<TurnCredential> {
     token.filter(|t| !t.trim().is_empty()).map(TurnCredential)
 }
 
-/// Handle `agent:abort`: kill the running claude process for this session, if
-/// any. Between turns there is no process, so a "not found" is benign.
-pub async fn handle_abort(runner: Arc<ClaudeCodeRunner>, session_id: &str) {
-    if let Err(e) = runner.abort(&session_id.to_string()).await {
-        tracing::debug!("[chat {session_id}] abort: {e}");
+/// Handle `agent:interrupt` (ISS-1268): a person stopped the session's running turn. The
+/// `interrupt` control request goes into the session's stdin, the turn ends with its `result` and
+/// closes as every turn does, and the process stays warm for the next message. A session this box
+/// cannot interrupt is said by name, never killed in its place.
+pub async fn handle_interrupt(runner: Arc<ClaudeCodeRunner>, session_id: &str) {
+    match runner.interrupt(&session_id.to_string()).await {
+        Ok(()) => tracing::info!("[chat {session_id}] interrupt written"),
+        Err(e) => tracing::warn!("[chat {session_id}] interrupt not written: {e}"),
+    }
+}
+
+/// `agent:steer` payload: a message for the session's running turn (ISS-1268).
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SteerFrame {
+    session_id: String,
+    message: String,
+    priority: String,
+}
+
+/// Handle `agent:steer`: write a message into the session's running turn with its priority, `now`
+/// to answer it at once or `next` to answer it after the turn. What it cannot reach is said by
+/// name; core sends a message for a session with no running turn as a turn of its own.
+pub async fn handle_steer(runner: Arc<ClaudeCodeRunner>, data: Value) {
+    let f: SteerFrame = match serde_json::from_value(data) {
+        Ok(f) => f,
+        Err(e) => return tracing::warn!("[chat] [STEER_FRAME_UNREADABLE] agent:steer: {e}"),
+    };
+    let sent = match Priority::parse(&f.priority) {
+        Ok(p) => runner.steer(&f.session_id, &f.message, p).await,
+        Err(e) => Err(e),
+    };
+    match sent {
+        Ok(()) => tracing::info!(
+            "[chat {}] message written into the running turn ({})",
+            f.session_id,
+            f.priority
+        ),
+        Err(e) => tracing::warn!("[chat {}] message not written: {e}", f.session_id),
     }
 }
 
 /// Handle `agent:close`: core ended this session's residency, so the resident
 /// process is closed between turns and core is told it is, which is what stops
-/// core asking. A session this daemon does not hold is already closed here, and
-/// is said so all the same.
+/// core asking. A turn still running is interrupted first, so the close does not
+/// wait out its grace on it. A session this daemon does not hold is already
+/// closed here, and is said so all the same.
 pub async fn handle_close(client: &CoreClient, runner: Arc<ClaudeCodeRunner>, session_id: &str) {
+    if runner.interrupt(&session_id.to_string()).await.is_ok() {
+        tracing::info!("[chat {session_id}] a turn was running — interrupted before the close");
+    }
     runner.close(&session_id.to_string()).await;
     tracing::info!("[chat {session_id}] core ended its residency — closed");
     agent_sessions::report_runtime_state(client, session_id, "closed").await;
 }
 
 /// The spawn spec for one chat turn.
-// Session key = sessionId so `agent:abort` → `runner.abort(sessionId)` hits the
+// Session key = sessionId so `agent:interrupt` → `runner.interrupt(sessionId)` hits the
 // right process. step="chat" / job_id=sessionId only label the run.
 fn chat_spec(session_id: &str, prompt: &str, turn: &Turn) -> JobSpec {
     JobSpec {
@@ -563,6 +603,11 @@ async fn consume(
     beat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
     let mut terminal: Option<Terminal> = None;
+    // a partial message is shown as it is generated and never stored (ISS-1268)
+    let live = LiveSender::start(client, session_id);
+    let mut live_batch = LiveBatch::default();
+    let mut live_tick = tokio::time::interval(chat_live::LIVE_INTERVAL);
+    live_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
     loop {
         tokio::select! {
@@ -570,6 +615,7 @@ async fn consume(
                 Some(RunnerEvent::ClaudeSessionId(sid)) => { claude_sid = Some(sid); }
                 Some(RunnerEvent::StateChanged(state)) => { runtime_state = Some(state.to_string()); }
                 Some(RunnerEvent::Stdout(json)) => {
+                    chat_live::live_items(&json).into_iter().for_each(|i| live_batch.push(i));
                     if is_partial_stream_event(&json) { continue; }
                     seq += 1;
                     pending.push(agent_sessions::LineEvent::stdout(seq, json));
@@ -578,6 +624,7 @@ async fn consume(
                 Some(RunnerEvent::Failed { error }) => { terminal = Some(Terminal::Failed(error)); break; }
                 None => break,
             },
+            _ = live_tick.tick() => live.send(&mut live_batch),
             _ = beat.tick() => {
                 if let Err(WriteFailure::Ended { code, said }) = beat_turn(client, session_id).await {
                     tracing::info!("[chat {session_id}] core ended this session ({code}) — stopping stream: {said}");
@@ -612,6 +659,11 @@ async fn consume(
                 }
             }
         }
+    }
+
+    live.send(&mut live_batch);
+    if matches!(terminal, Some(Terminal::Done)) {
+        chat_live::watch_suggestion(live, rx);
     }
 
     while !pending.is_empty() {
@@ -1486,5 +1538,75 @@ mod tests {
         assert_eq!(result["usage"]["output_tokens"], 13, "{result}");
         assert_eq!(result["total_cost_usd"], 0.0042, "{result}");
         assert_eq!(result["duration_ms"], 1200, "{result}");
+    }
+
+    /// ISS-1268: a real partial stream (`fixtures/stream-json/partial.jsonl`, Claude Code 2.1.322)
+    /// shows its text on core's live channel as it is generated, and core's store takes none of
+    /// its `stream_event` lines — only the whole `assistant` line and the rest of the transcript.
+    #[tokio::test]
+    async fn a_partial_stream_reaches_the_live_channel_and_never_the_store() {
+        let (client, seen) = fake_core(200, "UNUSED").await;
+        let path = format!(
+            "{}/fixtures/stream-json/partial.jsonl",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        let lines: Vec<Value> = std::fs::read_to_string(path)
+            .unwrap()
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
+        let (tx, rx) = mpsc::channel::<RunnerEvent>(64);
+        for line in &lines {
+            tx.send(RunnerEvent::Stdout(line.clone())).await.unwrap();
+        }
+        tx.send(RunnerEvent::Done).await.unwrap();
+        drop(tx);
+        let ran =
+            tokio::time::timeout(Duration::from_secs(10), consume(&client, "s1", 0, rx)).await;
+        assert!(ran.is_ok(), "the stream loop never returned");
+        let live_bodies = || -> Vec<Value> {
+            seen.lock()
+                .unwrap()
+                .iter()
+                .filter(|(m, p, _)| m == "POST" && p.ends_with("/live"))
+                .map(|(_, _, b)| serde_json::from_str(b).unwrap())
+                .collect()
+        };
+        for _ in 0..50 {
+            if !live_bodies().is_empty() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        let live: Vec<Value> = live_bodies()
+            .into_iter()
+            .flat_map(|b| b["items"].as_array().cloned().unwrap_or_default())
+            .collect();
+        let streamed: String = live
+            .iter()
+            .filter(|i| i["kind"] == "text")
+            .filter_map(|i| i["text"].as_str())
+            .collect();
+        assert_eq!(streamed, "Hello there, friendly neighbour!", "{live:?}");
+        let stored: Vec<Value> = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(m, p, _)| m == "POST" && p.ends_with("/events"))
+            .flat_map(|(_, _, b)| {
+                let body: Value = serde_json::from_str(b).unwrap();
+                body["events"].as_array().cloned().unwrap_or_default()
+            })
+            .collect();
+        assert!(!stored.is_empty(), "the transcript was stored");
+        assert!(
+            stored
+                .iter()
+                .all(|e| e["data"]["line"]["type"] != "stream_event"),
+            "a partial line reached the store"
+        );
+        assert!(stored
+            .iter()
+            .any(|e| e["data"]["line"]["type"] == "assistant"));
     }
 }

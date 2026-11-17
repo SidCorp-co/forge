@@ -6,6 +6,8 @@
 //! frame straight onto the right process.
 
 pub(crate) mod confine;
+mod control;
+pub use control::Priority;
 mod outcome;
 #[doc(hidden)]
 pub mod own_testkit;
@@ -262,6 +264,11 @@ fn build_args(spec: &JobSpec, mcp_path: &str, plugins: &PluginLaunch) -> Vec<Str
         // fan-out session keeps producing stdout (liveness) and the runner
         // sees every event (ISS-479).
         "--include-partial-messages".into(),
+        // a subagent's text and thinking reach the stream under the call that spawned it
+        // (`parent_tool_use_id`), and each turn ends with the next prompt it suggests: both shown
+        // in the web chat (ISS-1268)
+        "--forward-subagent-text".into(),
+        "--prompt-suggestions".into(),
         "--permission-mode".into(),
         mode.into(),
     ];
