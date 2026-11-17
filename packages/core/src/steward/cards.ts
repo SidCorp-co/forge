@@ -60,5 +60,6 @@ export const STEWARD_REST_CARDS = {
       'Undoing by an id that is not a steward act’s (an event’s, a comment’s): read the acts first.',
     family: 'steward',
     audience: ['master'],
+    scenarios: ['an event or a comment id undone as a steward act: STEWARD_ACT_UNKNOWN'],
   },
 } satisfies Record<string, CapabilityCardBody>;

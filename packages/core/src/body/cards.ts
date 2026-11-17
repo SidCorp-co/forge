@@ -20,5 +20,6 @@ export const BODY_REST_CARDS = {
       'An agent previewing a comment here before posting, where the write door answers the same.',
     family: 'product.requirement',
     audience: ['person'],
+    scenarios: ['a markdown preview an agent sent before posting'],
   },
 } satisfies Record<string, CapabilityCardBody>;

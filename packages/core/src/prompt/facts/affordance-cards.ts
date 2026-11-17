@@ -44,6 +44,7 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
       'Writing the order in prose (“after ISS-640”) instead of a blocks edge: prose gates nothing.',
     family: 'issue-order',
     audience: ['master', 'run'],
+    scenarios: ['an order between issues written as a blocks edge'],
   }),
   card('POST /api/memory', 'memory', {
     purpose: 'Keeps a note or learning another agent on another issue would reuse.',
@@ -106,6 +107,7 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     redFlag: 'Marking an entry injection always for detail a prompt needs only on demand.',
     family: 'knowledge',
     audience: ['master', 'run'],
+    scenarios: ['a project’s own prose kept under one slug per entry'],
   }),
   card('POST /api/projects/:id/issues', 'issues', {
     purpose: 'Files work: born at draft for later, or with its body for work to report.',
@@ -158,6 +160,7 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
       'Sending only the keys that change: the policy is written whole against the revision read.',
     family: 'setup',
     audience: ['master'],
+    scenarios: ['a policy written whole against the revision read'],
   }),
   card('PUT /api/projects/:id/config', 'project-config', {
     purpose: 'Changes the project document, written whole against the revision read.',
@@ -198,6 +201,7 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     example: { baseRevision: 7, document: { description: 'Storefront for the shop.' } },
     family: 'setup',
     audience: ['master', 'person'],
+    scenarios: ['a patch sent as { base, patch } to the project document: ISS-767, FB-596'],
   }),
   card('POST /api/memory/search', 'memory', {
     purpose: 'Reads what earlier work learned before you design or fix.',
@@ -335,6 +339,7 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
       'Filing or dispatching the build of a design before its revision is proposed and approved.',
     family: 'design',
     audience: ['master', 'run', 'person'],
+    scenarios: ['a finished draft design proposed for approval before its build'],
   }),
   card('POST /api/projects/:id/feedback', 'feedback', {
     purpose:
@@ -382,6 +387,7 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     },
     family: 'project-feedback',
     audience: ['master', 'run', 'bot', 'person'],
+    scenarios: ['two target fields filled on one feedback: FEEDBACK_TARGET_NOT_ONE (FB-598)'],
   }),
   card('POST /api/projects/:projectId/debts', 'cleanup', {
     purpose: 'Records a defect that stands alone as debt for the Audit, with its evidence.',

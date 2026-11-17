@@ -82,6 +82,7 @@ const CARDS = {
       'Opening a new thread to follow up on one already under way, so the bot loses what was said.',
     family: 'product.bot',
     audience: ['person'],
+    scenarios: ['a follow-up with the bot opened in its earlier thread'],
   },
   open: {
     purpose: 'Opens a thread with the Forge bot, or resumes one, optionally about one record.',
@@ -108,6 +109,7 @@ const CARDS = {
     redFlag: 'Opening a bot thread for one read or one write the action itself does.',
     family: 'product.bot',
     audience: ['person'],
+    scenarios: ['a report drawn from several reads asked of the bot in a thread'],
   },
   send: {
     purpose: 'Says one message to the Forge bot in a thread and waits a while for its turn.',
@@ -144,6 +146,7 @@ const CARDS = {
       'Reusing one clientKey for a different message: it is refused BOT_CLIENT_KEY_REUSED and the message is not taken in; each new message takes a new key.',
     family: 'product.bot',
     audience: ['person'],
+    scenarios: ['one clientKey reused for a new message: BOT_CLIENT_KEY_REUSED (ISS-1115)'],
   },
   read: {
     purpose: 'Reads the messages after a cursor in a bot thread, and the state of a turn.',

@@ -55,6 +55,7 @@ export const CARDS = {
     redFlag: 'Reading a design by its flow’s name instead of its workflow id from design_list.',
     family: 'design',
     audience: ['person'],
+    scenarios: ['every design read refused: the input takes the project’s uuid'],
   },
   template_list: {
     purpose: 'Lists the templates a design may be drawn in, with their node types and edge kinds.',
@@ -77,6 +78,7 @@ export const CARDS = {
       'Drawing a design in a template without reading which node types and edge kinds it takes.',
     family: 'design',
     audience: ['person'],
+    scenarios: ['a design drawn in a template whose node types it broke: FB-622'],
   },
   design_create: {
     purpose: 'Writes a new workflow design at revision 1, as a draft.',
@@ -171,6 +173,7 @@ export const CARDS = {
       'Returning a test or abandoned design to be rid of it: a return asks its writer to revise it on every pass. Withdraw it instead.',
     family: 'design',
     audience: ['person'],
+    scenarios: ['a throwaway design returned to be rid of it: FB-272'],
   },
   design_withdraw: {
     purpose: 'Takes back a design never approved; it leaves the list and Needs you.',
@@ -190,6 +193,7 @@ export const CARDS = {
     redFlag: 'Withdrawing an approved design to retire it, where a revision changes it.',
     family: 'design',
     audience: ['person'],
+    scenarios: ['an approved design withdrawn to retire it: DESIGN_WITHDRAW_APPROVED'],
   },
   suggestion_list: {
     purpose: 'Lists the suggestions on a requirement, issue, feedback item or design.',
@@ -212,6 +216,7 @@ export const CARDS = {
     redFlag: 'Proposing a suggestion without listing those already waiting on the same record.',
     family: 'design',
     audience: ['person'],
+    scenarios: ['a re-proposal’s answer leaking into breakdown slices: FB-139'],
   },
   suggestion_create: {
     purpose: 'Proposes a change that waits on a decision instead of changing the record.',
@@ -281,6 +286,7 @@ export const CARDS = {
       'Accepting a suggestion the record has already moved past, such as a triage on an item already triaged: it overwrites the decision taken since.',
     family: 'design',
     audience: ['person'],
+    scenarios: ['a breakdown accepted from its slice titles: FB-90'],
   },
   suggestion_reject: {
     purpose: 'Rejects a suggestion, saying why, so the next one on that record does not repeat it.',
@@ -301,6 +307,7 @@ export const CARDS = {
       'Rejecting with no reason the next proposal can answer, or rejecting where one slice needs revising.',
     family: 'design',
     audience: ['person'],
+    scenarios: ['a person saying no to a suggestion, rejected with their reason'],
   },
   suggestion_revise: {
     purpose: 'Replaces a suggestion with your edited payload; the original is closed.',
@@ -328,6 +335,7 @@ export const CARDS = {
       'Revising someone else’s suggestion without suggestions.approve, or sending a patch instead of the whole payload.',
     family: 'design',
     audience: ['person'],
+    scenarios: ['a breakdown with one weak slice revised whole, with a reason'],
   },
   suggestion_withdraw: {
     purpose: 'Retracts a suggestion you produced, before anyone decides it.',

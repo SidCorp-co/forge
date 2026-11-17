@@ -29,6 +29,7 @@ export const SHARE_REST_CARDS = {
       'Sharing by link without reading which audiences you hold, or what the project lets leave.',
     family: 'release',
     audience: ['master'],
+    scenarios: ['link shares sent without reading the audiences held'],
   },
   'POST /api/projects/:id/shares/:shareId/revoke': {
     purpose: 'Ends a share, so its link or member view stops answering.',
@@ -44,5 +45,6 @@ export const SHARE_REST_CARDS = {
     redFlag: 'Revoking another person’s share: its maker or an admin ends it.',
     family: 'release',
     audience: ['master'],
+    scenarios: ['a share revoked by a caller who did not make it'],
   },
 } satisfies Record<string, CapabilityCardBody>;

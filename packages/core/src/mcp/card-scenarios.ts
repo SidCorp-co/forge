@@ -12,14 +12,17 @@ import type { CardScenario, CardText } from '../lessons/index.js';
 import { roomConductLines } from '../support/index.js';
 import { CONFIG_SCENARIOS } from './scenarios-config.js';
 import { DELIVERY_SCENARIOS } from './scenarios-delivery.js';
+import { DESIGN_SCENARIOS } from './scenarios-design.js';
 import { ECOSYSTEM_SCENARIOS } from './scenarios-ecosystem.js';
 import { FEEDBACK_SCENARIOS } from './scenarios-feedback.js';
 import { ISSUE_SCENARIOS } from './scenarios-issues.js';
+import { KNOWLEDGE_SCENARIOS } from './scenarios-knowledge.js';
 import { PRODUCT_SCENARIOS } from './scenarios-product.js';
 import { RELEASE_SCENARIOS } from './scenarios-release.js';
 import { REQUIREMENT_SCENARIOS } from './scenarios-requirements.js';
 import { ROOM_SCENARIOS } from './scenarios-room.js';
 import { ROOM_WORK_SCENARIOS } from './scenarios-room-work.js';
+import { SUPPORT_SCENARIOS } from './scenarios-support.js';
 
 export const CARD_SCENARIOS: readonly CardScenario[] = [
   ...ROOM_SCENARIOS,
@@ -32,6 +35,9 @@ export const CARD_SCENARIOS: readonly CardScenario[] = [
   ...ISSUE_SCENARIOS,
   ...ECOSYSTEM_SCENARIOS,
   ...CONFIG_SCENARIOS,
+  ...DESIGN_SCENARIOS,
+  ...SUPPORT_SCENARIOS,
+  ...KNOWLEDGE_SCENARIOS,
 ];
 
 /** A card's scenarios, in the order the registry holds them. */

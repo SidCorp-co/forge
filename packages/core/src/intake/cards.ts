@@ -20,5 +20,6 @@ export const INTAKE_REST_CARDS = {
     redFlag: 'An agent answering the reporter’s question for them.',
     family: 'product.ask',
     audience: ['person'],
+    scenarios: ['a reporter’s question answered with an option it did not offer'],
   },
 } satisfies Record<string, CapabilityCardBody>;

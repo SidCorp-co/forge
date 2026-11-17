@@ -59,6 +59,7 @@ export const CLEANUP_REST_CARDS = {
       'Typing the base sha by hand or shortening it: the next window reads its range from it.',
     family: 'debt',
     audience: ['run'],
+    scenarios: ['a cleanup report’s base sha mistyped and stored as given: FB-482'],
   },
   'POST /api/projects/:projectId/debts/:debt/carry': {
     purpose:
@@ -81,6 +82,7 @@ export const CLEANUP_REST_CARDS = {
     redFlag: 'Carrying a debt a change could clear, to make a cleanup report read green.',
     family: 'debt',
     audience: ['master'],
+    scenarios: ['a person-only debt carried as admin, what it trades and what ends it'],
   },
   'POST /api/projects/:projectId/debts/:debt/evidence': {
     purpose: 'Keeps what you learned about an open debt on the debt itself.',
@@ -115,5 +117,6 @@ export const CLEANUP_REST_CARDS = {
     redFlag: 'Withdrawing a carry to make the debt read cleared: it reads red again, not gone.',
     family: 'debt',
     audience: ['master'],
+    scenarios: ['a carry withdrawn once what it waited on happened'],
   },
 } satisfies Record<string, CapabilityCardBody>;

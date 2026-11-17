@@ -16,6 +16,9 @@
 // @direct-test-of packages/core/src/mcp/scenarios-issues.ts
 // @direct-test-of packages/core/src/mcp/scenarios-ecosystem.ts
 // @direct-test-of packages/core/src/mcp/scenarios-config.ts
+// @direct-test-of packages/core/src/mcp/scenarios-design.ts
+// @direct-test-of packages/core/src/mcp/scenarios-support.ts
+// @direct-test-of packages/core/src/mcp/scenarios-knowledge.ts
 // @direct-test-of packages/core/src/lessons/scenario-replay.ts
 // @direct-test-of packages/core/src/support/room-conduct.ts
 // @direct-test-of packages/core/src/support/ops-prompt.ts

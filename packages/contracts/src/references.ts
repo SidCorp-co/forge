@@ -248,7 +248,8 @@ export interface ReferenceSignalsResponse {
 /**
  * The reference-sources door's capability cards, by MCP action (`forge_references`), and the REST
  * card the orientation's Tier-0 map renders for a master and its runs. Written from the situation
- * ISS-1252 names; the replayable scenarios are owed until one is written. A room agent does these
+ * ISS-1252 names; an action agents called carries a scenario from that use
+ * (`core/src/mcp/scenarios-knowledge.ts`), one nobody called carries none. A room agent does these
  * acts through `forge_support`, whose own cards teach it (`core/src/support/reference-cards.ts`):
  * one teaching per act per audience, so none of these is the room agent's.
  */
@@ -286,7 +287,7 @@ export const REFERENCE_CARDS = {
 			"Copying a pattern from a source without citing it, or citing a source you never opened.",
 		family: "references",
 		audience: ["master", "run"],
-		scenarios: [],
+		scenarios: ["a project’s reference sources read before researching"],
 	},
 	cite: {
 		purpose:
@@ -314,7 +315,7 @@ export const REFERENCE_CARDS = {
 			"A citation with no reason for its take or reject: it counts as use and teaches nothing.",
 		family: "references",
 		audience: ["master", "run"],
-		scenarios: [],
+		scenarios: ["a reference source cited with its take and why"],
 	},
 	add: {
 		purpose:
@@ -343,7 +344,7 @@ export const REFERENCE_CARDS = {
 			"Adding a source no one asked for: an agent's own find is a proposal with its evidence.",
 		family: "references",
 		audience: ["master", "run", "person"],
-		scenarios: [],
+		scenarios: ["a source the owner named, added with his why"],
 	},
 	propose: {
 		purpose:
@@ -370,7 +371,7 @@ export const REFERENCE_CARDS = {
 			"Proposing every page read once; a source earns its place by repeated use.",
 		family: "references",
 		audience: ["master", "run"],
-		scenarios: [],
+		scenarios: ["a source proposed by an agent that used it"],
 	},
 	update: {
 		purpose:

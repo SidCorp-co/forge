@@ -19,5 +19,6 @@ export const SKILL_REST_CARDS = {
     redFlag: 'Deleting by a skill’s name or a global skill’s id: it takes the project skill’s id.',
     family: 'setup',
     audience: ['master'],
+    scenarios: ['a skill deleted by a name this project holds none as'],
   },
 } satisfies Record<string, CapabilityCardBody>;

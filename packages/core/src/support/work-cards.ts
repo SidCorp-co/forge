@@ -72,6 +72,7 @@ export const WORK_ACT_CARDS = {
       'Telling the thread a fix is done, or on its way, before the asker’s own yes is cited with support.agree.',
     family: 'room.diagnose',
     audience: ['bot'],
+    scenarios: ['a decider asked to say ok before her own request was filed: ISS-1229'],
   },
   record: {
     purpose:
@@ -211,6 +212,7 @@ export const WORK_ACT_CARDS = {
     redFlag: 'Reading a box file or a production host for what the project document says.',
     family: 'room.facts',
     audience: ['bot'],
+    scenarios: ['OrbitInternal duties naming a box file or production host: ISS-775'],
   },
   issues: {
     purpose:

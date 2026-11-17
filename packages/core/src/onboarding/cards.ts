@@ -46,6 +46,9 @@ export const ONBOARDING_REST_CARDS = {
       'Asking a question with no recommended answer, or posting a recommendation as an item.',
     family: 'onboarding',
     audience: ['run'],
+    scenarios: [
+      'onboarding questions with no recommended answer: ONBOARDING_QUESTION_UNRECOMMENDED',
+    ],
   },
   'POST /api/projects/:id/onboarding/updates': {
     purpose: 'Posts what onboarding read and the designs it drafted, registering them with it.',
@@ -69,6 +72,7 @@ export const ONBOARDING_REST_CARDS = {
     redFlag: 'Drafting designs without naming them in an update, so the close cannot find them.',
     family: 'onboarding',
     audience: ['run'],
+    scenarios: ['an onboarding’s drafted designs named in its update'],
   },
   'POST /api/projects/:id/onboarding/done': {
     purpose: 'Marks onboarding done on its assumptions once every design is proposed.',
@@ -89,6 +93,7 @@ export const ONBOARDING_REST_CARDS = {
       'Holding the close until a person answers: an unanswered question keeps only its item open.',
     family: 'onboarding',
     audience: ['run'],
+    scenarios: ['an onboarding close held until a person answered'],
   },
   'POST /api/projects/:id/onboarding/start': {
     purpose: 'Starts a project’s onboarding, which reads its code and drafts its first designs.',
@@ -105,6 +110,7 @@ export const ONBOARDING_REST_CARDS = {
       'An agent starting a project’s onboarding the person did not ask for, or a second one.',
     family: 'onboarding',
     audience: ['person'],
+    scenarios: ['agent credentials starting an onboarding already started'],
   },
   'POST /api/projects/:id/onboarding/reanalyze': {
     purpose: 'Runs a project’s onboarding read again over code that changed since.',
@@ -120,5 +126,6 @@ export const ONBOARDING_REST_CARDS = {
     redFlag: 'An agent re-running onboarding to refresh designs it can revise itself.',
     family: 'onboarding',
     audience: ['person'],
+    scenarios: ['agents re-running onboarding to refresh designs: forbidden'],
   },
 } satisfies Record<string, CapabilityCardBody>;

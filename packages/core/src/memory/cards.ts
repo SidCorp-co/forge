@@ -39,6 +39,7 @@ export const MEMORY_REST_CARDS = {
     redFlag: 'Reporting a memory outdated without the evidence that disproved it.',
     family: 'memory',
     audience: ['master', 'run'],
+    scenarios: ['a recalled memory reported outdated with no evidence'],
   },
   'POST /api/memory/verify': {
     purpose: 'Stamps one or many memories, by id, as checked and still true now.',
@@ -90,6 +91,7 @@ export const MEMORY_REST_CARDS = {
       'Retiring a sweep one memory per call: the memory write limit runs out before the sweep does.',
     family: 'memory',
     audience: ['master', 'run'],
+    scenarios: ['the same 55 single retires a curation sweep should send as one: ISS-1104'],
   },
   'POST /api/memory/:memoryId/retire': {
     purpose:
@@ -106,5 +108,6 @@ export const MEMORY_REST_CARDS = {
     redFlag: 'Retiring a curation sweep here one memory per call instead of in one list call.',
     family: 'memory',
     audience: ['master', 'run'],
+    scenarios: ['55 memories retired one call each against the write limit: ISS-1104'],
   },
 } satisfies Record<string, CapabilityCardBody>;

@@ -20,5 +20,6 @@ export const ASSISTANT_REST_CARDS = {
     redFlag: 'An agent opening a BA room for itself to work a requirement it can revise directly.',
     family: 'product.requirement',
     audience: ['person'],
+    scenarios: ['a BA room opened by an agent for itself'],
   },
 } satisfies Record<string, CapabilityCardBody>;

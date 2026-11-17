@@ -25,5 +25,6 @@ export const PREVIEW_REST_CARDS = {
       'Opening a preview to test your own change, where a judge run on the deployed build is the act.',
     family: 'product.requirement',
     audience: ['person'],
+    scenarios: ['an idea preview opened by a master probing it'],
   },
 } satisfies Record<string, CapabilityCardBody>;

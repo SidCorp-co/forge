@@ -25,6 +25,7 @@ export const WORKFLOW_REST_CARDS = {
       'Linking the same issue again, or dispatching it before the design it builds is approved.',
     family: 'design',
     audience: ['master', 'run'],
+    scenarios: ['an issue linked twice to the design it builds: WORKFLOW_BUILD_ALREADY_LINKED'],
   },
   'POST /api/projects/:id/workflows/:workflow/observations': {
     purpose:
@@ -84,5 +85,6 @@ export const WORKFLOW_REST_CARDS = {
     redFlag: 'Posting the plan one dependent at a time, or dependents before their bases.',
     family: 'design',
     audience: ['master'],
+    scenarios: ['a base approved twice forcing twelve re-approvals: ISS-387 (HOP)'],
   },
 } satisfies Record<string, CapabilityCardBody>;

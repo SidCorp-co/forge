@@ -21,6 +21,7 @@ export const REPORT_REST_CARDS = {
     redFlag: 'Running a template to read data the asker cannot reach: its queries run as them.',
     family: 'product.bot',
     audience: ['person'],
+    scenarios: ['a report template run by a master probing it'],
   },
   'POST /api/projects/:id/executions': {
     purpose: 'Runs a script over a turn’s report runs on the project’s sandbox executor.',
@@ -36,5 +37,6 @@ export const REPORT_REST_CARDS = {
     redFlag: 'An agent running scripts here to compute what it can compute in its own session.',
     family: 'product.bot',
     audience: ['person'],
+    scenarios: ['a script run by an agent in the person’s sandbox, forbidden'],
   },
 } satisfies Record<string, CapabilityCardBody>;

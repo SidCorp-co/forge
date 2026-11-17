@@ -20,5 +20,6 @@ export const QUESTIONNAIRE_REST_CARDS = {
     redFlag: 'An agent answering a person’s questionnaire for them.',
     family: 'onboarding',
     audience: ['person'],
+    scenarios: ['agents answering a person’s questionnaire for them'],
   },
 } satisfies Record<string, CapabilityCardBody>;

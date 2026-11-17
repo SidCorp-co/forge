@@ -77,6 +77,7 @@ const CARDS = {
       'Closing work and moving on with no audit, or auditing failed: [] while a criterion stood on no proof.',
     family: 'issue-landing',
     audience: ['master', 'run'],
+    scenarios: ['masters and runs closing work with no audit, their misses read nowhere'],
   },
 } satisfies Record<string, CapabilityCardBody>;
 

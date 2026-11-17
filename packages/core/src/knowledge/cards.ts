@@ -54,6 +54,7 @@ export const KNOWLEDGE_REST_CARDS = {
     redFlag: 'Deleting an entry before the one you keep says all it said.',
     family: 'knowledge',
     audience: ['master', 'run'],
+    scenarios: ['per-project rules merged into their org guides, the merged entry deleted'],
   },
   'PUT /api/orgs/:orgId/knowledge/:slug': {
     purpose: 'Writes one org-wide ruling or guide that every project of the organisation reads.',
@@ -90,5 +91,6 @@ export const KNOWLEDGE_REST_CARDS = {
       'Writing an org-wide way of working as a rule on each project: the copies drift apart and none is the source.',
     family: 'knowledge',
     audience: ['master'],
+    scenarios: ['org ways of working seeded as rules on each project: prompt-is-a-map'],
   },
 } satisfies Record<string, CapabilityCardBody>;

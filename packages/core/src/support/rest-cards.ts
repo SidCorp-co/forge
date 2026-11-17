@@ -54,6 +54,7 @@ export const SUPPORT_REST_CARDS = {
       'Editing a post past its window or one that is not yours, where a correction post is the act.',
     family: 'rooms',
     audience: ['master'],
+    scenarios: ['a room post corrected that was not the master’s: SUPPORT_POST_NOT_YOURS'],
   },
   'DELETE /api/projects/:id/support/master-posts/:messageId': {
     purpose: 'Removes a post you made in a room, with its images, within its edit window.',
@@ -69,6 +70,7 @@ export const SUPPORT_REST_CARDS = {
     redFlag: 'Deleting by a chat message id that is not one of your posts’ ids.',
     family: 'rooms',
     audience: ['master'],
+    scenarios: ['a room post deleted by a chat id no master post held: SUPPORT_POST_UNKNOWN'],
   },
   'POST /api/projects/:id/support/master-asks/:askId/answer': {
     purpose: 'Answers a room agent’s ask while a person waits in its thread.',
@@ -102,6 +104,7 @@ export const SUPPORT_REST_CARDS = {
     redFlag: 'Naming the room by its chat rid, which the door answers as not found.',
     family: 'rooms',
     audience: ['master'],
+    scenarios: ['a report thread named by a room this project does not hold'],
   },
   'PUT /api/projects/:id/support/channels/:rid/members/:username': {
     purpose: 'Confirms a channel member’s roles, so the room agent knows who decides what.',
@@ -118,6 +121,7 @@ export const SUPPORT_REST_CARDS = {
     redFlag: 'An agent confirming roles a person did not state, through the channel page’s door.',
     family: 'rooms',
     audience: ['person'],
+    scenarios: ['the steward confirming a member the room’s record held: SUPPORT_MEMBER_SOURCE'],
   },
   'PUT /api/projects/:id/support/channels/:rid/switch': {
     purpose: 'Plans a group’s switch from the bot outside Forge to the project’s channel agent.',
@@ -137,6 +141,7 @@ export const SUPPORT_REST_CARDS = {
       'An agent planning or applying a group’s switch itself: forbidden, it is a person’s act.',
     family: 'rooms',
     audience: ['person'],
+    scenarios: ['the steward planning a group’s switch, forbidden'],
   },
   'POST /api/projects/:id/support/channels/:rid/switch/apply': {
     purpose: 'Applies a planned switch once every duty passed, moving the group to the agent.',
@@ -154,6 +159,7 @@ export const SUPPORT_REST_CARDS = {
     redFlag: 'An agent applying a switch a person has not passed: forbidden, it is a person’s act.',
     family: 'rooms',
     audience: ['person'],
+    scenarios: ['the steward applying a group’s switch, forbidden: REQ-77 BC-16'],
   },
   'POST /api/projects/:id/support/channels/:rid/switch/outside-stopped': {
     purpose: 'Records that the outside process answering as the binding’s own account is stopped.',
@@ -169,6 +175,7 @@ export const SUPPORT_REST_CARDS = {
     redFlag: 'Recording the process stopped before anyone stopped it.',
     family: 'rooms',
     audience: ['person'],
+    scenarios: ['the steward recording an outside bot stopped, forbidden'],
   },
   // run-reads.ts (ISS-707): a run read production through whatever credential its box held
   'POST /api/projects/:id/ops-reads/:name': {
@@ -189,5 +196,6 @@ export const SUPPORT_REST_CARDS = {
       'Reading production through a credential on your box instead of a read the project declares.',
     family: 'issue-work',
     audience: ['run'],
+    scenarios: ['a run reading production through its box’s credential: ISS-707'],
   },
 } satisfies Record<string, CapabilityCardBody>;

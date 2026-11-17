@@ -29,6 +29,7 @@ export const LABEL_REST_CARDS = {
       'Naming a module in a design before the project has its label, or creating a second label beside a plain one.',
     family: 'design',
     audience: ['master'],
+    scenarios: ['a module label created by a master without project admin: ISS-609'],
   },
 } satisfies Record<string, CapabilityCardBody>;
 
@@ -112,6 +113,7 @@ export const MODULE_CARDS = {
     },
     redFlag: 'Placing a record by the paths a change touched rather than by what it is about.',
     audience: ['master', 'run', 'person'],
+    scenarios: ['a requirement placed in the module it is about'],
     family: 'knowledge',
   },
   relate: {
@@ -148,6 +150,7 @@ export const MODULE_CARDS = {
     redFlag:
       'Reaching for a generic "related" kind, or tying everything to everything: a relation says how two are tied.',
     audience: ['master', 'run', 'person'],
+    scenarios: ['a term related to the rules it is used in'],
     family: 'knowledge',
   },
   unrelate: {

@@ -37,6 +37,7 @@ export const MOCKUP_CARDS = {
     redFlag: 'Reading a mockup by a file name or url instead of its MK-n key.',
     family: 'design',
     audience: ['person'],
+    scenarios: ['a person naming a mockup, read by its MK-n key'],
   },
   mockup_comments: {
     purpose: 'Reads every comment on a mockup and its earlier revisions, and where each points.',
@@ -55,6 +56,7 @@ export const MOCKUP_CARDS = {
     redFlag: 'Revising a mockup without reading the comments pinned on its earlier revisions.',
     family: 'design',
     audience: ['person'],
+    scenarios: ['a returned mockup’s comments read before its next revision'],
   },
   mockup_comment: {
     purpose: 'Comments on a mockup, optionally pinned to a point or region of its frame.',
@@ -80,6 +82,7 @@ export const MOCKUP_CARDS = {
     redFlag: 'Commenting on a mockup already decided, where a new revision is the place.',
     family: 'design',
     audience: ['person'],
+    scenarios: ['comments on a closed mockup: MOCKUP_COMMENT_CLOSED'],
   },
   mockup_propose: {
     purpose: 'Proposes a screen or call (MK-n) on the item it shapes, for a person to try.',
@@ -113,6 +116,7 @@ export const MOCKUP_CARDS = {
       'Building the mockup as a local file, pasting it in a chat, or publishing it elsewhere: nobody can find, comment on or pin it.',
     family: 'design',
     audience: ['person'],
+    scenarios: ['mockups kept in local html outside the item they shaped: ISS-78'],
   },
   mockup_accept: {
     purpose: 'Accepts a proposed mockup as what the screen should be.',
@@ -149,6 +153,7 @@ export const MOCKUP_CARDS = {
     redFlag: 'Returning a mockup with no reason its next revision can answer.',
     family: 'design',
     audience: ['person'],
+    scenarios: ['a tried mockup returned with what its next revision must change'],
   },
   mockup_withdraw: {
     purpose: 'Takes back a mockup its author proposed, while it still waits.',
@@ -163,6 +168,7 @@ export const MOCKUP_CARDS = {
     redFlag: 'Withdrawing a mockup a person already decided.',
     family: 'design',
     audience: ['person'],
+    scenarios: ['a wrong mockup withdrawn before anyone decided it'],
   },
 } satisfies Record<
   Extract<(typeof DESIGN_TOOL_ACTIONS)[number], `mockup_${string}`>,
