@@ -2,8 +2,8 @@
 //! as `claude --bg`, parented by Claude Code's own background service, and take messages over the
 //! session's peer socket. No tmux pane holds them and nothing is typed into a composer.
 //!
-//! - [`roster`]: what `claude agents --json` lists, and the session that serves a project
-//!   ([`session_for`]). The permission watcher reads this seam only.
+//! - [`roster`]: what `claude agents --json` lists, and the session named for a project
+//!   ([`find`]). The permission watcher reads this seam only.
 //! - [`peer`]: one message written to a session's peer socket, delivered only once its `msg_id`
 //!   stands in the session's transcript.
 //! - [`launch`]: the `claude --bg` a session is started or resumed with, the settings file it
@@ -34,7 +34,7 @@ pub mod version;
 
 pub use launch::{BgLaunch, Started};
 pub use peer::{Priority, Receipt, Refused};
-pub use roster::{find, list, list_all, session_for, BgSession, RosterError};
+pub use roster::{find, list, list_all, BgSession, RosterError};
 
 /// Which resident a background session is, and so the name it carries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -55,7 +55,7 @@ impl Kind {
 }
 
 /// The name a project's session of `kind` runs under (`claude --bg --name`), which
-/// [`session_for`] finds it by: `forge-master-<slug>` or `forge-chat-<slug>`, the names the panes
+/// [`find`] finds it by: `forge-master-<slug>` or `forge-chat-<slug>`, the names the panes
 /// carried, so the ledger's rows keyed on them still name the same resident.
 pub fn session_name(kind: Kind, slug: &str) -> String {
     crate::terminal::session_name(kind.prefix(), slug)

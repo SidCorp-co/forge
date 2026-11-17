@@ -127,20 +127,6 @@ pub fn named<'a>(roster: &'a [BgSession], name: &str) -> Option<&'a BgSession> {
         .max_by_key(|s| (s.is_live(), s.started_at.unwrap_or(0)))
 }
 
-/// The background session serving `slug`'s `kind`, live or stopped; `Ok(None)` where the roster
-/// holds none, `Err` where it could not be read.
-pub async fn session_for(kind: Kind, slug: &str) -> Result<Option<BgSession>, RosterError> {
-    let roster = match kind {
-        Kind::Master => list_all().await?,
-        // a room agent's session is listed only inside its room's sandbox (ISS-1268 BR)
-        Kind::Chat => match super::room::Host::of(slug) {
-            Ok(host) => host.roster().await?,
-            Err(_) => return Ok(None),
-        },
-    };
-    Ok(find(&roster, kind, slug).cloned())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
