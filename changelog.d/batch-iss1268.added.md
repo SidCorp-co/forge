@@ -1,1 +1,0 @@
-**Room agents run as background sessions too.** Each runs in a sandbox of its own, which cannot see or message the box's masters or other rooms, and takes messages with a receipt. Open one live with `forge-runner chat attach <slug>`.

@@ -1,1 +1,0 @@
-**A master knows who a message is from.** The owner's word reaches it as the owner's instruction, another agent's as a request that approves nothing, and Forge's own reminders as written. A message sent while it works counts as delivered.

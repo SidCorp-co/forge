@@ -1,1 +1,0 @@
-**Room agents follow the brief this build renders.** A resident session is retold a changed brief; every card carries a scenario; the lessons map and always-on rules name what runs past their cap; applied lessons count and fold.

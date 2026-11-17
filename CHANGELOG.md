@@ -9,6 +9,22 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.713] - 2026-11-17
+
+Agents run as watchable background sessions and learn from lessons they use
+
+### Added
+
+- **Room agents run as background sessions too.** Each runs in a sandbox of its own, which cannot see or message the box's masters or other rooms, and takes messages with a receipt. Open one live with `forge-runner chat attach <slug>`.
+- **A master never hangs silently on a permission prompt.** Forge asks you to allow or deny it; unanswered after 5 minutes it is denied and you are told. A dialog that slips past is answered and reported in seconds.
+- **A chat reply now streams as it is written.** Stop ends the turn at once and the chat carries on; a message can steer the turn or wait. Retries, rate limits and context show live; subagents nest under their call.
+
+### Changed
+
+- **A master knows who a message is from.** The owner's word reaches it as the owner's instruction, another agent's as a request that approves nothing, and Forge's own reminders as written. A message sent while it works counts as delivered.
+- **Masters run as Claude Code background sessions.** Messages reach them over the session's own socket and count as delivered only once the session records them; nothing is typed into a pane. Open one live with `forge-runner master attach <slug>`.
+- **Room agents follow the brief this build renders.** A resident session is retold a changed brief; every card carries a scenario; the lessons map and always-on rules name what runs past their cap; applied lessons count and fold.
+
 ## [0.4.0-dev.712] - 2026-11-17
 
 A master waiting for a run slot now gets the next free one
