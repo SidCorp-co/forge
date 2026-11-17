@@ -15,6 +15,7 @@ import { approvalsOfRuns, assertApprovalAllowsAttempt, requestApproval } from '.
 import { label, type ReleaseMergeStep } from './change-request-roster.js';
 import { assertDeclaredGate } from './declared-gate.js';
 import { RELEASE_GATE_STATUS, resolveReleaseDeclaration } from './gate.js';
+import { type NamedPromotionRead, namedPromotionSentence } from './promotion-named.js';
 import {
   type Across,
   type PromotionDeclaration,
@@ -68,6 +69,8 @@ export async function cutPromotionRelease(
     userId: string;
     naming?: ReleaseNaming | null;
     promotion?: { request: number } | undefined;
+    /** What the host said of `promotion.request` where the projection lacked it (ISS-1281). */
+    named?: NamedPromotionRead | null;
     /** The version the agent named at the cut, in the stored shape (ISS-1034). */
     version?: string | undefined;
   },
@@ -90,7 +93,7 @@ export async function cutPromotionRelease(
     const open = held.map((r) => label(r)).join(', ');
     throw refuseRelease(
       'RELEASE_PROMOTION_REQUEST_UNKNOWN',
-      `!${args.promotion.request} is not a change request this project holds across its promotion ${across}: one from \`${decl.promotion.from}\`, or from a branch pinning a head \`${decl.promotion.from}\` is recorded holding, into \`${decl.promotion.to}\`, open or merged and not yet released${open ? `; those are ${open}` : ''}.${await otherBranchOf(projectId, decl.promotion, args.promotion.request)} Name one of them, or wait for the host's hook to bring the request in.`,
+      `!${args.promotion.request} is not a change request this project holds across its promotion ${across}: one from \`${decl.promotion.from}\`, or from a branch pinning a head \`${decl.promotion.from}\` is recorded holding, into \`${decl.promotion.to}\`, open or merged and not yet released${open ? `; those are ${open}` : ''}.${await otherBranchOf(projectId, decl.promotion, args.promotion.request)} ${args.named ? namedPromotionSentence(args.named, across) : 'Name one of them.'}`,
       '/promotion/request',
     );
   }

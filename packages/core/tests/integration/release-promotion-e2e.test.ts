@@ -135,7 +135,7 @@ describe('BC-9: an external production with one declared promotion is a release 
     const roster = await call('GET', '/release-readiness');
     // the readiness names which issues wait on the promotion, not only how many
     expect(JSON.stringify(roster.body)).toContain(
-      'None is open, or merged and not yet released, so nothing would ship 2 issues named here (`ISS-1`, `ISS-2`).',
+      "Forge's record of the host holds none open, or merged and not yet released, so nothing would ship 2 issues named here (`ISS-1`, `ISS-2`).",
     );
     const none = await cutNaming(ids, 5053);
     expect(codeOf(none.body), JSON.stringify(none.body)).toBe('RELEASE_PROMOTION_MISSING');

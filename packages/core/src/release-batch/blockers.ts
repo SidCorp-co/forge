@@ -35,6 +35,7 @@ import { claimConflictDetails, readClaimConflicts } from './claim-conflicts.js';
 import { criteriaHold } from './criteria-hold.js';
 import { endedRunBlocker } from './ended-claims.js';
 import { RELEASE_GATE_STATUS, type ReleaseDeclaration, resolveReleaseDeclaration } from './gate.js';
+import type { NamedPromotionRead } from './promotion-named.js';
 import { promotionBlockers } from './promotion-standing.js';
 import { getActiveReleaseBatch } from './queries.js';
 import { blockerRefusal, releaseBlockedRefusal } from './refuse.js';
@@ -441,7 +442,7 @@ async function changeRequestReleaseBlockers(
       collected((o) =>
         read.kind === 'change-requests'
           ? changeRequestBlockers(projectId, rosterOf(f.value), o)
-          : promotionBlockers(projectId, read, rosterOf(f.value), o),
+          : promotionBlockers(projectId, read, rosterOf(f.value), o, options.promotion ?? null),
       ),
     ),
     foundRead.then((f) => batchBlockers(projectId, options, f.value)),
@@ -463,11 +464,16 @@ export * from './blocker-kit.js';
  * A door's one blocker pass, refusing with every reason it found, the first first (ISS-1127). Every
  * id is then an issue at this project's gate, so its lower-case spelling is the row's own.
  */
-export async function admitRoster(projectId: string, named: string[], door: ReleaseDoor) {
+export async function admitRoster(
+  projectId: string,
+  named: string[],
+  door: ReleaseDoor,
+  promotion: NamedPromotionRead | null = null,
+) {
   // outside strict a missing note is drafted here, at the act, never refused (REQ-79 r6 BC-16)
   if ((await readGateProfile(projectId)) !== 'strict')
     await draftMissingReleaseNotes(projectId, named);
-  const report = await collectReleaseBlockers(projectId, { issueIds: named, door });
+  const report = await collectReleaseBlockers(projectId, { issueIds: named, door, promotion });
   if (!report.projectExists) throw blockerRefusal('NO_RELEASE_GATE');
   const refusal = releaseBlockedRefusal(report);
   if (refusal) throw refusal;

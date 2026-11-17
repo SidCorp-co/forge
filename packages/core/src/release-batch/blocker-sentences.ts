@@ -15,6 +15,12 @@ import { claimConflictSentence, readClaimConflictDetails } from './claim-conflic
 import type { ReleaseDeclaration } from './gate.js';
 import { gateCheckLead } from './gate-check-sentence.js';
 import type { ReleaseChannel } from './plan.js';
+import {
+  isNamedPromotionRead,
+  type NamedPromotionRead,
+  namedPromotionSentence,
+  OPEN_PROMOTION,
+} from './promotion-named.js';
 import type { ServingReading } from './serving-reading.js';
 import { atUtcMinute } from './utc-minute.js';
 
@@ -70,6 +76,8 @@ export interface CollectReleaseBlockersOptions {
   serving?: ServingReading | undefined;
   /** Read beside `serving` (ISS-1368), or why it failed; absent, equality alone weighs a verdict. */
   weighing?: Weighing | string | undefined;
+  /** The request a promotion cut names, read from the host by the CALLER where unheld (ISS-1281). */
+  promotion?: NamedPromotionRead | null | undefined;
 }
 
 const REMEDY: Record<ReleaseBlockerCode, string> = {
@@ -109,8 +117,7 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
     'This project releases through change requests (`release.changeRequests`): a release is its requests merged in order once the owner approves the cut, so a landing is not recorded by hand. Cut a release naming the issues (`POST /api/projects/:id/release-batches`), have it approved, then merge each request through `POST /api/issues/:id/merge-pull-request`; the last merge closes the release.',
   RELEASE_DEPLOYED_OUTSIDE:
     "This project's production is deployed outside Forge by the door its environment names (`deployment.target`), so Forge cuts and deploys nothing: a release is the record of that door's deploy. Once it lands, record it — `POST /api/projects/:id/release-records` with `{ issueIds, version, account }`, `version` the release you shipped (`v1.31.1`): your record closes the roster.",
-  RELEASE_PROMOTION_MISSING:
-    'This project releases through its promotion: production is deployed outside Forge, and a release is the change request {promotion}. None is open, or merged and not yet released, so nothing would ship {named}. Open it at a head judged on the branch work lands on, then cut again naming it as `promotion.request`.',
+  RELEASE_PROMOTION_MISSING: `This project releases through its promotion: production is deployed outside Forge, and a release is the change request {promotion}. Forge's record of the host holds none open, or merged and not yet released, so nothing would ship {named}. ${OPEN_PROMOTION}`,
   RELEASE_SHIPPED_IN_OWED:
     '{named} {have} a merged mark written only after release {versions} was cut, which may already hold {their} landing, so a new release could find nothing of {them} new. The agent checks with git which release holds each landing and records it (`POST /api/projects/:id/shipped-in-records` with `issueId`, `version` and `evidence`, `version: null` where none does), then cut again.',
   RELEASE_GATE_CHECK_RED:
@@ -339,7 +346,9 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
       typeof details?.from === 'string' && typeof details?.to === 'string'
         ? `from \`${details.from}\` into \`${details.to}\``
         : 'across its declared promotion';
-    return remedy.replace('{promotion}', across);
+    const named = isNamedPromotionRead(details?.request) ? details.request : null;
+    const said = remedy.replace('{promotion}', across);
+    return named ? said.replace(OPEN_PROMOTION, namedPromotionSentence(named, across)) : said;
   }
   if (code === 'RELEASE_SHIPPED_IN_OWED' && Array.isArray(details?.versions)) {
     return fillNamed(remedy.replace('{versions}', details.versions.join(', ')), details);

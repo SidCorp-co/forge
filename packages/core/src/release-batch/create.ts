@@ -30,7 +30,9 @@ import { RELEASE_GATE_STATUS } from './gate.js';
 import { landedOnTargetOf } from './landed-on-target.js';
 import { carryNaming } from './naming.js';
 import { RELEASE_BATCH_SKILL, releaseBranches } from './plan.js';
+import type { NamedPromotionRead } from './promotion-named.js';
 import { cutPromotionRelease } from './promotion-release.js';
+import { rereadNamedPromotion } from './promotion-reread.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
 import { askProviderLiveGate } from './provider-live.js';
 import { RECORDED_VERIFICATION } from './recorded.js';
@@ -76,8 +78,12 @@ export interface CreateReleaseBatchResult {
 }
 
 /** The batch door's admission, and a call naming no issue while issues wait refused by name. */
-async function admitBatch(projectId: string, named: string[]) {
-  const admitted = await admitRoster(projectId, named, 'batch');
+async function admitBatch(
+  projectId: string,
+  named: string[],
+  promotion: NamedPromotionRead | null,
+) {
+  const admitted = await admitRoster(projectId, named, 'batch', promotion);
   // After the report, so every project reason outranks it. An empty gate is already
   // `RELEASE_ROSTER_EMPTY` there; reaching here, issues are waiting and this call named none.
   if (admitted.issueIds.length === 0) {
@@ -247,12 +253,17 @@ export async function createReleaseBatch(
   const { projectId, userId } = args;
 
   const code = await withoutDesignOnly(projectId, args.issueIds);
-  const { report, issueIds } = await admitBatch(projectId, code);
+  // a promotion request the projection lacks is read from the host once before any refusal (ISS-1281)
+  const named =
+    args.promotion && code.length > 0
+      ? await rereadNamedPromotion(projectId, args.promotion.request)
+      : null;
+  const { report, issueIds } = await admitBatch(projectId, code, named);
   if (report.declaration?.kind === 'change-requests') {
     return cutChangeRequestRelease({ ...args, issueIds }, report.declaration.defaultBranch);
   }
   if (report.declaration?.kind === 'promotion') {
-    return cutPromotionRelease({ ...args, issueIds }, report.declaration, openClaimedRun);
+    return cutPromotionRelease({ ...args, issueIds, named }, report.declaration, openClaimedRun);
   }
   if (args.changeRequests) {
     throw refuseRelease(

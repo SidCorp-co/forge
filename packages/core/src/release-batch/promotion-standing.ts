@@ -10,6 +10,7 @@ import { blocker } from './blocker-kit.js';
 import type { ReleaseBlocker } from './blocker-sentences.js';
 import { shown } from './change-request-roster.js';
 import type { ReleaseDeclaration } from './gate.js';
+import type { NamedPromotionRead } from './promotion-named.js';
 
 export type PromotionDeclaration = Extract<ReleaseDeclaration, { kind: 'promotion' }>;
 export type Across = PromotionDeclaration['promotion'];
@@ -116,13 +117,16 @@ export async function requestFromOtherBranch(
 
 /**
  * The readiness reason of a promotion release: no request across the promotion is open, or merged and
- * not yet released. A projection read; the roster the request carries is the agent's to state.
+ * not yet released. A projection read; the roster the request carries is the agent's to state. Where
+ * the cut named a request the projection lacked, `named` is what the host said of it when the caller
+ * read it (ISS-1281), and the reason says that rather than that none is open.
  */
 export async function promotionBlockers(
   projectId: string,
   decl: PromotionDeclaration,
   roster: readonly string[],
   out: ReleaseBlocker[],
+  named: NamedPromotionRead | null = null,
 ): Promise<void> {
   if (roster.length === 0) return;
   const [request] = await requestsAcross(projectId, decl.promotion);
@@ -132,6 +136,7 @@ export async function promotionBlockers(
       issueIds: [...roster],
       displayIds: await shown([...roster]),
       ...decl.promotion,
+      ...(named ? { request: named } : {}),
     }),
   );
 }

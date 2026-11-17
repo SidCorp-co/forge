@@ -1,0 +1,1 @@
+**A release cut can name a promotion request opened moments ago.** Forge reads it from the host before refusing, and a refusal says whether the request is missing on the host or the host could not be read.
