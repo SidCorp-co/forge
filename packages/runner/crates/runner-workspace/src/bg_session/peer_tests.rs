@@ -23,6 +23,12 @@ fn only_a_line_carrying_the_message_as_its_origin_is_a_receipt() {
     assert_eq!(seen_in(&format!("{quoted}\n{taken}\n"), id), Seen::Taken);
     let dropped = r#"{"type":"system","content":"Dropped a peer message from pid 9: exceeded the peer message rate limit"}"#;
     assert!(matches!(seen_in(dropped, id), Seen::Dropped(_)));
+    // taken mid-turn, 2.1.322 writes only the queued command, its origin inside the attachment
+    let mid_turn = r#"{"type":"attachment","attachment":{"type":"queued_command","prompt":"x","origin":{"kind":"peer","from":"unknown","msg_id":"m-1"},"isMeta":true},"rendered":[{"content":"x"}]}"#;
+    assert_eq!(seen_in(mid_turn, id), Seen::Taken);
+    let rendered_only =
+        r#"{"type":"attachment","attachment":{"type":"queued_command","prompt":"m-1"}}"#;
+    assert_eq!(seen_in(rendered_only, id), Seen::NotYet);
 }
 
 #[test]

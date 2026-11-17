@@ -222,12 +222,18 @@ pub enum Seen {
     NotYet,
 }
 
+/// A message the session took between turns is a `user` line carrying it as its `origin`; one it
+/// took mid-turn (measured on 2.1.322, ISS-1268 B4 plant, `b4wire/`) is only a `queued_command`
+/// attachment carrying it as `attachment.origin`, and no later line names it. Either is its receipt.
 pub fn seen_in(text: &str, msg_id: &str) -> Seen {
     for line in text.lines() {
         if line.contains(msg_id) {
-            let origin = serde_json::from_str::<Value>(line)
-                .ok()
-                .and_then(|v| v.get("origin")?.get("msg_id")?.as_str().map(str::to_string));
+            let origin = serde_json::from_str::<Value>(line).ok().and_then(|v| {
+                let origin = v
+                    .get("origin")
+                    .or_else(|| v.get("attachment")?.get("origin"))?;
+                origin.get("msg_id")?.as_str().map(str::to_string)
+            });
             if origin.as_deref() == Some(msg_id) {
                 return Seen::Taken;
             }
