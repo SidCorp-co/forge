@@ -1,7 +1,8 @@
 // A requirement revision's kind and its one picture (REQ-35; Requirement lifecycle r14, steps
 // picture, picture_none and picture_shown). The kind names what the requirement is; the picture is
 // a rough sketch of it, chosen by that kind, shown at once with no accept, replaced in place by
-// anyone who may edit the requirement, and read by no guard, checklist, turn rule or baseline.
+// anyone who may edit the requirement, and read by no guard, turn rule or baseline. The ready
+// checklist reads a rule's example table only as its way past a workflow design (REQ-93 BC-1).
 // Core's CHECKs, REST and the web import the kinds, the content schemas and the view from here.
 
 import { z } from "zod";

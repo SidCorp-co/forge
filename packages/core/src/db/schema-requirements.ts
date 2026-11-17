@@ -177,7 +177,8 @@ export const requirementRevisions = pgTable(
     writtenLang: text('written_lang', { enum: WRITTEN_LANGS }),
     // what the requirement is and its one picture (REQ-35, Requirement lifecycle r14): neither is
     // frozen with the text (`requirement_revision_guard()` reads neither), since the author corrects
-    // the kind and anyone who may edit replaces the picture, and nothing gates on either
+    // the kind and anyone who may edit replaces the picture, and nothing gates on either but the
+    // ready checklist, where a rule's examples stand in for a workflow design (REQ-93 BC-1)
     kind: text('kind', { enum: REQUIREMENT_KINDS }),
     pictureId: uuid('picture_id').references((): AnyPgColumn => requirementPictures.id),
   },

@@ -21,6 +21,7 @@ import type { Tx } from '../db/client.js';
 import {
   requirementCriteria,
   requirementCriterionSteps,
+  requirementPictures,
   requirementRevisions,
   requirements,
 } from '../db/schema-requirements.js';
@@ -28,6 +29,7 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { openAmong } from '../questions/index.js';
 import type { DeliveryProof } from './acceptance-rules.js';
 import { requirementDependents } from './dependents.js';
+import { examplesIn } from './picture-rules.js';
 import { linkedDesigns } from './read.js';
 
 /** The longest record answer kept on a move: the record itself holds the whole text. */
@@ -78,6 +80,8 @@ export interface ReadyFacts {
   designs: { flow: string; approvedRevision: number | null }[];
   /** The live criteria (as `criteria`) tracing no step or link of any linked design. */
   untraced: string[];
+  /** The rows of the example table the revision shows (input and expected result); 0 with none. */
+  examples: number;
   /** The language the head revision was written in; null where it was written before that was stored. */
   writtenLang: WrittenLang | null;
 }
@@ -98,6 +102,8 @@ const goalGap = (
  */
 function tracedAnswer(f: ReadyFacts): RecordAnswer {
   const [design] = f.designs;
+  if (!design && f.kind === 'rule')
+    return { value: 'Nothing to trace: a rule is judged on its examples.' };
   if (!design) return { value: 'No linked workflow design to trace onto yet.' };
   if (f.criteria.length === 0) return { value: 'No business criterion to trace yet.' };
   if (f.untraced.length === 0) {
@@ -107,6 +113,41 @@ function tracedAnswer(f: ReadyFacts): RecordAnswer {
   return {
     gap: `${f.untraced.join(', ')} ${n === 1 ? 'traces' : 'trace'} no step or link of a linked workflow design.`,
     fix: `Trace ${n === 1 ? 'it' : 'each'} to the steps it touches on the requirement page, or with ${criterionStepsCall(f.key, design.flow)} per criterion; a trace with at least one step or link passes.`,
+  };
+}
+
+/**
+ * Which workflows it touches. A rule linking no design is judged on its examples instead (REQ-93
+ * BC-1); every other kind owes a linked design, and a rule linking one never owes a table (REQ-35 BC-14).
+ */
+function workflowsAnswer(f: ReadyFacts): RecordAnswer {
+  if (f.designs.length > 0) {
+    return {
+      // an unapproved one is refused by the agree's own design guard (REQUIREMENT_DESIGN_UNAPPROVED)
+      value: clipped(
+        f.designs
+          .map((d) =>
+            d.approvedRevision === null
+              ? `${d.flow}, not approved yet`
+              : `${d.flow} revision ${d.approvedRevision}`,
+          )
+          .join('; '),
+      ),
+    };
+  }
+  if (f.kind === 'rule' && f.examples > 0) {
+    const n = f.examples === 1 ? '1 example' : `${f.examples} examples`;
+    return { value: `None: a rule is judged on its ${n} of an input and its expected result.` };
+  }
+  if (f.kind === 'rule') {
+    return {
+      gap: 'It is a rule with no examples, and it links no workflow design.',
+      fix: `Draw its example table, each row an input and the result expected of it (PUT /api/projects/:id/requirements/${f.key}/revisions/${f.head}/picture { "kind": "example_table", "alt": <one sentence>, "content": { "rows": [{ "input": <input>, "expected": <expected result> }] } }), or link the workflow design it serves.`,
+    };
+  }
+  return {
+    gap: 'It links no workflow design.',
+    fix: `Link each workflow design it changes or serves (POST /api/projects/:id/requirements/${f.key}/workflows { "workflowId": <design uuid> }), then trace each criterion to the steps it rests on (${CRITERION_STEPS_ROUTE}); a rule is judged on its example table instead.`,
   };
 }
 
@@ -194,24 +235,7 @@ export function readyAnswersOf(f: ReadyFacts): RecordAnswers {
           fix: 'Answer each one, or write a revision that no longer marks it blocking.',
         }
       : { value: 'None open.' },
-    workflows:
-      f.designs.length === 0
-        ? {
-            gap: 'It links no workflow design.',
-            fix: `Link each workflow design it changes or serves (POST /api/projects/:id/requirements/${f.key}/workflows { "workflowId": <design uuid> }), then trace each criterion to the steps it rests on (${CRITERION_STEPS_ROUTE}).`,
-          }
-        : {
-            // an unapproved one is refused by the agree's own design guard (REQUIREMENT_DESIGN_UNAPPROVED)
-            value: clipped(
-              f.designs
-                .map((d) =>
-                  d.approvedRevision === null
-                    ? `${d.flow}, not approved yet`
-                    : `${d.flow} revision ${d.approvedRevision}`,
-                )
-                .join('; '),
-            ),
-          },
+    workflows: workflowsAnswer(f),
     traced: tracedAnswer(f),
     outOfScope: scopeOut.length
       ? { value: clipped(scopeOut.join('; ')) }
@@ -276,6 +300,7 @@ export async function readyFactsIn(tx: Tx, requirementId: string): Promise<Ready
       openBlocking: [],
       designs: [],
       untraced: [],
+      examples: 0,
       writtenLang: null,
     };
   }
@@ -295,8 +320,10 @@ export async function readyFactsAt(
       spec: requirementRevisions.spec,
       kind: requirementRevisions.kind,
       writtenLang: requirementRevisions.writtenLang,
+      picture: { kind: requirementPictures.kind, content: requirementPictures.content },
     })
     .from(requirementRevisions)
+    .leftJoin(requirementPictures, eq(requirementPictures.id, requirementRevisions.pictureId))
     .where(
       and(
         eq(requirementRevisions.requirementId, requirementId),
@@ -339,6 +366,7 @@ export async function readyFactsAt(
       criteria,
       designs.map((d) => d.workflowId),
     ),
+    examples: examplesIn(rev.picture),
     writtenLang: rev.writtenLang ?? null,
   };
 }

@@ -30,6 +30,7 @@ const ready: ReadyFacts = {
   openBlocking: [],
   designs: [{ flow: 'referral-intake', approvedRevision: 3 }],
   untraced: [],
+  examples: 0,
   writtenLang: 'en',
 };
 
@@ -250,6 +251,42 @@ describe('the ready checklist, read from the head revision', () => {
     expect(
       e.gaps.every((g) => g.detail.includes('REQ-7 has no current or proposed revision yet.')),
     ).toBe(true);
+  });
+});
+
+// ISS-1285 (REQ-93 BC-1, FB-604): a rule, a repository guardrail say, has no flow to draw
+describe('the ready checklist on a rule', () => {
+  it('judges a rule that links no design on its examples, and every other kind still on a design', () => {
+    const rule = judge({ ...ready, kind: 'rule', designs: [], examples: 2 });
+    expect(rule.complete).toBe(true);
+    expect(rule.answers.find((a) => a.question === 'workflows')?.value).toBe(
+      'None: a rule is judged on its 2 examples of an input and its expected result.',
+    );
+    expect(rule.answers.find((a) => a.question === 'traced')?.value).toBe(
+      'Nothing to trace: a rule is judged on its examples.',
+    );
+    for (const kind of ['process', 'screen', 'report', null]) {
+      const [gap, ...more] = checklistRefusals(judge({ ...ready, kind, designs: [], examples: 2 }));
+      expect(more, String(kind)).toEqual([]);
+      expect(gap?.question, String(kind)).toBe('workflows');
+      expect(gap?.detail, String(kind)).toContain('It links no workflow design.');
+    }
+  });
+
+  it('names the missing examples of a rule that links no design, and the route that draws them', () => {
+    const [gap, ...more] = checklistRefusals(judge({ ...ready, kind: 'rule', designs: [] }));
+    expect(more).toEqual([]);
+    expect(gap).toMatchObject({ code: 'CHECKLIST_INCOMPLETE', question: 'workflows' });
+    expect(gap?.detail).toContain(
+      'It is a rule with no examples, and it links no workflow design.',
+    );
+    expect(gap?.detail).toContain(
+      'PUT /api/projects/:id/requirements/REQ-7/revisions/2/picture { "kind": "example_table"',
+    );
+  });
+
+  it('never asks a rule that links a design for examples (REQ-35 BC-14)', () => {
+    expect(judge({ ...ready, kind: 'rule', examples: 0 }).complete).toBe(true);
   });
 });
 

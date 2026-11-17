@@ -3,7 +3,8 @@
  * or replaced`) as pure functions over what the service read: the content is the kind's, a rule's
  * table has an input and an expected result in every row, a text alternative is given, and a
  * superseded revision is evidence. Each refusal is named; nothing is written. No other guard reads a
- * picture (BC-14).
+ * picture (BC-14); the ready checklist reads a rule's examples (`examplesIn`) only as its way past
+ * the workflow design it would otherwise owe (REQ-93 BC-1), so a missing picture still blocks nothing.
  */
 
 import {
@@ -76,6 +77,17 @@ export function rowRefusals(table: ExampleTableContent): RequirementRefusal[] {
       },
     ];
   });
+}
+
+/**
+ * The examples a revision's picture holds: the rows of its example table with both an input and an
+ * expected result, 0 for any other picture or none. The ready checklist judges a rule on them in
+ * place of a linked workflow design (REQ-93 BC-1); no guard here reads them.
+ */
+export function examplesIn(picture: { kind: string; content: unknown } | null): number {
+  if (picture?.kind !== 'example_table') return 0;
+  const { rows } = picture.content as ExampleTableContent;
+  return rows.filter((r) => r.input?.trim() && r.expected?.trim()).length;
 }
 
 /** A picture carries a short text alternative a screen reader reads in its place (BC-12). */

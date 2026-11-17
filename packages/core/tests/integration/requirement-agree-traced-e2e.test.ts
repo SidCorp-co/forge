@@ -9,6 +9,10 @@
  * running product, read off its form, naming each one and why; it is taken once each is rewritten as
  * what holds, and an accept that re-baselines an agreed requirement is refused by the same question.
  *
+ * ISS-1285 (REQ-93 BC-1, FB-604): a rule that links no design is agreed on its examples, the rows of
+ * its example table, and refused naming them while it has none; a process linking none is still
+ * refused naming the design it lacks.
+ *
  * @direct-test-of packages/core/src/requirements/checklist-record.ts
  * @direct-test-of packages/core/src/requirements/agree.ts
  * @direct-test-of packages/contracts/src/criterion-checkable.ts
@@ -151,6 +155,37 @@ describe('the agree of a requirement whose criteria trace no step', () => {
     const res = await agree(key);
     expect(res.status).toBe(422);
     expect(refusalsOf(res.body).map((r) => r.question)).toEqual(['workflows']);
+  });
+});
+
+describe('the agree of a rule that links no workflow design', () => {
+  it('is refused naming its missing examples, and taken once its example table holds them', async () => {
+    const key = await requirementAtR1('rule', []);
+    const none = await agree(key);
+    expect(none.status).toBe(422);
+    expect(refusalsOf(none.body).map((r) => [r.question, r.detail])).toEqual([
+      [
+        'workflows',
+        expect.stringContaining('It is a rule with no examples, and it links no workflow design.'),
+      ],
+    ]);
+    await ok(
+      api(token, 'PUT', at(`/requirements/${key}/revisions/1/picture`), {
+        kind: 'example_table',
+        alt: 'A card payment and the order it confirms.',
+        content: { rows: [{ input: 'a card payment', expected: 'the order is confirmed' }] },
+      }),
+    );
+    await ok(agree(key));
+  });
+
+  it('leaves a process that links no design refused, naming the design it lacks', async () => {
+    const key = await requirementAtR1('process', []);
+    const res = await agree(key);
+    expect(res.status).toBe(422);
+    expect(refusalsOf(res.body).map((r) => [r.question, r.detail])).toEqual([
+      ['workflows', expect.stringContaining('It links no workflow design.')],
+    ]);
   });
 });
 
