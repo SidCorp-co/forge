@@ -8,6 +8,7 @@ import type {
   PeerMergeMark,
   PeerReleaseNote,
 } from '../integrations/peer-forge/index.js';
+import { textNamesIssueKey } from '../lib/issue-ref.js';
 
 /**
  * How far an issue's work has come, in both vocabularies: forge-dev's ten statuses and the
@@ -196,8 +197,6 @@ export function firstLineOf(description: string | null): string {
   return (description ?? '').split(/\r?\n/, 1)[0] ?? '';
 }
 
-const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
 /**
  * Whether a dev issue's first line names this beta issue: its id anywhere, or its key as a whole
  * word on a line that also says forge-beta (a key alone names an issue on any instance).
@@ -209,7 +208,7 @@ export function firstLineNamesBetaIssue(
   const line = firstLine.toLowerCase();
   if (line.includes(beta.id.toLowerCase())) return true;
   if (!line.includes('forge-beta')) return false;
-  return new RegExp(`(^|[^A-Za-z0-9-])${escapeRe(beta.key)}(?![0-9])`, 'i').test(firstLine);
+  return textNamesIssueKey(firstLine, beta.key);
 }
 
 /**

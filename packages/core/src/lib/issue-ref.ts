@@ -7,6 +7,15 @@ const REF_SHAPE = /^\s*(?:([A-Za-z][A-Za-z0-9]{1,5})-)?(\d{1,10})\s*$/;
 
 export const ISS_SEQ_MAX = 2_147_483_647;
 
+/**
+ * Whether `text` names the issue `key` as a whole token, in any case: `ISS-12` names ISS-12, never
+ * ISS-120 or XISS-12. The one reading of "a commit subject, a note or a first line names this issue".
+ */
+export function textNamesIssueKey(text: string, key: string): boolean {
+  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?<![A-Za-z0-9-])${escaped}(?![0-9])`, 'i').test(text);
+}
+
 export function formatIssueRef(prefix: string | null | undefined, issSeq: number): string {
   return `${prefix ?? LEGACY_ISSUE_PREFIX}-${issSeq}`;
 }

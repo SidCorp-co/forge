@@ -9,7 +9,7 @@
 
 import { fingerprint } from '@forge/contracts/fingerprint';
 import { MEMORY_MIRROR_SOURCES, type MemoryRefusalCode } from '@forge/contracts/memory';
-import { formatIssueRef } from '../lib/issue-ref.js';
+import { formatIssueRef, textNamesIssueKey } from '../lib/issue-ref.js';
 import { refuser } from '../lib/refusal.js';
 import { memoryIssueReads } from './ports.js';
 
@@ -62,7 +62,7 @@ const keepBoth = (source: string) =>
 
 /** The text names the issue, so the issue's Memory tab and its cites find the note. */
 const naming = (text: string, key: string) =>
-  new RegExp(`(^|[^A-Za-z0-9-])${key}(?![0-9])`, 'i').test(text) ? text : `${text} (${key})`;
+  textNamesIssueKey(text, key) ? text : `${text} (${key})`;
 
 /**
  * The write as it lands: unchanged for a source a caller owns; a learning about an issue as its own

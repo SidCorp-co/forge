@@ -1,14 +1,9 @@
 import type { JudgedBuildIssue, ServedBuild } from '@forge/contracts/verdict-identity';
 import { carriageKey } from '../issues/index.js';
+import { textNamesIssueKey } from '../lib/issue-ref.js';
 import type { JudgedBuildDeps } from './judged-build.js';
 import type { KeptRange } from './shipped-range.js';
 import type { ShippedReleaseRun } from './shipped-releases.js';
-
-/** Whether a commit's subject names the issue `key`: `ISS-12` names ISS-12, never ISS-120. */
-function names(subject: string, key: string): boolean {
-  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`(?<![A-Za-z0-9-])${escaped}(?![0-9])`, 'i').test(subject);
-}
 
 /** What a reading of whether a later build carries an issue's change asks of Forge's rows. */
 export type ServedOverDeps = Pick<JudgedBuildDeps, 'heldAncestry' | 'ranges' | 'keyOf'>;
@@ -109,7 +104,8 @@ export async function servedOver(
       partial.push(r);
       continue;
     }
-    for (const c of commits) if (names(c.subject, key)) for (const p of c.paths) own.add(p);
+    for (const c of commits)
+      if (textNamesIssueKey(c.subject, key)) for (const p of c.paths) own.add(p);
   }
   const files = [...own];
   // where a carrying range kept no commits and the issue has a key, re-reporting it reads its files
