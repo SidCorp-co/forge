@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.705] - 2026-11-17
+
+The room agent and help widget ask every question they need
+
+### Fixed
+
+- **The room agent and the site widget ask what they need.** They are no longer told to ask one short question at a time; they ask every question they still need, each with the answer they suggest.
+
 ## [0.4.0-dev.704] - 2026-11-17
 
 A master's queued run declaration binds the next free slot
