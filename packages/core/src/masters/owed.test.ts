@@ -208,6 +208,9 @@ describe('owedLine: what a pass is told it owes besides issues', () => {
     expect(line).toContain('Forge does not write a mark');
     expect(line).toContain(`!42 at ${sha} "Header fix"`);
     expect(line).toContain('file the issue for each merge');
+    // ISS-1265: POST /api/issues has no route; an issue is filed on its project
+    expect(line).toContain('`forge-runner api projects/<projectId>/issues -X POST`');
+    expect(line).not.toContain('`forge-runner api issues -X POST`');
     expect(owedLine(none)).not.toContain('file the issue');
     expect(dispatched([], { ...none, marks: [mark], filings: [filing] }).owed).toBe(2);
     expect(workDigest([], { ...none, filings: [filing] })).not.toBe(workDigest([], none));
