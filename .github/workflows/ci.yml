@@ -524,6 +524,11 @@ jobs:
               # Read by path by packages/core/src/guides/master-guide.test.ts, which pins the master
               # skill the runner ships on what core serves (ISS-1251).
               - 'packages/runner/crates/runner-workspace/assets/forge-master-skill.md'
+              # Read by path by packages/core/src/prompt/no-question-count.test.ts, which holds every
+              # text an agent or a person meets free of a question count (ISS-1262): the asking CLI's
+              # help and the copy a person reads.
+              - 'packages/runner/crates/forge-runner/src/cmd/question.rs'
+              - 'packages/web-v2/src/lib/i18n/copy/**'
 
   web:
     needs: changes
