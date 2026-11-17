@@ -940,6 +940,10 @@ export const SAID = {
 		en: "judge {v} on {environment}",
 		vars: { v: "version", environment: "name" },
 	},
+	"standing.act.addSkippedRoute": {
+		en: "add what the skips on {v} name missing",
+		vars: { v: "version" },
+	},
 	"standing.act.reviewAndPromote": {
 		en: "review {v} and promote it to production",
 		vars: { v: "version" },
@@ -1760,6 +1764,10 @@ export const SAID = {
 	"releases.rule.notJudgedOn": {
 		en: "Not judged on {environment}: {proven} of {total} criteria pass there",
 		vars: { environment: "name", proven: "count", total: "count" },
+	},
+	"releases.rule.allSkipped": {
+		en: "Every open criterion is recorded skipped, with no route to judge it on {environment}: {missing}",
+		vars: { environment: "name", missing: "text" },
 	},
 	"releases.rule.mergedAwaitsRecord": {
 		en: "{v} is merged and approved; its production deploy record closes it",

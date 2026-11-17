@@ -11,6 +11,7 @@
  *
  * @direct-test-of packages/core/src/release-batch/release-facts.ts
  * @direct-test-of packages/core/src/release-batch/release-view.ts
+ * @direct-test-of packages/core/src/release-batch/release-read-views.ts
  * @direct-test-of packages/core/src/release-page/claims.ts
  * @direct-test-of packages/core/src/issues/criteria/unobserved-runtime.ts
  */
@@ -125,6 +126,36 @@ describe('a project that names dev as its testing environment (BC-18, BC-19)', (
       kind: 'agent',
       act: `judge ${version} on dev`,
       rule: 'Not judged on dev: 0 of 3 criteria pass there',
+    });
+  });
+
+  // ISS-1280 (adminhub-fe, 2026-11-17): 13 old releases whose every open criterion was skipped for
+  // want of a route still asked the master to "judge X on stg"; the master's live checks had already
+  // moved the same skips on 1.22.0 to a person (ISS-1218). One rule: a person adds what is missing.
+  it('waits on a person, never the judge, once every open criterion is recorded skipped on dev', async () => {
+    const { issue, version } = await landedOnCommitVerdicts();
+    const skip = (n: number) =>
+      ok(
+        api(world.token, 'POST', `/api/issues/${issue}/verdicts`, {
+          criterion: n,
+          verdict: 'skipped',
+          reason: `No route: dev no longer serves ${F4.slice(0, 12)}.`,
+          identity: { kind: 'runtime', ref: F4 },
+        }),
+      );
+
+    for (const n of [1, 2]) await skip(n);
+    // one criterion still has a route: the judge owes it
+    expect((await release(version)).waitingOn).toMatchObject({
+      kind: 'agent',
+      act: `judge ${version} on dev`,
+    });
+
+    await skip(3);
+    expect((await release(version)).waitingOn).toMatchObject({
+      kind: 'you',
+      act: `add what the skips on ${version} name missing`,
+      rule: `Every open criterion is recorded skipped, with no route to judge it on dev: No route: dev no longer serves ${F4.slice(0, 12)}.`,
     });
   });
 

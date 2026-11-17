@@ -1,0 +1,1 @@
+**A release lists only its own issues' criteria.** One judging run across several releases no longer piles every issue onto the newest, and a release whose open criteria were all skipped waits on an admin, not the master.

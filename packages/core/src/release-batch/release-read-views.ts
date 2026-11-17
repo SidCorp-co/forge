@@ -154,7 +154,10 @@ function approvalFacts(p: Part) {
 const irreversibleIn = (p: Part, s: Shared): string[] =>
   irreversibleOf(p.issueIds.map((id) => s.facts.issues.get(id)?.releaseNotes));
 
-function turnFor(p: Part, s: Shared, criteria: { proven: number; total: number }) {
+/** How many carried criteria a release proves of how many, and what its skips name (`unreachedOf`). */
+type Weighed = { proven: number; total: number; unreached: readonly string[] | null };
+
+function turnFor(p: Part, s: Shared, criteria: Weighed) {
   return turnOf({
     state: p.state,
     version: p.version,
@@ -186,6 +189,7 @@ function turnFor(p: Part, s: Shared, criteria: { proven: number; total: number }
           judge: s.facts.judge,
           proven: criteria.proven,
           total: criteria.total,
+          unreached: criteria.unreached,
         }
       : null,
   });
@@ -319,7 +323,8 @@ export function summaryOf(p: Part, s: Shared): ReleaseSummary {
   const facts = p.issueIds.flatMap((id) => s.facts.issues.get(id) ?? []);
   const judged = weighedOf(p, s).map((w) => w.readings.map((r) => r.view));
   const criteria = sumTotals(judged.map(totalsOf));
-  const turn = turnFor(p, s, criteria);
+  // one rule with the master's live checks (`masters/owed-live-checks.ts`, ISS-1218)
+  const turn = turnFor(p, s, { ...criteria, unreached: unreachedOf(judged.flat()) });
   const { owner, act } = releaseOwnerOf(p.approvals, p.runId, s.facts.cutters);
   const split = splitOf(p, s);
   const reqs = [

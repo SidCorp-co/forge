@@ -67,3 +67,47 @@ describe('a release landed off production, with no approval asked', () => {
     expect(landed(true, false, true).attentionGroup).not.toBe('done');
   });
 });
+
+// ISS-1280: the master reads its releases as an agent; a release none of whose open criteria a judge
+// can reach is never its act, so `master-owed-acts.ts:releaseActsOwed` keeps no pane for it
+describe('a landed release whose every open criterion is recorded skipped', () => {
+  const skipped = (agency: 'human' | 'agent', admins: string[]) =>
+    turnOf({
+      state: 'landed',
+      version: '0.11.0',
+      projectId: 'p1',
+      runId: 'r1',
+      merges: null,
+      landedOn: 'release/stg',
+      required: true,
+      production: true,
+      approval: null,
+      approvers: [{ id: 'u2', name: 'Bea', kind: 'human' }],
+      admins,
+      owes: releaseOwesOf(POLICY(false), []),
+      viewer: { userId: 'u', agency, isAdmin: true, mayApprove: true },
+      gates: [],
+      inFlight: null,
+      testing: {
+        environment: 'stg',
+        judge: null,
+        proven: 0,
+        total: 2,
+        unreached: ['stg serves 1.23.0, not 03b88cbcb8f2', 'stg serves 1.23.0, not 03b88cbcb8f2'],
+      },
+    });
+
+  it('waits on the admins to add what the skips name, never on the master', () => {
+    const turn = skipped('agent', ['Ada']);
+    expect(turn.waitingOn).toMatchObject({
+      kind: 'person',
+      act: 'add what the skips on 0.11.0 name missing',
+      rule: 'Every open criterion is recorded skipped, with no route to judge it on stg: stg serves 1.23.0, not 03b88cbcb8f2',
+    });
+    expect(turn.waitingOn.who).toContain('Ada');
+  });
+
+  it('is stuck, naming the permission, where nobody holds project.admin', () => {
+    expect(skipped('agent', []).waitingOn).toMatchObject({ kind: 'none' });
+  });
+});

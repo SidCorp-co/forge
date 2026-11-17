@@ -105,6 +105,8 @@ interface TurnFacts {
     judge: VerifiedJudge | null;
     proven: number;
     total: number;
+    /** Where every criterion still open is recorded skipped, what each skip names missing (`unreachedOf`); else null. */
+    unreached: readonly string[] | null;
   } | null;
 }
 
@@ -232,11 +234,14 @@ function draftTurn(f: TurnFacts): Turn {
  * A release not yet proven on its testing environment (REQ-36 BC-18, BC-19): the owner's review is
  * not theirs yet. It waits on the project's judge to judge each carried criterion on the build that
  * environment serves, and says by the environment's name what is not judged there. Null where the
- * project names no testing environment, or every carried criterion passes there.
+ * project names no testing environment, or every carried criterion passes there. Where every
+ * criterion still open is recorded skipped, a judge has no route to any of them (ISS-1280): it
+ * waits on a person to add what the skips name (`skippedTurn`), never on the judge.
  */
 function untestedTurn(f: TurnFacts): Turn | null {
   const t = f.testing;
   if (!t || t.total === 0 || t.proven === t.total) return null;
+  if (t.unreached) return skippedTurn(f, t.environment, t.unreached);
   return turn('waiting', 'agent', {
     who: t.judge === 'independent' ? say('standing.who.independentJudge') : MASTER,
     act: say('standing.act.judgeReleaseOn', { v: f.version, environment: t.environment }),
@@ -246,6 +251,29 @@ function untestedTurn(f: TurnFacts): Turn | null {
       total: t.total,
     }),
   });
+}
+
+/**
+ * A release whose every criterion still open is recorded skipped, each naming what is missing (a
+ * credential, a build to redeploy): no judging run can take one, so it waits on the project's admins,
+ * who add a route, the admin reading it among them, the same for every release and as the master's
+ * live checks read it (`masters/owed-live-checks.ts`, ISS-1218).
+ */
+function skippedTurn(f: TurnFacts, environment: string, unreached: readonly string[]): Turn {
+  const act = say('standing.act.addSkippedRoute', { v: f.version });
+  const missing = [...new Set(unreached)].join('; ');
+  const rule = say('releases.rule.allSkipped', { environment, missing });
+  if (f.viewer?.agency === 'human' && f.viewer.isAdmin) {
+    return turn('waiting', 'you', { who: YOU, act, rule });
+  }
+  if (f.admins.length === 0) {
+    return turn('stuck', 'none', {
+      who: holdersWho(f.admins),
+      act: nobodyHoldsAct(act, 'project.admin'),
+      rule,
+    });
+  }
+  return turn('waiting', 'person', { who: holdersWho(f.admins), act, rule });
 }
 
 /**
