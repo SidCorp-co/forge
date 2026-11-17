@@ -544,11 +544,28 @@ mod tests {
             "{}-co",
             seed.file_name().unwrap().to_string_lossy()
         ));
+        let excludes = format!("core.excludesFile={}", no_box_excludes(&seed));
         git(
             seed.parent().unwrap(),
-            &["clone", "-q", seed.to_str().unwrap(), co.to_str().unwrap()],
+            &[
+                "clone",
+                "-q",
+                "-c",
+                &excludes,
+                seed.to_str().unwrap(),
+                co.to_str().unwrap(),
+            ],
         );
         (seed, co)
+    }
+
+    /// An empty excludes file in the scratch root, so the box's own global excludes (a home
+    /// `~/.config/git/ignore` listing `.claude/settings.local.json`) never decide what these repos
+    /// ignore: the repo's config outranks the global default without touching the box's.
+    fn no_box_excludes(repo: &Scratch) -> String {
+        let at = repo.root.join("no-box-excludes");
+        std::fs::write(&at, "").unwrap();
+        at.to_str().unwrap().to_owned()
     }
 
     fn commit_upstream(seed: &Path, path: &str, body: &str) {
@@ -737,6 +754,10 @@ mod tests {
     fn repo_with(name: &str, files: &[(&str, &str)]) -> Scratch {
         let repo = scratch(name);
         git(&repo, &["init", "-q"]);
+        git(
+            &repo,
+            &["config", "core.excludesFile", &no_box_excludes(&repo)],
+        );
         for (path, body) in files {
             let at = repo.join(path);
             std::fs::create_dir_all(at.parent().unwrap()).unwrap();
