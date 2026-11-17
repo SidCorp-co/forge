@@ -5,14 +5,18 @@
 //
 // @direct-test-of packages/web-v2/src/features/modules/components/find-results.tsx
 // @direct-test-of packages/web-v2/src/features/modules/find.ts
+// @direct-test-of packages/web-v2/src/features/modules/module-tree.ts
 // @direct-test-of packages/web-v2/src/design/patterns/command-palette.tsx
 
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { type Command, CommandPalette } from "@/design";
 import type { FindResult } from "@forge/contracts/find";
-import { FIND_CHIA_SLOT, FIND_NOTHING, MAP_PROJECT, RUN_SLOTS_HIT } from "@/test/module-map";
+import type { ModuleMapBranch, ModuleMapNode } from "@forge/contracts/module-map";
+import { FIND_CHIA_SLOT, FIND_NOTHING, MAP_PROJECT, RUN_SLOTS_HIT, RUN_SLOTS_ROW, TREE } from "@/test/module-map";
 import { type Call, fakeCore, renderWithQuery } from "@/test/render";
+import { walkHref } from "../find";
+import { branchesOf, selectedOf } from "../module-tree";
 import { FindResults } from "./find-results";
 
 // a lesson, named by its gist, beside a requirement in delivery, as core answers them
@@ -102,7 +106,32 @@ describe("the ⌘K search", () => {
     palette("chia slot");
     fireEvent.click((await screen.findAllByTestId("find-hit"))[0]);
     expect(push).toHaveBeenCalledWith("/projects/hop/modules/execution?type=term&node=term%3Arun-slots");
-    await waitFor(() => expect(calls.map((c) => c.path)).toContain(`/projects/${MAP_PROJECT}/find/open?id=term%3Arun-slots`));
+    await waitFor(() => expect(calls.map((c) => c.path)).toContain(`/projects/${MAP_PROJECT}/find/open?id=term%3A${RUN_SLOTS_ROW}`));
+  });
+
+  // Each branch's target stands second, behind a decoy, and each hit is shaped as core's find answers
+  // it: a term or a rule names its knowledge row id as ref and its slug as key, while the tree keys
+  // both by slug. A walk that names the wrong handle selects nothing the tree holds, and must not
+  // land on the branch's first node (ISS-1256 c4: "chia slot" opened Background session).
+  it("lands each map hit on its own node, keyed as the tree keys it, never the branch's first", () => {
+    const decoy = (type: ModuleMapBranch): ModuleMapNode => ({ ...TREE.branches.term[1], type, ref: `decoy-${type}`, title: "Decoy" });
+    const target = (type: ModuleMapBranch, ref: string): ModuleMapNode => ({ ...decoy(type), ref, title: `Target ${type}` });
+    const cases: { type: ModuleMapBranch; node: string; hit: { ref: string; key: string | null } }[] = [
+      { type: "term", node: "run-slots", hit: { ref: RUN_SLOTS_ROW, key: "run-slots" } },
+      { type: "rule", node: "one-slot-minimum", hit: { ref: "5d0c6a1e-0000-4000-8000-0000000000a1", key: "one-slot-minimum" } },
+      { type: "capability", node: "run.declare", hit: { ref: "run.declare", key: "run.declare" } },
+      { type: "requirement", node: "REQ-48", hit: { ref: "5d0c6a1e-0000-4000-8000-0000000000a4", key: "REQ-48" } },
+      { type: "decision", node: "5d0c6a1e-0000-4000-8000-0000000000a5", hit: { ref: "5d0c6a1e-0000-4000-8000-0000000000a5", key: null } },
+      { type: "reference", node: "5d0c6a1e-0000-4000-8000-0000000000a6", hit: { ref: "5d0c6a1e-0000-4000-8000-0000000000a6", key: null } },
+    ];
+    const tree = { ...TREE, branches: Object.fromEntries(cases.map((c) => [c.type, [decoy(c.type), target(c.type, c.node)]])) as typeof TREE.branches };
+    const branches = branchesOf("hop", tree);
+    for (const c of cases) {
+      const href = walkHref("hop", { ...RUN_SLOTS_HIT, ...c.hit, id: `${c.type}:${c.hit.ref}`, type: c.type });
+      const at = new URL(href ?? "", "http://forge.test").searchParams;
+      const { chosen, missing } = selectedOf(branches, c.type, at.get("node"));
+      expect([chosen?.title, missing], c.type).toEqual([`Target ${c.type}`, false]);
+    }
   });
 
   it("opens a hit with no node where core says it is read", async () => {

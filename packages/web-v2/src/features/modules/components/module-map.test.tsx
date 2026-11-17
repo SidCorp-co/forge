@@ -164,6 +164,13 @@ describe("a module's tree and its rail", () => {
     expect(searched).toHaveBeenCalledWith("packages/core/src/devices/run-slots.ts:slotsFor");
   });
 
+  it("walks a relation naming one of a requirement's criteria to the requirement's node", async () => {
+    const rail = await tree("/projects/hop/modules/execution?node=rule:one-slot-minimum");
+    const [, req] = within(within(rail).getByTestId("rail-governs.out")).getAllByTestId("rail-relation");
+    fireEvent.click(req);
+    await waitFor(() => expect(screen.getByTestId("node-rail").dataset.node).toBe("requirement:REQ-48"));
+  });
+
   it("on a phone draws a picked node's rail under it in the tree, never below the whole tree", async () => {
     await tree("/projects/hop/modules/execution?node=term:run-slots");
     fireEvent.click(within(screen.getByTestId("tree-branch-rule")).getByTestId("tree-branch-toggle"));
@@ -187,6 +194,14 @@ describe("a module's tree and its rail", () => {
     } finally {
       wide.mockRestore();
     }
+  });
+
+  it("says a node it does not hold is not in this module, and shows no other in its place", async () => {
+    at("/projects/hop/modules/execution?type=term&node=term%3Ae7c9d109-3a35-413e-b340-e772c78e695a");
+    renderWithQuery(inWorkspace(<ModuleTreeScreen projectId={MAP_PROJECT} slug="hop" moduleSlug="execution" />));
+    expect((await screen.findByTestId("tree-node-missing")).textContent).toBe("Not in this module");
+    expect(screen.queryByTestId("node-rail")).toBeNull();
+    expect(screen.getByTestId("tree-branch-term").dataset.open).toBe("true");
   });
 
   it("reads a rule owing a re-check as owed, never current", async () => {

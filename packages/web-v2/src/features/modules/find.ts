@@ -45,16 +45,30 @@ export const findApi = {
 const isMapBranch = (t: string): t is ModuleMapBranch => (MODULE_MAP_BRANCHES as readonly string[]).includes(t);
 
 /**
+ * Which of a hit's handles names its node in the tree, as core's tree read keys each branch: a term
+ * or a rule by its knowledge slug (the hit's key; its ref is the entry's row id), a requirement by
+ * its key (`REQ-3`), a capability by its card id, a decision and a reference by their row ids.
+ */
+const NODE_HANDLE: Record<ModuleMapBranch, "key" | "ref"> = {
+  term: "key",
+  rule: "key",
+  capability: "ref",
+  requirement: "key",
+  decision: "ref",
+  reference: "ref",
+};
+
+/**
  * Where opening a hit walks on the map: a record of a tree branch opens its module's tree with it
  * selected (Unplaced where no module holds it); anything else (an issue, a lesson, a conversation, an
- * org ruling, which no project's tree holds) has no node, so null, and the hit opens where core says
- * it is read. A requirement's node is named
- * by its key (`REQ-3`), as the tree names it, not by its row id.
+ * org ruling, which no project's tree holds), or a hit missing the handle its branch is keyed by, has
+ * no node, so null, and the hit opens where core says it is read.
  */
 export function walkHref(slug: string, hit: FindHit): string | null {
   if (!isMapBranch(hit.type) || hit.ref.startsWith(FIND_ORG_REF_PREFIX)) return null;
-  const ref = hit.type === "requirement" ? (hit.key ?? hit.ref) : hit.ref;
-  return treeHref(slug, hit.module?.slug ?? FIND_UNPLACED_FILTER, hit.type, nodeIdOf(hit.type, ref));
+  const handle = hit[NODE_HANDLE[hit.type]];
+  if (!handle) return null;
+  return treeHref(slug, hit.module?.slug ?? FIND_UNPLACED_FILTER, hit.type, nodeIdOf(hit.type, handle));
 }
 
 /** The types whose key is what a person calls the record (`ISS-12`, `REQ-3`, `FB-7`); any other key is a slug or an id. */

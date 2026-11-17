@@ -93,7 +93,7 @@ export const TREE: ModuleTreeResponse = {
         ref: "one-slot-minimum",
         title: "A project with work keeps at least one slot",
         status: "active",
-        relations: [rel("used_in", "in", "term", "run-slots", "Run slots", "execution/devices"), rel("governs", "out", "capability", "run.declare", "forge-runner run declare", "execution")],
+        relations: [rel("used_in", "in", "term", "run-slots", "Run slots", "execution/devices"), rel("governs", "out", "capability", "run.declare", "forge-runner run declare", "execution"), rel("governs", "out", "requirement", "REQ-48 BC-2", "An agent stands at every handoff", "execution")],
         recheck: { since: AT, by: "dev.692", matched: ["packages/core/src/devices/run-slots.ts:slotsFor"] },
         reads: 6,
       }),
@@ -110,11 +110,15 @@ export const TREE: ModuleTreeResponse = {
   generatedAt: AT,
 };
 
+/** The term's knowledge row id: a find hit names a term by it, the tree by its slug. */
+export const RUN_SLOTS_ROW = "e7c9d109-3a35-413e-b340-e772c78e695a";
+
+// as core's find answers a term: its ref the knowledge row id, its key the slug the tree keys it by
 export const RUN_SLOTS_HIT = {
-  id: "term:run-slots",
+  id: `term:${RUN_SLOTS_ROW}`,
   type: "term" as const,
-  ref: "run-slots",
-  key: null,
+  ref: RUN_SLOTS_ROW,
+  key: "run-slots",
   title: "Run slots",
   excerpt: "How many runs a runner box runs at once",
   projectSlug: "hop",
@@ -123,7 +127,7 @@ export const RUN_SLOTS_HIT = {
   path: ["Execution", "Terms"] as [string, string],
   match: { arms: ["alias" as const], alias: "chia slot" },
   score: 0.05,
-  open: `/api/projects/${MAP_PROJECT}/find/open?id=term%3Arun-slots`,
+  open: `/api/projects/${MAP_PROJECT}/find/open?id=term%3A${RUN_SLOTS_ROW}`,
 };
 
 export const ISSUE_HIT = {
@@ -141,7 +145,7 @@ export const ISSUE_HIT = {
 
 export const FIND_CHIA_SLOT: FindResult = {
   query: "chia slot",
-  expanded: [{ term: "Run slots", alias: "chia slot", termId: "run-slots" }],
+  expanded: [{ term: "Run slots", alias: "chia slot", termId: RUN_SLOTS_ROW }],
   groups: [
     { type: "term", label: "Terms", hits: [RUN_SLOTS_HIT] },
     { type: "issue", label: "Issues", hits: [ISSUE_HIT] },

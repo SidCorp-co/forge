@@ -159,6 +159,7 @@
     "modules.title": "Modules",
     "modules.tree.code": "Code",
     "modules.tree.label": "Module tree",
+    "modules.tree.missing": "Not in this module",
     "modules.tree.more": "{n} more",
     "modules.tree.none": "None yet",
     "modules.type.capability": "Capabilities",

@@ -141,7 +141,7 @@ function TreePage({ slug, tree, names }: { slug: string; tree: ModuleTreeRespons
   const wide = useMediaQuery("(min-width: 1024px)");
   const branches = useMemo(() => branchesOf(slug, tree), [slug, tree]);
   const here = useMemo(() => new Set(branches.flatMap((b) => b.nodes.filter((n) => n.node).map((n) => n.id))), [branches]);
-  const chosen = selectedOf(branches, at, node);
+  const { chosen, missing } = selectedOf(branches, at, node);
   // a pick (a tap on the tree or a relation in the rail) is followed to the node it selects, its
   // rail drawn under it below 1024px; an arrival keeps the place a count or link opened
   const pickedRef = useRef(false);
@@ -168,6 +168,12 @@ function TreePage({ slug, tree, names }: { slug: string; tree: ModuleTreeRespons
               </p>
             ) : null}
           </div>
+        ) : null}
+        {/* an address naming a node this tree does not hold says so, rather than showing another in its place */}
+        {missing ? (
+          <p role="status" className="rounded-sm border border-line-subtle bg-surface px-3 py-2 text-13 text-muted" data-testid="tree-node-missing">
+            {t("modules.tree.missing")}
+          </p>
         ) : null}
         <Tree branches={branches} at={at} selected={chosen?.id ?? null} onSelect={onSelect} detail={wide ? undefined : rail} />
       </div>

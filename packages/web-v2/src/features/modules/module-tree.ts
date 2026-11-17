@@ -93,10 +93,18 @@ export function unplacedBranchesOf(slug: string, read: ModulePillarResponse): Tr
   });
 }
 
-/** The node the rail shows: the one the address names, else the first of the branch it opened at, else the first there is. */
-export function selectedOf(branches: readonly TreeBranchView[], at: TreeBranch | null, node: string | null): TreeNodeView | null {
+/**
+ * The node the rail shows. An address naming a node shows that node, or none where the tree holds no
+ * such node (`missing`), never another in its place; an address naming none shows the first of the
+ * branch it opened at, else the first there is.
+ */
+export function selectedOf(branches: readonly TreeBranchView[], at: TreeBranch | null, node: string | null): { chosen: TreeNodeView | null; missing: boolean } {
   const all = branches.flatMap((b) => b.nodes.filter((n) => n.node));
-  return all.find((n) => n.id === node) ?? branches.find((b) => b.branch === at)?.nodes.find((n) => n.node) ?? all[0] ?? null;
+  if (node) {
+    const named = all.find((n) => n.id === node) ?? null;
+    return { chosen: named, missing: named === null };
+  }
+  return { chosen: branches.find((b) => b.branch === at)?.nodes.find((n) => n.node) ?? all[0] ?? null, missing: false };
 }
 
 /** A module path (`execution/devices`) by the names of its steps a person reads; a step no read names is left out. */
@@ -121,10 +129,12 @@ export function relationTarget(slug: string, here: ReadonlySet<string>, rel: Mod
   const o = rel.other;
   if (o.type === "code") return { kind: "search", query: o.ref };
   if (o.type === "module") return { kind: "href", href: moduleHref(slug, pillarOf(o.ref)) };
-  const id = nodeIdOf(o.type, o.ref);
+  // a requirement's end may name one of its criteria (`REQ-12 BC-3`); the tree's node is the requirement
+  const key = o.type === "requirement" ? (o.ref.split(" ")[0] ?? o.ref) : o.ref;
+  const id = nodeIdOf(o.type, key);
   if (here.has(id)) return { kind: "select", id };
   if (o.module) return { kind: "href", href: treeHref(slug, pillarOf(o.module), o.type, id) };
-  if (o.type === "requirement") return { kind: "href", href: requirementHref(slug, o.ref.split(" ")[0] ?? o.ref) };
+  if (o.type === "requirement") return { kind: "href", href: requirementHref(slug, key) };
   return { kind: "none" };
 }
 
