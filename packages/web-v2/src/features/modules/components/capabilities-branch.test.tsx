@@ -83,9 +83,9 @@ const use: DoorUseView = {
 const piles: PilesView = {
   projectId: P,
   piles: [
-    { pile: "always_knowledge", name: "always-on knowledge", size: 7200, cap: 6000, items: 12, carried: 12, over: true, ownerProjectId: P },
-    { pile: "tier0_map", name: "map (bot)", size: 900, cap: 2500, items: 9, carried: 9, over: false, ownerProjectId: null },
-    { pile: "skill_always_on", name: "forge-master", size: 400, cap: 1024, items: 1, carried: 1, over: false, ownerProjectId: null },
+    { pile: "always_knowledge", name: "always-on knowledge", size: 7200, cap: 6000, items: 12, carried: 12, over: true, past: ["support-tone", "release-notes"], ownerProjectId: P },
+    { pile: "tier0_map", name: "map (bot)", size: 900, cap: 2500, items: 9, carried: 9, over: false, past: [], ownerProjectId: null },
+    { pile: "skill_always_on", name: "forge-master", size: 400, cap: 1024, items: 1, carried: 1, over: false, past: [], ownerProjectId: null },
   ],
 };
 
@@ -202,7 +202,7 @@ describe("the Capabilities branch", () => {
     expect(titles.some((r) => r.startsWith("Run · Rules"))).toBe(true);
   });
 
-  it("marks a pile over its cap Over, and one within it not", () => {
+  it("marks a pile over its cap Over and names what is served past it, and one within it neither", () => {
     tab();
     expect(screen.getByTestId("cap-budgets").textContent).toContain("1 over");
     fireEvent.click(within(screen.getByTestId("cap-budgets")).getByRole("button"));
@@ -211,6 +211,8 @@ describe("the Capabilities branch", () => {
     const within_ = rows.find((r) => r.textContent?.includes("Map · Bot"));
     expect(over && within(over).getByTestId("cap-pile-over").textContent).toBe("Over");
     expect(within_ && within(within_).queryByTestId("cap-pile-over")).toBeNull();
+    expect(over && within(over).getByTestId("cap-pile-past").textContent).toBe("Past cap: support-tone, release-notes");
+    expect(within_ && within(within_).queryByTestId("cap-pile-past")).toBeNull();
   });
 
   it("lists on one module's page only the doors its tree places there, without the project-wide band", () => {

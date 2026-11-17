@@ -234,6 +234,18 @@ describe('a run a master declares on a box reads the rules a core-built prompt c
     expect(body.endsWith('Prove each criterion once, red first.\n')).toBe(true);
   });
 
+  it('serves rules past their cap whole and names from which rule on they run past it (ISS-1251 c5)', () => {
+    // forge-dev 2026-11-17: forge's always-on knowledge was 9468 of 6000 characters, nothing saying so
+    const big = (key: string) => ({ key, text: `${key}: ${'x'.repeat(2400)}` });
+    const rules = [big('first'), big('second'), big('third'), DELIVERY];
+    const body = projectRulesText(rules, 2);
+    for (const r of rules) expect(body).toContain(`### ${r.key}\n${r.text}`);
+    expect(body).toContain(
+      `Past their 6000-character cap: these rules are ${rules.reduce((n, r) => n + r.text.length, 0)} characters, from third on (2 of 4), served whole until the steward's merge lands.`,
+    );
+    expect(projectRulesText([DELIVERY], 2)).not.toContain('Past their');
+  });
+
   it('carries no rules heading for a project with no always-applied entry', () => {
     const body = checkoutOrientation('p-1', 'forge', { entries: [] });
     expect(body).not.toContain('Project rules');
@@ -384,7 +396,7 @@ describe('the orientation core serves reads the rules from the knowledge store',
     expect(line).toBe(`- release-steps — source: ${long.slice(0, 79)}…`);
   });
 
-  it('stays a map within its budget however many lessons and guides there are', async () => {
+  it('names every lesson past the map cap and keeps the guide index in its budget, however many there are', async () => {
     const lessons = Array.from({ length: 500 }, (_, i) => ({
       slug: `lesson-${i + 1}`,
       sentence: `Lesson sentence number ${i + 1}, which is long enough to matter in a prompt.`,
@@ -408,12 +420,18 @@ describe('the orientation core serves reads the rules from the knowledge store',
         ),
       },
     });
-    expect(full.length - bare.length).toBeLessThanOrEqual(
-      LESSONS_MAP_MAX_CHARS + GUIDE_INDEX_MAX_CHARS + 4,
+    // past its cap the lessons map is served whole and says so, never cut (ISS-1251 c5); the guide
+    // index keeps its budget
+    const at = full.indexOf('## Lessons');
+    const map = full.slice(at, full.indexOf('\n## ', at + 1));
+    expect(full.length - bare.length - map.length).toBeLessThanOrEqual(GUIDE_INDEX_MAX_CHARS + 4);
+    expect(map.length).toBeGreaterThan(LESSONS_MAP_MAX_CHARS);
+    expect(new Set(map.match(/\blesson-\d+\b/g)).size).toBe(500);
+    expect(map).not.toMatch(/- and \d+ more/);
+    expect(map).toMatch(/^When any work:\n- (?:also )?lesson-500[:,]/m);
+    expect(map).toMatch(
+      /^Past its 1200-character cap: this map is \d+ characters, from lesson-\d+ on \(\d+ lessons\), served whole until the steward's merge lands; every lesson: `GET …\/knowledge\?kind=lesson/m,
     );
-    // past the budget the lessons are merged, never cut: named by slug, the rest counted (ISS-1251)
-    expect(full).toContain('When any work:\n- also lesson-500, lesson-499, ');
-    expect(full).toMatch(/- and \d+ more\nEvery lesson: `GET …\/knowledge\?kind=lesson/);
     expect(full).toMatch(
       /- and \d+ more: `forge-runner api projects\/p-1\/knowledge\?injection=on_demand`/,
     );

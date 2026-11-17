@@ -82,6 +82,8 @@ export async function pass(answer: {
   recheck?: Answer<Doc, Doc>;
   fold?: Answer<Doc, Doc>;
   replay?: Answer<Doc, Doc>;
+  /** The merges the steward proposes over a pile past its cap, read from the pile and its entries. */
+  merge?: Answer<Doc, Doc[]>;
   now?: Date;
   /** The project the pass runs over: the world's own unless a case opened one of its own. */
   project?: string;
@@ -114,6 +116,7 @@ export async function pass(answer: {
             broken: [],
             reason: 'It fixes what it came from.',
           }) as never,
+    merge: async (_p, pile, entries) => answerOf(answer.merge, { pile, entries } as never) as never,
   });
   expect(tally.failed, 'a lessons pass failed on the project').toBe(0);
   return tally;

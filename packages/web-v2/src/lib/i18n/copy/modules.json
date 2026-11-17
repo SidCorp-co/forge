@@ -74,6 +74,7 @@
     "modules.cap.pile.mapOf": "Map · {who}",
     "modules.cap.pile.over": "Over",
     "modules.cap.pile.overUnit": "over",
+    "modules.cap.pile.past": "Past cap: {names}",
     "modules.cap.pile.size": "{size} of {cap} chars",
     "modules.cap.pile.skills": "Skill descriptions",
     "modules.cap.pile.tier0_map": "Map",

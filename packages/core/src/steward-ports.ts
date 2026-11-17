@@ -8,7 +8,7 @@
 import { masterTakesWait } from './development/index.js';
 import { doorCatalog } from './lib/door-catalog.js';
 import { masterAccountsOf } from './master-accounts.js';
-import { readPiles } from './metrics/index.js';
+import { readPileEntries, readPiles } from './metrics/index.js';
 import {
   holdingReleaseOf,
   masterTakesReleaseAct,
@@ -37,6 +37,7 @@ export function provideStewardDomainPorts(
     releaseHoldingAct: (_projectId, issueId) => releaseHoldingActOf(issueId),
     holdingRelease: holdingReleaseOf,
     piles: (projectId) => readPiles(projectId, doorCatalog()),
+    pileEntries: readPileEntries,
     // the steward's audit of its own run, in the store and shape every agent's goes to (ISS-1251)
     keepSelfAudit: async (a) => {
       const judged = judgeSelfAudit('steward', a.failed, a.missed);

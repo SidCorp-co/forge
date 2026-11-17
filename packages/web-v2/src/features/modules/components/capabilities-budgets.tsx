@@ -1,7 +1,7 @@
 // The project's side of the capabilities page (ISS-1251 §7): each pile every prompt carries against
 // its cap (the Tier-0 map per audience, the lessons map, always-on knowledge, each skill's always-on
-// part), a pile over its cap marked "Over" for the steward to merge; and what agents read and applied,
-// opened on demand in a drawer.
+// part), a pile over its cap marked "Over" and naming what is served past it until the steward's
+// merge lands; and what agents read and applied, opened on demand in a drawer.
 
 import type { DoorUseView, PileRow, PilesView } from "@forge/contracts/door-use";
 import { CountSection, ProgressBar, RowItem, RowList, StatusChip } from "@/design";
@@ -29,6 +29,7 @@ function PileLine({ p }: { p: PileRow }) {
       testId="cap-pile"
       rowKey={`${p.pile}:${p.name}`}
       facts={[t("modules.cap.pile.size", { size: p.size, cap: p.cap }), ...(p.carried < p.items ? [t("modules.cap.pile.carried", { n: p.carried, of: p.items })] : [])]}
+      note={p.past.length > 0 ? <span data-testid="cap-pile-past">{t("modules.cap.pile.past", { names: p.past.join(", ") })}</span> : undefined}
       trailing={
         <>
           <ProgressBar value={p.cap > 0 ? (p.size / p.cap) * 100 : 0} tone={p.over ? "red" : "accent"} className="w-28" />

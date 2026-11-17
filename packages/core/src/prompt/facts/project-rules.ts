@@ -1,3 +1,4 @@
+import { ALWAYS_INJECT_MAX_CHARS, alwaysPastCap } from '@forge/contracts/knowledge';
 import type { AlwaysInjectFact } from '../../knowledge/index.js';
 
 /**
@@ -18,9 +19,17 @@ export function projectRulesText(
     const agreement = restatedBy.get(key);
     return agreement ? `${key} (detail of the working agreement ${agreement})` : key;
   };
+  // past the cap the rules are served whole and said, never cut, until the steward's merge lands (ISS-1251 c5)
+  const past = alwaysPastCap(entries);
+  const size = entries.reduce((n, f) => n + f.text.length, 0);
   return [
     `${heading} Project rules (always applied)`,
     'Hard rules for this project — always-injected by the project owner. Follow them exactly.',
+    ...(past.length > 0
+      ? [
+          `Past their ${ALWAYS_INJECT_MAX_CHARS}-character cap: these rules are ${size} characters, from ${past[0]?.key} on (${past.length} of ${entries.length}), served whole until the steward's merge lands.`,
+        ]
+      : []),
     ...entries.map((f) => `${heading}# ${head(f.key)}\n${f.text}`),
   ].join('\n\n');
 }

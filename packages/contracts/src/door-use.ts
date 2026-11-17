@@ -231,6 +231,12 @@ export interface PileRow {
 	carried: number;
 	over: boolean;
 	/**
+	 * What is served past the cap until the steward's merge lands, named (ISS-1251 c5): the always-on
+	 * entries by key from the first that crosses it, the lessons by key from the first the map names
+	 * past it. Empty where the pile fits.
+	 */
+	past: string[];
+	/**
 	 * The project whose text it is, so a consolidation it is due goes to that project: this project for
 	 * its knowledge, its lessons and its own skills; null for what Forge's code or a global skill holds
 	 * (the Tier-0 maps, from the cards), which goes to Forge.

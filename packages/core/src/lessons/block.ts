@@ -3,13 +3,11 @@
  * 2026-11-01; ISS-1251): one line per approved lesson in its scope, saying WHEN it applies and its
  * gist, so an agent knows which to open in full; never the whole sentence. An agent reads the ones its
  * work needs by retrieval, from project knowledge (`knowledge/lesson-entries.ts`), so a held, rejected
- * or proposed lesson is never named here. The map has a hard character budget,
- * `LESSONS_MAP_MAX_CHARS`, and past it the map merges rather than cuts (ISS-1251): every lesson is
- * named by its slug under the situation it applies in, the nearest given their gist as the budget
- * allows; where even the slugs do not fit, the farthest situations are said as a count, and past
- * that folded into one count with the door that lists them, so a project with five hundred lessons
- * costs every prompt what one with five does. A lesson the map could only count is a pile the
- * steward folds (`lessonsMapOverflow`).
+ * or proposed lesson is never named here. The map has a character cap, `LESSONS_MAP_MAX_CHARS`, and
+ * nothing is cut to meet it (ISS-1251 c5): every lesson is named by its slug under the situation it
+ * applies in, the nearest given their gist as the cap allows, and a map whose slugs alone run past it
+ * is served whole and says so, from which lesson on, until the steward's merge brings it back under
+ * (`lessonsMapOverflow`, `steward/lessons-piles.ts`).
  */
 
 import type { LessonItemKind } from '@forge/contracts/lessons';
@@ -42,7 +40,7 @@ export interface LessonAudience {
   /** How this agent reads one lesson by its slug and finds the ones its work needs: a door or a tool
    *  it holds. Short: it is said in every prompt. */
   fetch: string;
-  /** How this agent lists every lesson, named only where the map could not hold them all. */
+  /** How this agent lists every lesson, named where the map runs past its cap. */
   list: string;
   /** How this agent raises a confusion: a door or a tool it holds. Short, for the same reason. */
   raise: string;
@@ -110,54 +108,43 @@ function grouped(reach: readonly LessonEntry[]): LessonEntry[][] {
   return [...groups.values()];
 }
 
-/**
- * How one situation is said: its first `named` lessons by slug, the first `gists` of them with their
- * gist, and the rest counted under it; a situation naming none is only counted, or folded into the
- * map's closing count.
- */
-type Said = { named: number; gists: number } | 'counted' | 'folded';
-
-/** One situation as the map says it. */
-function groupLines(group: readonly LessonEntry[], said: Said): string[] {
-  const heading = headingOf(group[0] as LessonEntry);
-  if (said === 'folded') return [];
-  const count = (n: number) => `${n} ${n === 1 ? 'lesson' : 'lessons'}`;
-  if (said === 'counted') return [`${heading.slice(0, -1)}: ${count(group.length)}`];
-  const slugs = group.slice(said.gists, said.named).map((e) => e.slug);
-  const rest = group.length - said.named;
+/** How one situation is said: every lesson by slug, the first `gists` of them with their gist. */
+function groupLines(group: readonly LessonEntry[], gists: number): string[] {
+  const slugs = group.slice(gists).map((e) => e.slug);
   return [
-    heading,
-    ...group.slice(0, said.gists).map(lineOf),
+    headingOf(group[0] as LessonEntry),
+    ...group.slice(0, gists).map(lineOf),
     ...(slugs.length > 0 ? [`- also ${slugs.join(', ')}`] : []),
-    ...(rest > 0 ? [`- and ${rest} more`] : []),
   ];
 }
 
-/** The map's index: each situation as said, and the list door where any lesson is not named. */
-function indexOf(
-  groups: readonly LessonEntry[][],
-  said: readonly Said[],
-  audience: LessonAudience,
-) {
-  const folded = groups.reduce((n, g, i) => n + (said[i] === 'folded' ? g.length : 0), 0);
-  const unnamed = groups.some((g, i) => {
-    const s = said[i] as Said;
-    return typeof s === 'string' || s.named < g.length;
-  });
-  const closing =
-    folded > 0 ? moreLine(folded, audience) : unnamed ? `Every lesson: ${audience.list}` : '';
-  return [...groups.flatMap((g, i) => groupLines(g, said[i] as Said)), closing]
-    .filter(Boolean)
-    .join('\n');
+/**
+ * The line a map past its cap carries: how far past, from which lesson on, and that a merge is owed.
+ * Nothing is cut to fit (ISS-1251 c5): until the steward's merge lands, what runs past the cap is
+ * served and said, so neither the agent nor the Budgets panel reads it as fitting.
+ */
+export const pastCapLine = (size: number, from: string, count: number, list: string) =>
+  `Past its ${LESSONS_MAP_MAX_CHARS}-character cap: this map is ${size} characters, from ${from} on (${count} ${count === 1 ? 'lesson' : 'lessons'}), served whole until the steward's merge lands; every lesson: ${list}`;
+
+/** The lessons whose name the map ends past `at` characters, in the order it names them. */
+function namedPast(text: string, at: number, reach: readonly LessonEntry[]): LessonEntry[] {
+  const index = (e: LessonEntry) =>
+    text.search(new RegExp(`(?<=- |- also |, )${e.slug}(?=[:,\\n]|$)`));
+  return reach
+    .map((e) => ({ e, i: index(e) }))
+    .filter((x) => x.i >= 0 && x.i + x.e.slug.length > at)
+    .sort((a, b) => a.i - b.i)
+    .map((x) => x.e);
 }
 
-/** The map's text, or null where no lesson reaches this audience. Never longer than the budget. */
-export function lessonsMapText(
+/** The map as composed, and the lessons it names past its cap (none where it fits). */
+function composeMap(
   entries: readonly LessonEntry[],
   audience: LessonAudience,
   depth: 2 | 3,
-): string | null {
-  const groups = grouped(lessonsFor(entries, audience).sort(byReach));
+): { text: string; past: LessonEntry[] } | null {
+  const reach = lessonsFor(entries, audience).sort(byReach);
+  const groups = grouped(reach);
   if (groups.length === 0) return null;
   // the frame is said in as few words as carry the three doors, so the budget goes to the lessons
   const head = [
@@ -165,61 +152,59 @@ export function lessonsMapText(
     `Read first each that fits your work: ${audience.fetch}.`,
   ].join('\n');
   const tail = `End with \`Lessons applied: L-3, L-7\`. Raise one that conflicts or cannot apply (${audience.raise}) and go on without it.`;
-  const textOf = (said: readonly Said[]) =>
-    `${head}\n\n${indexOf(groups, said, audience)}\n\n${tail}`;
-  const said: Said[] = groups.map(() => 'folded');
-  /** Takes `next` for situation `i` where the map still fits its budget with it. */
-  const tried = (i: number, next: Said) => {
-    const was = said[i] as Said;
-    said[i] = next;
-    if (textOf(said).length <= LESSONS_MAP_MAX_CHARS) return true;
-    said[i] = was;
-    return false;
-  };
-  // the map merges, never cuts (ISS-1251): each lesson is named by slug in reach order while the
-  // budget holds, the situations left are counted, and those that no count fits are folded into one
-  const at = (i: number) => said[i] as { named: number; gists: number };
-  named: for (const [i, group] of groups.entries()) {
-    for (let n = 1; n <= group.length; n += 1) {
-      if (!tried(i, { named: n, gists: 0 })) break named;
-    }
-  }
-  for (const i of groups.keys()) if (said[i] === 'folded' && !tried(i, 'counted')) break;
-  // every lesson named, the nearest are given their gist, in reach order, while the budget holds
-  if (groups.every((g, i) => typeof said[i] !== 'string' && at(i).named === g.length)) {
-    gists: for (const [i, group] of groups.entries()) {
-      for (let k = 1; k <= group.length; k += 1) {
-        if (!tried(i, { named: group.length, gists: k })) break gists;
+  const textOf = (gists: readonly number[], past = '') =>
+    `${head}\n\n${groups.flatMap((g, i) => groupLines(g, gists[i] ?? 0)).join('\n')}${past ? `\n${past}` : ''}\n\n${tail}`;
+  const gists = groups.map(() => 0);
+  // the nearest are given their gist, in reach order, while the cap holds
+  fill: for (const [i, group] of groups.entries()) {
+    for (let k = 1; k <= group.length; k += 1) {
+      gists[i] = k;
+      if (textOf(gists).length > LESSONS_MAP_MAX_CHARS) {
+        gists[i] = k - 1;
+        break fill;
       }
     }
   }
-  const text = textOf(said);
-  if (text.length > LESSONS_MAP_MAX_CHARS) {
-    throw new Error(
-      `lessons: the map for this audience takes ${text.length} characters, over its budget of ${LESSONS_MAP_MAX_CHARS}: its fetch, list or raise door is too long`,
-    );
-  }
-  return text;
-}
-
-/** The count of the lessons the map folded, and where to list them; empty where it folded none. */
-function moreLine(rest: number, audience: LessonAudience): string {
-  if (rest <= 0) return '';
-  return `${rest} more ${rest === 1 ? 'lesson' : 'lessons'}, nearer other work: ${audience.list}`;
+  const text = textOf(gists);
+  if (text.length <= LESSONS_MAP_MAX_CHARS) return { text, past: [] };
+  const past = namedPast(text, LESSONS_MAP_MAX_CHARS - tail.length - 2, reach);
+  const first = past[0]?.slug ?? reach.at(-1)?.slug ?? '';
+  const draft = textOf(gists, pastCapLine(text.length, first, past.length, audience.list));
+  return {
+    text: textOf(gists, pastCapLine(draft.length, first, past.length, audience.list)),
+    past,
+  };
 }
 
 /**
- * How many of the lessons reaching this audience its map could not name: a pile the steward folds
- * into the teaching each one is about (ISS-1251), never a line the map cuts. 0 where all fit.
+ * The map's text, or null where no lesson reaches this audience. Every lesson is named, by slug under
+ * the situation it applies in, the nearest with their gist as the cap allows; a map whose slugs alone
+ * run past the cap is served whole and says from which lesson on it does, never cut (ISS-1251 c5).
+ */
+export const lessonsMapText = (
+  entries: readonly LessonEntry[],
+  audience: LessonAudience,
+  depth: 2 | 3,
+): string | null => composeMap(entries, audience, depth)?.text ?? null;
+
+/**
+ * The map against its cap for one audience: every lesson reaching it is named, and a map past its cap
+ * is a pile the steward merges (ISS-1251), never a line the map cuts.
  */
 export function lessonsMapOverflow(
   entries: readonly LessonEntry[],
   audience: LessonAudience,
-): { reach: number; named: number; size: number; cap: number } {
-  const text = lessonsMapText(entries, audience, 2) ?? '';
-  const reach = lessonsFor(entries, audience).length;
-  const named = lessonsFor(entries, audience).filter((e) => lessonNamedIn(text, e.slug)).length;
-  return { reach, named, size: text.length, cap: LESSONS_MAP_MAX_CHARS };
+): { reach: number; named: number; size: number; cap: number; past: string[] } {
+  const map = composeMap(entries, audience, 2);
+  const text = map?.text ?? '';
+  const reach = lessonsFor(entries, audience);
+  return {
+    reach: reach.length,
+    named: reach.filter((e) => lessonNamedIn(text, e.slug)).length,
+    size: text.length,
+    cap: LESSONS_MAP_MAX_CHARS,
+    past: (map?.past ?? []).map((e) => e.slug),
+  };
 }
 
 /** The map for one project and audience, read now. */

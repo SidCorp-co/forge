@@ -57,7 +57,7 @@ import {
   type Replayer,
   runLessonLifecycle,
 } from './lessons-lifecycle.js';
-import { openPileConsolidations } from './lessons-piles.js';
+import { type Merger, modelMerger, openPileConsolidations } from './lessons-piles.js';
 import {
   modelReviewer,
   modelSettler,
@@ -295,6 +295,7 @@ interface Judges {
   recheck: Rechecker;
   fold: Folder;
   replay: Replayer;
+  merge: Merger;
 }
 
 async function passProject(projectId: string, now: Date, judges: Judges, tally: LessonsPassTally) {
@@ -327,7 +328,7 @@ async function passProject(projectId: string, now: Date, judges: Judges, tally: 
   tally.retired += await retireDue(projectId, stewardId, now);
   await fileChecks(projectId, stewardId, judges.classify, tally);
   try {
-    tally.consolidations += await openPileConsolidations(projectId, stewardId);
+    tally.consolidations += await openPileConsolidations(projectId, stewardId, judges.merge);
   } catch (err) {
     // the piles are read beside the lessons, never in their way: a read that fails is named and counted
     tally.pilesUnread += 1;
@@ -348,6 +349,7 @@ export async function runLessonsPass(
     recheck?: Rechecker;
     fold?: Folder;
     replay?: Replayer;
+    merge?: Merger;
     projectIds?: readonly string[];
   } = {},
 ): Promise<LessonsPassTally> {
@@ -361,6 +363,7 @@ export async function runLessonsPass(
     recheck: opts.recheck ?? modelRechecker,
     fold: opts.fold ?? modelFolder,
     replay: opts.replay ?? modelReplayer,
+    merge: opts.merge ?? modelMerger,
   };
   const tally: LessonsPassTally = {
     projects: 0,

@@ -7,7 +7,7 @@
 
 import { TIER0_MAP_MAX_CHARS } from '@forge/contracts/capability-cards';
 import { type PileRow, type PilesView, SKILL_ALWAYS_ON_MAX_CHARS } from '@forge/contracts/door-use';
-import { ALWAYS_INJECT_MAX_CHARS } from '@forge/contracts/knowledge';
+import { ALWAYS_INJECT_MAX_CHARS, alwaysPastCap } from '@forge/contracts/knowledge';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { selectAlwaysInjectFromKnowledge, selectLessonEntries } from '../knowledge/index.js';
@@ -31,6 +31,7 @@ export async function readPiles(projectId: string, catalog: DoorCatalog): Promis
   ]);
   const maps = await tier0Maps(projectId, catalog, await doorCalls(projectId, catalog, 30));
   const knowledge = always.reduce((n, f) => n + f.text.length, 0);
+  const pastKnowledge = alwaysPastCap(always).map((f) => f.key);
   const map = lessonsMapOverflow(lessons, { ...RUN_AUDIENCE, ...restLessonDoors(projectId) });
   const piles: PileRow[] = [
     {
@@ -41,6 +42,7 @@ export async function readPiles(projectId: string, catalog: DoorCatalog): Promis
       items: always.length,
       carried: always.length,
       over: knowledge > ALWAYS_INJECT_MAX_CHARS,
+      past: pastKnowledge,
       ownerProjectId: projectId,
     },
     {
@@ -50,7 +52,9 @@ export async function readPiles(projectId: string, catalog: DoorCatalog): Promis
       cap: map.cap,
       items: map.reach,
       carried: map.named,
-      over: map.named < map.reach,
+      // every lesson is named; a map past its cap is served whole and merged, never cut (ISS-1251 c5)
+      over: map.size > map.cap,
+      past: map.past.map((slug) => slug.replace(/^lesson-/, 'L-')),
       ownerProjectId: projectId,
     },
     ...MAP_AUDIENCES.map((audience) => {
@@ -64,6 +68,7 @@ export async function readPiles(projectId: string, catalog: DoorCatalog): Promis
         carried: map.carried.length,
         // a map that cannot carry every card it teaches is due for merging, never cut
         over: map.carried.length < map.reach,
+        past: [],
         ownerProjectId: null,
       };
     }),
@@ -75,8 +80,29 @@ export async function readPiles(projectId: string, catalog: DoorCatalog): Promis
       items: 1,
       carried: 1,
       over: s.size > SKILL_ALWAYS_ON_MAX_CHARS,
+      past: [],
       ownerProjectId: s.projectId,
     })),
   ];
   return { projectId, piles };
+}
+
+/**
+ * The entries of a pile the project owns, each by the key an agent edits it under, for the steward
+ * to propose merges over (ISS-1251 c5): an always-on entry by its slug, a lesson by its `L-n`.
+ */
+export async function readPileEntries(
+  projectId: string,
+  pile: 'always_knowledge' | 'lessons_map',
+): Promise<{ key: string; text: string }[]> {
+  if (pile === 'always_knowledge') {
+    return (await selectAlwaysInjectFromKnowledge(projectId)).map((f) => ({
+      key: f.key,
+      text: f.text,
+    }));
+  }
+  return (await selectLessonEntries(projectId)).map((e) => ({
+    key: `L-${e.meta.number}`,
+    text: e.sentence,
+  }));
 }

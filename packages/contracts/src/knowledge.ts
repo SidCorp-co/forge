@@ -124,6 +124,22 @@ export interface KnowledgeProvenance {
 // What an always-inject knowledge entry may cost every prompt, and what flagging one does and does not buy.
 export const ALWAYS_INJECT_MAX_CHARS = 6000;
 
+/**
+ * The always-on entries served past `ALWAYS_INJECT_MAX_CHARS`, from the first whose text crosses it:
+ * named in the orientation and on the Budgets panel until the steward's merge brings the pile back
+ * under, never cut (ISS-1251 c5).
+ */
+export function alwaysPastCap<T extends { text: string }>(
+	facts: readonly T[],
+): T[] {
+	let size = 0;
+	const at = facts.findIndex((f) => {
+		size += f.text.length;
+		return size > ALWAYS_INJECT_MAX_CHARS;
+	});
+	return at < 0 ? [] : facts.slice(at);
+}
+
 export const ALWAYS_INJECT_GUARANTEE_NOTE =
 	"Flagging a fact always-inject guarantees it is READ, never that it was DONE: the body " +
 	"reaches every agent prompt, and nothing checks whether the agent followed it.";

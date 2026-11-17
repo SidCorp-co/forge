@@ -65,6 +65,11 @@ interface StewardPorts {
    */
   piles(projectId: string): Promise<PilesView>;
   /**
+   * The entries of a pile the project owns, each by the key an agent edits it under (a knowledge
+   * slug, a lesson's `L-n`), which the steward proposes merges over (`piles.ts:readPileEntries`).
+   */
+  pileEntries(projectId: string, pile: 'always_knowledge' | 'lessons_map'): Promise<PileEntry[]>;
+  /**
    * A steward job's audit of its own run, read against the door catalog and kept in the one verdict
    * store every agent's self-audit goes to (the support module's `reply-audit/self-audit.ts`,
    * ISS-1251), a failed one a correction on the run's subject; or the refusal naming the door that
@@ -73,6 +78,12 @@ interface StewardPorts {
   keepSelfAudit(
     input: StewardSelfAudit,
   ): Promise<{ ok: true } | { ok: false; refusals: Refusal[] }>;
+}
+
+/** One entry of a pile: the key it is edited under, and its text. */
+export interface PileEntry {
+  key: string;
+  text: string;
 }
 
 /** What a steward job says of its own run in its done call. */
