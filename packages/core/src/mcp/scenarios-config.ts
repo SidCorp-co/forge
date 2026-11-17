@@ -13,7 +13,8 @@ export const CONFIG_SCENARIOS: readonly CardScenario[] = [
     card: 'DELETE /api/projects/:projectId/integrations/coolify/env/:key',
     source:
       'steward run 519b53f6, ISS-827 release follow-through, 2026-11-17T01:19Z: 1 delete, refused PERMISSION_FORBIDDEN',
-    situation: 'ISS-827 c2 says each env act is refused for a missing permission, never for being an agent',
+    situation:
+      'ISS-827 c2 says each env act is refused for a missing permission, never for being an agent',
     bad: 'delete a live production variable to show the door works',
     good: 'delete once with its own token, read the PERMISSION_FORBIDDEN naming deploys.run as the evidence',
     teaches: [/its PERMISSION_FORBIDDEN is the evidence/i, /deleting a live production variable/i],

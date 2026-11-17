@@ -41,12 +41,12 @@ import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
 import { markUntrusted } from '../lib/untrusted-text.js';
 import { stewardAccountOf } from './account.js';
+import { cardChoices } from './lessons-anchor.js';
 import { fileChecks } from './lessons-checks.js';
 import { ABOUT_WORDS, type Classifier, modelClassifier } from './lessons-classify.js';
 import {
   type Anchorer,
   CARD_CHOICES,
-  cardChoices,
   emptyLifecycleTally,
   type Folder,
   type LifecycleTally,

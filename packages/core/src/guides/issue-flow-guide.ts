@@ -9,8 +9,8 @@
 
 import { WORK_STEPS } from '@forge/contracts/issue-vocabulary';
 import { PLAIN_DECISION_RULE } from '@forge/contracts/plain-decision';
-import { ROLE_RUBRICS } from '@forge/contracts/support-reply-audit';
 import { RELEASE_CLIP_MAX_BYTES, RELEASE_CLIP_MAX_SECONDS } from '@forge/contracts/release-page';
+import { ROLE_RUBRICS } from '@forge/contracts/support-reply-audit';
 import {
   VERDICT_EVIDENCE_ITEM_MAX,
   VERDICT_EVIDENCE_ITEMS_MAX,

@@ -37,13 +37,8 @@ import {
 import { logger } from '../lib/logger.js';
 import { isRefusal, type RefusalError } from '../lib/refusal.js';
 import { markUntrusted } from '../lib/untrusted-text.js';
-import {
-  adopts,
-  CARD_CHOICES,
-  cardChoices,
-  type Replayer,
-  takenAnchor,
-} from './lessons-lifecycle.js';
+import { cardChoices, takenAnchor } from './lessons-anchor.js';
+import { adopts, CARD_CHOICES, type Replayer } from './lessons-lifecycle.js';
 import { lessonScopeText } from './lessons-scope.js';
 
 const JUDGE_MAX_TOKENS = 800;

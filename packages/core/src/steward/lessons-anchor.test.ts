@@ -1,4 +1,5 @@
 // @direct-test-of packages/core/src/lessons-ports.ts
+// @direct-test-of packages/core/src/steward/lessons-anchor.ts
 // ISS-1251 c4: ten unrelated lessons sat on `card:support.member`. Round 1's anchor prompt offered no
 // cards and gave that one as its example; the steward copied it. A card anchor is now taken only where
 // the step offered it (or a confusion's raiser named it), the offer ranks a card by the words it alone
@@ -8,7 +9,8 @@ import { LESSON_ANCHOR_SHAPE } from '@forge/contracts/lessons';
 import { describe, expect, it } from 'vitest';
 
 const { nearestCards } = await import('../lessons-ports.js');
-const { anchorPrompt, recheckPrompt, takenAnchor } = await import('./lessons-lifecycle.js');
+const { anchorPrompt, recheckPrompt } = await import('./lessons-lifecycle.js');
+const { takenAnchor } = await import('./lessons-anchor.js');
 
 const card = (id: string, purpose: string, when = 'an agent works an issue in a project') => ({
   id,

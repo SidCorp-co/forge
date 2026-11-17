@@ -6,13 +6,13 @@
 // forge-master skill the box installs; what a dispatched run does is the `issue-flow` guide.
 
 import { PLAIN_DECISION_RULE } from '@forge/contracts/plain-decision';
-import { ROLE_RUBRICS } from '@forge/contracts/support-reply-audit';
 import {
   ROOM_DOCUMENT_CAPS,
   ROOM_IMAGE_CAPS,
   SUPPORT_MASTER_POST_EDIT_WINDOW_MS,
 } from '@forge/contracts/support';
 import { SUPPORT_MASTER_ASK_BOUND_MINUTES } from '@forge/contracts/support-master-ask';
+import { ROLE_RUBRICS } from '@forge/contracts/support-reply-audit';
 import { guideRef } from './guide-ref.js';
 import { OWED_NOW_RULE } from './owed-now.js';
 import type { CoreGuide } from './types.js';

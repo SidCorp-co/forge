@@ -16,7 +16,10 @@ export const FEEDBACK_SCENARIOS: readonly CardScenario[] = [
     situation: 'ISS-922 c4 says minting is refused to an actor without project.admin',
     bad: 'mint a real key on production to show the door works',
     good: 'mint once with its own token, read the PERMISSION_FORBIDDEN as the evidence, mint nothing live',
-    teaches: [/its PERMISSION_FORBIDDEN is the evidence/i, /minting a live key to prove the door works/i],
+    teaches: [
+      /its PERMISSION_FORBIDDEN is the evidence/i,
+      /minting a live key to prove the door works/i,
+    ],
   },
   {
     name: 'a claimed answer posted in the project channel by the session it was meant for',

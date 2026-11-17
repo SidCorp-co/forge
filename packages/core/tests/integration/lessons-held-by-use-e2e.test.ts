@@ -126,7 +126,12 @@ describe('a confusion re-anchors a lesson its anchor does not describe (c4)', ()
     expect((await anchorOf())?.anchor).toBe(`card:${CARD}`);
     // a card that is real but neither offered nor named is a guess, and waits (round 1's example)
     const guessed = await pass({
-      settle: { resolution: 'keep', sentence: null, anchor: 'card:support.reply', reason: 'Guess.' },
+      settle: {
+        resolution: 'keep',
+        sentence: null,
+        anchor: 'card:support.reply',
+        reason: 'Guess.',
+      },
     });
     expect(guessed.settled).toBe(0);
     expect((await anchorOf())?.anchor).toBe(`card:${CARD}`);
@@ -262,7 +267,12 @@ describe('a lesson a landing invalidated, re-anchored by a confusion, is valid a
       201,
     );
     await pass({
-      settle: { resolution: 'keep', sentence: null, anchor: 'card:support.reply', reason: 'Moved.' },
+      settle: {
+        resolution: 'keep',
+        sentence: null,
+        anchor: 'card:support.reply',
+        reason: 'Moved.',
+      },
     });
     const [row] = await rows<{ status: string; anchor: string; invalid: boolean }>(
       sql`SELECT status, anchor, invalid_at IS NOT NULL AS invalid FROM lessons
@@ -273,5 +283,47 @@ describe('a lesson a landing invalidated, re-anchored by a confusion, is valid a
       sql`UPDATE lessons SET applied_count = 3 WHERE project_id = ${w.projectId} AND number = ${n}`,
     );
     expect((await lessonsThatHold(w.projectId)).map((l) => l.number)).toContain(n);
+  });
+});
+
+// ISS-1251 round 5: dev.713's change to support.member invalidated ten lessons wrongly anchored
+// there, and the re-check, shown no card, could only readmit each where it stood
+describe('a re-check moves a wrongly anchored lesson to a card it was offered (c4)', () => {
+  it('readmits the lesson on the offered card its answer names, valid again', async () => {
+    const sentence = 'Reply to a member with screenshots of the page they see.';
+    const a = await correction(`${sentence} (1)`);
+    const b = await correction(`${sentence} (2)`);
+    await pass({
+      proposals: [{ ...proposal(sentence, [a, b]), anchor: `card:${CARD}` }],
+      review: (input) =>
+        (input.lesson as { sentence: string }).sentence === sentence ? approve() : null,
+    });
+    const n = await numberOf(sentence);
+    const { invalidateLessonsForChange } = await import('../../src/lessons/index.js');
+    await invalidateLessonsForChange(w.projectId, {
+      by: 'ISS-77',
+      paths: [],
+      text: `Reworks ${CARD}: members carry roles.`,
+    });
+    let offered: { id: string }[] = [];
+    await pass({
+      recheck: (l) => {
+        offered = (l as { offered: { id: string }[] }).offered;
+        return offered[0]
+          ? {
+              verdict: 'readmit',
+              sentence: null,
+              anchor: `card:${offered[0].id}`,
+              reason: 'It is about the reply, not the member record.',
+            }
+          : null;
+      },
+    });
+    expect(offered.length).toBeGreaterThan(0);
+    const [row] = await rows<{ status: string; anchor: string; invalid: boolean }>(
+      sql`SELECT status, anchor, invalid_at IS NOT NULL AS invalid FROM lessons
+           WHERE project_id = ${w.projectId} AND number = ${n}`,
+    );
+    expect(row).toEqual({ status: 'approved', anchor: `card:${offered[0]?.id}`, invalid: false });
   });
 });
