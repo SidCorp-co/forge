@@ -513,11 +513,14 @@ export async function landingMapOf(projectId: string, issueId: string): Promise<
   const write = (slug: string) =>
     `PUT ${base}/knowledge/<slug> { kind: 'glossary', module: '${slug}', title, body, term: { aliases, namedBy }, anchor: 'file.ts:symbol' }, a rule with kind 'rule' and its source, scope and recheckWhen`;
   const counts = { total: roots.length, empty };
+  // ISS-1269: with no module at all there is nowhere to place it, and creating one is an admin's act
   if (!module) {
     return {
       module: null,
       modules: counts,
-      said: `This issue sits in no module, and ${empty} of ${roots.length} modules hold no term or rule. Place it (PUT ${base}/modules/placements { type: 'issue', ref: '${issueId}', module }), then record each term a person named and each rule this work settled under that module: ${write('<module>')}.`,
+      said: !roots.length
+        ? `This project defines no module, so nothing can be placed or recorded under one. A module is created with POST ${base}/labels { kind: 'module', name }, which takes project.admin: ask a project admin to lay out the modules first.`
+        : `This issue sits in no module, and ${empty} of ${roots.length} modules hold no term or rule. Place it (PUT ${base}/modules/placements { type: 'issue', ref: '${issueId}', module }), then record each term a person named and each rule this work settled under that module: ${write('<module>')}.`,
     };
   }
   const within = (e: Item) => {

@@ -1,0 +1,1 @@
+**A landing on a project with no modules asks for an admin, not a placement.** The merge mark used to tell the agent to place its issue in a module the project did not have; it now says an admin creates the modules first.

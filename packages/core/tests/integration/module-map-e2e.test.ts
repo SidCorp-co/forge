@@ -385,4 +385,28 @@ describe("the merge mark shows what the landing's module holds (ISS-1256 r5)", (
       expect.objectContaining({ type: 'issue', ref: issues[13]?.key }),
     );
   });
+
+  it('answers a project with no module that an admin creates one first, asking no placement (ISS-1269)', async () => {
+    const owner = await createTestUser({ verified: true });
+    const bare = await createTestProject(owner.id);
+    await seedProjectDocument(bare.id, owner.id, {
+      environments: { live: { tier: 'production', deployment: { mode: 'external' } } },
+      defaultBranch: 'dev',
+    });
+    const issue = await createTestIssue(bare.id, owner.id, 1, {
+      status: 'open',
+      createdAt: new Date(),
+    });
+    const res = await api(await userToken(owner.id), 'POST', `/api/issues/${issue.id}/merge`, {
+      target: 'dev',
+      note: 'landed',
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const map = res.body.moduleMap as Body;
+    expect(map.module).toBeNull();
+    expect(map.modules).toEqual({ total: 0, empty: 0 });
+    expect(map.said).toContain(`POST /api/projects/${bare.id}/labels { kind: 'module', name }`);
+    expect(map.said).toContain('project.admin');
+    expect(map.said).not.toContain('modules/placements');
+  });
 });
