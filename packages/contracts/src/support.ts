@@ -1757,6 +1757,10 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_PROMISE_ISSUE_UNKNOWN",
 	/** A promise about an issue already dropped, which will never reach any environment (ISS-1012). */
 	"SUPPORT_PROMISE_ISSUE_DROPPED",
+	/** A promise naming a key whose prefix is not one the project numbers its issues with (ISS-1275). */
+	"SUPPORT_PROMISE_KEY_FOREIGN",
+	/** A promise naming a feedback item, which is no issue: its carrying issue, or that it has none yet (ISS-1275). */
+	"SUPPORT_PROMISE_FEEDBACK_NOT_ISSUE",
 	/** A promise naming an environment the project does not declare, or whose serving Forge cannot read (ISS-1012). */
 	"SUPPORT_PROMISE_ENVIRONMENT_UNTRACKED",
 	/** An owner act, or his consent, outside the owner's own room (ISS-1013). */
@@ -1940,6 +1944,8 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_PROMISE_NOT_FOLLOWED: 403,
 	SUPPORT_PROMISE_ISSUE_UNKNOWN: 404,
 	SUPPORT_PROMISE_ISSUE_DROPPED: 409,
+	SUPPORT_PROMISE_KEY_FOREIGN: 400,
+	SUPPORT_PROMISE_FEEDBACK_NOT_ISSUE: 409,
 	SUPPORT_PROMISE_ENVIRONMENT_UNTRACKED: 409,
 	SUPPORT_OWNER_OTHER_ROOM: 403,
 	SUPPORT_OWNER_NO_CONSENT: 403,

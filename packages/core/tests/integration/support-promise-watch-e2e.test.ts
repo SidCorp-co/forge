@@ -8,7 +8,12 @@ vi.hoisted(() => {
 
 import { tellProjectPromises } from '../../src/support/promise-watch.js';
 import { api } from '../helpers/api.js';
-import { createTestIssue, createTestProject, rows } from '../helpers/factories.js';
+import {
+  createTestFeedback,
+  createTestIssue,
+  createTestProject,
+  rows,
+} from '../helpers/factories.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
 import { refusalCodes, SupportWorld, type Turn } from '../helpers/support-world.js';
 
@@ -326,5 +331,51 @@ describe('ISS-1012: a support room promises to tell a person when an issue reach
     expect(notes[0]?.thread).toBe(thread);
     expect(notes[0]?.text).toContain('it is on staging now');
     expect(await tellProjectPromises(w.projectId)).toBe(0);
+  });
+});
+
+describe('ISS-1275: a promise names an issue by a key the project numbers it with', () => {
+  // ISS-1275, from FB-703: the promise read any key's digits as an issue number, so FB-76 named the
+  // project's dropped ISS-76 and the room was told the work was dropped. A key whose prefix the
+  // project does not number its issues with is refused by name; a feedback key is told the issue its
+  // triage carries it on, or that it has none yet, never that an issue is dropped or unknown.
+  it('refuses a feedback key and a foreign prefix by name, never as the issue of the same number (ISS-1275)', async () => {
+    const slug = String(
+      (
+        await rows<{ slug: string }>(sql`SELECT slug FROM projects WHERE id = ${w.projectId}::uuid`)
+      )[0]?.slug,
+    );
+    await createTestIssue(w.projectId, w.ownerId, 76, { status: 'dropped', createdAt: new Date() });
+    await createTestFeedback(w.projectId, w.ownerId, 76);
+    await createTestFeedback(w.projectId, w.ownerId, 77, [issue.landed]);
+    const before = (await promises()).length;
+    const out: Record<string, unknown>[] = [];
+    await onNextAsk(
+      () => w.chat.say(w.chat.bob, 'Cái mình báo FB-76 bao giờ xong?'),
+      async (turn, act) => {
+        const thread = turn.messages.find((m) => m.from !== 'forge')?.thread;
+        const ask = (extra: Record<string, unknown>) =>
+          act({ action: 'promise', thread, environment: 'staging', ...extra });
+        out.push(await ask({ issue: 'FB-76', project: slug }));
+        out.push(await ask({ issue: 'FB-77', project: slug }));
+        out.push(await ask({ issue: 'FB-76' }));
+        out.push(await ask({ issue: 'XYZ-7', project: slug }));
+        await act({ action: 'reply', thread, text: 'Mình đã chuyển cho đội rồi nhé.' });
+      },
+    );
+    expect(out.map((o) => refusalCodes(o))).toEqual([
+      ['SUPPORT_PROMISE_FEEDBACK_NOT_ISSUE'],
+      ['SUPPORT_PROMISE_FEEDBACK_NOT_ISSUE'],
+      ['SUPPORT_PROMISE_FEEDBACK_NOT_ISSUE'],
+      ['SUPPORT_PROMISE_KEY_FOREIGN'],
+    ]);
+    const [untriaged, carried, unscoped, foreign] = out.map((o) => JSON.stringify(o));
+    expect(untriaged).toContain('has not yet triaged into an issue');
+    expect(untriaged).not.toContain('dropped');
+    expect(carried).toContain(`ISS-7 (\\"${TITLE}\\"`);
+    expect(unscoped).toContain('Name its project as well');
+    expect(foreign).toContain('names the prefix `XYZ`');
+    expect(foreign).toContain('it answers to `ISS`');
+    expect(await promises()).toHaveLength(before);
   });
 });

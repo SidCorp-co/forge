@@ -1,17 +1,21 @@
 // A promise a room's session makes a person in their thread (ISS-1012, FB-512): to tell them when an
 // issue of a project the room follows reaches an environment, named by the project's own name for
 // it. Whether or not the issue was filed from that thread. One the room cannot keep is refused by
-// name when it is asked: a project it does not follow, an issue that is no issue or is dropped, an
-// environment the project does not declare or whose serving Forge cannot read. A promise made is
+// name when it is asked: a project it does not follow, an issue that is no issue or is dropped, a
+// key of another prefix or a feedback item's key (ISS-1275), an environment the project does not
+// declare or whose serving Forge cannot read. A promise made is
 // recorded with who asked, which issue, which environment and when, and noted on the issue for its
 // master; the support-results watch answers it once (`promise-watch.ts`).
 
 import type { SupportPromiseRequest } from '@forge/contracts/support';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { postIssueNotice } from '../comments/index.js';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { supportPromises } from '../db/schema-support.js';
+import { feedbackIdOfSeq, triageOutcomesOf } from '../feedback/index.js';
+import { heldIssuePrefixes } from '../issues/index.js';
+import { parseIssueRef } from '../lib/issue-ref.js';
 import { readProjectDocument } from '../project-config/index.js';
 import { keyOf } from './ops-reads.js';
 import { projectOfKey, type ScopedProject } from './ops-scope.js';
@@ -35,15 +39,72 @@ export interface PromiseMade {
 
 type IssueRow = { id: string; title: string; status: string; issSeq: number };
 
-async function issueOf(projectId: string, key: string): Promise<IssueRow | null> {
-  const seq = Number(key.replace(/^\D+/, ''));
-  if (!Number.isSafeInteger(seq)) return null;
+const ISSUE_COLUMNS = {
+  id: issues.id,
+  title: issues.title,
+  status: issues.status,
+  issSeq: issues.issSeq,
+};
+
+/**
+ * The issue `key` names in the project, read only through a prefix the project numbers its issues
+ * with (`held`: any it has held; the legacy `ISS` is always admitted): a key of any other prefix
+ * names another record or another project's issue, never this project's issue of the same number
+ * (ISS-1275).
+ */
+async function issueOf(
+  projectId: string,
+  key: string,
+  held: readonly string[],
+): Promise<Outcome<IssueRow | null>> {
+  const parsed = parseIssueRef(key, held);
+  if (!parsed.ok) {
+    return no(
+      'SUPPORT_PROMISE_KEY_FOREIGN',
+      '/issue',
+      `${parsed.message} Name the issue by its key in this project. Nothing was promised`,
+    );
+  }
   const [row] = await db
-    .select({ id: issues.id, title: issues.title, status: issues.status, issSeq: issues.issSeq })
+    .select(ISSUE_COLUMNS)
     .from(issues)
-    .where(and(eq(issues.projectId, projectId), eq(issues.issSeq, seq)))
+    .where(and(eq(issues.projectId, projectId), eq(issues.issSeq, parsed.issSeq)))
     .limit(1);
-  return row ?? null;
+  return { ok: true, value: row ?? null };
+}
+
+const FEEDBACK_KEY = /^\s*FB-(\d{1,9})\s*$/i;
+
+const feedbackNotIssue = (detail: string): Outcome<never> =>
+  no('SUPPORT_PROMISE_FEEDBACK_NOT_ISSUE', '/issue', detail);
+
+/**
+ * A feedback item's key is no issue, so no promise is held on it (ISS-1275): the room is told the
+ * issue its triage named, to promise on that, or that its triage has named none yet. Refused rather
+ * than held on the feedback, because a promise is watched by the issue whose landing reaches an
+ * environment, and an untriaged item has no landing to watch.
+ */
+async function feedbackRefusal(project: ScopedProject, seq: number): Promise<Outcome<never>> {
+  const key = `FB-${seq}`;
+  const feedbackId = await feedbackIdOfSeq(project.id, seq);
+  if (!feedbackId) {
+    return feedbackNotIssue(
+      `${key} is a feedback item's key, not an issue's, and ${project.slug} holds no ${key}. A promise names an issue; nothing was promised`,
+    );
+  }
+  const carriers = (await triageOutcomesOf([feedbackId])).get(feedbackId)?.issueIds ?? [];
+  if (carriers.length === 0) {
+    return feedbackNotIssue(
+      `${key} is feedback ${project.slug} has not yet triaged into an issue, so no work of it can reach an environment yet. Nothing was promised: tell the person their report is with the team, and promise once its triage names an issue`,
+    );
+  }
+  const carrying = await db.select(ISSUE_COLUMNS).from(issues).where(inArray(issues.id, carriers));
+  const named = carrying
+    .map((i) => `${keyOf(project, i.issSeq)} ("${i.title}", ${i.status})`)
+    .join(', ');
+  return feedbackNotIssue(
+    `${key} is feedback, not an issue: its triage carries it on ${named}. Promise on that issue instead; nothing was promised`,
+  );
 }
 
 /** The project and issue a promise names, or why the room cannot promise about it. */
@@ -51,8 +112,14 @@ async function promisedIssue(
   room: RoomRow,
   input: SupportPromiseRequest,
 ): Promise<Outcome<{ project: ScopedProject; issue: IssueRow; key: string }>> {
+  const feedbackSeq = FEEDBACK_KEY.exec(input.issue)?.[1];
   const project = await projectOfKey(room, input.issue, input.project);
   if (!project.ok) {
+    if (feedbackSeq) {
+      return feedbackNotIssue(
+        `${input.issue} is a feedback item's key, not an issue's, and a feedback key names no project. Name its project as well, and you are told the issue it is carried by. Nothing was promised`,
+      );
+    }
     const [why] = project.refusals;
     return no(
       'SUPPORT_PROMISE_NOT_FOLLOWED',
@@ -60,7 +127,14 @@ async function promisedIssue(
       `${why?.detail ?? `${input.issue} is no issue of a project this room follows`}. A promise is made only about a project this room follows; nothing was promised`,
     );
   }
-  const issue = await issueOf(project.value.id, input.issue);
+  const held = await heldIssuePrefixes(project.value.id);
+  // a project may number its own issues FB-n; only where it does not is FB-n a feedback key
+  if (feedbackSeq && !held.some((p) => p.toUpperCase() === 'FB')) {
+    return feedbackRefusal(project.value, Number(feedbackSeq));
+  }
+  const read = await issueOf(project.value.id, input.issue, held);
+  if (!read.ok) return read;
+  const issue = read.value;
   const key = issue ? keyOf(project.value, issue.issSeq) : input.issue;
   if (!issue) {
     return no(
