@@ -39,6 +39,7 @@ import {
 } from './criteria-basis.js';
 import type { CompletionFacts } from './release-view.js';
 import { releasedLineOf } from './released-line.js';
+import { type ServedCarriages, servedCarriagesOf } from './served-carriage.js';
 
 export interface IssueFact {
   id: string;
@@ -103,6 +104,11 @@ export interface ReleaseFacts {
    * reads earned (FB-515). Null on a project weighing at what is served.
    */
   landing: ReadonlyMap<string, LandingEarned> | null;
+  /**
+   * What each later commit an issue's commit verdicts name holds of each release carrying it
+   * (`served-carriage.ts`, ISS-1290): a pass there counts on the release where it carries it unchanged.
+   */
+  served: ServedCarriages | null;
 }
 
 /** One issue's criteria as its landing weighs them: the numbers it earned there. */
@@ -151,7 +157,7 @@ function earnedByJudge(
 /** What a release reads its criteria's proof by: the project's judge, its testing environment, and
  *  where its releases are its agent's record, what each carries (ISS-900). */
 export type ReleaseProof = Pick<ReleaseFacts, 'judge' | 'judgedOn'> &
-  Partial<Pick<ReleaseFacts, 'released' | 'landing'>>;
+  Partial<Pick<ReleaseFacts, 'released' | 'landing' | 'served'>>;
 
 /** One verdict a carried criterion earned, as a release reads it. */
 export interface CarriedVerdict extends ReleaseVerdictReading {
@@ -496,13 +502,18 @@ export async function loadReleaseFacts(
       }
     }
   }
+  const judgedOn = judgedOnOf(held?.document.delivery);
+  // asked beside the line and the landing basis, never after them
+  const servedRead = servedCarriagesOf(projectId, byIssue, judgedOn);
+  servedRead.catch(() => undefined);
   return {
     issues: byIssue,
     requirements: reqs,
     cutters,
     judge,
-    judgedOn: judgedOnOf(held?.document.delivery),
+    judgedOn,
     released: await releasedRead,
     landing: earnedByJudge(await landingRead, byIssue),
+    served: await servedRead,
   };
 }

@@ -7,8 +7,31 @@ import { versionsCountedOn } from '@forge/contracts/released-line';
 import type { ReleaseCriterionView } from '@forge/contracts/releases';
 import { commitIdentityPhrase } from '@forge/contracts/verdict-identity';
 import { countedUnderCutover, verifiedOf } from '@forge/contracts/verified-rule';
+import { carriageKey } from '../issues/index.js';
 import { voidedStillRead } from './judged-before-reopen.js';
 import type { CarriedVerdict, IssueFact, ReleaseProof } from './release-facts.js';
+
+/**
+ * How a commit verdict judged at a later build stands on the release whose build is `build` (ISS-1290):
+ * `carried` where that build carries the release's change unchanged (`served-carriage.ts`), so it
+ * counts as judged there; else why it does not, or null where it is no such verdict.
+ */
+function laterBuildReading(
+  v: CarriedVerdict,
+  issueId: string,
+  build: string | null,
+  served: ReleaseProof['served'],
+): { carried: true } | { carried: false; why: string } | null {
+  const sha = v.identityKind === 'commit' ? v.commitSha?.trim().toLowerCase() : null;
+  if (!sha || build === null || sha === build.trim().toLowerCase()) return null;
+  const over = served?.get(issueId)?.get(carriageKey(build, sha));
+  if (!over) return null;
+  if (over.carries === 'unchanged') return { carried: true };
+  return {
+    carried: false,
+    why: `judged at \`${sha.slice(0, 12)}\`, not at this release's build \`${build.slice(0, 12)}\`, and it counts here only where that build carries this release's change unchanged: ${over.why}`,
+  };
+}
 
 /**
  * An issue's criteria as the release whose build is `build` counts them, by the one rule every count
@@ -57,7 +80,7 @@ export interface CriterionReading {
 export function criterionReadingsAt(
   issue: IssueFact,
   build: string | null,
-  { judge, judgedOn, released, landing }: ReleaseProof,
+  { judge, judgedOn, released, landing, served }: ReleaseProof,
   version: string | null = null,
   shippedAt: Date | null = version === null ? null : (released?.shipped.get(version)?.at ?? null),
 ): CriterionReading[] {
@@ -70,8 +93,11 @@ export function criterionReadingsAt(
     const newestFirst = [...(issue.verdicts.get(c.n) ?? []), ...before].sort((a, b) =>
       b.at.localeCompare(a.at),
     );
-    const counted = newestFirst.filter((v) =>
-      countedForClass(v, cls, build, judgedOn, versions, reopenedAt),
+    const later = (v: CarriedVerdict) => laterBuildReading(v, issue.id, build, served);
+    const counted = newestFirst.filter(
+      (v) =>
+        countedForClass(v, cls, build, judgedOn, versions, reopenedAt) ||
+        later(v)?.carried === true,
     );
     const read = verifiedOf(counted, judge);
     const stands = read.stands;
@@ -80,11 +106,16 @@ export function criterionReadingsAt(
     // (FB-515): the issue's own weighing (`criteria-basis.ts:landingCriteriaReports`) decides it
     const proven = byRule || (landing?.get(issue.id)?.earned.has(c.n) ?? false);
     const unjudgedThere = build !== null && judgedOn !== null && !stands;
+    // a pass at a later build that is not counted says what its carriage could not show (ISS-1290)
+    const uncarried = newestFirst
+      .filter((v) => v.verdict === 'pass')
+      .map(later)
+      .find((r) => r?.carried === false);
     const unverified = proven
       ? null
       : unjudgedThere
         ? unjudgedOnReleaseWhy(cls, judgedOn, build)
-        : read.why;
+        : (read.why ?? (stands ? null : (uncarried?.why ?? null)));
     // with no build, only a verdict judged on a release names what it stands on (ISS-900)
     const onBuild = build === null && stands?.identityKind !== 'release' ? null : stands;
     const reading = {
