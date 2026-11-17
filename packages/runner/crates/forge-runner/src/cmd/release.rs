@@ -6,6 +6,10 @@
 //! and sends those files' text at both ends. Every decision about what a migration, an API contract,
 //! a dependency or a setting is stays in core's one reader, so a project with no source host binding
 //! reads its release the same way as one with one.
+//!
+//! Each commit of the range goes too, with its subject and the files it changed against its first
+//! parent, so core can name the files of an issue that landed over several commits by the commits
+//! whose subject names it (ISS-1259); the box decides nothing about which issue a commit is.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -44,6 +48,9 @@ pub struct RangeArgs {
     #[arg(long)]
     pub repo: Option<PathBuf>,
 }
+
+/// At most this many commits go with one report; core refuses more (`RANGE_COMMITS_MAX`).
+const RANGE_COMMITS_MAX: usize = 5_000;
 
 /// One file the range changed, as core reads it; a rename is its old path removed and its new one added.
 #[derive(Debug, PartialEq, Eq)]
@@ -98,7 +105,16 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         })
         .unwrap_or_default();
     let files = files_at(&repo, &base, &head, &paths)?;
-    let report = json!({ "base": base, "head": head, "changes": listed, "files": files });
+    let mut report = json!({ "base": base, "head": head, "changes": listed, "files": files });
+    let commits = commits_between(&repo, &base, &head)?;
+    if commits.len() > RANGE_COMMITS_MAX {
+        eprintln!(
+            "note: the range holds {} commits and a report carries at most {RANGE_COMMITS_MAX}, so none go: core reads no issue's files from this range",
+            commits.len()
+        );
+    } else {
+        report["commits"] = Value::Array(commits);
+    }
     let reading = post_json(&client, &at, &report).await?;
     println!("{}", serde_json::to_string_pretty(&reading)?);
     Ok(())
@@ -167,6 +183,44 @@ pub fn changes_between(repo: &Path, base: &str, head: &str) -> anyhow::Result<Ve
         );
     }
     parse_name_status(&String::from_utf8_lossy(&out.stdout))
+}
+
+/// Each commit of `base..head`, newest first: its sha, its subject and the files it changed against
+/// its first parent (a merge's whole merged branch), renames as both names.
+pub fn commits_between(repo: &Path, base: &str, head: &str) -> anyhow::Result<Vec<Value>> {
+    let range = format!("{base}..{head}");
+    let out = git(
+        repo,
+        &[
+            "-c",
+            "core.quotePath=false",
+            "log",
+            "--no-renames",
+            "--diff-merges=first-parent",
+            "--name-only",
+            "--format=%x1e%H%x1f%s",
+            &range,
+        ],
+    )?;
+    if !out.status.success() {
+        anyhow::bail!(
+            "git log {range} failed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
+    }
+    Ok(parse_commits(&String::from_utf8_lossy(&out.stdout)))
+}
+
+/// `git log --format=%x1e%H%x1f%s --name-only`: per record a sha and subject, then its paths a line each.
+pub fn parse_commits(text: &str) -> Vec<Value> {
+    text.split('\u{1e}')
+        .filter_map(|record| {
+            let mut lines = record.lines();
+            let (sha, subject) = lines.next()?.split_once('\u{1f}')?;
+            let paths: Vec<&str> = lines.filter(|l| !l.trim().is_empty()).collect();
+            Some(json!({ "sha": sha, "subject": subject, "paths": paths }))
+        })
+        .collect()
 }
 
 /// `git diff --name-status -z`: a status, then its path, each ended by NUL.
@@ -338,6 +392,38 @@ mod tests {
         let err = full_commit(&repo, &"d".repeat(40)).unwrap_err().to_string();
         assert!(err.contains("git fetch origin"), "{err}");
         assert_eq!(full_commit(&repo, &head[..12]).unwrap(), head);
+        cleanup(&repo);
+    }
+
+    #[test]
+    fn names_each_commit_with_its_subject_and_files() {
+        let (repo, base, head) = two_commits();
+        write(&repo, "src/new.ts", "changed");
+        sh(&repo, &["commit", "-qam", "fix: third (ISS-7)"]);
+        let third = sh(&repo, &["rev-parse", "HEAD"]);
+        let got = commits_between(&repo, &base, &third).unwrap();
+        assert_eq!(got.len(), 2, "{got:?}");
+        assert_eq!(got[0]["sha"], third);
+        assert_eq!(got[0]["subject"], "fix: third (ISS-7)");
+        assert_eq!(got[0]["paths"], json!(["src/new.ts"]));
+        assert_eq!(got[1]["sha"], head);
+        let mut second: Vec<String> = got[1]["paths"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| p.as_str().unwrap().to_string())
+            .collect();
+        second.sort();
+        assert_eq!(
+            second,
+            vec![
+                "docker-compose.prod.yml",
+                JOURNAL,
+                "src/gone.ts",
+                "src/new.ts",
+                "src/old.ts"
+            ]
+        );
         cleanup(&repo);
     }
 
