@@ -28,7 +28,7 @@ import { code } from '../helpers/support-channel.js';
 // @direct-test-of packages/core/src/support/thread-requests.ts
 //
 // ISS-1243 item 13 (owner 2026-11-15): a project names exactly one technical channel, its own thread
-// of the shared operations room or a direct message to one person (the owner by default), and a room
+// of the shared operations room (the default, ISS-1271) or a direct message to one person, and a room
 // agent raises every permission, approval, finding and ask of the owner there and nowhere else: the
 // asker's thread is posted nothing. A channel Forge cannot reach is refused by name.
 

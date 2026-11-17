@@ -1643,9 +1643,9 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_OWNER_RECORD_UNKNOWN",
 	/** An owner question's `forgeQuestion` names no open question of this project (ISS-871). */
 	"SUPPORT_OWNER_QUESTION_UNKNOWN",
-	/** The project names no technical channel core can post in: no person for a direct message, no recorded thread (ISS-1243). */
+	/** The project names no technical channel core can post in: no person for a direct message, or a shared thread where its organization binds no operations room of scope forge (ISS-1243, ISS-1271). */
 	"SUPPORT_TECHNICAL_CHANNEL_UNNAMED",
-	/** The technical channel could not be posted in: the direct room did not open (ISS-1243). */
+	/** The technical channel could not be posted in: the direct room did not open, or the project's thread of the shared room could not be opened (ISS-1243, ISS-1271). */
 	"SUPPORT_TECHNICAL_CHANNEL_UNREACHABLE",
 	/** An act the project keeps from its room agents (`agentDeny`): refused, and raised in the technical channel (ISS-1243). */
 	"SUPPORT_ACT_DENIED",

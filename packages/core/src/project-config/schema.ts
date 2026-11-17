@@ -349,7 +349,8 @@ export const projectDocumentSchema = z.strictObject({
   ).optional(),
   // the one channel every room agent of the project raises a permission or approval it needs, a
   // technical finding and an ask of the owner in, and nowhere else (ISS-1243, `support/technical-channel.ts`).
-  // Absent is a direct message to the owner the room's binding names.
+  // Absent is the project's own thread of the operations room its organization shares (ISS-1271),
+  // or a direct message to the owner the room's binding names where the organization binds none.
   technicalChannel: technicalChannelSchema.optional(),
   // the acts with serious consequence the project keeps from its room agents, refused by name and
   // raised in the technical channel (ISS-1243, `support/act-deny.ts`). Absent is all four; [] is none.

@@ -9,9 +9,11 @@ import { chatUserIdSchema, supportThreadIdSchema } from "./support.js";
 
 /**
  * Where a project's technical channel is (item 13): `thread` is the project's own thread of the
- * operations room its organization shares (Forge-Communicate), as that room's binding records it;
- * `dm` is a direct message to one person, the chat server's user id, the owner the room's binding
- * names when `user` is omitted. One object: a project names exactly one.
+ * operations room its organization shares (at SidCorp, Forge-Communicate), opened on its first need
+ * and recorded on that room's binding; `dm` is a direct message to one person, the chat server's
+ * user id, the owner the room's binding names when `user` is omitted. One object: a project names
+ * exactly one. Absent, it is the shared room's thread where the organization binds such a room, and
+ * a direct message to the owner where it binds none (ISS-1271).
  */
 export const technicalChannelSchema = z.discriminatedUnion("kind", [
 	z.strictObject({ kind: z.literal("thread") }),

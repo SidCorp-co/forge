@@ -271,7 +271,10 @@ export const ROOM_ACT_CARDS = {
         do: 'support.technical { thread, need, text } from the thread it arose in; tell that thread the answer, or one short line that it is in hand',
       },
     ],
-    practice: ['The work thread hears nothing of a grant you lack.'],
+    practice: [
+      'The channel is the project’s own thread of the organization’s shared operations room, opened the first time it is needed; a direct message to the owner only where the project names one or the organization has no such room.',
+      'The work thread hears nothing of a grant you lack.',
+    ],
     example: {
       thread: THREAD,
       need: 'permission',

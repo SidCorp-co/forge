@@ -1,7 +1,7 @@
 // A channel agent's question to the owner, through the project's one technical channel (REQ-77
 // BC-12, ISS-1246; owner 2026-11-15: every ask of the owner goes there and nowhere else). The agent
 // asks from the thread the question arose in; the ask is posted in the technical channel alone (the
-// project's thread of the shared operations room, or a direct message, as `technicalChannel` names)
+// project's thread of the shared operations room by default, or a direct message, `technicalChannelOf`)
 // and recorded on the asker's thread naming where it went. The owner's reply there, by the id the
 // chat server signed for its writer, is the answer: a reply to the ask's own line answers that ask,
 // and any other message of his there answers the one ask waiting there. It reaches the asking session
