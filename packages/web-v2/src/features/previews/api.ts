@@ -16,16 +16,7 @@ import {
 } from "@forge/contracts/preview";
 import type { z } from "zod";
 import { apiClient } from "@/lib/api/client";
-
-export const routeOf = (route: string, params: Record<string, string>): string => {
-  const path = route.replace(/:(\w+)/g, (_, name: string) => {
-    const value = params[name];
-    if (value === undefined) throw new Error(`previews/api: ${route} needs :${name}`);
-    return encodeURIComponent(value);
-  });
-  // the contracts name the full path; the client prefixes `/api` itself
-  return path.replace(/^\/api/, "");
-};
+import { routeOf } from "@/lib/api/route-of";
 
 class PreviewRecordRefused extends Error {
   constructor(where: string, issues: string) {

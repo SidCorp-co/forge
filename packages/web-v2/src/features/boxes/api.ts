@@ -12,10 +12,8 @@ import {
   type OpenBoxRequest,
 } from "@forge/contracts/boxes";
 import { apiClient } from "@/lib/api/client";
+import { routeOf } from "@/lib/api/route-of";
 import { CORE_URL } from "@/lib/utils/core-url";
-
-const routeOf = (route: string, params: Record<string, string>): string =>
-  route.replace(/:(\w+)/g, (_, name: string) => encodeURIComponent(params[name] ?? "")).replace(/^\/api/, "");
 
 class BoxRecordRefused extends Error {
   constructor(where: string, what: string) {

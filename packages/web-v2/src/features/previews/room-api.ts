@@ -5,7 +5,8 @@
 import { type Room, ROOM_ROUTES, roomEnvelopeSchema } from "@forge/contracts/poc-room";
 import type { KeepPreviewRequest } from "@forge/contracts/preview";
 import { apiClient } from "@/lib/api/client";
-import { post, read, routeOf } from "./api";
+import { routeOf } from "@/lib/api/route-of";
+import { post, read } from "./api";
 
 const room = (where: string, body: unknown): Room => read(where, roomEnvelopeSchema, body).room;
 

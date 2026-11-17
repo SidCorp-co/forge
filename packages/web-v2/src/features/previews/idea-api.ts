@@ -11,7 +11,8 @@ import {
   previewEnvelopeSchema,
 } from "@forge/contracts/preview";
 import { apiClient } from "@/lib/api/client";
-import { post, read, routeOf } from "./api";
+import { routeOf } from "@/lib/api/route-of";
+import { post, read } from "./api";
 
 export const ideaApi = {
   /** Opens a preview of an idea about a requirement or a feedback item, optionally from a kept preview's branch head. */

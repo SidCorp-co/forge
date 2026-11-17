@@ -17,7 +17,8 @@ import {
   recordingsResponseSchema,
 } from "@forge/contracts/reproduce";
 import { apiClient } from "@/lib/api/client";
-import { read, routeOf } from "./api";
+import { routeOf } from "@/lib/api/route-of";
+import { read } from "./api";
 
 const send = (route: string, params: Record<string, string>, method: "POST" | "GET", body?: unknown) =>
   apiClient<unknown>(routeOf(route, params), { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
