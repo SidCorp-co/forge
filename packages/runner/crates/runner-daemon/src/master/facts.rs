@@ -372,7 +372,7 @@ pub(crate) fn facts_of(
     };
     wire::Facts {
         restarting: seen.restarting.clone(),
-        terminal: terminal::available(),
+        terminal: resident::host_available(),
         standing: standing_wire(&seen.standing),
         pane: if seen.pane_alive { "alive" } else { "absent" },
         capability: seen.adopted.as_ref().map(|a| a.capability.wire()),

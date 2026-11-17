@@ -13,10 +13,9 @@ pub(crate) async fn status(ctx: &Ctx, slug: Option<&str>) -> anyhow::Result<()> 
         return Ok(());
     }
     for s in slugs {
-        let name = terminal::session_name(terminal::MASTER_PREFIX, &s);
-        // The daemon's own three-valued reading: `terminal::alive` folds a tmux
-        // nobody could ask into `false`, which printed `gone` for a pane that
-        // may be running, and a `last exit` line under it (ISS-1343).
+        let name = bg_session::session_name(bg_session::Kind::Master, &s);
+        // The daemon's own three-valued reading: a roster nobody could read is
+        // `unknown`, never `gone` with a `last exit` line under it (ISS-1343).
         let presence = recovery_ports::pane_presence(&name).await;
         let alive = presence == MasterPresence::Alive;
         let path = transcript(&s)?;
@@ -40,7 +39,7 @@ pub(crate) async fn status(ctx: &Ctx, slug: Option<&str>) -> anyhow::Result<()> 
         let running = Running {
             name: &name,
             incarnation: if alive {
-                terminal::incarnation(&name).await
+                resident::incarnation(&name).await
             } else {
                 None
             },
@@ -52,13 +51,13 @@ pub(crate) async fn status(ctx: &Ctx, slug: Option<&str>) -> anyhow::Result<()> 
             authority_line(led.as_ref(), &s, now_unix(), &running)
         );
         if alive {
-            println!("{:<20} attach: {}", "", terminal::attach_command(&name));
+            println!("{:<20} attach: forge-runner master attach {s}", "");
         }
     }
     Ok(())
 }
 
-/// The pane column: `unknown` where tmux could not be asked, never `gone`.
+/// The pane column: `unknown` where the roster could not be read, never `gone`.
 pub(crate) fn pane_word(presence: MasterPresence) -> &'static str {
     match presence {
         MasterPresence::Alive => "alive",

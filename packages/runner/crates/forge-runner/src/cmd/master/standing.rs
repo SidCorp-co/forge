@@ -92,7 +92,7 @@ answers.",
 pub(crate) async fn stand_down(ctx: &Ctx, a: StandDownArgs, why: &str) -> anyhow::Result<()> {
     let led = open_ledger()?;
     let project_id = project_for_slug(ctx, &led, &a.slug).await?;
-    let pane = terminal::session_name(terminal::MASTER_PREFIX, &a.slug);
+    let pane = bg_session::session_name(bg_session::Kind::Master, &a.slug);
     let by = whoami();
 
     led.stand_down_master(&project_id, &a.slug, &by, why)?;
@@ -102,7 +102,7 @@ across restarts, until `forge-runner master stand-up {}`.",
         a.slug, a.slug
     );
 
-    if !terminal::alive(&pane).await {
+    if !resident::alive(&pane).await {
         println!("No pane was running for it, so nothing was ended.");
         return Ok(());
     }
@@ -110,7 +110,7 @@ across restarts, until `forge-runner master stand-up {}`.",
     let row = led.master_for_project(&project_id)?;
     match master_exit::holding(&led, row.as_ref())? {
         Holding::Nothing => {
-            terminal::kill(&pane).await?;
+            resident::kill(&pane).await.map_err(anyhow::Error::msg)?;
             println!("Ended {pane}; it held no open run.");
         }
         Holding::These(runs) if !a.force => {
@@ -138,7 +138,7 @@ Let those runs finish, or `forge-runner master stand-down {} --force` to end it 
             );
         }
         Holding::These(runs) => {
-            terminal::kill(&pane).await?;
+            resident::kill(&pane).await.map_err(anyhow::Error::msg)?;
             println!(
                 "Ended {pane} under --force; {} open run(s) died with it and their leases lapse.",
                 runs.len()
@@ -154,7 +154,7 @@ this pane goes. `forge-runner master stand-down {} --force` ends it anyway.",
             );
         }
         Holding::Unknown(why) => {
-            terminal::kill(&pane).await?;
+            resident::kill(&pane).await.map_err(anyhow::Error::msg)?;
             println!("Ended {pane} under --force, without establishing what it held: {why}.");
         }
     }

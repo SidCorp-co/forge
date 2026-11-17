@@ -92,7 +92,11 @@ impl Inputs {
         let source = runner_workspace::plugin_source::installed();
         let launch = runner_workspace::plugin_source::pane_launch();
         let argv = match &launch {
-            Ok(plugins) => runner_workspace::terminal::pane_argv(Some(&config), None, plugins),
+            Ok(plugins) => runner_workspace::bg_session::resident::launch_identity(
+                Some(&config),
+                &plugins.dirs,
+                &plugins.disabled,
+            ),
             Err(why) => vec![why.clone()],
         };
         map.insert("launch".to_string(), digest(argv.join("\0").as_bytes()));

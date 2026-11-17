@@ -156,31 +156,22 @@ pub(crate) async fn place_pane(
         return PaneState::Absent;
     }
     let resume = carry.conversation;
-    let transcript = transcript_path(&resolved.slug);
-    let output_from = transcript
-        .as_deref()
-        .map(|p| std::fs::metadata(p).map_or(0, |m| m.len()));
-    let started = match master_argv(prepared.mcp_config.as_deref(), resume) {
-        Ok(argv) => {
-            let at = &resolved.repo_path;
-            terminal::ensure(name, at, &argv, &env, transcript.as_deref()).await
-        }
-        Err(why) => Err(why),
-    };
-    let started = match started {
-        Ok(started) => started,
-        Err(e) => {
+    let mcp_config = prepared.mcp_config.as_deref();
+    let placed = match start_session(t, carry, &env, mcp_config).await {
+        Ok(placed) => placed,
+        Err(detail) => {
             unstarted(
                 masters,
                 project_id,
                 &resolved.slug,
                 ports.tokens,
                 session,
-                format!("could not start {name}: {e}"),
+                detail,
             );
             return PaneState::Absent;
         }
     };
+    let started = !matches!(placed, resident::Placed::AlreadyUp);
     if replacement_of(ended_deaf, started) == Replacement::DeafPaneSurvived {
         let slug = &resolved.slug;
         return deaf_pane_outlived_its_kill(
@@ -196,19 +187,16 @@ pub(crate) async fn place_pane(
     tracing::info!(
         "[master] {}: resident session {name} {} in {} — `{}` to watch it",
         resolved.slug,
-        match (started, resume) {
-            (false, _) => "was already up, and this pass started nothing".to_string(),
-            (true, Some(id)) => format!("resumed from conversation {id}"),
-            (true, None) => "cold-started".to_string(),
-        },
+        how_placed(&placed, resume),
         resolved.repo_path.display(),
-        terminal::attach_command(name)
+        attach_command(&resolved.slug)
     );
+    let logs = transcript_path(&resolved.slug);
     mark_placed(
         masters,
         project_id,
         session,
-        started.then(|| transcript.clone().zip(output_from)),
+        started.then(|| logs.map(|p| (p, 0))),
     );
     carry.note_started(started, standing);
     // A pane is up. Where this call ended a deaf one on its way here, that is
@@ -216,14 +204,64 @@ pub(crate) async fn place_pane(
     ports.deaf.placed();
     ports.authority.set(
         name,
-        terminal::incarnation(name).await,
+        resident::incarnation(name).await,
         MasterAuthority::CURRENT,
         None,
     );
-    brief_pane(t, carry, prepared.mcp_config.as_deref(), started).await;
+    // A started session took its brief as its own first turn; a woken or
+    // already-running one is told it as a message, delivered on its receipt.
+    let told = match placed {
+        resident::Placed::Started(_) => None,
+        resident::Placed::Woken(_, told) => Some(told),
+        resident::Placed::AlreadyUp => {
+            let again = brief_for(t, carry, mcp_config, false);
+            Some(resident::deliver(name, &again, Priority::Next).await)
+        }
+    };
+    say_briefed(t, carry, told);
     match resume {
         Some(_) => PaneState::Resumed,
         None => PaneState::ColdStarted,
+    }
+}
+
+/// Start or wake the master's background session, its brief composed for a
+/// session this pass starts; the refusal is said by the caller.
+async fn start_session(
+    t: &Turn<'_>,
+    carry: &Carryover<'_>,
+    env: &[(String, String)],
+    mcp_config: Option<&std::path::Path>,
+) -> std::result::Result<resident::Placed, String> {
+    let name = t.seen.pane_name.as_str();
+    let plugins = runner_workspace::plugin_source::pane_launch()
+        .map_err(|why| format!("could not start {name}: {why}"))?;
+    let brief = brief_for(t, carry, mcp_config, true);
+    let place = resident::Place {
+        name,
+        cwd: &t.resolved.repo_path,
+        env,
+        mcp_config,
+        plugin_dirs: &plugins.dirs,
+        plugins_off: &plugins.disabled,
+        resume: carry.conversation,
+        brief: &brief,
+    };
+    resident::place(&place)
+        .await
+        .map_err(|e| format!("could not start {name}: {e}"))
+}
+
+fn how_placed(placed: &resident::Placed, resume: Option<&str>) -> String {
+    match (placed, resume) {
+        (resident::Placed::AlreadyUp, _) => {
+            "was already up, and this pass started nothing".to_string()
+        }
+        (resident::Placed::Woken(s, _), _) => format!("woke as {}", s.id),
+        (resident::Placed::Started(s), Some(id)) => {
+            format!("resumed from conversation {id} as {}", s.id)
+        }
+        (resident::Placed::Started(s), None) => format!("cold-started as {}", s.id),
     }
 }
 
@@ -386,16 +424,16 @@ fn mark_placed(
     masters.note_capability(project_id, MasterAuthority::CURRENT);
 }
 
-/// Hand a placed pane its brief: the standing prompt, what a resumed
+/// The brief a placed master is told: the standing prompt, what a resumed
 /// conversation carries, the stand-down it comes out of, and what its first
-/// pass owes.
-async fn brief_pane(
+/// pass owes. `started` is whether this pass started its process.
+fn brief_for(
     t: &Turn<'_>,
     carry: &Carryover<'_>,
     mcp_config: Option<&std::path::Path>,
     started: bool,
-) {
-    let (resolved, name) = (t.resolved, t.seen.pane_name.as_str());
+) -> String {
+    let resolved = t.resolved;
     let reach = runner_workspace::mcp::config::pane_reach(&resolved.repo_path, mcp_config);
     match reach.forge() {
         runner_workspace::mcp::config::ForgeReach::Declared => {
@@ -414,40 +452,47 @@ surface it reads",
         resolved.master_policy.as_deref(),
         &reach,
     );
-    let brief = placement_brief(
+    placement_brief(
         standing,
         carry
             .conversation
             .map(|conv| resumed_brief(conv, carry.inherited, started, carry.hosts)),
         carry.lifted.map(stood_up_brief),
         carry.owed,
-    );
-    let typed = terminal::brief_new_pane(name, &terminal::held::marked(&brief)).await;
-    let (masters, project_id) = (t.sw.shared.masters, t.runner.project_id.as_str());
-    if let Some((session, _)) = masters.get(project_id) {
-        let prompts = t.sw.shared.activity.get(&session).map(|a| a.prompts);
-        let at = (project_id, resolved.slug.as_str(), session.as_str());
-        if note_wake(masters, at, &typed, prompts) {
-            return;
-        }
+    )
+}
+
+/// Say what became of a placed master's brief (`None`: its launch prompt),
+/// and stamp the lifted episode told only where it reached the session.
+fn say_briefed(t: &Turn<'_>, carry: &Carryover<'_>, told: Option<resident::Delivery>) {
+    let (slug, name) = (&t.resolved.slug, t.seen.pane_name.as_str());
+    let reached = matches!(told, None | Some(resident::Delivery::Delivered(_)));
+    if reached {
+        carry
+            .stood_down_told
+            .store(carry.lifted.is_some(), std::sync::atomic::Ordering::Relaxed);
     }
-    match typed {
-        Ok(_) => {
-            let carried = carry.lifted.is_some();
-            carry
-                .stood_down_told
-                .store(carried, std::sync::atomic::Ordering::Relaxed);
-        }
-        // A pane that exited before its brief reached it is reported by the
+    match told {
+        None => {}
+        Some(resident::Delivery::Delivered(r)) => tracing::info!(
+            "[master] {slug}: {name} took its brief as message {} ({:?})",
+            r.msg_id,
+            r.after
+        ),
+        // A session that exited before its brief reached it is reported by the
         // sweep that reads it gone, with why (ISS-1343 criterion 8).
-        Err(e) if recovery_ports::pane_presence(name).await == recovery::MasterPresence::Gone => {
-            tracing::debug!(
-                "[master] {}: {name} exited before its brief reached it ({e}); the sweep that reads it gone says why",
-                resolved.slug
-            );
+        Some(resident::Delivery::Gone) => tracing::debug!(
+            "[master] {slug}: {name} exited before its brief reached it; the sweep that reads it gone says why"
+        ),
+        Some(resident::Delivery::Refused(e)) => {
+            tracing::error!("[master] {slug}: {name} was not told its brief: {e}")
         }
-        Err(e) => tracing::warn!("[master] {}: could not brief {name}: {e}", resolved.slug),
     }
+}
+
+/// The command an operator types to watch the master of `slug`.
+pub(crate) fn attach_command(slug: &str) -> String {
+    format!("forge-runner master attach {slug}")
 }
 
 /// Put the verdict this sweep reached about a pane's authority where a restart
@@ -490,17 +535,6 @@ pub(crate) fn write_authority(
 /// gated on it is unreachable on a daemon that has just started — and a
 /// stood-down project is never placed, so it is in `reg.live` on no daemon at
 /// all once one restarts.
-/// The command a master pane is started with, refused where this runner's plugin checkout no
-/// longer holds the plugins it serves.
-fn master_argv(
-    mcp: Option<&std::path::Path>,
-    resume: Option<&str>,
-) -> runner_platform::error::Result<Vec<String>> {
-    let plugins = runner_workspace::plugin_source::pane_launch()
-        .map_err(runner_platform::error::Error::Other)?;
-    Ok(terminal::pane_argv(mcp, resume, &plugins))
-}
-
 pub(crate) fn say_unplaced(masters: &Arc<Masters>, project_id: &str, slug: &str, why: Unplaced) {
     if !masters.note_unplaced(project_id, why.clone()) {
         return;

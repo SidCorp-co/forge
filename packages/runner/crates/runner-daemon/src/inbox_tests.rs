@@ -1,6 +1,7 @@
 //! `session.send` reaching a pool job's pane, through `handle_session_send` as the frame loop
 //! calls it: a terminal double that records what was typed and answers as the test says, and a
-//! core on a loopback port that records every ack the box sent. Nothing here starts tmux.
+//! core on a loopback port that records every ack the box sent. Nothing here starts tmux. A
+//! master's delivery outcome is answered to core through `answer_from_master`.
 
 use super::*;
 use crate::pool_jobs::{self, JobPanes, PoolPanes};
@@ -113,22 +114,6 @@ fn holding(panes: Arc<TypingPanes>) -> (PoolPanes, Arc<JobPanes>) {
 /// outcome, and every other path the box called.
 async fn send(pool: &PoolPanes, frame: Value) -> (Vec<String>, Vec<String>) {
     send_with(pool, Arc::new(Masters::new()), frame).await
-}
-
-/// A box whose master for one project runs under the session the frames name.
-fn mastered() -> Arc<Masters> {
-    let masters = Arc::new(Masters::new());
-    masters.remember(
-        "project",
-        crate::master::MasterState {
-            session_id: SESSION.into(),
-            name: "forge-master-project".into(),
-            last_work: std::time::Instant::now(),
-            last_nudge: None,
-            mcp_stale_reported: false,
-        },
-    );
-    masters
 }
 
 async fn send_with(
@@ -304,46 +289,58 @@ async fn a_cancel_whose_pool_pane_will_not_close_gets_no_ack() {
     );
 }
 
-fn unheld_pool(panes: Arc<TypingPanes>) -> PoolPanes {
-    PoolPanes {
-        panes,
-        records: Arc::new(pool_jobs::NoRecords),
-        registry: Arc::new(JobPanes::new()),
-    }
+/// The acks one master delivery outcome sends core, on a loopback core.
+async fn acks_for(sent: resident::Delivery) -> Vec<String> {
+    let (client, seen) = crate::test_core::fake_core(crate::test_core::takes_everything).await;
+    let frame: SendFrame = serde_json::from_value(frame("answer", None)).unwrap();
+    answer_from_master(&client, &frame, "forge-master-project", sent).await;
+    let seen = seen.lock().unwrap().clone();
+    seen.iter()
+        .map(|(_, body)| {
+            serde_json::from_str::<Value>(body).unwrap()["outcome"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        })
+        .collect()
 }
 
+/// ISS-1268 B2: a master's message is delivered on its receipt alone, and one
+/// with no receipt is refused by name with no ack, the silence core reads as
+/// `unknown`, where every delivery this box cannot claim is recorded.
 #[tokio::test]
-async fn an_answer_to_a_master_session_is_typed_into_the_master_pane() {
-    let panes = TypingPanes::new(Answers::Takes);
-    let (acks, _) = send_with(
-        &unheld_pool(panes.clone()),
-        mastered(),
-        frame("answer", None),
-    )
-    .await;
-    assert_eq!(panes.typed.lock().unwrap()[0].0, "forge-master-project");
-    assert_eq!(acks, vec!["delivered"]);
-}
-
-#[tokio::test]
-async fn a_cancel_whose_master_pane_will_not_end_gets_no_ack() {
-    let panes = TypingPanes::new(Answers::Refuses);
-    let (acks, _) = send_with(
-        &unheld_pool(panes.clone()),
-        mastered(),
-        frame("cancel", None),
-    )
-    .await;
-    assert_eq!(*panes.killed.lock().unwrap(), vec!["forge-master-project"]);
-    assert!(
-        acks.is_empty(),
-        "core was told {acks:?} about a master pane still running"
+async fn a_master_message_is_acked_delivered_only_on_its_receipt() {
+    let receipt = runner_workspace::bg_session::Receipt {
+        msg_id: "m".into(),
+        pid: 1,
+        after: std::time::Duration::from_millis(400),
+    };
+    assert_eq!(
+        acks_for(resident::Delivery::Delivered(receipt)).await,
+        vec!["delivered"]
     );
+    let unconfirmed = runner_workspace::bg_session::Refused::Unconfirmed("no line".into());
+    assert!(
+        acks_for(resident::Delivery::Refused(unconfirmed))
+            .await
+            .is_empty(),
+        "a message with no receipt was acked"
+    );
+    assert_eq!(acks_for(resident::Delivery::Gone).await, vec!["gone"]);
 }
 
-#[tokio::test]
-async fn a_cancel_that_ended_the_master_pane_is_acked_gone() {
-    let panes = TypingPanes::new(Answers::Takes);
-    let (acks, _) = send_with(&unheld_pool(panes), mastered(), frame("cancel", None)).await;
-    assert_eq!(acks, vec!["gone"]);
+#[test]
+fn send_now_and_after_this_turn_are_the_peer_priorities_and_no_other_word_is() {
+    let with = |p: Option<&str>| {
+        let mut f = frame("answer", None);
+        if let Some(p) = p {
+            f["priority"] = p.into();
+        }
+        priority_of(&serde_json::from_value(f).unwrap())
+    };
+    assert_eq!(with(Some("now")), Ok(Priority::Now));
+    assert_eq!(with(Some("next")), Ok(Priority::Next));
+    assert_eq!(with(None), Ok(Priority::Next));
+    let e = with(Some("later")).unwrap_err();
+    assert!(e.starts_with("[SESSION_SEND_PRIORITY_UNKNOWN]"), "{e}");
 }

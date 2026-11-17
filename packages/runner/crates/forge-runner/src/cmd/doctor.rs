@@ -7,7 +7,6 @@ use runner_platform::error::Error;
 use runner_transport::pool::{self, PoolEntry, ReadFailure};
 use runner_transport::{heartbeat, mcp_servers, runners, CoreClient};
 use runner_update as update;
-use runner_workspace::terminal;
 
 use super::doctor_repo_mcp::{repo_mcp_state, RepoMcp};
 use super::Ctx;
@@ -526,8 +525,11 @@ async fn mcp_servers_line(
 /// The precondition the file comparison below needs, and the one `report_stale_pane_config` in the
 /// daemon's own sweep takes as given because it only ever runs with a pane in hand.
 async fn pane_state(slug: &str) -> Pane {
-    let name = terminal::session_name(terminal::MASTER_PREFIX, slug);
-    if terminal::alive(&name).await {
+    let name = runner_workspace::bg_session::session_name(
+        runner_workspace::bg_session::Kind::Master,
+        slug,
+    );
+    if runner_workspace::bg_session::resident::alive(&name).await {
         Pane::Resident
     } else {
         Pane::None

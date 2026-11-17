@@ -1,7 +1,7 @@
 /*
  * The production halves of `reconcile`'s ports.
  *
- * Each one answers by reading something back — a tmux pane, a core row, a
+ * Each one answers by reading something back — a session roster, a core row, a
  * membership list. None of them answers from the response to the write that
  * changed the thing, which is the whole of criterion 13 and the reason the
  * traits exist rather than the calls sitting inline.
@@ -11,8 +11,8 @@ use crate::master::Masters;
 use crate::recovery::{MasterLiveness, MasterPresence, ProcessLiveness, RunCore};
 use runner_platform::error::Result;
 use runner_transport::{run_sessions, run_verdict, CoreClient};
+use runner_workspace::bg_session::resident;
 use runner_workspace::close_loop::{LeaseKeeper, Outcome, RunCloser, SessionReader};
-use runner_workspace::terminal;
 
 pub struct PaneMasters<'a> {
     pub masters: &'a Masters,
@@ -29,34 +29,22 @@ impl MasterLiveness for PaneMasters<'_> {
 
     async fn live_master_for_project(&self, project_id: &str) -> Option<String> {
         let (session_id, name) = self.masters.live_for_project(project_id)?;
-        terminal::pane_pid(&name).await.map(|_| session_id)
+        resident::pid(&name).await.map(|_| session_id)
     }
 }
 
-/// What tmux says of the pane named `name`: the one reading both recovery and
-/// the master sweep take, so neither ends a master the other still holds.
+/// What the roster says of the master session named `name`: the one reading
+/// both recovery and the master sweep take, so neither ends a master the other
+/// still holds. A roster nobody could read is no answer, never an ending
+/// (ISS-1265, ISS-1312).
 pub async fn pane_presence(name: &str) -> MasterPresence {
-    match terminal::pane_pid(name).await {
-        Some(_) => MasterPresence::Alive,
-        None => absent_or_unanswered(name).await,
-    }
-}
-
-/// What a pane `pane_pid` read nothing for is.
-///
-/// `pane_pid` answers `None` alike for a pane tmux does not have and for a tmux
-/// that could not be asked, and recovery writes `Gone` on the run's row as the
-/// end of its subagent. So absence is taken only from a session list tmux did
-/// give that lacks the name. An empty list is no answer, the same way
-/// `terminal::has_session` reads a server nobody reached (ISS-1265, ISS-1312).
-async fn absent_or_unanswered(name: &str) -> MasterPresence {
-    let listed = terminal::names_with_prefix("").await;
-    if listed.is_empty() {
-        MasterPresence::Unanswered
-    } else if listed.iter().any(|n| n == name) {
-        MasterPresence::Alive
-    } else {
-        MasterPresence::Gone
+    match resident::presence(name).await {
+        resident::Presence::Alive(_) => MasterPresence::Alive,
+        resident::Presence::Gone => MasterPresence::Gone,
+        resident::Presence::Unanswered(why) => {
+            tracing::warn!("[master] whether {name} runs could not be read: {why}");
+            MasterPresence::Unanswered
+        }
     }
 }
 

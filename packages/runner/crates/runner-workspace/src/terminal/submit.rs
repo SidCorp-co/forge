@@ -47,28 +47,6 @@ pub(super) async fn after_paste(name: &str, target: &str) -> Result<(), NotTyped
     .await
 }
 
-/// Submit the wake `name`'s composer was just read holding (ISS-1081 round 2):
-/// Enter and a read-back, pressed again while it still holds text, as
-/// [`after_paste`] does once a paste shows. One call is one attempt, at most
-/// [`ENTERS`] presses, and a wake still held after them is said unsent.
-pub(super) async fn held(name: &str, target: &str) -> Result<(), NotTyped> {
-    until_cleared(
-        || press_enter(name, target),
-        || read_prompt(target),
-        SETTLE,
-        ENTERS,
-    )
-    .await
-    .map_err(|why| match why {
-        NotSubmitted::EnterFailed(e) => NotTyped::Failed(e),
-        NotSubmitted::StillHeld(held) => NotTyped::Unsubmitted(format!(
-            "{name}: a runner wake sat unsent at its prompt and Enter was pressed {ENTERS} times, \
-and the prompt still holds it: \u{ab}{held}\u{bb}. It was not delivered; submit or clear it at \
-the pane."
-        )),
-    })
-}
-
 /// How a submit is paced: the poll for the paste to show, and the settle
 /// either side of each Enter.
 #[derive(Debug, Clone, Copy)]

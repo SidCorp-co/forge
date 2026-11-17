@@ -1,9 +1,9 @@
 //! `master` — look at, talk to, stand down and end this box's resident masters.
 //!
-//! A master is a tmux session now, so most of what an operator wants is one
-//! `tmux` invocation away. What is NOT obvious from `tmux ls` is which session
-//! belongs to which project and where its transcript went, and that is the gap
-//! this fills.
+//! A master is a Claude Code background session (`claude --bg`, ISS-1268), so
+//! most of what an operator wants is one `claude` invocation away. What is NOT
+//! obvious from `claude agents` is which session belongs to which project,
+//! and that is the gap this fills: `attach` opens it live by project.
 //!
 //! Four of those answers are different questions and are printed as four
 //! lines: whether a pane exists, whether this box's owner stood the project
@@ -50,7 +50,7 @@ use runner_platform::config::Config;
 use runner_platform::cred_store;
 use runner_platform::subagent_host::ProcHosts;
 use runner_transport::{runners, CoreClient};
-use runner_workspace::terminal;
+use runner_workspace::bg_session::{self, resident};
 
 use super::Ctx;
 use runner_platform::clock::now_secs as now_unix;
@@ -66,12 +66,15 @@ pub enum Command {
     /// Whether a master pane is up, whether this box may keep one, and whether
     /// it can still be heard by the one it has.
     Status(ProjectArgs),
-    /// Where the master's transcript is, and its last lines.
+    /// The master session's last output (`claude logs`).
     Log(LogArgs),
-    /// Type a line into a master's pane, as a human at the keyboard would.
+    /// Send a message into a master's session over its peer socket, delivered
+    /// only on its receipt in the session's transcript.
     Say(SayArgs),
-    /// End a master's pane. It comes back, resuming the same conversation, the
-    /// next time this box places one — `stand-down` is what keeps it stopped.
+    /// Open a master's session live in this terminal (`claude attach`).
+    Attach(AttachArgs),
+    /// End a master's session. It comes back, resuming the same conversation,
+    /// the next time this box places one — `stand-down` is what keeps it stopped.
     Kill(ProjectArgs),
     /// Stop this box driving a project, and keep it stopped across sweeps and
     /// restarts until `stand-up`.
@@ -123,10 +126,20 @@ pub struct LogArgs {
 #[derive(ClapArgs)]
 pub struct SayArgs {
     pub slug: String,
-    /// The text to type. Multi-line is fine — it arrives as one paste.
+    /// The message. Multi-line is fine — it arrives as one message.
     pub text: String,
+    /// Into the running turn ("send now"), not after it.
+    #[arg(long)]
+    pub now: bool,
 }
 
+#[derive(ClapArgs)]
+pub struct AttachArgs {
+    /// Project slug.
+    pub slug: String,
+}
+
+/// Where the account of a master's last exit keeps its output.
 fn transcript(slug: &str) -> anyhow::Result<std::path::PathBuf> {
     let base = Config::path()?.with_file_name("master").join(slug);
     Ok(base.join("transcript.log"))
@@ -140,36 +153,47 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     // ahead of everything that could write: the ledger, the core lookup and
     // `--fresh`'s clear of the stored conversation, all of which are below.
     let standing_reason = standing_reason(&args.cmd)?;
-    if !terminal::available() {
-        anyhow::bail!("tmux is not installed on this box, so it hosts no masters");
+    if !resident::host_available() {
+        anyhow::bail!("no `claude` can be run on this box, so it hosts no masters");
     }
     match args.cmd {
         Command::Status(a) => status(&ctx, a.slug.as_deref()).await?,
         Command::Log(a) => {
-            let path = transcript(&a.slug)?;
-            println!("{}", path.display());
-            let body = std::fs::read_to_string(&path).unwrap_or_default();
+            let name = bg_session::session_name(bg_session::Kind::Master, &a.slug);
+            let (id, _) = session_of(&name).await?;
+            let body = bg_session::launch::logs(&id)
+                .await
+                .map_err(anyhow::Error::msg)?;
+            println!("{name} ({id})");
             let lines: Vec<&str> = body.lines().collect();
             for line in lines.iter().skip(lines.len().saturating_sub(a.lines)) {
                 println!("{line}");
             }
         }
         Command::Say(a) => {
-            let name = terminal::session_name(terminal::MASTER_PREFIX, &a.slug);
-            match terminal::send_line(&name, &a.text).await? {
-                terminal::Prompt::Empty => println!("typed into {name}"),
-                terminal::Prompt::Unread => println!(
-                    "typed into {name}, but no Claude Code composer could be read there, so \
-nothing confirmed its prompt was empty: what was already at it, if anything, went with this"
+            let name = bg_session::session_name(bg_session::Kind::Master, &a.slug);
+            let priority = if a.now {
+                bg_session::Priority::Now
+            } else {
+                bg_session::Priority::Next
+            };
+            match resident::deliver(&name, &a.text, priority).await {
+                resident::Delivery::Delivered(r) => println!(
+                    "{name} took it as message {} ({} ms)",
+                    r.msg_id,
+                    r.after.as_millis()
                 ),
+                resident::Delivery::Gone => anyhow::bail!("no process runs {name}"),
+                resident::Delivery::Refused(e) => anyhow::bail!("{name}: {e}"),
             }
         }
+        Command::Attach(a) => attach(bg_session::Kind::Master, &a.slug).await?,
         Command::Kill(a) => {
             let Some(slug) = a.slug else {
                 anyhow::bail!("name the project whose master should end");
             };
-            let name = terminal::session_name(terminal::MASTER_PREFIX, &slug);
-            terminal::kill(&name).await?;
+            let name = bg_session::session_name(bg_session::Kind::Master, &slug);
+            resident::kill(&name).await.map_err(anyhow::Error::msg)?;
             println!("killed {name}; its runs died with it and their leases lapse.");
             println!("{}", kill_aftermath(&slug));
         }
@@ -191,7 +215,7 @@ fn kill_aftermath(slug: &str) -> String {
     format!(
         "This does NOT keep it stopped. The conversation id lives on this box's `masters` row and \
 a kill does not touch it, so whenever this box next places a master for {slug} — which still \
-depends on admissible work, a runner that accepts work, a repo path and tmux — the pane it starts \
+depends on admissible work, a runner that accepts work, a repo path and a pinned Claude Code — the session it starts \
 RESUMES the same conversation, carrying its whole transcript and its whole cost.\n\
 To keep it stopped: `forge-runner master stand-down {slug}`. To have the next pane start cold \
 rather than resume: `forge-runner master stand-up {slug} --fresh`."
@@ -210,7 +234,7 @@ fn open_ledger() -> anyhow::Result<Ledger> {
 /// project id here would record a stand-down against a project that does not
 /// exist, which reads afterwards exactly like one that was never honoured.
 async fn project_for_slug(ctx: &Ctx, led: &Ledger, slug: &str) -> anyhow::Result<String> {
-    let pane = terminal::session_name(terminal::MASTER_PREFIX, slug);
+    let pane = bg_session::session_name(bg_session::Kind::Master, slug);
     if let Some(row) = led.master_for_pane(&pane)? {
         return Ok(row.project_id);
     }
@@ -254,4 +278,42 @@ fn whoami() -> String {
     std::env::var("USER")
         .or_else(|_| std::env::var("LOGNAME"))
         .unwrap_or_else(|_| "an operator at this box".into())
+}
+
+/// The short id and conversation of the latest background session named `name`, live or stopped.
+async fn session_of(name: &str) -> anyhow::Result<(String, String)> {
+    let all = bg_session::list_all().await?;
+    let s = bg_session::roster::named(&all, name).ok_or_else(|| {
+        anyhow::anyhow!("`claude agents --all` lists no background session named {name}")
+    })?;
+    let id =
+        s.id.clone()
+            .ok_or_else(|| anyhow::anyhow!("{name} is listed with no short id to open it by"))?;
+    Ok((id, s.session_id.clone()))
+}
+
+/// Open the `kind` session of `slug` live in this terminal: its short id
+/// resolved from the roster, then `claude attach <id>` in this process's place.
+pub(crate) async fn attach(kind: bg_session::Kind, slug: &str) -> anyhow::Result<()> {
+    let name = bg_session::session_name(kind, slug);
+    let (id, session_id) = session_of(&name).await?;
+    eprintln!("{name}: claude attach {id} (conversation {session_id})");
+    let bin = runner_platform::process::resolve_claude_bin();
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt as _;
+        let err = std::process::Command::new(bin)
+            .args(["attach", &id])
+            .env_remove("CLAUDECODE")
+            .exec();
+        anyhow::bail!("could not run `{bin} attach {id}`: {err}")
+    }
+    #[cfg(not(unix))]
+    {
+        let status = std::process::Command::new(bin)
+            .args(["attach", &id])
+            .status()?;
+        anyhow::ensure!(status.success(), "`{bin} attach {id}` exited {status}");
+        Ok(())
+    }
 }

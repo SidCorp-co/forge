@@ -11,15 +11,15 @@ pub(crate) async fn supervise(
         return;
     };
 
-    // The reading recovery takes of the same pane (ISS-1312 criteria 45 and
-    // 46). `terminal::alive` folds a tmux nobody could ask into `false`, and
-    // closing on that ends a master that may be running and makes recovery
-    // read its runs as having no master at all.
+    // The reading recovery takes of the same session (ISS-1312 criteria 45 and
+    // 46). A roster nobody could read is no answer, and closing on it ends a
+    // master that may be running and makes recovery read its runs as having no
+    // master at all.
     let read = recovery_ports::pane_presence(&name).await;
     let unanswered = read == recovery::MasterPresence::Unanswered;
     if masters.note_unanswered(project_id, unanswered) && unanswered {
         tracing::warn!(
-            "[master] {slug}: tmux could not be asked whether resident session {name} is there, so its core session is left open and it stays this project's master until tmux answers"
+            "[master] {slug}: the roster could not be read for resident session {name}, so its core session is left open and it stays this project's master until it is"
         );
     }
     if read == recovery::MasterPresence::Alive {
@@ -35,6 +35,17 @@ pub(crate) async fn supervise(
         // exits at once saying so, and placing another only repeats that.
         let placed = masters.take_placed(project_id);
         let lived = placed.as_ref().map(|p| p.at.elapsed());
+        // What the session printed before it ended, kept where the exit is
+        // classified from: `claude logs` of its background session.
+        if let Some(PlacedPane {
+            output: Some((path, _)),
+            ..
+        }) = &placed
+        {
+            if let Err(e) = resident::keep_logs(&name, path).await {
+                tracing::warn!("[master] {slug}: {name}'s last output was not kept: {e}");
+            }
+        }
         let exit = match &placed {
             None => pane_exit::Exit::not_placed(),
             Some(PlacedPane { output: None, .. }) => pane_exit::Exit::no_transcript(),

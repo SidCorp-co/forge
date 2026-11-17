@@ -186,7 +186,7 @@ async fn retire(t: &Turn<'_>, because: &str) {
     tracing::info!("[master] {slug}: core retires {name}: {because}");
     // Said, not swallowed: the row is closed either way, so a pane that
     // outlived its retirement is adopted again on the next sweep.
-    if let Err(e) = terminal::kill(&name).await {
+    if let Err(e) = resident::kill(&name).await {
         tracing::warn!(
             "[master] {slug}: {name} was retired as idle and tmux would not end it: {e} — its row is closed all the same and the next sweep adopts whatever is still running under that name"
         );
@@ -282,7 +282,7 @@ async fn record_heard(
     let Some((successor, name)) = masters.get(project_id) else {
         return true;
     };
-    let pane_pid = terminal::pane_pid(&name).await;
+    let pane_pid = resident::pid(&name).await;
     let hosts = subagent_host::ProcHosts::system();
     if let Some(led) = ledger.as_mut() {
         carry_and_record(led, project_id, &name, &successor, pane_pid, &hosts, slug);
@@ -318,15 +318,7 @@ async fn drive(t: &Turn<'_>, ledger: &mut Option<Ledger>, typed: Option<&str>) {
     };
     pass.open(ledger, typed.is_some()).await;
     if let Some(because) = typed {
-        nudge_master(
-            masters,
-            t.sw.shared.activity,
-            (project_id, t.slug()),
-            because,
-            &t.work.nudge,
-            prompts,
-        )
-        .await;
+        nudge_master(masters, (project_id, t.slug()), because, &t.work.nudge).await;
     }
 }
 
@@ -343,7 +335,7 @@ async fn end_for_replacement(
     let name = &t.seen.pane_name;
     match (reason, t.seen.adopted.as_ref()) {
         ("outdated", _) => {
-            if let Err(e) = terminal::kill(name).await {
+            if let Err(e) = resident::kill(name).await {
                 if masters.note_outdated(project_id, Some(format!("unkillable: {because}"))) {
                     tracing::error!(
                         "[master] {slug}: core replaces {name} ({because}) and tmux would not end it: {e}. It is left running and not nudged; `forge-runner master kill {slug}` ends it, and the next sweep places its successor"
@@ -363,7 +355,7 @@ async fn end_for_replacement(
             Some(false)
         }
         ("dead_on_arrival", _) => {
-            if let Err(e) = terminal::kill(name).await {
+            if let Err(e) = resident::kill(name).await {
                 tracing::error!(
                     "[master] {slug}: {name} is dead on arrival ({because}) and tmux would not end it: {e}. `forge-runner master kill {slug}` ends it"
                 );
@@ -561,7 +553,7 @@ async fn withdrawn_if_stood_down(t: &Turn<'_>, ledger: &mut Option<Ledger>) -> O
         "[master] {slug}: {name} was stood down while this sweep was starting it — withdrawing the pane this sweep placed. `forge-runner master stand-up {slug}` puts the project back under this box's authority."
     );
     let mut left_running = None;
-    if let Err(e) = terminal::kill(name).await {
+    if let Err(e) = resident::kill(name).await {
         tracing::error!(
             "[master] {slug}: could not withdraw {name}: {e} — it is running against a stand-down and `forge-runner master kill {slug}` is what ends it"
         );

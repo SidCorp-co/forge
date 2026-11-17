@@ -52,6 +52,9 @@ pub struct BgLaunch {
     pub mcp_config: Option<PathBuf>,
     pub plugin_dirs: Vec<PathBuf>,
     pub append_system_prompt: Option<String>,
+    /// A conversation that is not a background session yet, continued under its own id: a
+    /// stopped background one is woken by [`resume`] instead, which takes no flags.
+    pub resume: Option<String>,
     /// Its first turn, as its own user turn.
     pub prompt: Option<String>,
 }
@@ -87,6 +90,10 @@ impl BgLaunch {
             a.push("--append-system-prompt".into());
             a.push(sp.into());
         }
+        if let Some(id) = self.resume.as_deref().filter(|s| !s.is_empty()) {
+            a.push("--resume".into());
+            a.push(id.into());
+        }
         if let Some(p) = self.prompt.as_deref().filter(|p| !p.is_empty()) {
             a.push("--".into());
             a.push(p.into());
@@ -97,7 +104,9 @@ impl BgLaunch {
     /// Start it, and read back the session it became.
     pub async fn start(&self) -> Result<Started, String> {
         let said = claude(&self.argv(), Some(&self.cwd)).await?;
-        started_from(&said, &self.name, false)?.listed().await
+        started_from(&said, &self.name, self.resume.is_some())?
+            .listed()
+            .await
     }
 }
 
@@ -190,6 +199,11 @@ pub async fn stop(id: &str) -> Result<(), String> {
 /// Restart the session `id` on the installed Claude Code, keeping its conversation.
 pub async fn respawn(id: &str) -> Result<String, String> {
     claude(&["respawn".into(), id.into()], None).await
+}
+
+/// What the session `id` printed lately (`claude logs`).
+pub async fn logs(id: &str) -> Result<String, String> {
+    claude(&["logs".into(), id.into()], None).await
 }
 
 /// Run `claude <args>` with the launcher's scrubbed environment, its output answered whole.

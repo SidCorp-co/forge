@@ -19,7 +19,6 @@ use tokio::process::Command;
 
 pub mod chat_pane;
 pub mod deny;
-pub mod held;
 mod launch;
 mod pane_env;
 mod submit;
@@ -227,63 +226,6 @@ async fn has_session(name: &str) -> Presence {
 
 pub async fn alive(name: &str) -> bool {
     has_session(name).await == Presence::Present
-}
-
-/// Which incarnation of the session named `name` is running, as an opaque
-/// string that is equal only to itself.
-///
-/// A master pane's name is derived from the project slug, so every incarnation
-/// of it carries the same name and a name alone identifies nothing. Anything
-/// recorded ABOUT a pane — a verdict on the capability it holds, say — has to
-/// be able to tell the pane it was recorded about from the one that took its
-/// name afterwards, or an operator who has just replaced a pane is shown the
-/// verdict that made them replace it (ISS-1099).
-///
-/// Three parts, because no one of them is an identity. `session_created` is
-/// whole seconds, so a pane replaced inside one second reads as the pane it
-/// replaced. `session_id` is unique within a server's life and never reused,
-/// but it restarts at `$0` when the server does — and the pane does not have to
-/// survive that for the confusion to bite, because the VERDICT does: a server
-/// killed and restarted inside one second yields `<same second>:$0` twice over,
-/// measured. The server's own pid separates those, and a pid reused inside one
-/// second by a kernel that has just handed it out is not a case this reaches.
-///
-/// `None` where tmux cannot be asked, or the session is gone, or it answers
-/// something empty. None of those is "it has just started", so a caller that
-/// cannot get this answer says so rather than assuming either way.
-pub async fn incarnation(name: &str) -> Option<String> {
-    // `pane_target` and not `session_target`: `display-message -t` takes a PANE
-    // target, and an exact session name with no `:` after it resolves to no
-    // pane. tmux answers that with an empty line and exit 0 rather than an
-    // error, so the wrong target here fails as "this box cannot ask tmux" on
-    // every pane forever, and says nothing about why.
-    let target = pane_target(name);
-    let out = tmux(&[
-        "display-message",
-        "-p",
-        "-t",
-        &target,
-        "#{session_created}:#{session_id}:#{pid}",
-    ])
-    .await
-    .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let said = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    // A target tmux cannot resolve is answered with exit 0 and the fields left
-    // empty — and `#{pid}` is the SERVER's, so a session that is gone on a
-    // server that is up still answers `::1636537`. Compared against the same
-    // shape for another dead pane, that says two different panes are one, which
-    // is the whole thing this exists to prevent. The session's own two fields
-    // have to be there or there is no answer.
-    let mut parts = said.splitn(3, ':');
-    let created = parts.next().unwrap_or_default();
-    let session = parts.next().unwrap_or_default();
-    if created.is_empty() || session.is_empty() {
-        return None;
-    }
-    Some(said)
 }
 
 const SESSION_UNIT: &str = "forge-sessions";

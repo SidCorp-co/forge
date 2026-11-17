@@ -19,6 +19,7 @@
 pub mod launch;
 pub mod peer;
 pub mod relay;
+pub mod resident;
 pub mod roster;
 pub mod version;
 

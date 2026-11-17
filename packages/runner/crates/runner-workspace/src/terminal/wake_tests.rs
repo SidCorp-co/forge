@@ -1,5 +1,5 @@
-//! A wake typed into a pane whose program reads its input the way Claude Code does, on a tmux
-//! server of the test's own (ISS-1081).
+//! A line typed into a job's pane whose program reads its input the way Claude Code does, on a
+//! tmux server of the test's own (ISS-1081). Masters take no typed line since ISS-1268.
 //!
 //! The stand-in is still starting for `--startup` seconds: the tty is as tmux made it (canonical,
 //! echo, ICRNL), nothing is read and no composer is drawn. Then it goes raw as libuv does
@@ -16,7 +16,6 @@
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use super::held;
 use super::tests::{tmux_or_skip, SKIP_TMUX};
 use super::TEST_SOCKET;
 
@@ -294,162 +293,19 @@ async fn drawn(pane: &Pane) {
     }
 }
 
-/// What one nudge does at `pane`, as `master/nudge.rs:nudge_master` composes it: the wake typed,
-/// and where the prompt refuses it for text it holds, that text read and submitted if it is a
-/// runner wake at an idle prompt.
-async fn nudge(
-    pane: &Pane,
-    left: bool,
-    turn_by_hooks: bool,
-) -> (
-    Result<super::Prompt, super::NotTyped>,
-    Option<Result<held::Held, super::NotTyped>>,
-) {
-    let typed = super::send_line(&pane.name, &held::marked("Pass. Run the wave.")).await;
-    let again = match &typed {
-        Err(super::NotTyped::Refused(_)) => {
-            Some(held::submit_held_wake(&pane.name, left, turn_by_hooks).await)
-        }
-        _ => None,
-    };
-    (typed, again)
+/// One line typed at `pane`, as a job's inbox message is.
+async fn nudge(pane: &Pane) -> Result<super::Prompt, super::NotTyped> {
+    super::send_line(
+        &pane.name,
+        "Pass. Run the wave.\n\nA second line, so it goes as a paste.",
+    )
+    .await
 }
 
 /// Whatever the stand-in logged within `within`: for a test asserting nothing was pressed.
 fn settled(pane: &Pane, within: Duration) -> String {
     std::thread::sleep(within);
     std::fs::read_to_string(&pane.log).unwrap_or_default()
-}
-
-/// ISS-1081 round 2: sidcorp-mail and catalog-api held a wake from before the restart, and each
-/// nudge after it was refused and logged while the master sat idle until a person pressed Enter.
-#[tokio::test(flavor = "current_thread")]
-async fn a_runner_wake_already_held_at_an_idle_prompt_is_submitted_by_the_next_nudge() {
-    let test = "a_runner_wake_already_held_at_an_idle_prompt_is_submitted_by_the_next_nudge";
-    let Some(pane) = stand_in_holding(test, Some(&held::marked(&wake())), "") else {
-        return;
-    };
-    drawn(&pane).await;
-    let (typed, again) = nudge(&pane, false, false).await;
-    let log = logged(&pane, "SUBMITTED", Duration::from_secs(5));
-    assert!(
-        matches!(typed, Err(super::NotTyped::Refused(_))),
-        "the nudge typed over a held wake: {typed:?}"
-    );
-    assert!(
-        matches!(again, Some(Ok(held::Held::Submitted(_)))),
-        "the held wake was not submitted (answered {again:?}); the stand-in logged: {log:?}"
-    );
-    assert!(
-        log.contains("SUBMITTED on enter 1: Line 1 of the wake"),
-        "the stand-in logged: {log:?}"
-    );
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn a_held_wake_behind_a_running_turn_is_left_alone() {
-    let test = "a_held_wake_behind_a_running_turn_is_left_alone";
-    let Some(pane) = stand_in_holding(test, Some(&held::marked(&wake())), "--busy") else {
-        return;
-    };
-    drawn(&pane).await;
-    let read = held::pane_read(&pane.name).await;
-    assert!(
-        read.turn_running,
-        "the stand-in's spinner was not read as a turn: {read:?}"
-    );
-    let (_, again) = nudge(&pane, false, false).await;
-    let log = settled(&pane, Duration::from_secs(1));
-    assert!(
-        matches!(again, Some(Ok(held::Held::Busy(_)))),
-        "a wake behind a running turn was answered {again:?}"
-    );
-    assert_eq!(log, "", "Enter was pressed at a busy pane");
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn a_held_wake_whose_hooks_report_a_turn_is_left_alone() {
-    let test = "a_held_wake_whose_hooks_report_a_turn_is_left_alone";
-    // The pane draws no turn, and its hooks report one.
-    let Some(pane) = stand_in_holding(test, Some(&held::marked(&wake())), "") else {
-        return;
-    };
-    drawn(&pane).await;
-    let (_, again) = nudge(&pane, false, true).await;
-    let log = settled(&pane, Duration::from_secs(1));
-    assert!(matches!(again, Some(Ok(held::Held::Busy(_)))), "{again:?}");
-    assert_eq!(log, "", "Enter was pressed while the hooks report a turn");
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn a_held_draft_that_is_no_wake_is_refused_and_never_submitted() {
-    let test = "a_held_draft_that_is_no_wake_is_refused_and_never_submitted";
-    let draft = "fix the login page\nand tell me when it is done";
-    let Some(pane) = stand_in_holding(test, Some(draft), "") else {
-        return;
-    };
-    drawn(&pane).await;
-    let (typed, again) = nudge(&pane, true, false).await;
-    let log = settled(&pane, Duration::from_secs(1));
-    assert!(
-        matches!(typed, Err(super::NotTyped::Refused(_))),
-        "{typed:?}"
-    );
-    assert!(
-        matches!(again, Some(Ok(held::Held::NotAWake(_)))),
-        "a person's draft was answered {again:?}"
-    );
-    assert_eq!(log, "", "Enter was pressed at a person's draft");
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn a_held_wake_whose_enter_is_always_swallowed_is_said_unsent_naming_the_pane() {
-    let test = "a_held_wake_whose_enter_is_always_swallowed_is_said_unsent_naming_the_pane";
-    let Some(pane) = stand_in_holding(test, Some(&held::marked(&wake())), "--never") else {
-        return;
-    };
-    drawn(&pane).await;
-    let (_, again) = nudge(&pane, false, false).await;
-    let log = logged(&pane, "swallowed 3", Duration::from_secs(5));
-    match again {
-        Some(Err(super::NotTyped::Unsubmitted(why))) => assert!(
-            why.starts_with(&format!("{}: ", pane.name)) && why.contains("unsent"),
-            "{why}"
-        ),
-        other => panic!("a held wake that never submitted was answered {other:?}; log {log:?}"),
-    }
-    assert!(
-        !log.contains("SUBMITTED") && !log.contains("swallowed 4"),
-        "{log:?}"
-    );
-}
-
-/// A wake typed as a paste shows collapsed, its mark hidden: it is this box's only where this box
-/// noted leaving it there.
-#[tokio::test(flavor = "current_thread")]
-async fn a_collapsed_paste_is_submitted_only_where_this_box_left_its_wake() {
-    let test = "a_collapsed_paste_is_submitted_only_where_this_box_left_its_wake";
-    let Some(pane) = stand_in(test, "--swallow 3") else {
-        return;
-    };
-    drawn(&pane).await;
-    let typed = super::send_line(&pane.name, &held::marked(&wake())).await;
-    assert!(
-        matches!(typed, Err(super::NotTyped::Unsubmitted(_))),
-        "{typed:?}"
-    );
-    let (_, unknown) = nudge(&pane, false, false).await;
-    assert!(
-        matches!(unknown, Some(Ok(held::Held::NotAWake(_)))),
-        "a paste this box did not note was submitted: {unknown:?}"
-    );
-    let (_, again) = nudge(&pane, true, false).await;
-    let log = logged(&pane, "SUBMITTED", Duration::from_secs(5));
-    assert!(
-        matches!(again, Some(Ok(held::Held::Submitted(_)))),
-        "{again:?}; log {log:?}"
-    );
-    assert!(log.contains("SUBMITTED on enter 4"), "{log:?}");
 }
 
 const SUGGESTION: &str = "stand this project down until the release word comes";
@@ -466,7 +322,7 @@ async fn a_dim_prompt_suggestion_reads_as_an_empty_prompt_and_a_nudge_is_typed()
         super::pane_prompt(&pane.name).await,
         crate::composer::Composer::Empty
     );
-    let (typed, _) = nudge(&pane, false, false).await;
+    let typed = nudge(&pane).await;
     let log = logged(&pane, "SUBMITTED", Duration::from_secs(5));
     assert_eq!(typed.map_err(|e| e.to_string()), Ok(super::Prompt::Empty));
     assert!(
@@ -484,7 +340,7 @@ async fn no_enter_is_pressed_at_a_composer_showing_only_a_suggestion() {
         return;
     };
     drawn(&pane).await;
-    let (typed, again) = nudge(&pane, true, false).await;
+    let typed = nudge(&pane).await;
     let log = settled(&pane, Duration::from_secs(1));
     assert_eq!(
         log, "",
@@ -494,9 +350,6 @@ async fn no_enter_is_pressed_at_a_composer_showing_only_a_suggestion() {
         matches!(typed, Err(super::NotTyped::Unsubmitted(_))),
         "{typed:?}"
     );
-    assert!(again.is_none(), "{again:?}");
-    let held = held::submit_held_wake(&pane.name, true, false).await;
-    assert_eq!(held.map_err(|e| e.to_string()), Ok(held::Held::Nothing));
     assert_eq!(settled(&pane, Duration::from_millis(500)), "");
 }
 

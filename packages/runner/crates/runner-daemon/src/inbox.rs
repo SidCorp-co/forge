@@ -5,8 +5,8 @@
 //! asks the agent to write down where it is before anything ends it, and
 //! `cancel` ends the session between turns by EOF rather than by signal.
 //!
-//! A session lives in one of three places on a box: a master pane, a pool
-//! job's pane, or the in-process runner. Each answers only for what it holds.
+//! A session lives in one of three places on a box: a master's background
+//! session, a pool job's pane, or the in-process runner. Each answers only for what it holds.
 //!
 //! What the runner reports back is deliberately narrow: `delivered` or `gone`,
 //! and SILENCE for anything it cannot honestly claim — a session none of the
@@ -24,6 +24,7 @@ use crate::pool_jobs::{self, Cancelled, PoolPanes};
 use runner_agent::claude_code::ClaudeCodeRunner;
 use runner_transport::inbox::{self, Ack};
 use runner_transport::CoreClient;
+use runner_workspace::bg_session::{resident, Priority};
 use runner_workspace::terminal;
 
 #[derive(Debug, Deserialize)]
@@ -38,6 +39,10 @@ struct SendFrame {
     deadline_ms: Option<u64>,
     #[serde(default)]
     job_id: Option<String>,
+    /// Forge's "send now" (`now`) or "after this turn" (`next`, the default): a master takes it
+    /// as its peer message's `priority`.
+    #[serde(default)]
+    priority: Option<String>,
 }
 
 const DEFAULT_WRITE_MS: u64 = 8_000;
@@ -135,9 +140,17 @@ pub async fn handle_session_send(
         }
     };
     match held(&runner, &masters, pool, &frame, &key).await {
-        // Both kinds of pane are typed into through the one terminal the job panes are driven
-        // by, so what a pane answers is read the same way whichever it is.
-        Held::Master(pane) | Held::PoolJob { pane, .. } => {
+        // A master is a background session: the message goes over its peer socket and is
+        // delivered only on its receipt (ISS-1268 B2).
+        Held::Master(name) => {
+            let priority = match priority_of(&frame) {
+                Ok(p) => p,
+                Err(why) => return tracing::error!("[inbox] session={sid} seq={seq}: {why}"),
+            };
+            let sent = resident::deliver(&name, &body, priority).await;
+            answer_from_master(client, &frame, &name, sent).await;
+        }
+        Held::PoolJob { pane, .. } => {
             let typed = pool.panes.send_line(&pane, &body).await;
             answer_from_pane(client, &frame, &pane, typed).await;
         }
@@ -158,14 +171,14 @@ async fn cancel(
 ) {
     let sid = &frame.session_id;
     match held(runner, masters, pool, frame, key).await {
-        Held::Master(pane) => {
-            // `terminal::kill` answers for the session being gone (ISS-1208).
-            // A pane it could not end is still running, so neither ack is
+        Held::Master(name) => {
+            // `resident::kill` answers for the session being gone (ISS-1208).
+            // A session it could not end is still running, so neither ack is
             // true of it: none is sent, and core reads `unknown`.
-            match pool.panes.kill(&pane).await {
+            match resident::kill(&name).await {
                 Ok(()) => inbox::ack(client, sid, frame.seq, Ack::Gone).await,
                 Err(e) => tracing::error!(
-                    "[inbox] cancel for session {sid}: {pane} would not end ({e}) — NO ack is being sent, because that pane is still running whatever it was running and `gone` would say it is not. `forge-runner master kill` on its project is what ends it"
+                    "[inbox] cancel for session {sid}: {name} would not end ({e}) — NO ack is being sent, because that session is still running whatever it was running and `gone` would say it is not. `forge-runner master kill` on its project is what ends it"
                 ),
             }
         }
@@ -256,6 +269,50 @@ async fn answer_from_pane(
             "[inbox] session={} seq={}: {why} — NO ack is being sent, because the pane was read and `gone` would say this session ended when this box has not established that. Core reads the silence as `unknown` and waits",
             frame.session_id,
             frame.seq
+        ),
+    }
+}
+
+/// The peer priority `frame` asks for: Forge's "send now" or "after this turn".
+fn priority_of(frame: &SendFrame) -> Result<Priority, String> {
+    match frame.priority.as_deref() {
+        None | Some("next") => Ok(Priority::Next),
+        Some("now") => Ok(Priority::Now),
+        Some(other) => Err(format!(
+            "[SESSION_SEND_PRIORITY_UNKNOWN] priority {other:?} is neither `now` nor `next`; NO ack \
+             is sent and nothing is delivered"
+        )),
+    }
+}
+
+/// What became of one message to a master's background session. Delivered on
+/// its receipt; `gone` only where the roster was read and no process runs it;
+/// otherwise refused by name with no ack, which core reads as `unknown`, the
+/// shape every delivery this box cannot claim has taken (RFC 0003).
+async fn answer_from_master(
+    client: &CoreClient,
+    frame: &SendFrame,
+    name: &str,
+    sent: resident::Delivery,
+) {
+    let (sid, seq) = (&frame.session_id, frame.seq);
+    match sent {
+        resident::Delivery::Delivered(r) => {
+            tracing::info!(
+                "[inbox] session={sid} seq={seq}: {name} took it as message {} in {:?}",
+                r.msg_id,
+                r.after
+            );
+            inbox::ack(client, sid, seq, Ack::Delivered).await
+        }
+        resident::Delivery::Gone => {
+            tracing::info!(
+                "[inbox] session={sid} seq={seq}: no process runs {name} — acking `gone`"
+            );
+            inbox::ack(client, sid, seq, Ack::Gone).await
+        }
+        resident::Delivery::Refused(why) => tracing::error!(
+            "[inbox] session={sid} seq={seq}: {name}: {why} — NO ack is being sent, because nothing shows the session took it and `gone` would say it ended. Core reads the silence as `unknown` and waits"
         ),
     }
 }

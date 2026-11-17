@@ -190,8 +190,8 @@ async fn see(
         conversation: stored_conversation,
         restarting,
     } = read;
-    let pane_name = terminal::session_name(terminal::MASTER_PREFIX, &runner.slug);
-    let pane_alive = terminal::available() && terminal::alive(&pane_name).await;
+    let pane_name = bg_session::session_name(bg_session::Kind::Master, &runner.slug);
+    let pane_alive = resident::alive(&pane_name).await;
     // Registering a pane beats its session at core, which says a master is
     // serving. A pane up against a stand-down, an unread standing, a restart
     // or a runner taking no work is not, so it is reported up and unregistered.
@@ -288,6 +288,6 @@ async fn adopt_pane(
     Some(Adopted {
         session,
         capability,
-        incarnation: terminal::incarnation(name).await,
+        incarnation: resident::incarnation(name).await,
     })
 }

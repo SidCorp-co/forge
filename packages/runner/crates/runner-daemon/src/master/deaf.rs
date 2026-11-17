@@ -164,7 +164,7 @@ pub(crate) async fn end_deaf_pane(
     session_id: &str,
     deaf: &DeafSink,
 ) -> bool {
-    if let Err(e) = terminal::kill(name).await {
+    if let Err(e) = resident::kill(name).await {
         tracing::error!(
             "[master] {slug}: {name} holds a capability for a session this box no longer has and could not be ended: {e}. It stays up and stays deaf — every declaration it makes is refused — and `forge-runner master kill {slug}` is the same act by hand."
         );
@@ -186,7 +186,7 @@ pub(crate) async fn end_deaf_pane(
     true
 }
 
-/// What a pass that ended a deaf pane may conclude from what `terminal::ensure`
+/// What a pass that ended a deaf pane may conclude from what `resident::place`
 /// then answered.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Replacement {
@@ -204,8 +204,8 @@ pub(crate) enum Replacement {
 /// The second reading of whether a deaf pane is gone, taken from the one thing
 /// that looked afterwards.
 ///
-/// `terminal::kill` now answers for the session being gone, so this is a
-/// guard and not the detector. It costs nothing: `terminal::ensure` already
+/// `resident::kill` now answers for the session being gone, so this is a
+/// guard and not the detector. It costs nothing: `resident::place` already
 /// asks whether a session of that name is alive, and `Ok(false)` IS that
 /// answer — it was being discarded at the call (ISS-1208). The two readings
 /// fail independently, and the one that is left is what decides whether the
@@ -314,7 +314,7 @@ pub(crate) async fn deaf_pane_outlived_its_kill(
     masters.note_capability(project_id, MasterAuthority::STALE);
     ports.authority.set(
         name,
-        terminal::incarnation(name).await,
+        resident::incarnation(name).await,
         MasterAuthority::STALE,
         None,
     );

@@ -84,11 +84,16 @@ use runner_core::pane_exit;
 use runner_platform::config::Config;
 use runner_platform::subagent_host;
 use runner_transport::{master as master_api, mcp_servers, runners, CoreClient};
+use runner_workspace::bg_session::Priority;
+use runner_workspace::bg_session::{self, resident};
 use runner_workspace::close_loop;
 use runner_workspace::held_report;
 use runner_workspace::terminal;
 use runner_workspace::terminate;
 use tokio::sync::mpsc;
+
+/// How the standing prompt every master brief opens with begins.
+pub(crate) const STANDING_OPENING: &str = "Use the `forge-master` skill.";
 
 const POLL_INTERVAL: Duration = Duration::from_secs(30);
 
@@ -105,7 +110,7 @@ fn standing_prompt(
     let mut out = format!(
         "{} You are the resident master for project `{project}` on this box, and you will be \
 woken again in this same session rather than started fresh.\n",
-        terminal::held::STANDING_OPENING
+        STANDING_OPENING
     );
     if let Some(base) = base_branch {
         out.push_str(&format!(

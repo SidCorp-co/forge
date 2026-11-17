@@ -87,129 +87,37 @@ impl NudgePass<'_> {
     }
 }
 
-/// Paste the line core composed into this project's master, saying core's
-/// reason for it. A pane parked behind its account limit is asked with the
-/// same line, which submits straight through Claude Code's armed
-/// wait-for-reset (captured 2026-09-24: `Usage limit reached again after you
-/// continued`), so no key is sent ahead of it. `prompts` is what the pane's
-/// hooks had reported submitted when it was nudged.
-///
-/// The line goes as a wake, ending on the runner's mark
-/// (`terminal::held::marked`). A prompt that refuses it for text it already
-/// holds is read again, and a runner wake held there at an idle prompt is
-/// submitted in this one's place (ISS-1081 round 2): it is an earlier wake to
-/// the same master, and typing behind it is what the refusal forbids.
+/// Send the line core composed into this project's master as a peer message
+/// queued behind its running turn, saying core's reason for it. It is
+/// delivered only on its receipt in the session's transcript; a refusal is said
+/// by name and nothing is typed anywhere (ISS-1268 B2). A session parked behind
+/// its account limit takes it the same way.
 pub(crate) async fn nudge_master(
     masters: &Arc<Masters>,
-    activity: &agent_activity::Activities,
     (project_id, slug): (&str, &str),
     because: &str,
     line: &str,
-    prompts: Option<u64>,
 ) {
-    let Some((session, name)) = masters.get(project_id) else {
+    let Some((_, name)) = masters.get(project_id) else {
         return;
     };
     tracing::info!("[master] {slug}: nudging {name}: {because}");
-    let mut typed = terminal::send_line(&name, &terminal::held::marked(line)).await;
-    if matches!(typed, Err(terminal::NotTyped::Refused(_))) {
-        let at = (project_id, slug, session.as_str(), name.as_str());
-        if let Some(held) = take_held(masters, activity.get(&session).as_ref(), at, prompts).await {
-            typed = held;
-        }
-    }
-    if note_wake(masters, (project_id, slug, &session), &typed, prompts) {
-        return;
-    }
-    if let Err(e) = typed {
-        // A pane that exited before the nudge reached it is reported by the
+    match resident::deliver(&name, line, Priority::Next).await {
+        resident::Delivery::Delivered(r) => tracing::info!(
+            "[master] {slug}: {name} took the nudge as message {} ({:?})",
+            r.msg_id,
+            r.after
+        ),
+        // A session that exited before the nudge reached it is reported by the
         // sweep that reads it gone, with why; a warning here too would be the
         // second line per placement ISS-1343 counted on sid-desk.
-        if recovery_ports::pane_presence(&name).await == recovery::MasterPresence::Gone {
-            tracing::debug!(
-                "[master] {slug}: {name} exited before the nudge reached it ({e}); the sweep that reads it gone says why"
-            );
-        } else {
-            tracing::warn!("[master] {slug}: could not nudge {name}: {e}");
+        resident::Delivery::Gone => tracing::debug!(
+            "[master] {slug}: {name} exited before the nudge reached it; the sweep that reads it gone says why"
+        ),
+        resident::Delivery::Refused(e) => {
+            tracing::error!("[master] {slug}: {name} was not nudged: {e}")
         }
     }
-}
-
-/// Whether the pane's hooks report a turn running or stopped on a question:
-/// a prompt either way, where Enter does not start a turn.
-pub(crate) fn turn_by_hooks(seen: Option<&agent_activity::Activity>) -> bool {
-    matches!(
-        seen.map(agent_activity::Activity::doing),
-        Some(agent_activity::Doing::Working | agent_activity::Doing::AwaitingPermission)
-    )
-}
-
-/// What became of a nudge whose prompt refused it for held text, where the
-/// held text decides it: `Some` with the answer that stands for the nudge, or
-/// `None` where today's refusal stands (no text held, or not a runner wake).
-///
-/// A runner wake at an idle prompt is submitted, one attempt, and answered as
-/// a wake typed (`Prompt::Empty`) or said unsent (`Unsubmitted`), which
-/// [`note_wake`] keeps and the sweep reports naming the pane. One behind a
-/// running turn is left to send itself when the turn ends; the sweep reports
-/// it if it reads it still held with no turn running.
-async fn take_held(
-    masters: &Masters,
-    seen: Option<&agent_activity::Activity>,
-    (project_id, slug, session, name): (&str, &str, &str, &str),
-    prompts: Option<u64>,
-) -> Option<std::result::Result<terminal::Prompt, terminal::NotTyped>> {
-    let left = masters.wake_left(project_id, session, prompts);
-    match terminal::held::submit_held_wake(name, left, turn_by_hooks(seen)).await {
-        Ok(terminal::held::Held::Submitted(text)) => {
-            tracing::info!(
-                "[master] {slug}: {name} held a runner wake unsent at an idle prompt \u{ab}{}\u{bb}; \
-it was submitted in place of this nudge",
-                runner_workspace::composer::excerpt(&text, 200)
-            );
-            Some(Ok(terminal::Prompt::Empty))
-        }
-        Ok(terminal::held::Held::Busy(text)) => {
-            tracing::info!(
-                "[master] {slug}: {name} holds a runner wake behind a running turn \u{ab}{}\u{bb}; \
-it is left to send itself when the turn ends, and the sweep reports it if it reads it still held \
-with no turn running",
-                runner_workspace::composer::excerpt(&text, 200)
-            );
-            // Not seen submitted: kept as a wake left, which is what the sweep
-            // reads it by once the turn is over.
-            Some(Ok(terminal::Prompt::Unread))
-        }
-        Ok(terminal::held::Held::Nothing | terminal::held::Held::NotAWake(_)) => None,
-        Err(e) => Some(Err(e)),
-    }
-}
-
-/// Keep what a wake this box typed into a master's pane was seen to do, so a
-/// wake not seen submitted is read again by the sweep and, while it sits at
-/// the prompt, told to core as what the pane waits on (ISS-1081). One the pane
-/// was read holding unsent after every Enter is said here, naming the pane;
-/// `true` for that one, which the caller then says nothing more about.
-pub(crate) fn note_wake(
-    masters: &Masters,
-    (project_id, slug, session): (&str, &str, &str),
-    typed: &std::result::Result<terminal::Prompt, terminal::NotTyped>,
-    prompts: Option<u64>,
-) -> bool {
-    match typed {
-        Ok(terminal::Prompt::Empty) => masters.clear_wake_left(project_id),
-        Ok(terminal::Prompt::Unread) => masters.note_wake_left(project_id, session, prompts),
-        Err(terminal::NotTyped::Unsubmitted(why)) => {
-            masters.note_wake_left(project_id, session, prompts);
-            tracing::error!(
-                "[master] {slug}: WAKE_UNSENT {why} Core is told the pane waits on a person until \
-it is."
-            );
-            return true;
-        }
-        Err(_) => {}
-    }
-    false
 }
 
 #[cfg(test)]
