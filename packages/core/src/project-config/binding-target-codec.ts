@@ -24,7 +24,16 @@ const FIELDS: Readonly<Record<string, readonly string[]>> = {
   'support-api': ['tools', 'ownerSignIn'],
   agent: [],
   prometheus: ['scrape', 'probe', 'agent', 'rules'],
-  widget: ['siteKey', 'allowedOrigins', 'identity', 'title', 'greeting', 'greetings', 'accent', 'limits'],
+  widget: [
+    'siteKey',
+    'allowedOrigins',
+    'identity',
+    'title',
+    'greeting',
+    'greetings',
+    'accent',
+    'limits',
+  ],
 };
 
 const RELEASE_RUNNER_LABEL = 'releaseRunnerLabel';
