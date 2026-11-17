@@ -1,1 +1,0 @@
-**The feedback steward asks reporters every question it needs.** It no longer believes a reporter can hold only one open clarification, and every prompt, guide, tool, schema and copy text is now checked for question limits.

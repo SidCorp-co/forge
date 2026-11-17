@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.719] - 2026-11-17
+
+Later-build passes count, fresh pull requests cut, issue keys named, masters told where waits go
+
+### Fixed
+
+- **The feedback steward asks reporters every question it needs.** It no longer believes a reporter can hold only one open clarification, and every prompt, guide, tool, schema and copy text is now checked for question limits.
+- **A mistyped issue key on a box's credential is named, no longer called a membership fault.** The refusal says the key names no issue in the project, and that a route takes a key or a uuid.
+- **A release cut can name a promotion request opened moments ago.** Forge reads it from the host before refusing, and a refusal says whether the request is missing on the host or the host could not be read.
+- **A master's wake names where to record why an item waits.** Each issue, requirement, feedback item or workflow listed comes with its own decision door, and a decision there with a date or condition stops listing it.
+- **A release counts a pass judged on a later build that still carries it.** Where nothing between them touches the issue's files, the release reads it proven; where Forge cannot tell, it says what to report so it can.
+
 ## [0.4.0-dev.718] - 2026-11-17
 
 Old releases served through a later one stop asking to be promoted
