@@ -52,6 +52,7 @@ const SUPPORT_SESSION_ROUTES = {
   reference_add: 'reference-adds',
   reference_cite: 'reference-citations',
   reference_propose: 'reference-proposals',
+  term: 'terms',
   decide: 'decisions',
   approve: 'approvals',
   feedback: 'feedback',
