@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	changedPathsSchema,
 	storefrontArtifactOf,
 	storefrontLandingClauses,
 } from "./landing-artifacts.js";
@@ -112,5 +113,25 @@ describe("storefrontLandingClauses", () => {
 		).toEqual([
 			{ ref: "https://hop.auto.sidcorp.co/pages/staff", artifact: null },
 		]);
+	});
+});
+
+// ISS-1251: a changed file the box read as reformatted alone goes `formatOnly`.
+describe("changedPathsSchema", () => {
+	const commit = "abc1234";
+	it("takes a changed file marked formatOnly, and refuses a mark that is not true by name", () => {
+		const reformat = {
+			path: "src/tool-description.ts",
+			change: "changed",
+			formatOnly: true,
+		};
+		expect(
+			changedPathsSchema.safeParse({ commit, changes: [reformat] }).success,
+		).toBe(true);
+		const untrue = changedPathsSchema.safeParse({
+			commit,
+			changes: [{ ...reformat, formatOnly: false }],
+		});
+		expect(untrue.error?.issues[0]?.message).toContain("left out otherwise");
 	});
 });

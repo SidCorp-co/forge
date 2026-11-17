@@ -262,7 +262,9 @@ no `merged_at`, or one that is empty or not an array. NULL is a landing naming n
     files (`changedFilesOf`).
   - `box` — the project has no source host Forge can read, so `forge-runner api`, carrying a mark that
     names a `commit` its checkout holds, adds `changedPaths` (`git diff --name-status <first parent>
-    <commit>`, paths only). The mark stores them in `merged_paths` labelled `read: 'box'`
+    <commit>`, paths only; a changed file whose text differs in its layout alone goes `formatOnly`,
+    which invalidates no lesson anchored to it, `lessons/anchors.ts:anchorMet`). The mark stores them
+    in `merged_paths` labelled `read: 'box'`
     (`markReadPaths`, `recordReadPaths`): the box's reading of its own checkout, not a merge Forge
     observed. Paths read at another commit than the mark names are `CHANGED_PATHS_UNMATCHED`, paths
     outside git `CHANGED_PATHS_NOT_THIS_SHAPE`, and paths over a standing reading of another commit

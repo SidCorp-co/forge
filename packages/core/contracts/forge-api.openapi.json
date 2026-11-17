@@ -16368,6 +16368,10 @@
                               ],
                               "type": "string"
                             },
+                            "formatOnly": {
+                              "const": true,
+                              "type": "boolean"
+                            },
                             "path": {
                               "maxLength": 1000,
                               "minLength": 1,
@@ -16572,6 +16576,10 @@
                                 "removed"
                               ],
                               "type": "string"
+                            },
+                            "formatOnly": {
+                              "const": true,
+                              "type": "boolean"
                             },
                             "path": {
                               "maxLength": 1000,

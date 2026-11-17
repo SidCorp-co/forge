@@ -6,6 +6,10 @@
 //! holds, it adds `changedPaths`: `git diff --name-status <first parent> <commit>`, paths and what
 //! became of each, never content. Core classifies them by the project's `surfaces` map and labels
 //! them box-read (`packages/core/src/issues/landing-evidence.ts:markReadPaths`).
+//!
+//! A changed file whose text differs only in its layout (whitespace, line breaks, a trailing comma)
+//! goes `formatOnly`: a reformat changes no symbol, door or behaviour, so it invalidates no lesson
+//! anchored to that file (`packages/core/src/lessons/anchors.ts:anchorMet`, ISS-1251).
 
 use std::path::Path;
 use std::process::Command;
@@ -14,6 +18,12 @@ use serde_json::{json, Value};
 
 /// At most this many files go with one mark; core refuses more (`CHANGED_PATHS_MAX`).
 const CHANGED_PATHS_MAX: usize = 2000;
+
+/// At most this many changed files are read for a reformat; past it, the rest go as changed.
+const FORMAT_READ_MAX: usize = 300;
+
+/// A side larger than this is never read for a reformat, and the file goes as changed.
+const FORMAT_READ_BYTES: usize = 2 * 1024 * 1024;
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Attach {
@@ -66,6 +76,46 @@ fn changes_of_line(line: &str) -> Vec<Value> {
     }
 }
 
+/// The text with its layout set aside: each run of whitespace dropped, kept as one space only between
+/// two word characters (`return a` stays apart from `returna`), and a comma before a closing bracket
+/// dropped, so a line a formatter rewrapped reads as it did.
+fn layout_free(text: &str) -> String {
+    let word = |c: char| c.is_alphanumeric() || c == '_' || c == '$';
+    let mut out = String::with_capacity(text.len());
+    let mut gap = false;
+    for c in text.chars() {
+        if c.is_whitespace() {
+            gap = true;
+            continue;
+        }
+        if gap && word(c) && out.chars().next_back().is_some_and(word) {
+            out.push(' ');
+        }
+        gap = false;
+        if matches!(c, ')' | ']' | '}') && out.ends_with(',') {
+            out.pop();
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// Whether `path` changed between `parent` and `sha` in its layout alone; false where either side
+/// could not be read as text, or is too large to read.
+fn format_only(repo: &Path, parent: &str, sha: &str, path: &str) -> bool {
+    let text = |rev: &str| {
+        git(repo, &["show", &format!("{rev}:{path}")])
+            .ok()
+            .filter(|t| t.len() <= FORMAT_READ_BYTES && !t.contains(['\0', '\u{fffd}']))
+    };
+    match (text(parent), text(sha)) {
+        (Some(before), Some(after)) => {
+            before != after && layout_free(&before) == layout_free(&after)
+        }
+        _ => false,
+    }
+}
+
 /// The full sha and the files `commit` changed against its first parent, read from `repo`.
 pub(crate) fn changed_paths(repo: &Path, commit: &str) -> Result<(String, Vec<Value>), String> {
     let sha = git(
@@ -108,11 +158,23 @@ pub(crate) fn changed_paths(repo: &Path, commit: &str) -> Result<(String, Vec<Va
             ],
         )?,
     };
-    let changes: Vec<Value> = listing
+    let mut changes: Vec<Value> = listing
         .lines()
         .filter(|l| !l.trim().is_empty())
         .flat_map(changes_of_line)
         .collect();
+    if let Some(parent) = parent.as_deref().map(str::trim) {
+        let reformatted = changes
+            .iter_mut()
+            .filter(|c| c["change"] == "changed")
+            .take(FORMAT_READ_MAX);
+        for change in reformatted {
+            let path = change["path"].as_str().unwrap_or_default().to_string();
+            if format_only(repo, parent, &sha, &path) {
+                change["formatOnly"] = Value::Bool(true);
+            }
+        }
+    }
     Ok((sha, changes))
 }
 
@@ -242,6 +304,44 @@ mod tests {
             ]
             .map(|(p, c)| (p.to_string(), c.to_string()))
         );
+        let _ = std::fs::remove_dir_all(&repo);
+    }
+
+    #[test]
+    fn a_file_only_reformatted_goes_format_only_and_one_whose_tokens_changed_does_not() {
+        let id = uuid::Uuid::new_v4();
+        let repo = std::env::temp_dir().join(format!("forge-mark-format-{id}"));
+        std::fs::create_dir_all(repo.join("src")).unwrap();
+        run(&repo, &["init", "-q", "-b", "dev"]);
+        // dev.701: ISS-1251's fold rewrapped one throw in tool-description.ts and held ten lessons
+        let throw = "    throw new Error(`no shape for ${act} (tool.ts SIGNATURES)`);\n";
+        std::fs::write(repo.join("src/tool-description.ts"), throw).unwrap();
+        std::fs::write(repo.join("src/rule.ts"), "export const cap = 1200;\n").unwrap();
+        std::fs::write(repo.join("src/word.ts"), "return a;\n").unwrap();
+        run(&repo, &["add", "."]);
+        run(&repo, &["commit", "-qm", "base"]);
+        let rewrapped =
+            "    throw new Error(\n      `no shape for ${act} (tool.ts SIGNATURES)`,\n    );\n\n";
+        std::fs::write(repo.join("src/tool-description.ts"), rewrapped).unwrap();
+        std::fs::write(repo.join("src/rule.ts"), "export const cap = 1500;\n").unwrap();
+        std::fs::write(repo.join("src/word.ts"), "returna;\n").unwrap();
+        run(&repo, &["add", "-A"]);
+        run(&repo, &["commit", "-qm", "ISS-8 the reformat"]);
+        let sha = run(&repo, &["rev-parse", "HEAD"]);
+        let (_, changes) = changed_paths(&repo, &sha).unwrap();
+        let format_only: Vec<(&str, bool)> = changes
+            .iter()
+            .map(|c| (c["path"].as_str().unwrap(), c.get("formatOnly").is_some()))
+            .collect();
+        assert_eq!(
+            format_only,
+            [
+                ("src/rule.ts", false),
+                ("src/tool-description.ts", true),
+                ("src/word.ts", false),
+            ]
+        );
+        assert_eq!(changes[1]["formatOnly"], true);
         let _ = std::fs::remove_dir_all(&repo);
     }
 

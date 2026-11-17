@@ -99,6 +99,13 @@ const CHANGED_PATHS_MAX = 2000;
 export interface FileChange {
 	path: string;
 	change: ArtifactChange;
+	/**
+	 * A changed file whose text the box read as differing in its layout alone (whitespace, line
+	 * breaks, a trailing comma): it changes no symbol, door or behaviour, so it invalidates no lesson
+	 * anchored to it (ISS-1251). Absent where the box did not read it so, or read none; read on a
+	 * `changed` file alone, since an added or removed file is never a reformat.
+	 */
+	formatOnly?: true | undefined;
 }
 
 /**
@@ -123,6 +130,12 @@ export const changedPathsSchema = z.strictObject({
 					error: (issue) =>
 						`change ${JSON.stringify(issue.input)} is not a file change: it is one of ${oneOf(ARTIFACT_CHANGES)}`,
 				}),
+				formatOnly: z
+					.literal(true, {
+						error:
+							"formatOnly is true where the file changed in its layout alone, and left out otherwise",
+					})
+					.optional(),
 			}),
 		)
 		.max(

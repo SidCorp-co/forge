@@ -6,6 +6,7 @@
 // Postgres through the outbox and the steward's pass, every model answer the test's own.
 //
 // @direct-test-of packages/core/src/lessons/anchors.ts
+// @direct-test-of packages/core/src/issues/memory-reads.ts
 // @direct-test-of packages/core/src/lessons/lifecycle-reads.ts
 // @direct-test-of packages/core/src/steward/lessons-lifecycle.ts
 // @direct-test-of packages/core/src/steward/lessons-review.ts
@@ -14,19 +15,19 @@
 // @direct-test-of packages/core/src/lessons/scenario-replay.ts
 // @direct-test-of packages/core/src/cleanup/gate-debt.ts
 
-import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
-import { emitEvent } from '../../src/outbox/index.js';
-import { settleOutbox } from '../helpers/ecosystem-world.js';
 import { rows } from '../helpers/factories.js';
 import {
   approve,
   at,
   block,
   correction,
+  landed,
+  landedMove,
   lesson,
+  lessonState,
   numberOf,
   openLessonsWorld,
   pass,
@@ -51,40 +52,6 @@ async function approvedOn(sentence: string, anchor: string): Promise<number> {
   return numberOf(sentence);
 }
 
-/** An issue landed with its commit's paths, as the box reports them; its id and key. */
-async function landed(seq: number, paths: string[], title = 'widget rework') {
-  const issueId = randomUUID();
-  await db.execute(sql`
-    INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, merged_at, merged_commit_sha, merged_paths)
-    VALUES (${issueId}, ${w.projectId}, ${seq}, ${title}, 'awaiting_release', ${w.ownerId}, now(),
-            'abc1234def5678abc1234def5678abc1234def56',
-            ${JSON.stringify({ commit: 'abc1234def5678abc1234def5678abc1234def56', changes: paths.map((path) => ({ path, change: 'modified' })) })}::jsonb)`);
-  return issueId;
-}
-
-/** The kernel's word that the issue's landing was taken past `awaiting_release`, delivered to every consumer. */
-async function landedMove(issueId: string) {
-  await emitEvent(db, 'issue.transitioned', {
-    entity: 'issue',
-    id: issueId,
-    projectId: w.projectId,
-    issueId,
-    from: 'awaiting_release',
-    to: 'closed',
-    machineVersion: 1,
-    reason: null,
-    actor: { type: 'user', id: w.ownerId, agency: 'agent' },
-    at: new Date().toISOString(),
-  });
-  await settleOutbox(15_000);
-}
-
-const stateOf = async (n: number) => {
-  const [row] = await rows<{ status: string; invalid_at: Date | null; invalid_by: string | null }>(
-    sql`SELECT status, invalid_at, invalid_by FROM lessons WHERE project_id = ${w.projectId} AND number = ${n}`,
-  );
-  return row;
-};
 const every = { produces: ['issue', 'chat', 'requirement'], area: 'any' as const };
 
 describe('a landing that touches a lesson’s anchor invalidates it (§5)', () => {
@@ -102,34 +69,42 @@ describe('a landing that touches a lesson’s anchor invalidates it (§5)', () =
     );
     expect(await block(every)).toContain(`- lesson-${touched}:`);
 
-    // a landing that changed only tests changes no anchored symbol, door or behaviour (forge-dev
-    // dev.701: ISS-1251's plain-agreement.test.ts held every support card's lessons)
+    // a landing that changed only tests, and one file in its layout alone, changes no anchored
+    // symbol, door or behaviour (forge-dev dev.701: ISS-1251's plain-agreement.test.ts and one
+    // rewrapped throw in tool-description.ts held every support card's lessons)
+    const reformat = 'packages/core/src/support/tool-description.ts';
     await landedMove(
-      await landed(70, [
-        'packages/core/src/support/plain-agreement.test.ts',
-        'packages/core/tests/integration/support-room-e2e.test.ts',
-        'packages/core/src/widgets/render.test.ts',
-      ]),
+      await landed(
+        70,
+        [
+          'packages/core/src/support/plain-agreement.test.ts',
+          'packages/core/tests/integration/support-room-e2e.test.ts',
+          'packages/core/src/widgets/render.test.ts',
+          reformat,
+        ],
+        [reformat],
+      ),
     );
-    expect(await stateOf(wide)).toMatchObject({ status: 'approved', invalid_at: null });
+    expect(await lessonState(wide)).toMatchObject({ status: 'approved', invalid_at: null });
     // a lesson anchored to a test itself is met by that test's change
-    expect((await stateOf(ownTest))?.status).toBe('held');
+    expect((await lessonState(ownTest))?.status).toBe('held');
 
-    await landedMove(await landed(71, [WIDGET, 'packages/core/src/support/tool-description.ts']));
-    expect((await stateOf(wide))?.status).toBe('held');
+    // the same file changed in its tokens is a change to the card's door
+    await landedMove(await landed(71, [WIDGET, reformat]));
+    expect((await lessonState(wide))?.status).toBe('held');
 
-    expect(await stateOf(touched)).toMatchObject({
+    expect(await lessonState(touched)).toMatchObject({
       status: 'held',
       invalid_by: `ISS-71 changed ${WIDGET}`,
     });
-    expect((await stateOf(touched))?.invalid_at).not.toBeNull();
+    expect((await lessonState(touched))?.invalid_at).not.toBeNull();
     // read by its slug it says it is invalid and why, never plain verified (dev.701: lesson-99)
     const read = await say('member', 'GET', at(`/knowledge/lesson-${touched}`));
     expect(read.json).toMatchObject({
       confidence: 'deprecated',
       metadata: { invalid: true, invalidBy: `ISS-71 changed ${WIDGET}` },
     });
-    expect(await stateOf(other)).toMatchObject({ status: 'approved', invalid_at: null });
+    expect(await lessonState(other)).toMatchObject({ status: 'approved', invalid_at: null });
     const map = await block(every);
     expect(map).not.toContain(`- lesson-${touched}:`);
     expect(map).toContain(`- lesson-${other}:`);
@@ -145,14 +120,14 @@ describe('a landing that touches a lesson’s anchor invalidates it (§5)', () =
       text: 'Delivers REQ-50 BC-8: the cap is shown.',
     });
     expect(n).toBe(1);
-    expect((await stateOf(bc))?.status).toBe('held');
-    expect((await stateOf(near))?.status).toBe('approved');
+    expect((await lessonState(bc))?.status).toBe('held');
+    expect((await lessonState(near))?.status).toBe('approved');
   });
 
   it('is re-admitted by the steward’s re-check, edited where the change moved it, and served again', async () => {
     const n = await approvedOn('Cache the widget layout.', `${WIDGET}:layout`);
     await landedMove(await landed(73, [WIDGET]));
-    expect((await stateOf(n))?.status).toBe('held');
+    expect((await lessonState(n))?.status).toBe('held');
     const tally = await pass({
       recheck: (l) =>
         (l as { number: number }).number === n
@@ -165,7 +140,7 @@ describe('a landing that touches a lesson’s anchor invalidates it (§5)', () =
           : null,
     });
     expect(tally.readmitted).toBeGreaterThanOrEqual(1);
-    expect(await stateOf(n)).toMatchObject({
+    expect(await lessonState(n)).toMatchObject({
       status: 'approved',
       invalid_at: null,
       invalid_by: null,
@@ -226,7 +201,7 @@ describe('an unanchored lesson is not admitted, and an old one is anchored from 
              (SELECT anchor FROM lessons WHERE project_id = ${w.projectId} AND number = ${unshown}) AS unshown`);
     expect(after).toEqual({ shown: 'card:support.member', unshown: null });
     expect(tally.unanchored).toBeGreaterThanOrEqual(1);
-    expect((await stateOf(unshown))?.status).toBe('approved');
+    expect((await lessonState(unshown))?.status).toBe('approved');
   });
 });
 
@@ -337,7 +312,7 @@ describe('a lesson that holds is folded into its card and retired (§4)', () => 
       }),
     });
     expect(tally.replayRefused).toBeGreaterThanOrEqual(1);
-    expect((await stateOf(n))?.status).toBe('approved');
+    expect((await lessonState(n))?.status).toBe('approved');
     const { cardFreshness } = await import('../../src/lessons/index.js');
     const [fresh] = await cardFreshness([CARD]);
     expect(fresh?.scenarios.find((x) => x.name === 'answers-known-member')).toMatchObject({
@@ -369,7 +344,7 @@ describe('a lesson that holds is folded into its card and retired (§4)', () => 
       }),
     });
     expect(tally.replayRefused).toBeGreaterThanOrEqual(1);
-    expect((await stateOf(n))?.status).toBe('approved');
+    expect((await lessonState(n))?.status).toBe('approved');
     const { cardFreshness } = await import('../../src/lessons/index.js');
     const [fresh] = await cardFreshness([CARD]);
     expect(fresh?.scenarios.find((x) => x.name === 'asks-unknown-member')).toMatchObject({
@@ -416,7 +391,7 @@ describe('a lesson that holds is folded into its card and retired (§4)', () => 
       },
     });
     expect(tally.foldWaiting).toBeGreaterThanOrEqual(1);
-    expect((await stateOf(n))?.status).toBe('approved');
+    expect((await lessonState(n))?.status).toBe('approved');
   });
 });
 
@@ -431,7 +406,7 @@ describe('a landing touching a card-anchored lesson marks the card owed a re-che
       paths: [],
       text: 'Reworks iss1251.recheck-card: members carry roles.',
     });
-    expect((await stateOf(n))?.status).toBe('held');
+    expect((await lessonState(n))?.status).toBe('held');
     const [fresh] = await cardFreshness(['iss1251.recheck-card']);
     expect(fresh?.recheckOwed).toMatchObject({ by: 'ISS-75 changed card:iss1251.recheck-card' });
   });
@@ -458,7 +433,7 @@ describe('a landing touching a card-anchored lesson marks the card owed a re-che
     const twice = await pass({ recheck: readmit([second]) });
     expect(twice.cardsRechecked).toBe(1);
     expect((await cardFreshness([CARD]))[0]?.recheckOwed).toBeNull();
-    expect((await stateOf(second))?.status).toBe('approved');
+    expect((await lessonState(second))?.status).toBe('approved');
   });
 });
 

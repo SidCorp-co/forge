@@ -19,11 +19,20 @@ interface LessonsPorts {
     roomId: string,
     writer: { key: string; label: string | null },
   ): Promise<string | null>;
-  /** What an issue's landing changed: its key, its words and its paths, or why none were read. */
+  /**
+   * What an issue's landing changed: its key, its words and its paths, or why none were read; and of
+   * its paths, those read as reformatted alone (ISS-1251), where the box read them so.
+   */
   landedChange(
     projectId: string,
     issueId: string,
-  ): Promise<{ key: string; text: string; paths: string[] | null; why?: string } | null>;
+  ): Promise<{
+    key: string;
+    text: string;
+    paths: string[] | null;
+    formatOnly?: readonly string[];
+    why?: string;
+  } | null>;
   /**
    * The capability card registry (ISS-1251 §1): a card by its id, with its scenarios and its current
    * text, or null where no door carries that card; and, where the registry knows them, the paths its

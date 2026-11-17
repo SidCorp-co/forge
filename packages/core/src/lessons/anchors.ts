@@ -7,8 +7,10 @@
  *
  * A code anchor is met by a changed path (the file, or one under its directory); a requirement's
  * behaviour by the landing's own words naming it; a card by the paths its door lives in, or by the
- * landing naming the card. A test changes no symbol, door or behaviour, so a changed test file meets
- * no anchor (ISS-1251: ISS-1251's own test edits held ten lessons).
+ * landing naming the card. A test changes no symbol, door or behaviour, and neither does a file
+ * changed in its layout alone (whitespace, line breaks, a trailing comma, as the box read it), so
+ * neither meets an anchor (ISS-1251: ISS-1251's own test edits and one rewrapped throw in
+ * `tool-description.ts` held ten lessons).
  */
 
 import { landsMerge } from '@forge/contracts/issue-machine';
@@ -28,6 +30,8 @@ export interface AnchorChange {
   by: string;
   /** The paths it changed; empty where they could not be read. */
   paths: readonly string[];
+  /** Of `paths`, those changed in their layout alone; none where the box did not read them so. */
+  formatOnly?: readonly string[];
   /** Its own words: title, description, plan, release notes. */
   text: string;
 }
@@ -50,11 +54,14 @@ export function anchorMet(
   cardPaths: readonly string[] = [],
 ): string[] {
   const kind = lessonAnchorKind(anchor);
-  // a lesson anchored to a test itself is still met by that test's change
+  // a lesson anchored to a test itself is still met by that test's change; a reformat meets none
   const own = kind === 'code' ? pathOf(anchor) : null;
+  const reformatted = new Set(landing.formatOnly ?? []);
   const change = {
     ...landing,
-    paths: landing.paths.filter((p) => !TEST_PATH.test(p) || (own !== null && pathMeets(own, p))),
+    paths: landing.paths.filter(
+      (p) => !reformatted.has(p) && (!TEST_PATH.test(p) || (own !== null && pathMeets(own, p))),
+    ),
   };
   if (kind === 'code') return change.paths.filter((p) => pathMeets(anchor, p));
   if (kind === 'bc') {
@@ -120,6 +127,7 @@ export async function invalidateForLanding(
   return invalidateLessonsForChange(projectId, {
     by: landed.key,
     paths: landed.paths ?? [],
+    formatOnly: landed.formatOnly ?? [],
     text: landed.text,
   });
 }

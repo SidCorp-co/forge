@@ -41,8 +41,9 @@ export async function releasedIssueOf(projectId: string, issueId: string) {
 
 /**
  * What a landing changed, as memory's re-check reads it (REQ-89 BC-5, ISS-1121): the issue's key,
- * its text, the commit it landed at, and the paths the box read at that commit when it sent them.
- * Where it sent none, the composition root reads the commit's files from the source host.
+ * its text, the commit it landed at, and the paths the box read at that commit when it sent them,
+ * with those it read as reformatted alone (`formatOnly`, ISS-1251). Where it sent none, the
+ * composition root reads the commit's files from the source host.
  */
 export async function landedChangeOf(projectId: string, issueId: string) {
   const issue = await releasedIssueOf(projectId, issueId);
@@ -69,6 +70,9 @@ export async function landedChangeOf(projectId: string, issueId: string) {
     text,
     commit,
     paths: boxRead ? read.changes.map((c) => c.path) : null,
+    formatOnly: boxRead
+      ? read.changes.filter((c) => c.formatOnly && c.change === 'changed').map((c) => c.path)
+      : [],
   };
 }
 

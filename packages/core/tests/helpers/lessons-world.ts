@@ -11,6 +11,7 @@ import {
   type Doc,
   type Reply,
   requester,
+  settleOutbox,
   startQueue,
   testEnv,
 } from './ecosystem-world.js';
@@ -250,6 +251,52 @@ export async function block(audience: { produces: string[]; area: string | null 
     read.push(`L-${n} [${label}]: ${got.json.body}`);
   }
   return [map, ...read].join('\n');
+}
+
+/**
+ * An issue landed with its commit's paths, as the box reports them, those it read as reformatted
+ * alone marked `formatOnly` (ISS-1251); its id.
+ */
+export async function landed(seq: number, paths: string[], reformatted: string[] = []) {
+  const issueId = randomUUID();
+  const commit = 'abc1234def5678abc1234def5678abc1234def56';
+  const changes = paths.map((path) => ({
+    path,
+    change: 'changed',
+    ...(reformatted.includes(path) ? { formatOnly: true } : {}),
+  }));
+  await rows(sql`
+    INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, merged_at, merged_commit_sha, merged_paths)
+    VALUES (${issueId}, ${w.projectId}, ${seq}, 'widget rework', 'awaiting_release', ${w.ownerId}, now(),
+            ${commit}, ${JSON.stringify({ commit, read: 'box', changes })}::jsonb)`);
+  return issueId;
+}
+
+/** The kernel's word that the issue's landing was taken past `awaiting_release`, delivered to every consumer. */
+export async function landedMove(issueId: string) {
+  const { db } = await import('../../src/db/client.js');
+  const { emitEvent } = await import('../../src/outbox/index.js');
+  await emitEvent(db, 'issue.transitioned', {
+    entity: 'issue',
+    id: issueId,
+    projectId: w.projectId,
+    issueId,
+    from: 'awaiting_release',
+    to: 'closed',
+    machineVersion: 1,
+    reason: null,
+    actor: { type: 'user', id: w.ownerId, agency: 'agent' },
+    at: new Date().toISOString(),
+  });
+  await settleOutbox(15_000);
+}
+
+/** A lesson's standing and its invalid mark, read off its row. */
+export async function lessonState(n: number) {
+  const [row] = await rows<{ status: string; invalid_at: Date | null; invalid_by: string | null }>(
+    sql`SELECT status, invalid_at, invalid_by FROM lessons WHERE project_id = ${w.projectId} AND number = ${n}`,
+  );
+  return row;
 }
 
 /** Opens the world before the file's cases and closes it after them. */
