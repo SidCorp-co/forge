@@ -196,7 +196,7 @@ describe('every room brief decides each message from its meaning and records it'
       'When a message is vague: gather on your own first (decision gather',
     );
     expect(taught(text)).toContain(
-      'ask the person one short question (decision ask) only once that is exhausted',
+      'ask the person what you still need (decision ask), each question with the answer you recommend, only once that is exhausted',
     );
     expect(taught(text)).toContain(
       'asks no "ok?" of anyone whose own request already agrees to it',
