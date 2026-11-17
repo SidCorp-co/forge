@@ -5,7 +5,7 @@
 //! by omission from `held`, and core fails it `BOX_GONE`.
 
 use std::collections::{BTreeSet, HashMap};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -197,6 +197,7 @@ impl Boxes {
                     slot.running = Some(running);
                     slot.clock = clock;
                 }
+                record::save_clock(&self.0.ctx.box_dir(&id), &clock);
                 let at = record::iso(clock.evidence_start);
                 self.report(&id, json!({ "kind": "state", "state": "ready", "offer": offer, "recordingStartedAt": at })).await;
             }
@@ -301,8 +302,12 @@ impl Boxes {
             }
         }
         let now = std::time::SystemTime::now();
-        if let Some(slot) = self.slots().get_mut(&f.box_id) {
+        let clock = self.slots().get_mut(&f.box_id).map(|slot| {
             slot.clock.evidence_start = now;
+            slot.clock
+        });
+        if let Some(c) = clock {
+            record::save_clock(&self.0.ctx.box_dir(&f.box_id), &c);
         }
         let body = json!({ "kind": "state", "state": "ready", "offer": running.offer(), "recordingStartedAt": record::iso(now) });
         self.report(&f.box_id, body).await;
@@ -336,38 +341,25 @@ impl Boxes {
 
     async fn fetch(&self, f: frames::Fetch) {
         let dir = self.0.ctx.box_dir(&f.box_id);
-        let recording = self
-            .running(&f.box_id)
-            .map(|r| r.recording().to_path_buf())
-            .or_else(|| {
-                ["session.webm", "session.mkv"]
-                    .iter()
-                    .map(|n| dir.join(n))
-                    .find(|p| p.is_file())
-            });
-        let clock = self
-            .slots()
-            .get(&f.box_id)
-            .map(|s| s.clock)
-            .unwrap_or_else(record::Clock::started_now);
-        let ffmpeg = self.0.ctx.env.which("ffmpeg");
-        let made = match (recording, ffmpeg) {
-            (Some(rec), Some(ff)) => {
-                let work = dir.join("cuts").join(&f.span_id);
-                let c = record::cut(
-                    &ff,
-                    &rec,
-                    &clock,
-                    (f.from_ms, f.to_ms),
-                    (f.max_seconds, f.max_bytes),
-                    &work,
-                )
-                .await;
-                let _ = std::fs::remove_dir_all(&work);
-                c
-            }
-            (None, _) => Err(format!("box {} has no recording on this device", f.box_id)),
-            (_, None) => Err("this device has no ffmpeg to cut the clip with".into()),
+        let made = match self.recording_at(&f.box_id, &dir, f.from_ms).await {
+            Ok((rec, clock)) => match self.0.ctx.env.which("ffmpeg") {
+                Some(ff) => {
+                    let work = dir.join("cuts").join(&f.span_id);
+                    let c = record::cut(
+                        &ff,
+                        (&rec.0, rec.1),
+                        &clock,
+                        (f.from_ms, f.to_ms),
+                        (f.max_seconds, f.max_bytes),
+                        &work,
+                    )
+                    .await;
+                    let _ = std::fs::remove_dir_all(&work);
+                    c
+                }
+                None => Err("this device has no ffmpeg to cut the clip with".into()),
+            },
+            Err(e) => Err(e),
         };
         let sent = match made {
             Ok(c) => {
@@ -385,6 +377,35 @@ impl Boxes {
             )
             .await;
         }
+    }
+
+    /// The recording segment a span starting at `from_ms` is in, and the box's clock. A running
+    /// browser box first closes its recording so far into a segment (see `record`).
+    async fn recording_at(
+        &self,
+        id: &str,
+        dir: &Path,
+        from_ms: u64,
+    ) -> Result<((PathBuf, std::time::SystemTime), record::Clock), String> {
+        let slot_clock = self.slots().get(id).map(|s| s.clock);
+        let mut clock = slot_clock
+            .or_else(|| record::load_clock(dir))
+            .ok_or_else(|| format!("box {id} has no recording on this device"))?;
+        if let Some(Running::Browser(b)) = self.running(id).as_deref() {
+            clock.file_start = b.rotate(clock.file_start).await?;
+            if let Some(slot) = self.slots().get_mut(id) {
+                slot.clock.file_start = clock.file_start;
+            }
+            record::save_clock(dir, &clock);
+        }
+        let at = clock.at(from_ms);
+        let rec = record::pick(dir, &clock, at).ok_or_else(|| {
+            format!(
+                "box {id} has no recording holding {} on this device",
+                record::iso(at)
+            )
+        })?;
+        Ok((rec, clock))
     }
 
     fn drop_recording(&self, id: &str) {

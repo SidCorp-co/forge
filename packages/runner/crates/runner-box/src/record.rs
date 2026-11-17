@@ -4,8 +4,14 @@
 //!
 //! The recording runs from the box's start. A warm box assigned to work restarts the evidence
 //! there: its offsets count from the assignment, and the minutes before it are never cut.
+//!
+//! A recording is kept as segments on disk: the live file (`session.<ext>`), whose start is in
+//! `clock.json` beside it, and closed ones (`seg-<start ms>.<ext>`). agent-browser writes its file
+//! only when the recording stops, so a browser box closes its segment before every cut and at
+//! close; the cut reads the segment its span starts in. Everything a cut needs is on disk, so a
+//! clip is still cut after the box closed, until its recording is dropped.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use crate::act;
@@ -34,14 +40,69 @@ impl Clock {
             .as_millis() as u64
     }
 
-    /// Where an evidence offset is in the file.
-    pub fn in_file(&self, evidence_ms: u64) -> Duration {
-        let shift = self
-            .evidence_start
-            .duration_since(self.file_start)
-            .unwrap_or_default();
-        shift + Duration::from_millis(evidence_ms)
+    /// The instant an evidence offset names.
+    pub fn at(&self, evidence_ms: u64) -> SystemTime {
+        self.evidence_start + Duration::from_millis(evidence_ms)
     }
+}
+
+fn ms(t: SystemTime) -> u64 {
+    t.duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
+fn of_ms(ms: u64) -> SystemTime {
+    SystemTime::UNIX_EPOCH + Duration::from_millis(ms)
+}
+
+/// Write the clock beside the recording, so a cut after close still finds its offsets.
+pub fn save_clock(dir: &Path, c: &Clock) {
+    let body = serde_json::json!({ "fileStartMs": ms(c.file_start), "evidenceStartMs": ms(c.evidence_start) });
+    let _ = std::fs::create_dir_all(dir);
+    if let Err(e) = std::fs::write(dir.join("clock.json"), body.to_string()) {
+        tracing::warn!("[box] cannot write {}/clock.json: {e}", dir.display());
+    }
+}
+
+pub fn load_clock(dir: &Path) -> Option<Clock> {
+    let v: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(dir.join("clock.json")).ok()?).ok()?;
+    Some(Clock {
+        file_start: of_ms(v["fileStartMs"].as_u64()?),
+        evidence_start: of_ms(v["evidenceStartMs"].as_u64()?),
+    })
+}
+
+/// Close the live file into a segment named for its start.
+pub fn seal(live: &Path, file_start: SystemTime) -> Result<PathBuf, String> {
+    let ext = live.extension().and_then(|e| e.to_str()).unwrap_or("webm");
+    let seg = live.with_file_name(format!("seg-{}.{ext}", ms(file_start)));
+    std::fs::rename(live, &seg)
+        .map_err(|e| format!("cannot close {} into a segment: {e}", live.display()))?;
+    Ok(seg)
+}
+
+/// The recording that holds instant `at`: the latest segment, or the live file, begun by then.
+pub fn pick(dir: &Path, clock: &Clock, at: SystemTime) -> Option<(PathBuf, SystemTime)> {
+    let mut found: Vec<(PathBuf, SystemTime)> = std::fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .filter_map(|e| {
+            let p = e.path();
+            let name = p.file_name()?.to_str()?.to_string();
+            if let Some(rest) = name.strip_prefix("seg-") {
+                let start = rest.split('.').next()?.parse().ok()?;
+                return Some((p, of_ms(start)));
+            }
+            let live =
+                name.starts_with("session.") && std::fs::metadata(&p).is_ok_and(|m| m.len() > 0);
+            live.then_some((p, clock.file_start))
+        })
+        .filter(|(_, start)| *start <= at)
+        .collect();
+    found.sort_by_key(|(_, start)| *start);
+    found.pop()
 }
 
 /// An ISO-8601 instant in UTC with milliseconds, as core reads one.
@@ -64,7 +125,7 @@ pub struct Cut {
 /// and its opening frame as a png. A cut over the byte ceiling is tried once more smaller.
 pub async fn cut(
     ffmpeg: &Path,
-    recording: &Path,
+    (recording, file_start): (&Path, SystemTime),
     clock: &Clock,
     (from_ms, to_ms): (u64, u64),
     (max_seconds, max_bytes): (u64, u64),
@@ -82,7 +143,10 @@ pub async fn cut(
         ));
     }
     std::fs::create_dir_all(work).map_err(|e| format!("cannot make {}: {e}", work.display()))?;
-    let start = clock.in_file(from_ms);
+    let start = clock
+        .at(from_ms)
+        .duration_since(file_start)
+        .unwrap_or_default();
     let length = Duration::from_millis(to_ms - from_ms).min(Duration::from_secs(max_seconds));
     let (clip_path, still_path) = (work.join("clip.mp4"), work.join("still.png"));
     let mut clip = Vec::new();
@@ -176,7 +240,51 @@ mod tests {
             file_start,
             evidence_start: file_start + Duration::from_secs(90),
         };
-        assert_eq!(clock.in_file(2_500), Duration::from_millis(92_500));
+        let at = clock.at(2_500);
+        assert_eq!(
+            at.duration_since(file_start).unwrap(),
+            Duration::from_millis(92_500)
+        );
         assert_eq!(iso(file_start), "1970-01-01T00:16:40.000Z");
+    }
+
+    #[test]
+    fn a_cut_reads_the_segment_its_span_starts_in_and_never_an_unwritten_live_file() {
+        let root = crate::testkit::Scratch::new("record");
+        let dir = root.path();
+        let t0 = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000);
+        let clock = Clock {
+            file_start: t0,
+            evidence_start: t0,
+        };
+        std::fs::write(dir.join("session.webm"), b"").unwrap();
+        assert!(
+            pick(dir, &clock, t0 + Duration::from_secs(5)).is_none(),
+            "agent-browser has not written it yet"
+        );
+
+        let first = seal(&dir.join("session.webm"), t0).unwrap();
+        let t1 = t0 + Duration::from_secs(60);
+        std::fs::write(dir.join("session.webm"), b"live").unwrap();
+        let clock = Clock {
+            file_start: t1,
+            ..clock
+        };
+        save_clock(dir, &clock);
+        let back = load_clock(dir).unwrap();
+        assert_eq!((back.file_start, back.evidence_start), (t1, t0));
+
+        assert_eq!(
+            pick(dir, &back, t0 + Duration::from_secs(30)),
+            Some((first, t0))
+        );
+        assert_eq!(
+            pick(dir, &back, t1 + Duration::from_secs(1)),
+            Some((dir.join("session.webm"), t1))
+        );
+        assert!(
+            pick(dir, &back, t0 - Duration::from_secs(1)).is_none(),
+            "before the recording began"
+        );
     }
 }

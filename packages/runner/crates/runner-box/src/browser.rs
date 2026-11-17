@@ -8,11 +8,11 @@
 //! is `STREAM_LOST`, said loudly, never a stale port quietly refused.
 
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use runner_platform::box_settings::BoxSettings;
 
-use crate::{act, proc};
+use crate::{act, proc, record};
 
 /// The longest socket path the platform takes (`sockaddr_un`, less its terminator).
 pub const SOCKET_PATH_MAX: usize = 103;
@@ -28,6 +28,8 @@ pub struct Browser {
     idle_ms: u64,
     pub size: (u32, u32),
     pub recording: PathBuf,
+    /// One rotation at a time: two cuts ordered together never seal the same file twice.
+    rotating: tokio::sync::Mutex<()>,
 }
 
 /// The stream is gone: the daemon is not running, or runs with no stream port.
@@ -69,6 +71,7 @@ impl Browser {
             idle_ms: s.browser_idle_timeout_secs.saturating_mul(1000),
             size: size.unwrap_or(DEFAULT_VIEWPORT),
             recording,
+            rotating: tokio::sync::Mutex::new(()),
         })
     }
 
@@ -134,6 +137,19 @@ impl Browser {
     /// The stream's port as the daemon wrote it now, read again on every call.
     pub fn stream_port(&self) -> Result<u16, StreamLost> {
         read_stream_port(&self.dir)
+    }
+
+    /// Close the recording so far into a segment and start the next, so a cut can read it:
+    /// agent-browser writes its file only when the recording stops. Returns the new file's start.
+    pub async fn rotate(&self, file_start: SystemTime) -> Result<SystemTime, String> {
+        let _one = self.rotating.lock().await;
+        let within = Duration::from_secs(30);
+        self.must(&["record", "stop"], within).await?;
+        record::seal(&self.recording, file_start)?;
+        let next = SystemTime::now();
+        let rec = self.recording.to_string_lossy().into_owned();
+        self.must(&["record", "start", &rec], within).await?;
+        Ok(next)
     }
 
     /// End the recording so it is a whole file, and close the browser. The reap follows.

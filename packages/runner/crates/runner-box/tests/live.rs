@@ -71,8 +71,37 @@ fn boxes() -> (Boxes, Arc<Said>) {
         "the live test runs only against a scratch config"
     );
     let said = Arc::new(Said::default());
-    let record = std::env::temp_dir().join(format!("fbx-live-{}.json", std::process::id()));
+    let record = cfg
+        .boxes
+        .data_dir()
+        .expect("a data dir")
+        .join("live-held.json");
     (Boxes::start(said.clone(), cfg.boxes, Some(record)), said)
+}
+
+/// Reaps the box if the test panics on its way, so a failed run leaves nothing of its own behind.
+struct ReapOnPanic(String);
+
+impl Drop for ReapOnPanic {
+    fn drop(&mut self) {
+        if !std::thread::panicking() {
+            return;
+        }
+        let id = self.0.clone();
+        let reaped = std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            rt.block_on(runner_box::proc::reap(&id, Duration::from_secs(5)))
+        })
+        .join();
+        eprintln!(
+            "  the panicked test's box {} reaped: {:?}",
+            self.0,
+            reaped.map(|r| r.left)
+        );
+    }
 }
 
 fn pgrep(pattern: &str) -> Vec<String> {
@@ -194,6 +223,7 @@ async fn close_and_prove_reaped(b: &Boxes, said: &Said, id: &str, patterns: &[St
 async fn a_real_browser_box_is_driven_watched_taken_recorded_and_reaped() {
     let (b, said) = boxes();
     let id = uuid::Uuid::new_v4().to_string();
+    let _reap = ReapOnPanic(id.clone());
     let page = "data:text/html,<button id=c style='width:100%;height:100%;font-size:80px' onclick=\"this.textContent=+this.textContent+1\">0</button>";
     let ready = open(
         &b,
@@ -296,6 +326,7 @@ async fn a_real_browser_box_is_driven_watched_taken_recorded_and_reaped() {
 async fn a_real_android_box_boots_from_its_snapshot_streams_h264_and_is_reaped() {
     let (b, said) = boxes();
     let id = uuid::Uuid::new_v4().to_string();
+    let _reap = ReapOnPanic(id.clone());
     let ready = open(&b, &said, &id, "android", None, Value::Null).await;
     println!("MEASURED android box ready in {ready:?} (snapshot boot, read-only)");
     let pids = runner_box::proc::pids_of(&id);
@@ -368,6 +399,7 @@ async fn a_real_android_box_boots_from_its_snapshot_streams_h264_and_is_reaped()
 async fn a_real_desktop_box_takes_a_display_other_than_99_and_is_reaped() {
     let (b, said) = boxes();
     let id = uuid::Uuid::new_v4().to_string();
+    let _reap = ReapOnPanic(id.clone());
     let ready = open(&b, &said, &id, "desktop", None, Value::Null).await;
     println!("MEASURED desktop box ready in {ready:?}");
     let xvfb = pgrep("^Xvfb :1[0-9][0-9] ");
