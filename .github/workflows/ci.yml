@@ -496,6 +496,9 @@ jobs:
               - 'packages/runner/crates/forge-runner/src/cmd/judge_login/session.rs'
               - 'packages/runner/crates/forge-runner/src/cmd/judge_login/session/described.rs'
               - 'packages/runner/crates/forge-runner/src/cmd/judge_login/session/storage.rs'
+              # Real Claude Code turns the subagent fold is held on (ISS-1268).
+              - 'packages/runner/crates/runner-agent/fixtures/stream-json/agent.jsonl'
+              - 'packages/runner/crates/runner-agent/fixtures/stream-json/interrupt.jsonl'
             runner:
               - 'packages/runner/**'
               - '.github/workflows/ci.yml'
