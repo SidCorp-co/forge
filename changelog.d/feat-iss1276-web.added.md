@@ -1,1 +1,0 @@
-**Each project has a Boxes page.** Watch an agent's browser, Android or desktop test live with its commands, take control and hand back, open a box by hand, and see what waits. An issue shows its box.

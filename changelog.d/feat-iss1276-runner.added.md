@@ -1,1 +1,0 @@
-**A runner now runs Forge Boxes.** Browser, Android and desktop boxes open on core's order, stream to viewers through the preview tunnel, take a holder's input, record themselves and reap every process on close; `forge-runner setup` and `doctor` cover them.

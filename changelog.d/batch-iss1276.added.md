@@ -1,1 +1,0 @@
-**Forge Box: agents test UI in a screen you can watch and take over.** Each box serves one issue and criterion, waits while the machine is busy, refuses the agent while you hold it, and turns marked spans into clips.

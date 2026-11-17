@@ -9,6 +9,20 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.715] - 2026-11-17
+
+Agents' UI tests run in watchable boxes; lessons attach to the guidance they describe
+
+### Added
+
+- **Forge Box: agents test UI in a screen you can watch and take over.** Each box serves one issue and criterion, waits while the machine is busy, refuses the agent while you hold it, and turns marked spans into clips.
+- **A runner now runs Forge Boxes.** Browser, Android and desktop boxes open on core's order, stream to viewers through the preview tunnel, take a holder's input, record themselves and reap every process on close; `forge-runner setup` and `doctor` cover them.
+- **Each project has a Boxes page.** Watch an agent's browser, Android or desktop test live with its commands, take control and hand back, open a box by hand, and see what waits. An issue shows its box.
+
+### Changed
+
+- **Lessons land where they belong.** A lesson is anchored only to a card the steward was offered or a raiser named; a settled re-anchor makes it valid and foldable; the lessons map's applied example no longer names real lessons.
+
 ## [0.4.0-dev.714] - 2026-11-17
 
 Module terms and rules recorded, range links complete, masters kept for releases
