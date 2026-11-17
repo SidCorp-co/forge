@@ -83,7 +83,8 @@ export const CREDENTIAL_INPUTS: Readonly<Record<string, string>> = {
   'header:authorization': 'a bearer token: a PAT, a session JWT, a box token',
   'header:cookie': 'the session, refresh and preview viewer cookies',
   'header:sec-websocket-protocol': 'a browser socket’s bearer, as forge.bearer.<token>',
-  'query:ticket': 'a preview ticket, spent once for the viewer cookie; a box ticket, spent once for one socket',
+  'query:ticket':
+    'a preview ticket, spent once for the viewer cookie; a box ticket, spent once for one socket',
   'param:token': 'an invitation token, looked up by its digest',
   'field:json:password': 'a password: checked at sign-in and re-auth, hashed at sign-up',
   'field:json:pairing_code': 'a device login’s pairing code, approved by a signed-in person',

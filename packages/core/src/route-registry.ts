@@ -24,7 +24,7 @@ import {
   verifyRoutes,
 } from './auth/routes.js';
 import { automationRoutes } from './automation/routes.js';
-import { boxApiRoutes } from './boxes/routes.js';
+import { boxRoutes, projectBoxRoutes } from './boxes/routes.js';
 import { cleanupIssueRoutes, cleanupProjectRoutes } from './cleanup/index.js';
 import {
   commentRoutes,
@@ -278,7 +278,6 @@ function mountPublicDoors(app: Hono<{ Variables: RequestIdVars }>): void {
   // a client site's visitor, never a Forge user: the site key, the session token or the status link
   app.route('/api/widget', widgetRoutes);
   app.route('/api/monitoring', monitoringDoorRoutes);
-
   app.route('/', rootRoutes);
 }
 
@@ -413,7 +412,8 @@ function mountIssueAndJobRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/issues', cleanupIssueRoutes);
   app.route('/api/issues', issuePreviewRoutes);
   app.route('/api/previews', previewRoutes);
-  app.route('/api', boxApiRoutes);
+  app.route('/api/projects', projectBoxRoutes);
+  app.route('/api/boxes', boxRoutes);
   app.route('/api/recordings', recordingRoutes);
   app.route('/api/rooms', roomRoutes);
   app.on('POST', '/api/body/preview', BODY_PREVIEW_NEEDS_NO_PERMISSION);

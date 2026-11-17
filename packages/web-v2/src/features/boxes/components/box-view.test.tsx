@@ -31,7 +31,7 @@ describe("an android box's view", () => {
     renderWithQuery(<BoxView box={android} label="ISS-12" fps={10} />);
     const fault = screen.getByTestId("box-view-fault");
     expect(fault).toHaveAttribute("data-fault", "no-webcodecs");
-    expect(fault).toHaveTextContent("This browser can't show the Android view: it has no WebCodecs.");
+    expect(fault).toHaveTextContent("Open in Chrome, Edge or Safari for WebCodecs");
     expect(calls).toEqual([]);
   });
 

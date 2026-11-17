@@ -1605,6 +1605,9 @@
     "previews": {
       "serves": ["REQ-39"]
     },
+    "boxes": {
+      "serves": ["REQ-39", "REQ-40"]
+    },
     "project-config": {
       "serves": ["via:project-settings"]
     },
@@ -1720,6 +1723,9 @@
     },
     "crates/runner-preview": {
       "serves": ["REQ-39"]
+    },
+    "crates/runner-box": {
+      "serves": ["REQ-39", "REQ-40"]
     },
     "crates/runner-daemon": {
       "serves": [

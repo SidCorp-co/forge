@@ -36,7 +36,7 @@ function Fault({ fault }: { fault: DecodeFault }) {
   const t = useCopy();
   return (
     <p role="alert" className="grid aspect-video place-items-center bg-neutral-12 p-6 text-center text-13 text-neutral-1" data-testid="box-view-fault" data-fault={fault.kind}>
-      {fault.kind === "no-webcodecs" ? t("boxes.view.noWebCodecs") : t("boxes.view.codecUnsupported", { codec: fault.codec })}
+      {fault.kind === "no-webcodecs" ? t("boxes.view.webCodecsMissing") : t("boxes.view.codecUnsupported", { codec: fault.codec })}
     </p>
   );
 }

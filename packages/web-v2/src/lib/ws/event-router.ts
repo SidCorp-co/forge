@@ -29,7 +29,7 @@ export function routeEvent(env: WsFrame, qc: QueryClient): void {
 		routeBox(env, qc);
 		return;
 	}
-	if (routeIssueFrame(env, qc) || routeRunFrame(env, qc) || routeAccountFrame(env, qc)) return;
+	if (routeIssueFrame(env, qc) || routeRunFrame(env, qc) || routeForgeBoxFrame(env, qc) || routeAccountFrame(env, qc)) return;
 	// A frame no router names: logged in dev to surface missing wiring.
 	if (import.meta.env.MODE !== "production") {
 		console.debug("[ws] unhandled event", env.event, env.data);
@@ -121,6 +121,15 @@ function routeIssueFrame(env: WsFrame, qc: QueryClient): boolean {
 	}
 }
 
+/** A Forge Box moved or was acted on (ISS-1276): the project's boxes, and that box's feed and spans. */
+function routeForgeBoxFrame(env: WsFrame, qc: QueryClient): boolean {
+	if (env.event !== "box.changed") return false;
+	const { data } = env;
+	if (data.projectId) scheduleInvalidation(qc, ["boxes", data.projectId]);
+	scheduleInvalidation(qc, ["box", data.boxId]);
+	return true;
+}
+
 /** Agent sessions, previews, jobs and pipeline runs. Answers whether `env` was one of its frames. */
 function routeRunFrame(env: WsFrame, qc: QueryClient): boolean {
 	const { event, data } = env;
@@ -188,12 +197,6 @@ function routeRunFrame(env: WsFrame, qc: QueryClient): boolean {
 		// A live preview moved (REQ-39): the issue's panel reads it again, and the lane read after an approval.
 		case "preview.changed": {
 			if (data?.issueId) scheduleInvalidation(qc, ["preview", data.issueId]);
-			return true;
-		}
-		// A Forge Box moved or was acted on (ISS-1276): the project's boxes, and that box's feed and spans.
-		case "box.changed": {
-			if (data.projectId) scheduleInvalidation(qc, ["boxes", data.projectId]);
-			scheduleInvalidation(qc, ["box", data.boxId]);
 			return true;
 		}
 		// ISS-197 — recoveryStats refresh on the sessions panel.

@@ -97,7 +97,7 @@ boxRoutes.post(
   zValidator('param', clipParam, invalid('invalid path: /api/boxes/<box id>/spans/<span id>/clip')),
   rawBody(
     'multipart/form-data',
-    'The span\'s cut: `clip` (video/webm or video/mp4, within the release page ceiling) and `still` (image/png).',
+    "The span's cut: `clip` (video/webm or video/mp4, within the release page ceiling) and `still` (image/png).",
   ),
   async (c) => {
     const body = await c.req.parseBody();
@@ -246,8 +246,3 @@ boxRoutes.post(
     );
   },
 );
-
-/** Both, as the route registry mounts them under `/api`. */
-export const boxApiRoutes = new Hono()
-  .route('/projects', projectBoxRoutes)
-  .route('/boxes', boxRoutes);
