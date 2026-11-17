@@ -1,3 +1,4 @@
+// @direct-test-of packages/web-v2/src/features/chat/components/chat-composer.tsx
 // ISS-1268: what a running turn produces reaches the session screen live and unstored. The frames
 // carry the items `runner-agent/src/chat_live.rs` reads off Claude Code 2.1.322 (its
 // `fixtures/stream-json`): deltas stream into the thread, a planted retry and compaction and a rate

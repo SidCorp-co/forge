@@ -1,5 +1,6 @@
 // @direct-test-of packages/runner/crates/runner-agent/fixtures/stream-json/agent.jsonl
 // @direct-test-of packages/runner/crates/runner-agent/fixtures/stream-json/interrupt.jsonl
+// @direct-test-of packages/core/src/lib/subagent-nest.ts
 // ISS-1268 A2: a real Claude Code 2.1.322 turn that spawned an `Agent` (captured from a throwaway
 // `claude -p --output-format stream-json --forward-subagent-text` run) folds with the subagent's
 // tool calls under the call that spawned it, not beside the session's own reply.
