@@ -189,7 +189,7 @@ pub(crate) async fn turn_checkout(
         Err(why) => why,
     };
     tracing::error!("[chat {session_id}] {refused}");
-    crate::chat::patch_failed(client, session_id, None, &refused).await;
+    crate::chat_transcript::patch_failed(client, session_id, None, &refused).await;
     None
 }
 
@@ -206,7 +206,7 @@ pub(crate) async fn turn_view(
         Ok(found) => Some(found),
         Err(msg) => {
             tracing::error!("[chat {session_id}] {msg}");
-            crate::chat::patch_failed(client, session_id, None, &msg).await;
+            crate::chat_transcript::patch_failed(client, session_id, None, &msg).await;
             None
         }
     }
@@ -224,7 +224,7 @@ pub(crate) async fn turn_siblings(
         Ok(found) => Some(found),
         Err(msg) => {
             tracing::error!("[chat {session_id}] {msg}");
-            crate::chat::patch_failed(client, session_id, None, &msg).await;
+            crate::chat_transcript::patch_failed(client, session_id, None, &msg).await;
             None
         }
     }

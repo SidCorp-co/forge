@@ -9,6 +9,7 @@ pub mod chat_checkout;
 #[cfg(test)]
 mod chat_checkout_test_repo;
 mod chat_live;
+mod chat_transcript;
 pub mod chat_turns;
 pub mod claude_code;
 pub mod room_launch;
