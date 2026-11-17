@@ -108,7 +108,13 @@ export function freshnessFor(
     .map((r) => ({
       card: r.cardId,
       recheckOwed: r.recheckOwed ? { since: r.recheckOwed.since } : null,
-      scenarios: r.scenarios.map((s) => ({ name: s.name, passed: s.passed, at: s.at })),
+      scenarios: r.scenarios.map((s) => ({
+        name: s.name,
+        passed: s.passed,
+        at: s.at,
+        change: s.change,
+        reason: s.reason,
+      })),
       proposed: r.proposedDeltas
         .filter((d) => d.projectId === projectId)
         .map((d) => ({ field: d.field, text: d.text })),

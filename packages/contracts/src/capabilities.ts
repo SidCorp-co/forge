@@ -49,8 +49,11 @@ export interface CapabilityFreshnessRow {
 	card: string;
 	/** Since a landing touched its door or a lesson on it, until the steward re-checks it. */
 	recheckOwed: { since: string } | null;
-	/** The last replay of each of its scenarios. */
-	scenarios: { name: string; passed: boolean; at: string }[];
+	/**
+	 * The last replay of each of its scenarios: the change it was replayed for (the card's change as
+	 * served, a lesson's fold or edit) and why it held or failed.
+	 */
+	scenarios: { name: string; passed: boolean; at: string; change: string; reason: string }[];
 	/** The deltas this project's lessons folded into it that its code does not carry yet. */
 	proposed: { field: "situation" | "bestPractice" | "redFlag"; text: string }[];
 }

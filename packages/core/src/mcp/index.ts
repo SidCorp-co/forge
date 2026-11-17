@@ -1,3 +1,4 @@
+export { replayChangedCards } from './card-replay.js';
 export { cardTextOf } from './card-scenarios.js';
 export { CHAT_READ_MODEL_TOOLS } from './chat-read-tools.js';
 export { CHAT_RECORD_TOOLS, CHAT_RECORD_VETS } from './chat-record-tools.js';

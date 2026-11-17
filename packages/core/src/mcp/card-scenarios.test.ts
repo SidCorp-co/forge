@@ -29,8 +29,9 @@ import {
 } from '../lessons/index.js';
 import { operationsBrief } from '../support/ops-prompt.js';
 import { everyCard } from './card-ledger.js';
+import { ISS_1250_TURNS } from './card-replay.js';
+import BEFORE from './card-replay-before.json' with { type: 'json' };
 import { CARD_SCENARIOS, cardTextOf, scenariosOf } from './card-scenarios.js';
-import BEFORE from './card-scenarios-before.fixture.json' with { type: 'json' };
 
 const cards = everyCard();
 const cardOf = (id: string): CapabilityCard => {
@@ -148,52 +149,6 @@ const BRIEF_NOW = operationsBrief({
   ] as unknown as Parameters<typeof operationsBrief>[0]['reach'],
 });
 
-/** Each ISS-1250 post, the teaching its agent read when it was made, and the card it replays on. */
-const ISS_1250 = [
-  {
-    at: '15/11 15:36',
-    name: 'the room told it cannot read feedback, and that no master is on',
-    before: BEFORE.dev685.bot,
-    bad: true,
-  },
-  {
-    at: '16/11 02:21',
-    name: 'a ruling read alone: “language per the setting” after the 02:18 post',
-    before: BEFORE.dev690.bot,
-    bad: true,
-  },
-  {
-    at: '16/11 02:22',
-    name: 'the owner told to set ePOD’s language in Forge’s settings himself',
-    before: BEFORE.dev690.bot,
-    bad: true,
-  },
-  {
-    at: '16/11 03:15',
-    name: 'a question the work settled, left for the owner to click',
-    before: BEFORE.dev690.master,
-    bad: true,
-  },
-  {
-    at: '16/11 03:16',
-    name: 'a person-facing link on the API host',
-    before: BEFORE.dev690.bot,
-    bad: true,
-  },
-  {
-    at: '16/11 02:18, 02:36, 02:53',
-    name: 'the ePOD release posts told in the asker’s thread once checked live',
-    before: BEFORE.dev690.master,
-    bad: false,
-  },
-  {
-    at: '16/11 03:14',
-    name: 'the Google-connect choice put to the owner: two options, a recommendation',
-    before: BEFORE.dev690.master,
-    bad: false,
-  },
-] as const;
-
 /** What the agent reads now: a room act's card under the brief this build renders, any other card alone. */
 const teachingNow = (s: CardScenario) => {
   const text = cardTextOf(cardOf(s.card));
@@ -203,8 +158,8 @@ const teachingNow = (s: CardScenario) => {
 };
 
 describe('the ISS-1250 turns replayed on the teaching before and after (criterion 11)', () => {
-  const runs = ISS_1250.map((t) => {
-    const s = scenario(t.name);
+  const runs = ISS_1250_TURNS.map((t) => {
+    const s = scenario(t.scenario);
     return {
       at: t.at,
       card: s.card,

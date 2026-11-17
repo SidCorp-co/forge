@@ -9,6 +9,7 @@ import {
   withdrawDisplacingCloseVerdicts,
 } from './issues/index.js';
 import { logger } from './lib/logger.js';
+import { replayChangedCards } from './mcp/index.js';
 import { drainStaleCriteriaFacts } from './requirements/index.js';
 import { retireStaleDraftQuestionsOnce, runStewardReaskOnce } from './steward/index.js';
 
@@ -120,6 +121,16 @@ export function startDeferredBackfills(): void {
   void runMarkedRequestHeadBackfillOnce().catch((err) =>
     logger.error({ err }, 'boot: giving standing merge marks their request head failed'),
   );
+  // a card whose teaching changed in this build is replayed on its scenarios here, where it is
+  // served, and the capabilities page reads each result on the card (ISS-1251 §5)
+  void replayChangedCards()
+    .then((r) => {
+      if (r.cards === 0) return;
+      const at = { cards: r.cards, scenarios: r.scenarios, failed: r.failed };
+      if (r.failed.length > 0) logger.warn(at, 'boot: a changed card fails a scenario it names');
+      else logger.info(at, 'boot: the changed cards replayed on their scenarios');
+    })
+    .catch((err) => logger.error({ err }, 'boot: replaying the changed cards failed'));
   void fillBuilderFacts()
     .then((n) => {
       if (n > 0) logger.info({ issues: n }, 'boot: builder facts written for the marked issues');

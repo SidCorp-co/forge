@@ -76,7 +76,9 @@ describe("a card's freshness as a project reads it", () => {
       {
         card: 'support.member',
         recheckOwed: { since: at },
-        scenarios: [{ name: 'stranger writes', passed: false, at }],
+        scenarios: [
+          { name: 'stranger writes', passed: false, at, change: 'L-3 fold', reason: 'r' },
+        ],
         proposed: [{ field: 'redFlag', text: 'ours' }],
       },
     ]);

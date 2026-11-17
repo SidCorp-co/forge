@@ -94,7 +94,7 @@ const extra: CapabilitiesView = {
   window: use.window,
   feedback: [{ door: "issues.create", reports: 1, byVerdict: { unclear: 1 }, lastAt: "2026-11-15T00:00:00.000Z" }],
   lessons: [],
-  freshness: [{ card: "support.member", recheckOwed: null, scenarios: [{ name: "a stranger writes", passed: true, at: "2026-11-16T00:00:00.000Z" }, { name: "a member returns", passed: false, at: "2026-11-16T00:00:00.000Z" }], proposed: [{ field: "redFlag", text: "Replying before reading the member" }] }],
+  freshness: [{ card: "support.member", recheckOwed: null, scenarios: [{ name: "a stranger writes", passed: true, at: "2026-11-16T00:00:00.000Z", change: "ISS-1251 card change", reason: "taught" }, { name: "a member returns", passed: false, at: "2026-11-16T00:00:00.000Z", change: "ISS-1251 card change", reason: "not taught" }], proposed: [{ field: "redFlag", text: "Replying before reading the member" }] }],
   module: null,
   limits: [],
 };
