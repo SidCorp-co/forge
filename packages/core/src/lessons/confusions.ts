@@ -266,12 +266,16 @@ export async function decideConfusion(input: {
       });
       return row.id;
     }
-    if (sentence || settle.anchor) {
+    // a lesson a landing invalidated is re-checked by this settlement: kept or edited, it is valid
+    // again, else an approved lesson would read invalid with no re-check left owing (ISS-1251 c4)
+    const recheck = row.invalidAt ? { invalidAt: null, invalidBy: null } : {};
+    if (sentence || settle.anchor || row.invalidAt) {
       await tx
         .update(lessons)
         .set({
           ...(sentence ? { sentence } : {}),
           ...(settle.anchor ? { anchor: settle.anchor } : {}),
+          ...recheck,
           updatedAt: new Date(),
         })
         .where(eq(lessons.id, row.id));

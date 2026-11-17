@@ -5,7 +5,7 @@
  */
 
 import { LESSON_FOLD_AFTER_APPLIED } from '@forge/contracts/lessons';
-import { and, asc, eq, gt, inArray, isNotNull, isNull, like, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, isNotNull, isNull, like, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { corrections, lessonConfusions, lessons } from '../db/schema-lessons.js';
 
@@ -69,18 +69,25 @@ export async function invalidatedLessons(projectId: string): Promise<LifecycleLe
 
 /**
  * The approved lessons that hold (§4): anchored to a card, applied `LESSON_FOLD_AFTER_APPLIED` times
- * or more, never corrected again since approved and with no confusion raised on them. Each is owed a
- * fold into its card.
+ * or more, never corrected again since approved, with no confusion open on them and no application
+ * marked wrong. Each is owed a fold into its card.
  */
 export async function lessonsThatHold(projectId: string): Promise<LifecycleLesson[]> {
   const correctedSince = db
     .select({ id: corrections.id })
     .from(corrections)
     .where(and(eq(corrections.lessonId, lessons.id), gt(corrections.linkedAt, lessons.approvedAt)));
+  // an open confusion, or an application marked wrong, says it does not hold; a settled one that kept
+  // it (a re-anchor, a reading made clear) bars no fold, else no re-anchored lesson could ever fold
   const confused = db
     .select({ id: lessonConfusions.id })
     .from(lessonConfusions)
-    .where(eq(lessonConfusions.lessonId, lessons.id));
+    .where(
+      and(
+        eq(lessonConfusions.lessonId, lessons.id),
+        or(isNull(lessonConfusions.decidedAt), eq(lessonConfusions.kind, 'wrongly_applied')),
+      ),
+    );
   const rows = await db
     .select(COLUMNS)
     .from(lessons)

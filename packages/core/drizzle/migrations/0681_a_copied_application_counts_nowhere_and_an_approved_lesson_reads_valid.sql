@@ -9,12 +9,19 @@
 -- Only those applications and their lessons' counts change; an output naming 3 and 7 among others,
 -- or one already marked, is left as it is. Re-run, it finds nothing left to mark.
 --
+-- Second, an approved lesson reads valid. A confusion settled on a lesson a landing had invalidated
+-- moved it back to approved and left `invalid_at` set, so it was served and read invalid at once; a
+-- settlement is now its re-check and clears the mark (`lessons/confusions.ts:decideConfusion`). The
+-- ten lessons forge-dev held invalid on `card:support.member` were re-anchored that way (ISS-1251 c4).
+-- Only an approved lesson's mark is cleared; a held one still waits on its re-check.
+--
 -- ROLLBACK (the marks are this migration's own reason; the counts take them back):
 --   WITH unmarked AS (
 --     UPDATE "lesson_applications" SET "wrong_at" = NULL, "wrong_by" = NULL, "wrong_reason" = NULL
 --      WHERE "wrong_reason" LIKE 'Copied from the lessons map''s example%' RETURNING "lesson_id")
 --   UPDATE "lessons" l SET "applied_count" = l."applied_count" + u.n
 --     FROM (SELECT "lesson_id", count(*)::int AS n FROM unmarked GROUP BY 1) u WHERE l."id" = u."lesson_id";
+--   The cleared marks are not restored: an approved lesson read invalid was the defect.
 
 SET LOCAL lock_timeout = '10s';--> statement-breakpoint
 WITH copied AS (
@@ -38,4 +45,7 @@ WITH copied AS (
 UPDATE "lessons" l
    SET "applied_count" = GREATEST(l."applied_count" - m.n, 0)
   FROM (SELECT "lesson_id", count(*)::int AS n FROM marked GROUP BY 1) m
- WHERE l."id" = m."lesson_id";
+ WHERE l."id" = m."lesson_id";--> statement-breakpoint
+UPDATE "lessons"
+   SET "invalid_at" = NULL, "invalid_by" = NULL, "updated_at" = now()
+ WHERE "status" = 'approved' AND "invalid_at" IS NOT NULL;

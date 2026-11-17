@@ -81,13 +81,18 @@ export interface ReplayInput {
   goods: string[];
 }
 
+/** The cards a step offers an anchor from: the nearest the lesson's words (`lessonsPorts().cardsLike`). */
+export type CardChoices = readonly { id: string; purpose: string }[];
+
 export type Anchorer = (
   projectId: string,
   lesson: LifecycleLesson,
+  cards: CardChoices,
 ) => Promise<z.infer<typeof anchorSchema> | null>;
 export type Rechecker = (
   projectId: string,
   lesson: LifecycleLesson,
+  cards: CardChoices,
 ) => Promise<z.infer<typeof recheckSchema> | null>;
 export type Folder = (
   projectId: string,
@@ -118,6 +123,25 @@ export function replayPrompt(input: ReplayInput): string {
 const lessonLine = (l: LifecycleLesson) =>
   `${lessonKey(l.number)}${l.anchor ? ` (anchor ${l.anchor})` : ''}: ${l.sentence}`;
 
+/**
+ * The anchor a step takes from its model's answer: a valid anchor, and a card one only where the step
+ * offered that card (or `named` names it: a confusion's raiser saying which card the lesson is about).
+ * Round 1's prompt offered no cards and gave `card:support.member` as its example, and the steward
+ * anchored ten unrelated lessons there (ISS-1251 c4): a card the step never offered is a guess, and
+ * is not taken, so no example and no card the model merely knows can draw lessons to it.
+ */
+export function takenAnchor(
+  anchor: string | null | undefined,
+  offered: CardChoices,
+  named = '',
+): string | null {
+  const parsed = anchor ? lessonAnchorSchema.safeParse(anchor) : null;
+  if (!parsed?.success) return null;
+  if (!parsed.data.startsWith('card:')) return parsed.data;
+  const id = parsed.data.slice('card:'.length);
+  return offered.some((c) => c.id === id) || named.includes(parsed.data) ? parsed.data : null;
+}
+
 /** The cards an anchor may name, as a prompt lists them: each by its id and what its door does. */
 export const cardChoices = (cards: readonly { id: string; purpose: string }[]): string =>
   cards.length > 0
@@ -138,12 +162,14 @@ export function anchorPrompt(
   ].join('\n\n');
 }
 
-export function recheckPrompt(l: LifecycleLesson): string {
+export function recheckPrompt(l: LifecycleLesson, cards: CardChoices = []): string {
   return [
-    "You are the project's steward. A landing changed what the lesson below is about, so it is held and served to no agent until you re-check it against the change.",
-    '- `readmit` when it still holds as written; - `edit` with the new `sentence` (and `anchor` if it moved) when the change moved part of it; - `retire` when the change made it wrong or the thing it describes is gone. Give a one-sentence `reason`.',
+    "You are the project's steward. A landing changed what the lesson below is anchored to, so it is held and served to no agent until you re-check it against the change.",
+    '- `readmit` when it still holds as written; - `edit` with the new `sentence` when the change moved part of it; - `retire` when the change made it wrong or the thing it describes is gone. Give a one-sentence `reason`.',
+    "First ask whether its anchor is what the lesson is about at all: a card's change invalidates every lesson on it, those wrongly anchored there too. Where the anchor names something the lesson is not about, readmit or edit it with the right `anchor` (one of the cards below, a `REQ-<n> BC-<m>` or a code path), never the anchor it had; else leave `anchor` null.",
     lessonLine(l),
     `What changed: ${l.invalidBy ?? 'not recorded'}`,
+    cardChoices(cards),
     `Its corrections:\n${untrusted(l.failures)}`,
   ].join('\n\n');
 }
@@ -182,18 +208,14 @@ async function modelCall<T extends z.ZodType>(
 /** How many cards the anchor step and the grouping are shown to choose from. */
 export const CARD_CHOICES = 12;
 
-export const modelAnchorer: Anchorer = async (p, l) =>
-  modelCall(
-    p,
-    'a lesson anchored',
-    anchorPrompt(
-      l,
-      await lessonsPorts().cardsLike([l.sentence, ...l.failures].join(' '), CARD_CHOICES),
-    ),
-    anchorSchema,
-  );
-export const modelRechecker: Rechecker = (p, l) =>
-  modelCall(p, 'an invalidated lesson re-checked', recheckPrompt(l), recheckSchema);
+/** The cards a lifecycle step offers for one lesson: the nearest its sentence and corrections. */
+const offeredFor = (l: LifecycleLesson) =>
+  lessonsPorts().cardsLike([l.sentence, ...l.failures].join(' '), CARD_CHOICES);
+
+export const modelAnchorer: Anchorer = async (p, l, cards) =>
+  modelCall(p, 'a lesson anchored', anchorPrompt(l, cards), anchorSchema);
+export const modelRechecker: Rechecker = (p, l, cards) =>
+  modelCall(p, 'an invalidated lesson re-checked', recheckPrompt(l, cards), recheckSchema);
 export const modelFolder: Folder = (p, l) =>
   modelCall(p, 'a lesson folded into its card', foldPrompt(l), foldSchema);
 export const modelReplayer: Replayer = (p, input) =>
@@ -264,20 +286,26 @@ async function anchorOwed(
   t: LifecycleTally,
 ) {
   for (const l of await unanchoredLessons(projectId)) {
-    const answer = await j.anchor(projectId, l);
-    const anchor = answer?.anchor ? lessonAnchorSchema.safeParse(answer.anchor) : null;
-    if (!anchor?.success) {
+    const offered = await offeredFor(l);
+    const answer = await j.anchor(projectId, l, offered);
+    const anchor = takenAnchor(answer?.anchor, offered);
+    if (!anchor) {
       t.unanchored += 1;
       logger.info(
-        { projectId, lesson: lessonKey(l.number), why: answer?.reason ?? 'no answer' },
-        'steward: a lesson owes an anchor its record does not show',
+        {
+          projectId,
+          lesson: lessonKey(l.number),
+          answered: answer?.anchor ?? null,
+          why: answer?.reason ?? 'no answer',
+        },
+        'steward: a lesson owes an anchor its record does not show, or one no offered card is',
       );
       continue;
     }
     const ref = lessonKey(l.number);
     if (
       await refusalLogged(projectId, ref, () =>
-        anchorLesson({ projectId, ref, actor, anchor: anchor.data }),
+        anchorLesson({ projectId, ref, actor, anchor }),
       )
     ) {
       t.anchored += 1;
@@ -316,7 +344,8 @@ async function recheckOne(
   l: LifecycleLesson,
 ) {
   const ref = lessonKey(l.number);
-  const answer = await j.recheck(projectId, l);
+  const offered = await offeredFor(l);
+  const answer = await j.recheck(projectId, l, offered);
   if (!answer) return;
   if (answer.verdict === 'retire') {
     const why = `Re-checked after ${l.invalidBy}: ${answer.reason}`;
@@ -329,14 +358,11 @@ async function recheckOne(
     }
     return;
   }
-  const anchor = answer.anchor ? lessonAnchorSchema.safeParse(answer.anchor) : null;
-  const edit =
-    answer.verdict === 'edit'
-      ? {
-          sentence: answer.sentence ?? undefined,
-          anchor: anchor?.success ? anchor.data : undefined,
-        }
-      : undefined;
+  // a re-check may move the anchor on a readmit too: a lesson wrongly anchored is readmitted where it
+  // belongs, never back on the card whose change it never described (ISS-1251 c4)
+  const anchor = takenAnchor(answer.anchor, offered) ?? undefined;
+  const sentence = answer.verdict === 'edit' ? (answer.sentence ?? undefined) : undefined;
+  const edit = sentence || anchor ? { sentence, anchor } : undefined;
   if (edit?.sentence) {
     const input = {
       change: edit.sentence,

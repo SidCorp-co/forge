@@ -114,8 +114,13 @@ export const LESSON_FOLD_AFTER_APPLIED = 3;
  */
 export const LESSON_ANCHOR_RE =
 	/^(card:[a-z0-9][a-z0-9._-]{1,119}|REQ-[1-9]\d{0,5} BC-[1-9]\d{0,3}|[A-Za-z0-9_.@-]+(\/[A-Za-z0-9_.@-]+)*\.[a-z]{1,5}(:[A-Za-z_$][\w$.]{0,119})?)$/;
+/**
+ * How an anchor is written, as every anchor prompt and refusal says it: placeholders only. Round 1's
+ * anchor prompt gave `card:support.member` as its example, and the steward anchored ten unrelated
+ * lessons there (ISS-1251 c4); a real path here would be copied the same way.
+ */
 export const LESSON_ANCHOR_SHAPE =
-	"anchor: card:<id> (a capability card), REQ-<n> BC-<m> (a requirement's behaviour), or <path> / <path>:<symbol> (code, e.g. packages/core/src/lessons/block.ts:lessonsMapText)";
+	"anchor: card:<id> (a capability card), REQ-<n> BC-<m> (a requirement's behaviour), or <path> / <path>:<symbol> (code: the file, and the function or constant, the lesson is about)";
 export type LessonAnchorKind = "card" | "bc" | "code";
 
 /** The kind of an anchor that matches `LESSON_ANCHOR_RE`. */

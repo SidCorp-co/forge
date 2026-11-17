@@ -14,6 +14,9 @@
 // @direct-test-of packages/core/src/lessons-ports.ts
 // @direct-test-of packages/core/src/steward/lessons-lifecycle.ts
 // @direct-test-of packages/core/src/steward/lessons-pass.ts
+// @direct-test-of packages/core/src/steward/lessons-review.ts
+// @direct-test-of packages/core/src/lessons/confusions.ts
+// @direct-test-of packages/core/src/lessons/lifecycle-reads.ts
 
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
@@ -100,7 +103,7 @@ describe('a confusion re-anchors a lesson its anchor does not describe (c4)', ()
         sides: {
           lesson: `anchored to card:${CARD}`,
           other:
-            'the member record says nothing about beta links; it is about the links a reply gives',
+            'the member record says nothing about beta links; it is about the links a reply gives: card:support.requirements',
         },
         recommended: { resolution: 'keep' },
       });
@@ -120,6 +123,12 @@ describe('a confusion re-anchors a lesson its anchor does not describe (c4)', ()
           sql`SELECT status, anchor FROM lessons WHERE project_id = ${w.projectId} AND number = ${n}`,
         )
       )[0];
+    expect((await anchorOf())?.anchor).toBe(`card:${CARD}`);
+    // a card that is real but neither offered nor named is a guess, and waits (round 1's example)
+    const guessed = await pass({
+      settle: { resolution: 'keep', sentence: null, anchor: 'card:support.reply', reason: 'Guess.' },
+    });
+    expect(guessed.settled).toBe(0);
     expect((await anchorOf())?.anchor).toBe(`card:${CARD}`);
     await pass({
       settle: {
@@ -217,5 +226,52 @@ describe('a lesson applied three times is folded into its card and retired (c10)
     expect(fresh?.proposedDeltas).toEqual([
       expect.objectContaining({ field: 'situation', op: 'add', text: LINE, fromLesson: `L-${n}` }),
     ]);
+  });
+});
+
+// ISS-1251 round 5: dev.713's change to support.member invalidated the ten lessons wrongly anchored
+// there; a confusion settled them back to approved but kept the invalid mark, and any confusion, even
+// settled, barred the fold for good, so no re-anchored lesson could ever be folded
+describe('a lesson a landing invalidated, re-anchored by a confusion, is valid and can fold', () => {
+  it('clears the invalid mark on the settlement and lets three uses make it hold', async () => {
+    const sentence = 'Answer a member by the roles the record keeps for them.';
+    const a = await correction(`${sentence} (1)`);
+    const b = await correction(`${sentence} (2)`);
+    await pass({
+      proposals: [{ ...proposal(sentence, [a, b]), anchor: `card:${CARD}` }],
+      review: (input) =>
+        (input.lesson as { sentence: string }).sentence === sentence ? approve() : null,
+    });
+    const n = await numberOf(sentence);
+    const { db } = await import('../../src/db/client.js');
+    const { lessonsThatHold } = await import('../../src/lessons/index.js');
+    const { invalidateLessonIn } = await import('../../src/lessons/decide.js');
+    const { lessonIn } = await import('../../src/lessons/read.js');
+    await db.transaction(async (tx) =>
+      invalidateLessonIn(tx, await lessonIn(tx, w.projectId, String(n)), 'a test changed it'),
+    );
+    ok(
+      await say('member', 'POST', at(`/lessons/${n}/confusions`), {
+        kind: 'unclear',
+        sides: {
+          lesson: 'as written it stands',
+          other: 'it is about the replies a member gets: card:support.reply',
+        },
+        recommended: { resolution: 'keep' },
+      }),
+      201,
+    );
+    await pass({
+      settle: { resolution: 'keep', sentence: null, anchor: 'card:support.reply', reason: 'Moved.' },
+    });
+    const [row] = await rows<{ status: string; anchor: string; invalid: boolean }>(
+      sql`SELECT status, anchor, invalid_at IS NOT NULL AS invalid FROM lessons
+           WHERE project_id = ${w.projectId} AND number = ${n}`,
+    );
+    expect(row).toEqual({ status: 'approved', anchor: 'card:support.reply', invalid: false });
+    await db.execute(
+      sql`UPDATE lessons SET applied_count = 3 WHERE project_id = ${w.projectId} AND number = ${n}`,
+    );
+    expect((await lessonsThatHold(w.projectId)).map((l) => l.number)).toContain(n);
   });
 });

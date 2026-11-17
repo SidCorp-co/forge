@@ -4325,7 +4325,7 @@
       "idx": 681,
       "version": "7",
       "when": 1841788800000,
-      "tag": "0681_an_application_copied_from_the_lessons_map_example_is_not_applied",
+      "tag": "0681_a_copied_application_counts_nowhere_and_an_approved_lesson_reads_valid",
       "breakpoints": true
     }
   ]

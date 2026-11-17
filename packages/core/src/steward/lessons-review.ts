@@ -37,7 +37,13 @@ import {
 import { logger } from '../lib/logger.js';
 import { isRefusal, type RefusalError } from '../lib/refusal.js';
 import { markUntrusted } from '../lib/untrusted-text.js';
-import { adopts, CARD_CHOICES, cardChoices, type Replayer } from './lessons-lifecycle.js';
+import {
+  adopts,
+  CARD_CHOICES,
+  cardChoices,
+  type Replayer,
+  takenAnchor,
+} from './lessons-lifecycle.js';
 import { lessonScopeText } from './lessons-scope.js';
 
 const JUDGE_MAX_TOKENS = 800;
@@ -149,10 +155,7 @@ export const modelReviewer: Reviewer = async (projectId, input) => {
 export const modelSettler: Settler = async (projectId, input) => {
   const answer = await callFastModelObject(
     { surface: 'lessons', projectId, what: 'a lesson confusion settled' },
-    settlePrompt({
-      ...input,
-      cards: await lessonsPorts().cardsLike(input.confusion.lesson.sentence, CARD_CHOICES),
-    }),
+    settlePrompt(input),
     settleSchema,
     { maxTokens: JUDGE_MAX_TOKENS },
   );
@@ -282,9 +285,23 @@ async function settleOne(
 ): Promise<void> {
   const item = `${lessonKey(confusion.lesson.number)} confusion ${confusion.id}`;
   const scope = await lessonScopeText(projectId, confusion.lesson.scope);
-  const answer = await settle(projectId, { confusion, scope });
+  const cards = await lessonsPorts().cardsLike(confusion.lesson.sentence, CARD_CHOICES);
+  const answer = await settle(projectId, { confusion, scope, cards });
   const back = () => deferConfusion(projectId, confusion.id);
   if (!answer) return wait(tally, projectId, item, 'the settlement gave no answer', back);
+  // a card anchor is taken where the settlement was offered it or the raiser named it (ISS-1251 c4)
+  const anchor = answer.anchor
+    ? takenAnchor(answer.anchor, cards, `${confusion.sides.lesson} ${confusion.sides.other}`)
+    : null;
+  if (answer.anchor && !anchor) {
+    return wait(
+      tally,
+      projectId,
+      item,
+      `its anchor ${answer.anchor} is no card it was offered or the raiser named`,
+      back,
+    );
+  }
   const done = await refusedWaits(
     () =>
       decideConfusion({
@@ -294,7 +311,7 @@ async function settleOne(
         settle: {
           resolution: answer.resolution,
           sentence: answer.sentence ?? undefined,
-          anchor: answer.anchor ?? undefined,
+          anchor: anchor ?? undefined,
           reason: answer.reason,
         },
       }),

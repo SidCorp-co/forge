@@ -106,7 +106,9 @@ export async function pass(answer: {
     // the lifecycle steps answer nothing unless a case gives their answers, and a replay adopts by
     // default, fixing every failure it is shown, so a case about something else is never held by it
     anchor: async (_p, l) => answerOf(answer.anchor, l as never) as never,
-    recheck: async (_p, l) => answerOf(answer.recheck, l as never) as never,
+    // a re-check is handed the cards its step offers, which an anchor it moves names one of
+    recheck: async (_p, l, cards) =>
+      answerOf(answer.recheck, { ...(l as object), offered: cards } as never) as never,
     fold: async (_p, l) => answerOf(answer.fold, l as never) as never,
     replay: async (_p, input) =>
       (answer.replay

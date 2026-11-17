@@ -447,6 +447,41 @@ describe('a landing touching a card-anchored lesson marks the card owed a re-che
   });
 });
 
+// ISS-1251 round 5: dev.713's change to support.member invalidated ten lessons wrongly anchored
+// there, and the re-check, shown no card, could only readmit each where it stood
+describe('a re-check moves a wrongly anchored lesson to a card it was offered (c4)', () => {
+  it('readmits the lesson on the offered card its answer names, valid again', async () => {
+    const CARD = 'iss1251.recheck-wrong';
+    const n = await approvedOn('Reply to a member with screenshots of the page they see.', `card:${CARD}`);
+    const { invalidateLessonsForChange } = await import('../../src/lessons/index.js');
+    await invalidateLessonsForChange(w.projectId, {
+      by: 'ISS-77',
+      paths: [],
+      text: `Reworks ${CARD}: members carry roles.`,
+    });
+    let offered: { id: string }[] = [];
+    await pass({
+      recheck: (l) => {
+        offered = (l as { offered: { id: string }[] }).offered;
+        return offered[0]
+          ? {
+              verdict: 'readmit',
+              sentence: null,
+              anchor: `card:${offered[0].id}`,
+              reason: 'It is about the reply, not the member record.',
+            }
+          : null;
+      },
+    });
+    expect(offered.length).toBeGreaterThan(0);
+    const [row] = await rows<{ status: string; anchor: string; invalid: boolean }>(
+      sql`SELECT status, anchor, invalid_at IS NOT NULL AS invalid FROM lessons
+           WHERE project_id = ${w.projectId} AND number = ${n}`,
+    );
+    expect(row).toEqual({ status: 'approved', anchor: `card:${offered[0]?.id}`, invalid: false });
+  });
+});
+
 describe('a pile past its cap opens one consolidation item, never a cut (§5)', () => {
   it('records one simplify debt for the always-on knowledge, once across passes, and cuts no entry', async () => {
     const { ALWAYS_INJECT_MAX_CHARS } = await import('@forge/contracts/knowledge');

@@ -4,20 +4,23 @@
  * that pair, once each, by the steward. An output whose applications are exactly its project's
  * lessons 3 and 7 is marked wrongly applied, saying why, and each lesson's count loses it; an output
  * naming 3 and 7 among others, one naming 3 alone, and another project's pair read as they did.
- * Planted red by matching ARRAY[3, 8]: the copied pair stayed unmarked and counted.
+ * And an approved lesson reads valid: one a confusion's settlement moved back to approved kept the
+ * invalid mark a landing gave it; a held one still waits on its re-check.
+ * Planted red by matching ARRAY[3, 8]: the copied pair stayed unmarked and counted; and by dropping
+ * the second statement: the approved lesson stayed invalid.
  *
- * @direct-test-of packages/core/drizzle/migrations/0681_an_application_copied_from_the_lessons_map_example_is_not_applied.sql
+ * @direct-test-of packages/core/drizzle/migrations/0681_a_copied_application_counts_nowhere_and_an_approved_lesson_reads_valid.sql
  */
 
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   groundBefore,
   type MigrationDb,
   type MigrationGround,
 } from '../helpers/migration-ground.js';
 
-const TAG = '0681_an_application_copied_from_the_lessons_map_example_is_not_applied';
+const TAG = '0681_a_copied_application_counts_nowhere_and_an_approved_lesson_reads_valid';
 
 let ground: MigrationGround;
 let m: MigrationDb;
@@ -26,6 +29,10 @@ let orgId: string;
 
 beforeAll(async () => {
   ground = await groundBefore(TAG);
+}, 120_000);
+
+/** Each case its own copy of the ground, a user and an org in it, since each migrates once. */
+beforeEach(async () => {
   m = await ground.fresh();
   userId = randomUUID();
   orgId = randomUUID();
@@ -33,8 +40,11 @@ beforeAll(async () => {
   await m.sql`INSERT INTO organizations (id, slug, name, is_personal, created_by) VALUES (${orgId}, ${`org-${orgId.slice(0, 8)}`}, 'Org', false, ${userId})`;
 }, 120_000);
 
-afterAll(async () => {
+afterEach(async () => {
   await m.drop();
+});
+
+afterAll(async () => {
   await ground.drop();
 });
 
@@ -110,5 +120,26 @@ describe('0681: an application copied from the map’s example is not applied', 
       ['msg-2', 7, false],
     ]);
     expect(await counts(other)).toEqual({ 3: 0, 7: 0 });
+  });
+
+  it('clears the invalid mark of an approved lesson only', async () => {
+    const p = await project();
+    const by = 'ISS-1251 changed card:support.member';
+    for (const [n, status] of [
+      [55, 'approved'],
+      [86, 'held'],
+    ] as const) {
+      await m.sql`
+        INSERT INTO lessons (project_id, number, sentence, scope_kind, status, proposed_by, proposed_agency, approved_at, invalid_at, invalid_by)
+        VALUES (${p}, ${n}, ${`Lesson ${n}.`}, 'project', ${status}, ${userId}, 'agent', now(), now(), ${by})`;
+    }
+    await m.migrate();
+    const after = await m.sql<{ number: number; invalid: boolean; invalid_by: string | null }[]>`
+      SELECT number, invalid_at IS NOT NULL AS invalid, invalid_by FROM lessons
+       WHERE project_id = ${p} ORDER BY number`;
+    expect(after).toEqual([
+      { number: 55, invalid: false, invalid_by: null },
+      { number: 86, invalid: true, invalid_by: by },
+    ]);
   });
 });
