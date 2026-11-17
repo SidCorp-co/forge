@@ -9,6 +9,16 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.708] - 2026-11-17
+
+Judges, agents and masters each see what is really theirs
+
+### Fixed
+
+- **A judge sent after a later deploy is told whether the build it finds carries the release it judges.** The judged build names the environment as the project does, and says whether the served build changed the issue's files.
+- **A message sent to one project's master no longer lands in another's pane.** Two sends in the same instant, like two projects' daily reviews, each paste their own text into their own master.
+- **Onboarding and BA assistants can ask every question they need.** A questionnaire card is no longer limited to fifteen questions, and a new card can be sent while an earlier one still waits for answers.
+
 ## [0.4.0-dev.707] - 2026-11-17
 
 One find door ranks every search, and the Modules screen reads real links
