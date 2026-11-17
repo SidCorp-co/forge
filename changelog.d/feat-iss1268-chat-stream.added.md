@@ -1,0 +1,1 @@
+**A chat reply now streams as it is written.** Stop ends the turn at once and the chat carries on; a message can steer the turn now or wait for it. Retries, rate limits and context show live, subagents nest under their call.
