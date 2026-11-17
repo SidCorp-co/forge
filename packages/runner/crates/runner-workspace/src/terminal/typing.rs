@@ -184,7 +184,7 @@ nothing confirmed its prompt was empty before typing"
             Prompt::Unread
         }
     };
-    let buffer = format!("forge-{}", std::process::id());
+    let buffer = paste_buffer_name();
 
     let mut load = socket_args();
     load.extend(
@@ -217,15 +217,37 @@ nothing confirmed its prompt was empty before typing"
         )));
     }
 
-    let out = tmux(&["paste-buffer", "-p", "-d", "-b", &buffer, "-t", &target])
-        .await
-        .map_err(|e| NotTyped::Failed(e.to_string()))?;
-    if !out.status.success() {
-        return Err(NotTyped::Failed(format!(
+    let pasted = tmux(&["paste-buffer", "-p", "-d", "-b", &buffer, "-t", &target]).await;
+    let refused = match &pasted {
+        Ok(out) if out.status.success() => None,
+        Ok(out) => Some(format!(
             "tmux paste-buffer {name}: {}",
             String::from_utf8_lossy(&out.stderr).trim()
-        )));
+        )),
+        Err(e) => Some(e.to_string()),
+    };
+    if let Some(why) = refused {
+        // `-d` drops the buffer only with a paste that took; one left behind is this call's own
+        // and is never read again, so it goes rather than standing on the server.
+        let _ = tmux(&["delete-buffer", "-b", &buffer]).await;
+        return Err(NotTyped::Failed(why));
     }
     submit::after_paste(name, &target).await?;
     Ok(prompt)
+}
+
+/// A tmux paste buffer of this call's own.
+///
+/// Buffers are global to the tmux server, and this was once `forge-<pid>`: one name for every
+/// send the daemon had in flight. Two sends in the same instant (two projects' daily reviews fire
+/// in the same second) each loaded their text into it, and the first paste typed the second's text
+/// into its own pane and dropped the buffer, so agenfold's review was typed into forge's master
+/// and agenfold's own paste found no buffer (ISS-1261). Named per call, a paste can only carry the
+/// text loaded for the pane it targets.
+fn paste_buffer_name() -> String {
+    format!(
+        "forge-{}-{}",
+        std::process::id(),
+        uuid::Uuid::new_v4().simple()
+    )
 }

@@ -499,3 +499,95 @@ async fn no_enter_is_pressed_at_a_composer_showing_only_a_suggestion() {
     assert_eq!(held.map_err(|e| e.to_string()), Ok(held::Held::Nothing));
     assert_eq!(settled(&pane, Duration::from_millis(500)), "");
 }
+
+/// A second stand-in on `pane`'s tmux server, under `name`, logging to its own file.
+fn beside(pane: &Pane, name: &str) -> PathBuf {
+    let log = pane.dir.join(format!("{name}.log"));
+    std::fs::write(&log, "").unwrap();
+    let command = format!(
+        "python3 {} --log {}",
+        super::shell_quote(&pane.dir.join("stand_in.py").to_string_lossy()),
+        super::shell_quote(&log.to_string_lossy())
+    );
+    let started = std::process::Command::new("tmux")
+        .arg("-S")
+        .arg(pane.dir.join("s"))
+        .args([
+            "new-session",
+            "-d",
+            "-x",
+            "120",
+            "-y",
+            "50",
+            "-s",
+            name,
+            &command,
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        started.status.success(),
+        "tmux new-session {name}: {}",
+        String::from_utf8_lossy(&started.stderr)
+    );
+    log
+}
+
+/// ISS-1261: agenfold's and forge's daily reviews fire in the same second, and both were loaded
+/// into the one paste buffer the daemon named after its pid. The first paste typed agenfold's
+/// review into forge's master and dropped the buffer, and agenfold's own paste found none. Two
+/// projects' masters typed into at once each take their own text and nothing of the other's.
+#[tokio::test(flavor = "current_thread")]
+async fn two_masters_typed_into_at_once_each_take_only_their_own_text() {
+    let test = "two_masters_typed_into_at_once_each_take_only_their_own_text";
+    let Some(forge) = stand_in(test, "") else {
+        return;
+    };
+    let agenfold = "forge-master-agenfold";
+    let agenfold_log = beside(&forge, agenfold);
+    drawn(&forge).await;
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while super::pane_prompt(agenfold).await == crate::composer::Composer::Unrecognised {
+        assert!(
+            Instant::now() < deadline,
+            "{agenfold} never drew its composer"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    for round in 0..5 {
+        let (forge_text, agenfold_text) = (
+            format!("review for forge, round {round}"),
+            format!("review for agenfold, round {round}"),
+        );
+        let (to_forge, to_agenfold) = tokio::join!(
+            super::send_line(&forge.name, &forge_text),
+            super::send_line(agenfold, &agenfold_text),
+        );
+        // the stand-in logs only a submit with its text, numbered by its Enters so far
+        let want_forge = format!(": {forge_text}\n");
+        let forge_saw = logged(&forge, &want_forge, Duration::from_secs(5));
+        let want_agenfold = format!(": {agenfold_text}\n");
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let agenfold_saw = loop {
+            let seen = std::fs::read_to_string(&agenfold_log).unwrap_or_default();
+            if seen.contains(&want_agenfold) || Instant::now() >= deadline {
+                break seen;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        };
+        assert!(
+            !forge_saw.contains("agenfold") && !agenfold_saw.contains("for forge"),
+            "round {round}: a send to one project's master reached the other's pane; {} logged {forge_saw:?} and {agenfold} logged {agenfold_saw:?}",
+            forge.name
+        );
+        assert!(
+            to_forge.is_ok() && to_agenfold.is_ok(),
+            "round {round}: a send was not typed (forge: {to_forge:?}, agenfold: {to_agenfold:?})"
+        );
+        assert!(
+            forge_saw.contains(&want_forge) && agenfold_saw.contains(&want_agenfold),
+            "round {round}: a send said typed was not submitted; {} logged {forge_saw:?} and {agenfold} logged {agenfold_saw:?}",
+            forge.name
+        );
+    }
+}
