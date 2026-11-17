@@ -10,6 +10,7 @@ import type {
 	OutboxEventPayload,
 	RunnerChange,
 } from "./outbox-events.js";
+import type { AgentSessionLiveFrame } from "./agent-session-live.js";
 import type { PreviewChangedFrame } from "./preview.js";
 import type { OrgActivityFrame } from "./org-activity.js";
 import type { ProjectNowFrame } from "./project-now.js";
@@ -118,6 +119,8 @@ export interface WsFramePayloads extends JobFrames {
 	"agent-session.status": SessionFrame;
 	"agent-session.deleted": SessionFrame;
 	"agent-session.turn.appended": SessionFrame;
+	/** What a running turn is producing now, never stored (ISS-1268): text as generated, its status, its suggestion. */
+	"agent-session.live": AgentSessionLiveFrame;
 	"agent-session.turn.edited": SessionFrame & { turnId: string };
 	"agent-session.turn.truncated": SessionFrame & { fromTurnIndex: number };
 	"session.recoveryChanged": { sessionId: string; recoveryStats: unknown };

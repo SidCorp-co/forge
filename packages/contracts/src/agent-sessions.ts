@@ -4,6 +4,10 @@ import type { RefusalStatuses } from "./refusal.js";
 export const AGENT_SESSION_REFUSAL_CODES = [
 	"AGENT_SESSION_REFUSED",
 	"SESSION_RUNNING",
+	/** Stop on a session with no turn running (ISS-1268). */
+	"SESSION_NOT_RUNNING",
+	/** A message sent into a running turn carries text only; files go with a turn of their own (ISS-1268). */
+	"STEER_ATTACHMENTS_UNSUPPORTED",
 	"SESSION_BUSY",
 	"SESSION_STALE",
 	"SESSION_CANCELLED",
@@ -35,6 +39,7 @@ export type AgentSessionRefusalCode =
 	(typeof AGENT_SESSION_REFUSAL_CODES)[number];
 export const AGENT_SESSION_REFUSAL_STATUSES = {
 	SESSION_STALE: 409,
+	SESSION_NOT_RUNNING: 409,
 	TURN_STALE: 409,
 	SEQ_TAKEN_BY_CORE: 409,
 	SESSION_CANCELLED: 409,

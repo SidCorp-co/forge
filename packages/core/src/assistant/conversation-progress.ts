@@ -60,7 +60,6 @@ function freeze(entry: AgentMessage): AgentMessage {
     blocks: (entry.blocks ?? []).map((b) => ({
       ...b,
       ...(b.toolCall ? { toolCall: { ...b.toolCall } } : {}),
-      ...(b.todos ? { todos: b.todos.map((t) => ({ ...t })) } : {}),
     })),
     ...(entry.toolCalls ? { toolCalls: entry.toolCalls.map((t) => ({ ...t })) } : {}),
   };

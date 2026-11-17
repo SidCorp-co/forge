@@ -4,7 +4,6 @@ import type { StoredConversationMessage } from './store.js';
 const BLOCK_TYPES: ReadonlySet<unknown> = new Set<ContentBlock['type']>([
   'text',
   'tool',
-  'todos',
   'thinking',
   'questionnaire',
   'questionnaire_answers',

@@ -24,7 +24,39 @@ import { scrubbedForRoom } from './thread.js';
 type TurnStep =
   | { kind: 'called'; tool: string; input: string }
   | { kind: 'answered'; text: string }
-  | { kind: 'said'; text: string };
+  | { kind: 'said'; text: string }
+  /**
+   * How the turn ended (ISS-1268): the result's `terminal_reason` (`completed`, or
+   * `aborted_streaming` where a person stopped it) and its `modelUsage`, what each model spent.
+   */
+  | { kind: 'ended'; reason: string | null; models: Record<string, ModelSpend> };
+
+/** One model's share of a turn, as its result's `modelUsage` names it. */
+interface ModelSpend {
+  inputTokens: number | null;
+  outputTokens: number | null;
+  costUsd: number | null;
+  contextWindow: number | null;
+}
+
+const count = (v: unknown): number | null =>
+  typeof v === 'number' && Number.isFinite(v) ? v : null;
+
+/** The result's `modelUsage`, by model. */
+function spendOf(raw: unknown): Record<string, ModelSpend> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  return Object.fromEntries(
+    Object.entries(raw as Record<string, Record<string, unknown> | null>).map(([model, u]) => [
+      model,
+      {
+        inputTokens: count(u?.inputTokens),
+        outputTokens: count(u?.outputTokens),
+        costUsd: count(u?.costUSD),
+        contextWindow: count(u?.contextWindow),
+      },
+    ]),
+  );
+}
 
 /** How much of one tool answer a reader is shown; the rest is cut and says so. */
 const ANSWER_SHOWN = 4_000;
@@ -77,6 +109,11 @@ function stepsOf(line: unknown): TurnStep[] {
           : [],
     );
   }
+  if (l?.type === 'result') {
+    const r = line as { terminal_reason?: unknown; modelUsage?: unknown };
+    const reason = typeof r.terminal_reason === 'string' ? r.terminal_reason : null;
+    return [{ kind: 'ended', reason, models: spendOf(r.modelUsage) }];
+  }
   if (l?.type === 'user') {
     return blocks.flatMap((b): TurnStep[] =>
       b.type === 'tool_result'
@@ -88,6 +125,7 @@ function stepsOf(line: unknown): TurnStep[] {
 }
 
 async function scrubbed(room: RoomRow, step: TurnStep): Promise<TurnStep> {
+  if (step.kind === 'ended') return step;
   if (step.kind === 'called') return { ...step, input: await scrubbedForRoom(room, step.input) };
   return { ...step, text: await scrubbedForRoom(room, step.text) };
 }

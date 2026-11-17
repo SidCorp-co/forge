@@ -101,25 +101,6 @@ export async function deleteSession(sessionId: string): Promise<void> {
 
 const sessionGone = () => notFound('agent session not found');
 
-/** Move a session to `idle` so its owner can resume it, from the status the caller read. */
-export async function abortSession(
-  sessionId: string,
-  expect: AgentSessionStatus,
-  actor: KernelActor,
-) {
-  return movedRow(
-    await transitionSessions(db, {
-      to: 'idle',
-      expect,
-      set: { updatedAt: new Date() },
-      where: eq(agentSessions.id, sessionId),
-      actor,
-      source: 'session-abort',
-    }),
-    sessionGone,
-  );
-}
-
 /**
  * Fail a live session as `user_cancelled`, compare-and-set on the live statuses so a worker write
  * that landed in between is not stomped; null when the session was no longer live.

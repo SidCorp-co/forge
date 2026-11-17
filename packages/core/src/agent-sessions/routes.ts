@@ -37,6 +37,7 @@ import { agentSessionInboxRoutes } from './inbox-routes.js';
 import { agentSessionInteractiveRoutes } from './interactive-routes.js';
 import { kindFromQuery } from './kind-query.js';
 import { agentSessionLifecycleRoutes } from './lifecycle-routes.js';
+import { agentSessionLiveRoutes } from './live-routes.js';
 import { agentSessionOpsRoutes } from './ops-routes.js';
 import { applyTranscriptPatch } from './patch-transcript.js';
 import { linkedIssueOf, listAgentSessionsPage, sessionCost } from './read.js';
@@ -109,6 +110,7 @@ agentSessionRoutes.route('/', agentSessionLifecycleRoutes);
 agentSessionRoutes.route('/', agentSessionInteractiveRoutes);
 agentSessionRoutes.route('/', agentSessionInboxRoutes);
 agentSessionRoutes.route('/', agentSessionEventsRoutes);
+agentSessionRoutes.route('/', agentSessionLiveRoutes);
 agentSessionRoutes.route('/', agentSessionOpsRoutes);
 
 // A retry offers the issue to the project's masters again; while a job is still

@@ -21,6 +21,7 @@ import { refuseSession } from './refusals.js';
 import { roomDirectTurnOf } from './room-direct-turn.js';
 import { ensureSessionOwnerOrAdmin, withTranscript } from './session-access.js';
 import { recordSessionCreatedActivity } from './session-activity.js';
+import { steerRunningTurn } from './steer-turn.js';
 
 const createSchema = z
   .object({
@@ -79,10 +80,20 @@ agentSessionInteractiveRoutes.post(
     const userId = c.get('userId');
 
     const { session } = await ensureSessionOwnerOrAdmin(input.sessionId, userId);
+    // a message for the running turn goes into it, with its priority (ISS-1268)
+    if (session.status === 'running' && input.priority && !roomDirectTurnOf(session)) {
+      await steerRunningTurn({
+        session,
+        message: input.message,
+        priority: input.priority,
+        attachmentIds: input.attachmentIds ?? [],
+      });
+      return c.json({ ok: true, steered: input.priority }, 202);
+    }
     if (session.status === 'running' || session.status === 'queued') {
       throw refuseSession(
         'SESSION_RUNNING',
-        'The agent is still working on this conversation, under the access of the person whose turn it is. Wait for it to finish or stop it, then send.',
+        'The agent is still working on this conversation, under the access of the person whose turn it is. Send with priority `now` to steer it or `next` to answer after it, wait for it to finish, or stop it.',
       );
     }
 

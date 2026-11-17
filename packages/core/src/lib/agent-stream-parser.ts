@@ -1,5 +1,6 @@
 import type { ExecutionFacts } from '@forge/contracts/report-executions';
 import type { ReportRunFacts } from '@forge/contracts/report-queries';
+import { nestUnder } from './subagent-nest.js';
 
 // Optional fields carry explicit `| undefined` because core compiles with
 // `exactOptionalPropertyTypes: true` (the desktop source does not) and the
@@ -21,12 +22,11 @@ export interface ToolCall {
    * taken out, being the asker's (`conversations/tool-content.ts:toolContentFor`).
    */
   withheld?: true | undefined;
-}
-
-export interface AgentTodo {
-  content: string;
-  status: 'pending' | 'in_progress' | 'completed';
-  activeForm?: string | undefined;
+  /**
+   * What the subagent an `Agent` call spawned said and called, in order: the stream's lines whose
+   * `parent_tool_use_id` names this call (ISS-1268). Absent on every other call.
+   */
+  subagent?: ContentBlock[] | undefined;
 }
 
 export interface ContentBlock {
@@ -34,7 +34,6 @@ export interface ContentBlock {
   type:
     | 'text'
     | 'tool'
-    | 'todos'
     | 'thinking'
     | 'questionnaire'
     | 'questionnaire_answers'
@@ -43,7 +42,6 @@ export interface ContentBlock {
     | 'unsupported';
   text?: string | undefined;
   toolCall?: ToolCall | undefined;
-  todos?: AgentTodo[] | undefined;
   /** A `thinking` block's reasoning text, where the wire carried any (ISS-1079). */
   thinking?: string | undefined;
   /** How long a `thinking` block was open: its first delta to the event that closed it. */
@@ -81,6 +79,8 @@ export interface AgentMessage {
   thinkingCount?: number | undefined;
   /** Present on the `result` message only. */
   totals?: RunTotals | undefined;
+  /** The `Agent` call whose subagent wrote this line (`parent_tool_use_id`); absent for the session's own. */
+  parentToolUseId?: string | undefined;
   usage?:
     | {
         input_tokens?: number;
@@ -105,6 +105,20 @@ export interface RunTotals {
   permissionDenials?: number | undefined;
   stopReason?: string | undefined;
   isError?: boolean | undefined;
+  /** Why the turn ended (`terminal_reason`): `completed`, or `aborted_streaming` where it was stopped. */
+  terminalReason?: string | undefined;
+  /** What each model the turn ran spent and holds (`modelUsage`), by model id. */
+  models?: Record<string, ModelUse> | undefined;
+}
+
+/** One model's share of a turn, from the result's `modelUsage`. */
+export interface ModelUse {
+  inputTokens?: number | undefined;
+  outputTokens?: number | undefined;
+  cacheReadTokens?: number | undefined;
+  cacheWriteTokens?: number | undefined;
+  costUsd?: number | undefined;
+  contextWindow?: number | undefined;
 }
 
 interface ParseResult {
@@ -164,16 +178,13 @@ function parseAssistantMessage(
         blocks.push({ type: 'text', text });
         textParts.push(text);
       }
-    } else if (c.type === 'tool_use' && c.name === 'TodoWrite') {
-      processTodoBlock(c, blocks);
     } else if (c.type === 'tool_use') {
       processToolCall(c, blocks, toolCalls, makeId);
     }
   }
 
   const text = textParts.join('');
-  const hasTodos = blocks.some((b) => b.type === 'todos');
-  if (!text && toolCalls.length === 0 && !hasTodos && thinkingCount === 0) return { messages: [] };
+  if (!text && toolCalls.length === 0 && thinkingCount === 0) return { messages: [] };
 
   const message: AgentMessage = {
     id: makeId(),
@@ -186,29 +197,16 @@ function parseAssistantMessage(
     thinkingCount: thinkingCount > 0 ? thinkingCount : undefined,
     usage:
       (msg?.usage as AgentMessage['usage']) ?? (data.usage as AgentMessage['usage']) ?? undefined,
+    parentToolUseId: parentOf(data),
   };
 
   return { messages: [message] };
 }
 
-function processTodoBlock(c: { input?: unknown }, blocks: ContentBlock[]): void {
-  const input = (c.input as Record<string, unknown>) ?? {};
-  const rawTodos =
-    (input.todos as { content: string; status: string; activeForm?: string }[]) ?? [];
-  const existingIdx = blocks.findIndex((b) => b.type === 'todos');
-  const todosBlock: ContentBlock = {
-    type: 'todos',
-    todos: rawTodos.map((t) => ({
-      content: t.content,
-      status: (t.status as 'pending' | 'in_progress' | 'completed') ?? 'pending',
-      activeForm: t.activeForm,
-    })),
-  };
-  if (existingIdx >= 0) {
-    blocks[existingIdx] = todosBlock;
-  } else {
-    blocks.push(todosBlock);
-  }
+/** The `Agent` call a line's subagent answers to, where the line names one. */
+function parentOf(data: Record<string, unknown>): string | undefined {
+  const id = data.parent_tool_use_id;
+  return typeof id === 'string' && id.length > 0 ? id : undefined;
 }
 
 function processToolCall(
@@ -269,6 +267,7 @@ function parseUserMessage(
   const results = content.filter((c) => c.type === 'tool_result');
   if (results.length === 0) return { messages: [] };
 
+  const parentToolUseId = parentOf(data);
   return {
     messages: results.map((r) => ({
       id: makeId(),
@@ -277,6 +276,7 @@ function parseUserMessage(
       toolOutput: (r.content as string) ?? '',
       toolName: r.tool_use_id,
       isError: r.is_error === true ? true : undefined,
+      parentToolUseId,
     })),
   };
 }
@@ -298,6 +298,24 @@ function resultContent(totals: RunTotals): string {
   return 'Agent finished.';
 }
 
+/** The result's `modelUsage`, by model, or nothing where the line carried none. */
+function modelUsesOf(raw: unknown): Record<string, ModelUse> | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const out: Record<string, ModelUse> = {};
+  for (const [model, use] of Object.entries(raw as Record<string, Record<string, unknown>>)) {
+    if (!use || typeof use !== 'object') continue;
+    out[model] = {
+      inputTokens: num(use.inputTokens),
+      outputTokens: num(use.outputTokens),
+      cacheReadTokens: num(use.cacheReadInputTokens),
+      cacheWriteTokens: num(use.cacheCreationInputTokens),
+      costUsd: num(use.costUSD),
+      contextWindow: num(use.contextWindow),
+    };
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 function parseResultMessage(
   data: Record<string, unknown>,
   timestamp: number,
@@ -314,6 +332,8 @@ function parseResultMessage(
       : undefined,
     stopReason: typeof data.stop_reason === 'string' ? data.stop_reason : undefined,
     isError: data.is_error === true ? true : undefined,
+    terminalReason: typeof data.terminal_reason === 'string' ? data.terminal_reason : undefined,
+    models: modelUsesOf(data.modelUsage),
   };
   return {
     messages: [
@@ -337,13 +357,6 @@ function mergeBlocks(
   const out = [...oldBlocks];
   for (const b of newBlocks) {
     if (b.type === 'tool' && existingToolIds.has(b.toolCall?.id)) continue;
-    if (b.type === 'todos') {
-      const at = out.findIndex((x) => x.type === 'todos');
-      if (at >= 0) {
-        out[at] = b;
-        continue;
-      }
-    }
     out.push(b);
   }
   return out;
@@ -356,6 +369,7 @@ function mergeBlocks(
  */
 export function mergeMessages(messages: AgentMessage[], parsed: AgentMessage[]): void {
   for (const p of parsed) {
+    if (p.parentToolUseId && nestUnder(messages, p.parentToolUseId, p)) continue;
     const last = messages[messages.length - 1];
 
     if (p.type === 'assistant' && last?.type === 'assistant') {

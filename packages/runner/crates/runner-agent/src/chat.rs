@@ -699,9 +699,10 @@ async fn consume(
 }
 
 /// How many times one turn numbers its unstored lines again from core's next seq before a clash
-/// is its failure: each renumbering follows a row core wrote inside the turn's seqs, and a core
-/// that keeps writing them is not one this turn can outnumber.
-const MAX_RENUMBERS: usize = 3;
+/// is its failure: each renumbering follows a row core wrote inside the turn's seqs — a message a
+/// person sent into the running turn writes one (ISS-1268) — and a core that keeps writing them
+/// past this is not one this turn can outnumber.
+const MAX_RENUMBERS: usize = 12;
 
 /// Drop the `stored` lines core took, and number the rest from `next_seq` on; the last seq used.
 fn renumber(pending: &mut Vec<agent_sessions::LineEvent>, stored: usize, next_seq: u64) -> u64 {

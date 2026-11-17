@@ -46,9 +46,8 @@ vi.mock('../permissions/index.js', async (importOriginal) => {
 const { registerWsBroadcastSubscribers } = await import('../ws/broadcast-subscribers.js');
 const { publishEphemeralFrame } = await import('../ws/box-delivery.js');
 const { provideEphemeralPublisher } = await import('../lib/ephemeral.js');
-const { broadcastSession, broadcastTurnAppended, broadcastTurnTruncated } = await import(
-  './broadcast.js'
-);
+const { broadcastLive, broadcastSession, broadcastTurnAppended, broadcastTurnTruncated } =
+  await import('./broadcast.js');
 const { assertAgentChatOwner } = await import('./session-access.js');
 
 const OWNER = 'u-owner';
@@ -93,6 +92,10 @@ describe("a person's chat frames reach only the people who may read it", () => {
     ['agent-session.turn.truncated', () => broadcastTurnTruncated(personChat, 2)],
     ['agent-session.status', () => broadcastSession(personChat, 'agent-session.status')],
     ['agent-session.updated', () => broadcastSession(personChat, 'agent-session.updated')],
+    [
+      'agent-session.live',
+      () => broadcastLive(personChat, null, [{ kind: 'text', text: 'Hello', parent: null }]),
+    ],
   ])('%s goes to the owner and admins, never the project or box room', async (event, fire) => {
     fire();
     await settle();
@@ -128,6 +131,22 @@ describe("a person's chat frames reach only the people who may read it", () => {
     broadcastSession(turn, 'agent-session.updated');
     await settle();
     expect(roomsReached()).toEqual([`user:${MEMBER}`]);
+  });
+
+  it("ISS-1268: a turn's live text reaches its asker alone and is never written down", async () => {
+    const turn = {
+      ...personChat,
+      userId: MEMBER,
+      metadata: { unattended: true, conversationAgent: { asker: { userId: MEMBER } } },
+    };
+    broadcastLive(turn, 'c-1', [
+      { kind: 'message', id: 'msg_1', parent: null },
+      { kind: 'text', text: 'Hello there', parent: null },
+    ]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(emitted).toEqual([]);
+    await settle();
+    expect(published).toEqual([{ room: `user:${MEMBER}`, event: 'agent-session.live' }]);
   });
 
   it('a session.changed for a private chat is told only to the named people', async () => {

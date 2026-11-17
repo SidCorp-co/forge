@@ -1,3 +1,4 @@
+import type { AgentSessionLiveItem } from '@forge/contracts/agent-session-live';
 import type { AgentSessionKind, AgentSessionTurnRole } from '../db/schema.js';
 import { publishEphemeral } from '../lib/ephemeral.js';
 import { logger } from '../lib/logger.js';
@@ -136,4 +137,26 @@ export function broadcastTurnSync(
   if (sync.truncatedFromTurnIndex !== null) {
     broadcastTurnTruncated(session, sync.truncatedFromTurnIndex);
   }
+}
+
+/**
+ * A running turn's live items (ISS-1268), to the session's audience (`audienceOf`): a conversation
+ * turn's asker alone, a person's chat's readers, or a project-wide session's rooms. Ephemeral
+ * (`lib/ephemeral.ts`): nothing is stored, and the turn's transcript replaces them once it lands.
+ */
+export function broadcastLive(
+  session: SessionLite,
+  conversationId: string | null,
+  items: readonly AgentSessionLiveItem[],
+): void {
+  void audienceOf(session)
+    .then((audience) =>
+      publishEphemeral(audience, {
+        event: 'agent-session.live',
+        data: { sessionId: session.id, projectId: session.projectId, conversationId, items },
+      }),
+    )
+    .catch((err: unknown) =>
+      logger.warn({ err, sessionId: session.id }, 'live frame: no audience was read'),
+    );
 }

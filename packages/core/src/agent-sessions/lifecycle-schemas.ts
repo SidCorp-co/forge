@@ -14,15 +14,14 @@ export const sendBodySchema = z
     deviceId: z.uuid().nullable().optional(),
     attachmentIds: z.array(z.uuid()).max(10).optional(),
     model: modelTierSchema.nullable().optional(),
+    /**
+     * ISS-1268 — for a session whose turn is running: `now` steers that turn, `next` answers this
+     * message after it. A session with no turn running takes the message as a turn of its own.
+     */
+    priority: z.enum(['now', 'next']).optional(),
   })
   .strict()
   .refine((d) => d.message.trim().length > 0 || (d.attachmentIds?.length ?? 0) > 0, {
     message: 'message or attachmentIds required',
     path: ['message'],
   });
-
-export const abortBodySchema = z
-  .object({
-    sessionId: z.uuid(),
-  })
-  .strict();
