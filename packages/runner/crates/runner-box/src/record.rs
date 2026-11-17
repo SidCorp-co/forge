@@ -6,9 +6,10 @@
 //! there: its offsets count from the assignment, and the minutes before it are never cut.
 //!
 //! A recording is kept as segments on disk: the live file (`session.<ext>`), whose start is in
-//! `clock.json` beside it, and closed ones (`seg-<start ms>.<ext>`). agent-browser writes its file
-//! only when the recording stops, so a browser box closes its segment before every cut and at
-//! close; the cut reads the segment its span starts in. Everything a cut needs is on disk, so a
+//! `clock.json` beside it, and closed ones (`seg-<start ms>.<ext>`). No recorder has written what
+//! a cut needs until it stops (agent-browser writes nothing before, the emulator's console and
+//! ffmpeg buffer), so a running box closes its segment before every cut, and its close ends the
+//! last; the cut reads the segment its span starts in. Everything a cut needs is on disk, so a
 //! clip is still cut after the box closed, until its recording is dropped.
 
 use std::path::{Path, PathBuf};

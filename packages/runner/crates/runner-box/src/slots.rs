@@ -187,8 +187,9 @@ impl Boxes {
             url: f.url,
             within: Duration::from_secs(f.open_timeout_seconds.clamp(10, 600)),
         };
-        let clock = record::Clock::started_now();
         let opened = Running::open(&self.0.ctx, &spec).await.map(Arc::new);
+        // every mode starts its recording last in its open
+        let clock = record::Clock::started_now();
         let closing = self.slots().get(&id).is_none_or(|s| s.closing);
         match opened {
             Ok(running) if !closing => {
@@ -380,7 +381,7 @@ impl Boxes {
     }
 
     /// The recording segment a span starting at `from_ms` is in, and the box's clock. A running
-    /// browser box first closes its recording so far into a segment (see `record`).
+    /// box first closes its recording so far into a segment (see `record`).
     async fn recording_at(
         &self,
         id: &str,
@@ -391,8 +392,8 @@ impl Boxes {
         let mut clock = slot_clock
             .or_else(|| record::load_clock(dir))
             .ok_or_else(|| format!("box {id} has no recording on this device"))?;
-        if let Some(Running::Browser(b)) = self.running(id).as_deref() {
-            clock.file_start = b.rotate(clock.file_start).await?;
+        if let Some(r) = self.running(id) {
+            clock.file_start = r.rotate(clock.file_start).await?;
             if let Some(slot) = self.slots().get_mut(id) {
                 slot.clock.file_start = clock.file_start;
             }

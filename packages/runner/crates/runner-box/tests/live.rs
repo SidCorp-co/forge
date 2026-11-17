@@ -104,6 +104,8 @@ impl Drop for ReapOnPanic {
     }
 }
 
+/// `pgrep -f`, its pattern anchored at the command's start so the shell running this test never
+/// matches its own command line.
 fn pgrep(pattern: &str) -> Vec<String> {
     let out = std::process::Command::new("pgrep")
         .args(["-u", "dev", "-a", "-f", pattern])
@@ -389,7 +391,7 @@ async fn a_real_android_box_boots_from_its_snapshot_streams_h264_and_is_reaped()
         &b,
         &said,
         &id,
-        &[format!("FORGE_BOX={id}"), "qemu-system".into()],
+        &["^[^ ]*qemu-system".into(), "^[^ ]*emulator -avd".into()],
     )
     .await;
 }
@@ -428,7 +430,10 @@ async fn a_real_desktop_box_takes_a_display_other_than_99_and_is_reaped() {
         &b,
         &said,
         &id,
-        &["^Xvfb :1[0-9][0-9] ".into(), "x11vnc -display :1".into()],
+        &[
+            "^Xvfb :1[0-9][0-9] ".into(),
+            "^[^ ]*x11vnc -display :1[0-9][0-9] ".into(),
+        ],
     )
     .await;
     assert!(

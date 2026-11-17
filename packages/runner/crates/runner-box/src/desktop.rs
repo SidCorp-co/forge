@@ -6,11 +6,11 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use tokio::io::{AsyncBufReadExt, BufReader};
 
-use crate::{act, display, proc};
+use crate::{display, proc, record};
 
 pub const DEFAULT_SIZE: (u32, u32) = (1280, 800);
 const VIEW_FPS: u32 = 10;
@@ -36,6 +36,7 @@ pub struct Desktop {
     bus: Mutex<Option<String>>,
     vnc: Mutex<Option<u16>>,
     recorder: Mutex<Option<tokio::process::Child>>,
+    rotating: tokio::sync::Mutex<()>,
     held: Mutex<Vec<tokio::process::Child>>,
 }
 
@@ -58,6 +59,7 @@ impl Desktop {
             bus: Mutex::new(None),
             vnc: Mutex::new(None),
             recorder: Mutex::new(None),
+            rotating: tokio::sync::Mutex::new(()),
             held: Mutex::new(Vec::new()),
         }
     }
@@ -260,8 +262,19 @@ impl Desktop {
         *self.vnc.lock().unwrap_or_else(|p| p.into_inner())
     }
 
-    /// End the recording with `q`, so it closes as a whole file. The reap follows.
-    pub async fn stop(&self) {
+    /// Close the recording so far into a segment and start the next: ffmpeg's matroska is
+    /// buffered, and a cut reads only what it has written.
+    pub async fn rotate(&self, file_start: SystemTime) -> Result<SystemTime, String> {
+        let _one = self.rotating.lock().await;
+        self.end_recording().await;
+        record::seal(&self.recording, file_start)?;
+        let next = SystemTime::now();
+        self.start_recording()?;
+        Ok(next)
+    }
+
+    /// End the recording with `q`, so it closes as a whole file; one that will not is killed.
+    async fn end_recording(&self) {
         let child = self
             .recorder
             .lock()
@@ -271,9 +284,19 @@ impl Desktop {
             if let Some(mut stdin) = ff.stdin.take() {
                 let _ = tokio::io::AsyncWriteExt::write_all(&mut stdin, b"q").await;
             }
-            let _ = tokio::time::timeout(Duration::from_secs(10), ff.wait()).await;
+            if tokio::time::timeout(Duration::from_secs(10), ff.wait())
+                .await
+                .is_err()
+            {
+                tracing::warn!("[box] {}: ffmpeg ignored `q`; killed", self.box_id);
+                let _ = ff.kill().await;
+            }
         }
-        let _ = act::DEADLINE;
+    }
+
+    /// End the recording as a whole file. The reap follows.
+    pub async fn stop(&self) {
+        self.end_recording().await;
     }
 }
 

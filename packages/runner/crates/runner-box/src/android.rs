@@ -1,14 +1,14 @@
 //! An android box: the emulator `-no-window -read-only` off the base AVD and its snapshot (every
-//! instance sharing an AVD must be read-only, or the others refuse it), recording itself with
-//! `-record-session`, adb to reach it, agent-device to drive it. The adb server is shared by every
+//! instance sharing an AVD must be read-only, or the others refuse it), recording itself through
+//! its console's `screenrecord`, adb to reach it, agent-device to drive it. The adb server is shared by every
 //! android box and started unmarked, so one box's close never takes another's device away.
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
-use crate::{act, proc};
+use crate::{act, proc, record};
 
 /// The console ports the adb server finds emulators on by itself: 5554, 5556 … 5584.
 pub const PORTS: std::ops::RangeInclusive<u16> = 5554..=5584;
@@ -97,6 +97,7 @@ pub struct Android {
     pub recording: PathBuf,
     state_dir: PathBuf,
     emulator: Mutex<Option<tokio::process::Child>>,
+    rotating: tokio::sync::Mutex<()>,
 }
 
 impl Android {
@@ -116,6 +117,7 @@ impl Android {
             recording,
             state_dir,
             emulator: Mutex::new(None),
+            rotating: tokio::sync::Mutex::new(()),
         }
     }
 
@@ -189,8 +191,7 @@ impl Android {
             snapshot,
             "-no-snapshot-save",
         ])
-        .args(["-gpu", "swiftshader_indirect", "-record-session"])
-        .arg(format!("{},0", self.recording.display()))
+        .args(["-gpu", "swiftshader_indirect"])
         .env("ANDROID_HOME", &self.tools.sdk)
         .env("ANDROID_SDK_ROOT", &self.tools.sdk)
         .stdout(log.try_clone().map_err(|e| e.to_string())?)
@@ -212,7 +213,35 @@ impl Android {
         if let Some(url) = url {
             self.navigate(url).await?;
         }
+        self.record("start").await
+    }
+
+    /// The emulator console's screen recorder: `-record-session` is never finalised by `emu kill`
+    /// and starts at launch, where `screenrecord stop` closes a whole file.
+    async fn record(&self, verb: &str) -> Result<(), String> {
+        let rec = self.recording.to_string_lossy().into_owned();
+        let mut args = vec!["emu", "screenrecord", verb];
+        if verb == "start" {
+            args.push(&rec);
+        }
+        let said = self.adb(&args, Duration::from_secs(20)).await?;
+        if said.lines().any(|l| l.starts_with("KO")) {
+            return Err(format!(
+                "`adb emu screenrecord {verb}` said: {}",
+                said.trim()
+            ));
+        }
         Ok(())
+    }
+
+    /// Close the recording so far into a segment and start the next (see `record`).
+    pub async fn rotate(&self, file_start: SystemTime) -> Result<SystemTime, String> {
+        let _one = self.rotating.lock().await;
+        self.record("stop").await?;
+        record::seal(&self.recording, file_start)?;
+        let next = SystemTime::now();
+        self.record("start").await?;
+        Ok(next)
     }
 
     async fn wait_booted(&self, until: tokio::time::Instant) -> Result<(), String> {
@@ -299,8 +328,11 @@ impl Android {
         .map(|_| ())
     }
 
-    /// Stop the emulator through its console, so its recording ends as a whole file.
+    /// End the recording as a whole file, then stop the emulator through its console.
     pub async fn stop(&self) {
+        if let Err(e) = self.record("stop").await {
+            tracing::warn!("[box] {}: {e}", self.box_id);
+        }
         let _ = self.adb(&["emu", "kill"], Duration::from_secs(10)).await;
         let child = self
             .emulator

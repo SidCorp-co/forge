@@ -3,7 +3,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use futures_util::SinkExt;
 use runner_platform::box_settings::BoxSettings;
@@ -188,6 +188,16 @@ impl Running {
             Self::Browser(b) => &b.recording,
             Self::Android(a) => &a.recording,
             Self::Desktop(d) => &d.recording,
+        }
+    }
+
+    /// Close the recording so far into a segment and start the next: no mode's recorder has
+    /// written what a cut needs until it stops (see `record`).
+    pub async fn rotate(&self, file_start: SystemTime) -> Result<SystemTime, String> {
+        match self {
+            Self::Browser(b) => b.rotate(file_start).await,
+            Self::Android(a) => a.rotate(file_start).await,
+            Self::Desktop(d) => d.rotate(file_start).await,
         }
     }
 
