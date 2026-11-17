@@ -4292,6 +4292,13 @@
       "when": 1841356800000,
       "tag": "0676_an_opened_find_hit_is_a_read_whoever_opens_it",
       "breakpoints": true
+    },
+    {
+      "idx": 677,
+      "version": "7",
+      "when": 1841443200000,
+      "tag": "0677_a_thread_holds_as_many_open_questionnaire_cards_as_its_agent_asks",
+      "breakpoints": true
     }
   ]
 }

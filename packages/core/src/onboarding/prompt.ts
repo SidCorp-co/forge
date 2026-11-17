@@ -5,8 +5,6 @@
  * (~/forge-local-docs/onboarding-trial-autoflow.md, onboarding-trial-hop.md).
  */
 
-import { QUESTIONNAIRE_MAX_ITEMS } from '@forge/contracts/onboarding';
-
 export interface OnboardingPromptContext {
   projectId: string;
   projectName: string;
@@ -69,7 +67,7 @@ function questionnaireRules(roundsSent: number) {
 - Draw first, then ask. What the code or the records suggest is an ASSUMPTION, not a question: group assumption, control choice, inferredDefault the option the code suggests, evidence the file:symbol or record it rests on. Draw the designs on it; it is recorded as answered, shown read-only with its evidence, and the person may change it.
 - Ask only what neither the code nor the records can answer, the questions you need, each a choice (or multi) whose inferredDefault is the answer you recommend (one without is refused ONBOARDING_QUESTION_UNRECOMMENDED), so one press answers it. Zero questions is a good round.
 - A recommendation is never a questionnaire item (refused ONBOARDING_RECOMMENDATION_IS_A_SUGGESTION): post it on its own as a suggestion (P/suggestions -X POST), which a holder of the approve permission decides. A rejected suggestion is not suggested again.
-- A batch holds up to ${QUESTIONNAIRE_MAX_ITEMS} items, assumptions included; what does not fit goes in the next round. This is round ${roundsSent + 1}.
+- Ask what you need, each question with the answer you recommend, in as many cards as you need: a card posted while another still waits stands beside it. This is round ${roundsSent + 1}.
 - Each item: id (stable, e.g. q-central-entity), group, control, prompt (in the language the project's people write in), options with ids, inferredDefault, why (one or two sentences), evidence (file:symbol, or a record citation), affects (the workflow ids it shapes).`;
 }
 

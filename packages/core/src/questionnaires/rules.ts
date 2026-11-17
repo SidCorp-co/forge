@@ -110,18 +110,6 @@ export function repeatRefusals(
   return out;
 }
 
-// one open batch per thread (QUESTIONNAIRE_ALREADY_OPEN): a skipped batch still waits on its person
-export function alreadyOpenRefusal(
-  open: { id: string; round: number; status: QuestionnaireStatus } | null,
-): QuestionnaireRefusal | null {
-  if (!open) return null;
-  return {
-    code: 'QUESTIONNAIRE_ALREADY_OPEN',
-    path: '',
-    detail: `batch ${open.id} (round ${open.round}) is ${open.status} in this thread; a new batch waits until that one is answered or superseded by a re-analysis.`,
-  };
-}
-
 interface BatchState {
   id: string;
   status: QuestionnaireStatus;

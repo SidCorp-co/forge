@@ -138,15 +138,9 @@ export const questionnaireBatches = pgTable(
       'questionnaire_batches_superseded_chk',
       sql`(${t.status} = 'superseded') = (${t.supersededAt} IS NOT NULL)`,
     ),
-    // one open batch per thread (QUESTIONNAIRE_ALREADY_OPEN): a skipped batch still waits
-    // on its person, so nothing more is asked over it
-    openPerConversationUq: uniqueIndex('questionnaire_batches_open_conversation_uq')
-      .on(t.conversationId)
-      .where(sql`status IN ('open', 'skipped')`),
-    // a requirement holds one open questionnaire batch at a time; single questions on it are many
-    openPerRequirementUq: uniqueIndex('questionnaire_batches_open_requirement_uq')
-      .on(t.requirementId)
-      .where(sql`status IN ('open', 'skipped') AND requirement_id IS NOT NULL`),
+    // a thread or a requirement holds as many open cards as its agent asks (ISS-904, migration
+    // 0677 dropped the one-open-card indexes); the thread's cards are read by conversation_id
+    conversationIdx: index('questionnaire_batches_conversation_idx').on(t.conversationId, t.status),
     projectIdx: index('questionnaire_batches_project_idx').on(t.projectId, t.status),
     onboardingIdx: index('questionnaire_batches_onboarding_idx').on(t.onboardingId),
     firstRequirementsIdx: index('questionnaire_batches_first_requirements_idx')

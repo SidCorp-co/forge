@@ -96,8 +96,16 @@ const QUESTIONNAIRE_CONTROLS = [
 /** An item's own state, read from its agent_questions row. */
 export const QUESTIONNAIRE_ITEM_STATES = ["open", "answered", "void"] as const;
 export type QuestionnaireItemState = (typeof QUESTIONNAIRE_ITEM_STATES)[number];
-/** At most this many items in one batch, assumptions included; the trials landed at 15. */
-export const QUESTIONNAIRE_MAX_ITEMS = 15;
+/**
+ * What bounds one card's payload: its items (or one submit's answers) as JSON, in bytes. A bound on
+ * the body, never on how many questions a card asks (ISS-904): an agent asks what it needs.
+ */
+export const QUESTIONNAIRE_PAYLOAD_MAX_BYTES = 1024 * 1024;
+
+const withinPayload = (value: unknown) =>
+	new TextEncoder().encode(JSON.stringify(value)).length <=
+	QUESTIONNAIRE_PAYLOAD_MAX_BYTES;
+const PAYLOAD_TOO_LARGE = `a card's payload is at most ${QUESTIONNAIRE_PAYLOAD_MAX_BYTES} bytes of JSON; post what does not fit as a card of its own`;
 /** A batch left open this many days raises the dashboard hint to attention. */
 export const QUESTIONNAIRE_DUE_DAYS = 7;
 
@@ -121,7 +129,6 @@ export type OnboardingRefusalCode = (typeof ONBOARDING_REFUSAL_CODES)[number];
 export const QUESTIONNAIRE_REFUSAL_CODES = [
 	"QUESTIONNAIRE_SUPERSEDED",
 	"QUESTIONNAIRE_ALREADY_ANSWERED",
-	"QUESTIONNAIRE_ALREADY_OPEN",
 	"QUESTIONNAIRE_ITEM_INVALID",
 	"QUESTIONNAIRE_ITEM_ANSWERED_BEFORE",
 	"QUESTIONNAIRE_RECOMMENDATION_REJECTED",
@@ -185,12 +192,15 @@ export type QuestionnaireItem = z.infer<typeof questionnaireItemSchema>;
 export const postQuestionnaireRequestSchema = z.strictObject({
 	title: z.string().trim().min(1).max(120),
 	intro: z.string().trim().max(2_000).optional(),
-	items: z.array(questionnaireItemSchema).min(1).max(QUESTIONNAIRE_MAX_ITEMS),
+	items: z
+		.array(questionnaireItemSchema)
+		.min(1)
+		.refine(withinPayload, { message: PAYLOAD_TOO_LARGE }),
 });
 export type PostQuestionnaireRequest = z.infer<
 	typeof postQuestionnaireRequestSchema
 >;
-export const POST_QUESTIONNAIRE_SHAPE = `{ title, intro?, items: [{ id, group: ${QUESTIONNAIRE_GROUPS.join(" | ")}, control: ${QUESTIONNAIRE_CONTROLS.join(" | ")}, prompt, options?: [{ id, label }], inferredDefault?, placeholder?, why, evidence: [file:symbol | record], affects?, isNew? }] } (1-${QUESTIONNAIRE_MAX_ITEMS} items)`;
+export const POST_QUESTIONNAIRE_SHAPE = `{ title, intro?, items: [{ id, group: ${QUESTIONNAIRE_GROUPS.join(" | ")}, control: ${QUESTIONNAIRE_CONTROLS.join(" | ")}, prompt, options?: [{ id, label }], inferredDefault?, placeholder?, why, evidence: [file:symbol | record], affects?, isNew? }] } (at least one item; ${QUESTIONNAIRE_PAYLOAD_MAX_BYTES} bytes of JSON at most)`;
 
 /** One answer: the field that fits the item's control, and nothing else. */
 export const questionnaireAnswerSchema = z.strictObject({
@@ -204,7 +214,9 @@ export type QuestionnaireAnswer = z.infer<typeof questionnaireAnswerSchema>;
 
 /** `POST /api/projects/:id/questionnaires/:batchId/answers` — the one submit, partial allowed. */
 export const submitAnswersRequestSchema = z.strictObject({
-	answers: z.array(questionnaireAnswerSchema).max(QUESTIONNAIRE_MAX_ITEMS),
+	answers: z
+		.array(questionnaireAnswerSchema)
+		.refine(withinPayload, { message: PAYLOAD_TOO_LARGE }),
 	/** Skip for now: a recorded outcome; the batch stays answerable and nothing more is asked. */
 	skip: z.boolean().optional(),
 });
@@ -349,7 +361,11 @@ export interface OnboardingJobView {
 	endedWith: string | null;
 }
 
-/** A thread's answerable batch and its due rule (project-onboarding `expect-answers`, `unanswered`). */
+/**
+ * A thread's answerable cards and their due rule (project-onboarding `expect-answers`,
+ * `unanswered`). Several cards may stand open at once: `id`, `round` and the due rule are the
+ * oldest card still holding an open item, `open` counts the open items of them all.
+ */
 export interface OpenQuestionnaireBatch {
 	id: string;
 	round: number;
@@ -398,7 +414,7 @@ export interface OnboardingFirstRequirements {
 	conversationId: string;
 	/** Live requirement drafts (proposed or accepted) on the onboarding's designs. */
 	suggested: number;
-	/** The BA's answerable questionnaire in the room, due QUESTIONNAIRE_DUE_DAYS after it was sent. */
+	/** The BA's answerable questionnaire cards in the room, each due QUESTIONNAIRE_DUE_DAYS after it was sent. */
 	openBatch: OpenQuestionnaireBatch | null;
 }
 

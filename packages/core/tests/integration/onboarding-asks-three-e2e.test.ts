@@ -39,6 +39,7 @@ let agentId = '';
 let projectId = '';
 let oldProjectId = '';
 let assumedProjectId = '';
+let sideProjectId = '';
 let conversationId = '';
 let design = '';
 
@@ -109,12 +110,14 @@ beforeAll(async () => {
   projectId = (await createTestProject(ownerId)).id;
   oldProjectId = (await createTestProject(ownerId)).id;
   assumedProjectId = (await createTestProject(ownerId)).id;
-  for (const p of [projectId, oldProjectId, assumedProjectId])
+  sideProjectId = (await createTestProject(ownerId)).id;
+  for (const p of [projectId, oldProjectId, assumedProjectId, sideProjectId])
     await seedProjectDocument(p, ownerId, { environments: {}, source: { type: 'none' } });
   agentId = (await createTestUser({ kind: 'agent' })).id;
   await addProjectMember(projectId, agentId, 'admin');
   await addProjectMember(oldProjectId, agentId, 'admin');
   await addProjectMember(assumedProjectId, agentId, 'admin');
+  await addProjectMember(sideProjectId, agentId, 'admin');
   say = requester(app, {
     owner: await signUserToken(ownerId),
     master: (
@@ -122,7 +125,7 @@ beforeAll(async () => {
         permissions: ['*'],
         userId: agentId,
         name: 'master',
-        projectIds: [projectId, oldProjectId, assumedProjectId],
+        projectIds: [projectId, oldProjectId, assumedProjectId, sideProjectId],
       })
     ).plaintext,
   });
@@ -416,5 +419,59 @@ describe('an open batch posted before r4 still reads and answers', () => {
       }),
     ).questionnaire as Doc;
     expect(itemOf(sent, 'r1')).toMatchObject({ state: 'answered', answer: { decision: 'accept' } });
+  });
+});
+
+// ISS-904 c1 on dev.706: a sixteenth question was refused '<=15 items', and a second card while one
+// waited was refused QUESTIONNAIRE_ALREADY_OPEN (a partial unique index under it)
+describe('ISS-904: a card asks every question it needs, and stands beside a card still open', () => {
+  let first = '';
+
+  it('takes a card of twenty questions, each with its recommended answer', async () => {
+    ok(await say('owner', 'POST', at('/onboarding/start', sideProjectId), {}), 201);
+    const posted = ok(
+      await say(
+        'master',
+        'POST',
+        at('/onboarding/questionnaires', sideProjectId),
+        round(Array.from({ length: 20 }, (_, i) => question(`q${i}`))),
+      ),
+      201,
+    ).questionnaire as Doc;
+    expect(posted).toMatchObject({ status: 'open', open: 20 });
+    expect(posted.items).toHaveLength(20);
+    first = posted.id as string;
+  });
+
+  it('takes a second card while the first is open, and both read open', async () => {
+    const second = ok(
+      await say(
+        'master',
+        'POST',
+        at('/onboarding/questionnaires', sideProjectId),
+        round([question('more1'), question('more2')]),
+      ),
+      201,
+    ).questionnaire as Doc;
+    expect(second).toMatchObject({ status: 'open', open: 2 });
+    const cards = ok(await say('master', 'GET', at('/onboarding/answers', sideProjectId)))
+      .questionnaires as Doc[];
+    expect(cards.map((c) => [c.id, c.status, c.open])).toEqual([
+      [first, 'open', 20],
+      [second.id, 'open', 2],
+    ]);
+    const view = await onboarding(sideProjectId);
+    expect(view).toMatchObject({ status: 'waiting_on_you', openBatch: { id: first, open: 22 } });
+
+    ok(
+      await say('owner', 'POST', at(`/questionnaires/${second.id}/answers`, sideProjectId), {
+        answers: [
+          { itemId: 'more1', choice: 'yes' },
+          { itemId: 'more2', choice: 'no' },
+        ],
+      }),
+    );
+    const after = await onboarding(sideProjectId);
+    expect(after).toMatchObject({ status: 'waiting_on_you', openBatch: { id: first, open: 20 } });
   });
 });

@@ -39,11 +39,12 @@ export async function clarificationOf(requirementId: string) {
 }
 
 // the BA door asks through the same questionnaire card and submit as onboarding (BC-10); a
-// clarification question is asked beside an open card, never held behind it (REQ-65 r3 BC-3)
+// clarification question or another card is asked beside an open card, never held behind it
+// (REQ-65 r3 BC-3, ISS-904)
 export const sendQuestionnaire = (room: BaRoom): ContextScopedMcpToolFactory =>
   questionnaireTool(
     { projectId: room.projectId, requirementId: room.requirementId, firstRequirementsOf: null },
-    `Ask the requirement owner several things at once as ONE questionnaire card they answer inline and send once (partial allowed). Shape: ${POST_QUESTIONNAIRE_SHAPE}. Use group "clarification" for vague criteria, "question" for missing facts, "recommendation" (control accept_reject) for a change you propose. A card sent while another still waits is refused QUESTIONNAIRE_ALREADY_OPEN: ask the rest in the next round, or as clarification questions. Their answers arrive as their next message.`,
+    `Ask the requirement owner several things at once as a questionnaire card they answer inline and send once (partial allowed). Shape: ${POST_QUESTIONNAIRE_SHAPE}. Use group "clarification" for vague criteria, "question" for missing facts, "recommendation" (control accept_reject) for a change you propose. Ask what you need, each question with the answer you recommend, in as many cards as you need: a card sent while another still waits stands beside it. Their answers arrive as their next message.`,
   );
 
 /** project-onboarding `requirements`: the BA asks in the first-requirements room through the same card. */
@@ -53,7 +54,7 @@ export const sendFirstRequirementsQuestionnaire = (room: {
 }): ContextScopedMcpToolFactory =>
   questionnaireTool(
     { projectId: room.projectId, requirementId: null, firstRequirementsOf: room.onboardingId },
-    `Ask the person what the approved journeys leave open, as ONE questionnaire card they answer inline and send once (partial allowed), before or after suggesting. Shape: ${POST_QUESTIONNAIRE_SHAPE}. Use group "question" for a missing business fact, "clarification" for a vague journey step, "recommendation" (control accept_reject) for a requirement you would propose. A card sent while another still waits is refused QUESTIONNAIRE_ALREADY_OPEN: ask the rest in the next round. It is due ${QUESTIONNAIRE_DUE_DAYS} days after it is sent; their answers arrive as their next message.`,
+    `Ask the person what the approved journeys leave open, as a questionnaire card they answer inline and send once (partial allowed), before or after suggesting. Shape: ${POST_QUESTIONNAIRE_SHAPE}. Use group "question" for a missing business fact, "clarification" for a vague journey step, "recommendation" (control accept_reject) for a requirement you would propose. Ask what you need, each question with the answer you recommend, in as many cards as you need: a card sent while another still waits stands beside it. Each card is due ${QUESTIONNAIRE_DUE_DAYS} days after it is sent; their answers arrive as their next message.`,
   );
 
 interface QuestionnaireThread {

@@ -38548,9 +38548,11 @@
                       ],
                       "type": "object"
                     },
-                    "maxItems": 15,
                     "minItems": 1,
-                    "type": "array"
+                    "type": "array",
+                    "x-forge-refinements": [
+                      "a card's payload is at most 1048576 bytes of JSON; post what does not fit as a card of its own"
+                    ]
                   },
                   "title": {
                     "maxLength": 120,
@@ -39667,8 +39669,10 @@
                       ],
                       "type": "object"
                     },
-                    "maxItems": 15,
-                    "type": "array"
+                    "type": "array",
+                    "x-forge-refinements": [
+                      "a card's payload is at most 1048576 bytes of JSON; post what does not fit as a card of its own"
+                    ]
                   },
                   "skip": {
                     "type": "boolean"

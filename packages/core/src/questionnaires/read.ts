@@ -214,20 +214,6 @@ export async function questionnairesAs(
   return { ok: true, value: out };
 }
 
-export async function openBatchOf(tx: Executor, conversationId: string) {
-  const [row] = await tx
-    .select()
-    .from(questionnaireBatches)
-    .where(
-      and(
-        eq(questionnaireBatches.conversationId, conversationId),
-        inArray(questionnaireBatches.status, ['open', 'skipped']),
-      ),
-    )
-    .limit(1);
-  return row ?? null;
-}
-
 /**
  * What a new batch in this thread is checked against: item ids answered since `since` (the
  * series), and recommendations rejected at any time.

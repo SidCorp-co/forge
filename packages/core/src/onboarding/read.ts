@@ -16,7 +16,7 @@ import {
   type QuestionnaireItem,
 } from '@forge/contracts/onboarding';
 import type { ActorAgency } from '@forge/contracts/permissions';
-import { and, count, desc, eq, gte, inArray, type SQL, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, inArray, type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { jobs } from '../db/schema.js';
 import { conversationMessages } from '../db/schema-conversations.js';
@@ -254,15 +254,17 @@ const phaseOf = (payload: unknown): OnboardingJobPhase => {
 };
 
 /**
- * The thread's answerable batch with its due rule (project-onboarding `expect-answers`,
- * `unanswered`): one read for the onboarding thread and the first-requirements room.
+ * The thread's answerable cards with their due rule (project-onboarding `expect-answers`,
+ * `unanswered`): one read for the onboarding thread and the first-requirements room. A thread may
+ * hold several cards open at once (ISS-904), so `open` counts the open items of every one, and the
+ * card read for id, round and due is the oldest still holding an open item (else the oldest).
  */
 export async function openBatchView(
   tx: Executor,
   arm: SQL,
   now: Date,
 ): Promise<OpenQuestionnaireBatch | null> {
-  const [batch] = await tx
+  const batches = await tx
     .select({
       id: questionnaireBatches.id,
       round: questionnaireBatches.round,
@@ -270,16 +272,28 @@ export async function openBatchView(
     })
     .from(questionnaireBatches)
     .where(and(arm, inArray(questionnaireBatches.status, [...ANSWERABLE])))
-    .limit(1);
-  if (!batch) return null;
-  const [items] = await tx
-    .select({ n: count() })
+    .orderBy(asc(questionnaireBatches.createdAt), asc(questionnaireBatches.id));
+  const oldest = batches[0];
+  if (!oldest) return null;
+  const counts = await tx
+    .select({ batchId: agentQuestions.batchId, n: count() })
     .from(agentQuestions)
-    .where(and(eq(agentQuestions.batchId, batch.id), eq(agentQuestions.status, 'open')));
+    .where(
+      and(
+        inArray(
+          agentQuestions.batchId,
+          batches.map((b) => b.id),
+        ),
+        eq(agentQuestions.status, 'open'),
+      ),
+    )
+    .groupBy(agentQuestions.batchId);
+  const openIn = new Map(counts.map((c) => [c.batchId, Number(c.n)]));
+  const batch = batches.find((b) => (openIn.get(b.id) ?? 0) > 0) ?? oldest;
   return {
     id: batch.id,
     round: batch.round,
-    open: Number(items?.n ?? 0),
+    open: [...openIn.values()].reduce((sum, n) => sum + n, 0),
     postedAt: batch.createdAt.toISOString(),
     ...batchDue(batch.createdAt, now),
   };

@@ -20,13 +20,8 @@ import { type Refusal, RefusalError } from '../lib/refusal.js';
 import { type KernelActor, transition } from '../lifecycle/index.js';
 import { insertBatchQuestions } from '../questions/index.js';
 import { announceConversationChange, appendMessagesIn, handleForProject } from './ports.js';
-import { openBatchOf, priorAnswers, type StoredItem } from './read.js';
-import {
-  alreadyOpenRefusal,
-  itemRefusals,
-  questionnaireArmRefusal,
-  repeatRefusals,
-} from './rules.js';
+import { priorAnswers, type StoredItem } from './read.js';
+import { itemRefusals, questionnaireArmRefusal, repeatRefusals } from './rules.js';
 import { questionnaireText } from './text.js';
 
 export function questionnaireKernelActor(actor: QuestionnaireActor): KernelActor {
@@ -123,15 +118,13 @@ interface PostInput {
   items: readonly QuestionnaireItem[];
 }
 
-/** Why this batch may not be posted now: a malformed item, a batch already open, an item answered
- *  or rejected in this series, or a requirement already holding an open ask. */
+/** Why this batch may not be posted now: a malformed item, or an item answered or rejected in this
+ *  series. A card still open in the thread is no reason: the new one stands beside it (ISS-904). */
 async function postRefusals(tx: TxOnly, input: PostInput): Promise<Refusal[]> {
   const thread = questionnaireArmRefusal(input);
   if (thread) return [thread];
   const shape = itemRefusals(input.items);
   if (shape.length) return shape;
-  const busy = alreadyOpenRefusal(await openBatchOf(tx, input.conversationId));
-  if (busy) return [busy];
   const prior = await priorAnswers(tx, input.conversationId, input.seriesSince);
   return repeatRefusals(input.items, prior.answered, prior.rejected);
 }
