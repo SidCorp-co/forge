@@ -41,7 +41,12 @@ import {
 let w: EcosystemWorld;
 let projectId: string;
 let ownerId: string;
-let say: (who: 'owner' | 'master' | 'box', method: string, path: string, body?: Doc) => Promise<Reply>;
+let say: (
+  who: 'owner' | 'master' | 'box',
+  method: string,
+  path: string,
+  body?: Doc,
+) => Promise<Reply>;
 
 beforeAll(async () => {
   w = await openWorld();
@@ -78,8 +83,22 @@ beforeEach(async () => {
 });
 
 const options = [
-  { id: 'allow', label: 'Allow', authority: 'admin', bindsTo: 'this_call', executedBy: 'agent', fingerprint: 'permission-prompt:p-1' },
-  { id: 'deny', label: 'Deny', authority: 'writer', bindsTo: 'this_call', executedBy: 'agent', fingerprint: 'permission-prompt:p-1' },
+  {
+    id: 'allow',
+    label: 'Allow',
+    authority: 'admin',
+    bindsTo: 'this_call',
+    executedBy: 'agent',
+    fingerprint: 'permission-prompt:p-1',
+  },
+  {
+    id: 'deny',
+    label: 'Deny',
+    authority: 'writer',
+    bindsTo: 'this_call',
+    executedBy: 'agent',
+    fingerprint: 'permission-prompt:p-1',
+  },
 ];
 
 /** One relayed prompt, as `forge-runner hook --relay` asks it, and the waiter it registers. */
@@ -124,7 +143,12 @@ describe('a relayed permission prompt is a person’s question', () => {
     expect(row).toEqual({
       blocker_kind: 'human',
       issue_id: null,
-      origin: { kind: 'permission_prompt', session: 'forge-master-forge', tool: 'Bash', promptId: 'p-1' },
+      origin: {
+        kind: 'permission_prompt',
+        session: 'forge-master-forge',
+        tool: 'Bash',
+        promptId: 'p-1',
+      },
     });
     await settleOutbox();
     expect((await bell('question_asked')).map((n) => n.title)).toContainEqual(
@@ -220,7 +244,9 @@ describe('a dialog the box answered on a session itself', () => {
     );
     await settleOutbox();
     expect((await bell('session_prompt_answered')).map((n) => n.title)).toContainEqual(
-      expect.stringMatching(/^forge-master-forge stood on «New MCP server found.*Escape, the safe answer/),
+      expect.stringMatching(
+        /^forge-master-forge stood on «New MCP server found.*Escape, the safe answer/,
+      ),
     );
   });
 

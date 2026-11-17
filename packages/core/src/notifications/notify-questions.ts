@@ -17,8 +17,8 @@
 // call was denied with nobody having answered, and that is never silent.
 
 import { questionAskedResolutionKey } from '@forge/contracts/notifications';
-import { PERMISSION_RELAY_TIMEOUT } from '@forge/contracts/questions';
 import type { OutboxEventPayload as Payload } from '@forge/contracts/outbox-events';
+import { PERMISSION_RELAY_TIMEOUT } from '@forge/contracts/questions';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';
@@ -141,7 +141,11 @@ export async function tellRelayTimedOut(questionId: string): Promise<'told' | 'n
   if (!q?.prompt_session || q.status !== 'void' || q.ended_reason !== PERMISSION_RELAY_TIMEOUT) {
     return 'nobody';
   }
-  return tellAdmins(q, 'permission_relay_timeout', clipped(q.void_reason ?? PERMISSION_RELAY_TIMEOUT));
+  return tellAdmins(
+    q,
+    'permission_relay_timeout',
+    clipped(q.void_reason ?? PERMISSION_RELAY_TIMEOUT),
+  );
 }
 
 export function registerQuestionNotifications(): void {

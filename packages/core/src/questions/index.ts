@@ -52,8 +52,8 @@ export {
   placeOpenQuestionsOnItem,
 } from './on-item.js';
 export { decisionOwedBy } from './owed.js';
-export { expirePermissionPrompt } from './permission-prompt.js';
 export { type AgentOwedQuestion, questionsOwedToAgents } from './owed-to-agents.js';
+export { expirePermissionPrompt } from './permission-prompt.js';
 export { provideQuestionPorts, type StewardDecisionAnswer } from './ports.js';
 export {
   answerAs,

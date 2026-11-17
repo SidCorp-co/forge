@@ -106,7 +106,11 @@ const sessionPromptSchema = z.strictObject({
 const expireBodySchema = z.strictObject({
   runId: z.string().min(1),
   projectId: z.string().min(1),
-  waitedSeconds: z.number().int().min(0).max(24 * 60 * 60),
+  waitedSeconds: z
+    .number()
+    .int()
+    .min(0)
+    .max(24 * 60 * 60),
 });
 
 import { type ResolvedLeaseKey, readDeviceIssueLease, resolveLeaseKey } from '../issues/index.js';

@@ -388,7 +388,10 @@ export async function reaskSupersededDesignQuestions(
 }
 
 async function insertQuestion(executor: QuestionExecutor, input: AskInput, about?: QuestionAbout) {
-  if (input.origin && (input.issueId || (input.origin.kind === 'channel_gate' && input.agentSessionId))) {
+  if (
+    input.origin &&
+    (input.issueId || (input.origin.kind === 'channel_gate' && input.agentSessionId))
+  ) {
     throw new Error(
       `questions: a ${input.origin.kind} question belongs to no issue${input.origin.kind === 'channel_gate' ? ' and no session' : ''}, and this one names one`,
     );
