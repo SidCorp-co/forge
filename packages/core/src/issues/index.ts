@@ -171,6 +171,7 @@ export { claimIssuePrefix } from './issue-prefix-service.js';
 export { JUDGING_RUN_ROLES, judgesOnly } from './issue-resting.js';
 export {
   ISSUE_PROJECT,
+  issueExists,
   issueIdOfKey,
   issueRouteIdParamSchema,
   isUuid,

@@ -4,24 +4,32 @@ import { isPatLike } from '../credentials/pat-format.js';
 import { tokenFence } from '../credentials/token-fence.js';
 import { refuser } from '../lib/refusal.js';
 import { type AuthVars, requireUserOrDevice } from './auth.js';
-import { parseBearerHeader } from './bearer.js';
+import { bearerOfHeader, parseBearerHeader } from './bearer.js';
 import { type NamedProject, refuseOutsideFence } from './pat-fence.js';
 
 /**
  * A page holds a project's slug and an issue's display key off its URL before it holds either uuid.
  * Every project-scoped route accepts the slug in place of the id (`/api/projects/<slug>/…` and
- * `?projectId=<slug>`), and every issue route the display key (`/api/issues/ISS-12/…?projectId=…`):
- * the reference is resolved once, here, and the request is routed as if it had named the uuid, so
- * the route's own gate and access check run exactly as they do for the id. A reference that names
- * nothing is refused by name, after the caller is authenticated, never routed as a guess.
+ * `?projectId=<slug>`), and every issue route the display key (`/api/issues/ISS-12/…?projectId=…`,
+ * or with no `?projectId=` on a token fenced to one project, ISS-1272): the reference is resolved
+ * once, here, and the request is routed as if it had named the uuid, so the route's own gate and
+ * access check run exactly as they do for the id. A reference that names nothing, a key with no
+ * project to name one in and an issue uuid no row carries are refused by name, after the caller is
+ * authenticated, never routed as a guess nor left to a route's bare `Invalid UUID`.
  */
 export interface RouteRefSources {
   projectIdOfSlug(slug: string): Promise<string | null>;
   /** The slug of each of these projects that exists, for a refusal naming projects by both. */
   projectSlugsOf(projectIds: readonly string[]): Promise<Map<string, string>>;
   issueIdOfKey(key: string, projectId: string): Promise<string | null>;
-  /** Throws the named refusal for a key `issueIdOfKey` could not resolve, once `userId` is shown to read the project. */
-  refuseIssueKey(key: string, projectId: string, userId: string | undefined): Promise<void>;
+  /** Whether an issue carries this uuid. */
+  issueExists(issueId: string): Promise<boolean>;
+  /**
+   * Throws the named refusal for an issue reference that resolved to nothing: a key `issueIdOfKey`
+   * could not resolve in `projectId` (once `userId` is shown to read it), or, with no project, a key
+   * there was no project to look up in, a uuid no issue carries, or a reference of neither shape.
+   */
+  refuseIssueKey(key: string, projectId: string | null, userId: string | undefined): Promise<void>;
 }
 
 let sources: RouteRefSources | null = null;
@@ -54,7 +62,7 @@ const UNRESOLVED_HEADER = 'x-forge-unresolved-ref';
 
 type Unresolved =
   | { kind: 'project'; slug: string; by: 'path' | 'query' }
-  | { kind: 'issue'; key: string; projectId: string };
+  | { kind: 'issue'; key: string; projectId: string | null };
 
 const lookupMs = new WeakMap<Request, number>();
 
@@ -67,23 +75,45 @@ const refuse = refuser('PROJECT_SLUG_UNKNOWN');
 
 type Dispatch = Hono['fetch'];
 
-let routed: Hono<never> | null = null;
-let heads: ReadonlySet<string> | null = null;
+type Resource = 'projects' | 'issues';
 
-/** The first segments under `/api/projects/` that a route spells literally, read from the router. */
-function literalProjectHeads(): ReadonlySet<string> {
+let routed: Hono<never> | null = null;
+let heads: Map<Resource, ReadonlySet<string>> = new Map();
+
+/** The first segments under `/api/<resource>/` that a route spells literally, read from the router. */
+function literalHeads(resource: Resource): ReadonlySet<string> {
   if (!routed) {
     throw new Error(
-      'route refs: no app is routed yet, so which slugs a project route can address is unknown; the process entry wraps app.fetch with resolvingRouteRefs before it serves',
+      `route refs: no app is routed yet, so which references a ${resource} route can address is unknown; the process entry wraps app.fetch with resolvingRouteRefs before it serves`,
     );
   }
-  heads ??= new Set(
-    routed.routes
-      .map((r) => r.path.split('/'))
-      .filter((s) => s[1] === 'api' && s[2] === 'projects' && s[3] && !/[:*]/.test(s[3]))
-      .map((s) => s[3] as string),
-  );
-  return heads;
+  const app = routed;
+  let found = heads.get(resource);
+  if (!found) {
+    found = new Set(
+      app.routes
+        .map((r) => r.path.split('/'))
+        .filter((s) => s[1] === 'api' && s[2] === resource && s[3] && !/[:*]/.test(s[3]))
+        .map((s) => s[3] as string),
+    );
+    heads.set(resource, found);
+  }
+  return found;
+}
+
+/**
+ * The one project the request's bearer token is fenced to, where it is fenced to exactly one: a
+ * display key it names without `?projectId=` can only mean an issue there (ISS-1104), on every
+ * issue route and not only the issue read (ISS-1272). A session, an unfenced token, a token fenced to
+ * several projects and a token that does not verify have none; the route's own gate still
+ * authenticates the request afterwards, so this read decides only where a key is looked up.
+ */
+async function soleFencedProject(req: Request): Promise<string | null> {
+  const bearer = bearerOfHeader(req.headers.get('authorization'));
+  if (bearer.kind !== 'token' || !isPatLike(bearer.token)) return null;
+  const row = (await verifyPat(bearer.token))?.row;
+  const fence = row ? tokenFence(row) : null;
+  return fence?.length === 1 ? (fence[0] ?? null) : null;
 }
 
 /**
@@ -94,7 +124,7 @@ export function unaddressableProjectSlug(slug: string): string | null {
   if (UUID.test(slug)) {
     return `it has a uuid's shape, so /api/projects/${slug} is read as a project id, never as this slug`;
   }
-  if (literalProjectHeads().has(slug)) {
+  if (literalHeads('projects').has(slug)) {
     return `/api/projects/${slug} is a route of its own, so no project route could address this project by its slug`;
   }
   return null;
@@ -108,7 +138,7 @@ export function unaddressableProjectSlug(slug: string): string | null {
  */
 export function resolvingRouteRefs(app: Hono<never>, dispatch: Dispatch): Dispatch {
   routed = app;
-  heads = null;
+  heads = new Map();
   return async (req, env, ctx) => dispatch(await resolveRouteRefs(req), env, ctx);
 }
 
@@ -147,8 +177,13 @@ async function resolveRouteRefs(req: Request): Promise<Request> {
   }
 
   const head = segments[3];
-  if (segments[1] === 'api' && head && !UUID.test(head)) {
-    if (segments[2] === 'projects' && SLUG.test(head) && !literalProjectHeads().has(head)) {
+  if (segments[1] === 'api' && head) {
+    if (
+      segments[2] === 'projects' &&
+      !UUID.test(head) &&
+      SLUG.test(head) &&
+      !literalHeads('projects').has(head)
+    ) {
       const id = await projectIdOf(head);
       if (id) {
         segments[3] = id;
@@ -156,18 +191,15 @@ async function resolveRouteRefs(req: Request): Promise<Request> {
       } else {
         unresolved ??= { kind: 'project', slug: head, by: 'path' };
       }
-    } else if (
-      segments[2] === 'issues' &&
-      ISSUE_KEY.test(head) &&
-      projectId &&
-      UUID.test(projectId)
-    ) {
-      const id = await sourcesOf().issueIdOfKey(head, projectId);
-      if (id) {
-        segments[3] = id;
+    } else if (segments[2] === 'issues' && !literalHeads('issues').has(head)) {
+      const issue = await resolveIssueHead(req, head, projectId);
+      if (issue.id === head) {
+        // the uuid it named, carried by an issue: routed as it came
+      } else if (issue.id) {
+        segments[3] = issue.id;
         changed = true;
       } else {
-        unresolved ??= { kind: 'issue', key: head, projectId };
+        unresolved ??= { kind: 'issue', key: head, projectId: issue.scope };
       }
     }
   }
@@ -182,13 +214,31 @@ async function resolveRouteRefs(req: Request): Promise<Request> {
 }
 
 /**
+ * The issue the first segment under `/api/issues/` names, and the project a key in it was looked up
+ * in: a uuid an issue carries is itself; a key resolves in `?projectId=` (already a uuid here where
+ * it was a slug) or the one project the bearer is fenced to. Anything else names no issue.
+ */
+async function resolveIssueHead(
+  req: Request,
+  head: string,
+  projectId: string | null,
+): Promise<{ id: string | null; scope: string | null }> {
+  if (UUID.test(head)) {
+    return { id: (await sourcesOf().issueExists(head)) ? head : null, scope: null };
+  }
+  if (!ISSUE_KEY.test(head)) return { id: null, scope: null };
+  const scope = projectId && UUID.test(projectId) ? projectId : await soleFencedProject(req);
+  if (!scope) return { id: null, scope: null };
+  return { id: await sourcesOf().issueIdOfKey(head, scope), scope };
+}
+
+/**
  * The project an unresolved reference names, as the fence reads it: the slug where it was one, the
  * project id the issue key was looked up under where it was a key.
  */
-function namedBy(unresolved: Unresolved): NamedProject {
-  return unresolved.kind === 'project'
-    ? { by: unresolved.by, ref: unresolved.slug }
-    : { by: 'query', ref: unresolved.projectId };
+function namedBy(unresolved: Unresolved): NamedProject | null {
+  if (unresolved.kind === 'project') return { by: unresolved.by, ref: unresolved.slug };
+  return unresolved.projectId ? { by: 'query', ref: unresolved.projectId } : null;
 }
 
 /**
@@ -199,6 +249,8 @@ function namedBy(unresolved: Unresolved): NamedProject {
  * token was fenced on the slug before it resolved (to nothing), so the fence is read off the bearer.
  */
 async function refuseUnresolvedOutsideFence(c: Context, unresolved: Unresolved): Promise<void> {
+  const named = namedBy(unresolved);
+  if (!named) return;
   const bearer = parseBearerHeader(c);
   if (bearer.kind !== 'token' || !isPatLike(bearer.token)) return;
   const row = (await verifyPat(bearer.token))?.row;
@@ -206,7 +258,7 @@ async function refuseUnresolvedOutsideFence(c: Context, unresolved: Unresolved):
   await refuseOutsideFence({
     tokenId: row.id,
     fence: tokenFence(row),
-    named: namedBy(unresolved),
+    named,
     method: c.req.method,
     path: c.req.path,
   });

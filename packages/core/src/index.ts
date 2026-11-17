@@ -57,6 +57,7 @@ import {
   claimIssuePrefix,
   explainNoIssue,
   heldIssuePrefixes,
+  issueExists,
   issueIdOfKey,
   issueKeysAndTitles,
   issueTaskOf,
@@ -195,6 +196,7 @@ provideRouteRefSources({
   projectIdOfSlug: findProjectIdBySlug,
   projectSlugsOf: findProjectSlugs,
   issueIdOfKey,
+  issueExists,
   refuseIssueKey: refuseUnresolvedIssueKey,
 });
 provideVisibleProjects(findVisibleProjectIds);

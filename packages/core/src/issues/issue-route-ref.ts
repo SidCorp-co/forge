@@ -142,12 +142,35 @@ export async function issueIdOfKey(rawId: string, projectId: string): Promise<st
   }
 }
 
-/** Why a display key named no issue, said only to a caller shown to read the project. */
+/** Whether an issue carries this uuid, for the router to refuse one none does by name. */
+export async function issueExists(issueId: string): Promise<boolean> {
+  return (await issueScopeOf(issueId)) !== null;
+}
+
+const noIssueOfUuidMessage = (raw: string): string =>
+  `\`${raw}\` names no issue: no issue carries this uuid. An issue route takes the issue's uuid or ` +
+  'its display key, like `ISS-42` (with `?projectId=<project uuid>` unless your token is fenced ' +
+  'to one project).';
+
+/**
+ * Why an issue route's reference named no issue (ISS-1272): a key that names none in `projectId`,
+ * said only to a caller shown to read the project; with no project, a key there was no project to
+ * look it up in, a uuid no issue carries, or a reference of neither shape.
+ */
 export async function refuseUnresolvedIssueKey(
   rawId: string,
-  projectId: string,
+  projectId: string | null,
   userId: string | undefined,
 ): Promise<void> {
-  requireHeld(await loadProjectAccess(projectId, userId), 'project.read');
-  await resolveIssueKeyInProject(rawId, projectId);
+  if (projectId) {
+    requireHeld(await loadProjectAccess(projectId, userId), 'project.read');
+    await resolveIssueKeyInProject(rawId, projectId);
+    return;
+  }
+  if (isUuid(rawId)) throw notFound(noIssueOfUuidMessage(rawId));
+  const shapeOnly = parseIssueRef(rawId, []);
+  if (!shapeOnly.ok && shapeOnly.code !== 'FOREIGN_PREFIX') {
+    throw badRequest(malformedRefMessage(shapeOnly));
+  }
+  throw badRequest(needsProjectScopeMessage(rawId));
 }

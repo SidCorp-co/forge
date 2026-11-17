@@ -8,7 +8,11 @@ const BEARER = /^Bearer\s+(.+)$/i;
 type BearerHeader = { kind: 'absent' } | { kind: 'malformed' } | { kind: 'token'; token: string };
 
 function rawBearerHeader(c: Context): BearerHeader {
-  const header = c.req.header('authorization') ?? c.req.header('Authorization');
+  return bearerOfHeader(c.req.header('authorization') ?? c.req.header('Authorization'));
+}
+
+/** The bearer an `Authorization` header's value carries, for a read made before Hono routes. */
+export function bearerOfHeader(header: string | null | undefined): BearerHeader {
   if (!header) return { kind: 'absent' };
   const token = BEARER.exec(header)?.[1]?.trim();
   return token ? { kind: 'token', token } : { kind: 'malformed' };
