@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.704] - 2026-11-17
+
+A master's queued run declaration binds the next free slot
+
+### Fixed
+
+- **A master's queued run gets the next free slot.** The steward no longer starts a job on a slot a master's run declaration waits for, so the run binds when a slot frees instead of ending unbound.
+
 ## [0.4.0-dev.703] - 2026-11-16
 
 Agents ask feedback reporters every question they need
