@@ -30,6 +30,13 @@ const COUNTS: readonly RegExp[] = [
     String.raw`\b(?:at most|up to|no more than)\s+${NUMBER}\s+(?:of (?:your |the )?)?(?:open |pending )?${ASKED}`,
     'i',
   ),
+  // ISS-904 c1 on dev.706: 'A batch holds up to ${QUESTIONNAIRE_MAX_ITEMS} items' slipped the line
+  // above, a card's questions counted by the card's own word for them (a verdict's evidence items
+  // are no questions, so `items` counts only beside a card)
+  new RegExp(
+    String.raw`\b(?:card|batch|questionnaire)\b[^.\n]{0,30}\b(?:at most|up to|no more than)\s+${NUMBER}\s+items?\b`,
+    'i',
+  ),
   /\bone\s+(?:question|clarification|card|questionnaire card|batch)\b[^.\n]{0,40}\bat a time\b/i,
   // ISS-904 c1 on dev.703: 'Ask one short question at a time' (the widget) and 'ask the person one
   // short question' (the room agent's decide card and support.decide) slipped the line above
@@ -39,7 +46,9 @@ const COUNTS: readonly RegExp[] = [
   /\b(?:at most )?one is open (?:at a time|per)\b/i,
   // ISS-904 c1 on dev.701: the clarify tool still said 'Refused while one is open on the item'
   /\b(?:refused|refuses|wait)\b[^.\n]{0,20}\bwhile (?:one|a question|a clarification) is (?:open|pending|unanswered)\b/i,
-  /\b(?:STEWARD_ASK_LIMIT|STEWARD_OPEN_ASKS_MAX|FEEDBACK_CLARIFICATION_ALREADY_OPEN|CLARIFICATION_ALREADY_OPEN|ONBOARDING_QUESTIONS_OVER_CAP|ONBOARDING_MAX_QUESTIONS|QUESTIONNAIRE_ROUNDS_EXHAUSTED|QUESTIONNAIRE_MAX_ROUNDS|INTAKE_QUESTIONS_MAX)\b/,
+  // ISS-904 c1 on dev.706: 'A card sent while another still waits is refused' (the BA's card tools)
+  /\bwhile another\b[^.\n]{0,40}\b(?:is )?refused\b/i,
+  /\b(?:STEWARD_ASK_LIMIT|STEWARD_OPEN_ASKS_MAX|FEEDBACK_CLARIFICATION_ALREADY_OPEN|CLARIFICATION_ALREADY_OPEN|ONBOARDING_QUESTIONS_OVER_CAP|ONBOARDING_MAX_QUESTIONS|QUESTIONNAIRE_ROUNDS_EXHAUSTED|QUESTIONNAIRE_MAX_ROUNDS|QUESTIONNAIRE_MAX_ITEMS|QUESTIONNAIRE_ALREADY_OPEN|INTAKE_QUESTIONS_MAX)\b/,
 ];
 
 const countsIn = (text: string): string[] =>
@@ -119,11 +128,17 @@ describe('no question count returns to what asks a person (ISS-904)', () => {
       'One card is open on a requirement at a time',
       `This is round 2 of at most $${'{'}QUESTIONNAIRE_MAX_ROUNDS}.`,
       'up to 3 questions a round',
+      `- A batch holds up to $${'{'}QUESTIONNAIRE_MAX_ITEMS} items, assumptions included; what does not fit goes in the next round.`,
+      'A batch holds up to 15 items, assumptions included',
+      'A card sent while another still waits is refused: ask the rest in the next round.',
+      'refused QUESTIONNAIRE_ALREADY_OPEN',
     ]) {
       expect(countsIn(planted), planted).toHaveLength(1);
     }
     expect(countsIn('each with a recommended answer; options are 2-4 of {"id", "label"}')).toEqual(
       [],
     );
+    // a bound on a card's payload is no count of what it asks
+    expect(countsIn('(at least one item; 1048576 bytes of JSON at most)')).toEqual([]);
   });
 });
