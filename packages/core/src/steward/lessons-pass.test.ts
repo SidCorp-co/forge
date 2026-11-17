@@ -103,6 +103,7 @@ describe('the grouping prompt names every field its answer is read by (ISS-867)'
         },
       ],
       lessons: [],
+      modules: [],
     });
     for (const field of [
       'rejections',
@@ -120,9 +121,38 @@ describe('the grouping prompt names every field its answer is read by (ISS-867)'
       'areaId',
       'itemKind',
       'supersedes',
+      'module',
     ]) {
       expect(prompt, field).toContain(`\`${field}\``);
     }
     for (const kind of LESSON_ITEM_KINDS) expect(prompt).toContain(kind);
+  });
+});
+
+// ISS-1256 c9: each lesson the grouping drafted was filed with no module, so the map's Unplaced row
+// rose with every pass. The grouping is handed the project's modules and names the one per lesson.
+describe('the grouping places each lesson it drafts in a business module (ISS-1256)', () => {
+  const ask = (modules: { slug: string; name: string; description: string | null }[]) =>
+    groupingPrompt({ corrections: [], lessons: [], modules });
+
+  it("lists the project's modules by slug, and asks a module or null per proposal", () => {
+    const prompt = ask([
+      { slug: 'execution', name: 'Execution', description: 'agents, sessions, runs' },
+      { slug: 'platform', name: 'Platform', description: null },
+    ]);
+    expect(prompt).toContain('Every proposal names its `module`');
+    expect(prompt).toContain('or null where none fits');
+    expect(prompt).toContain('- execution: Execution — agents, sessions, runs');
+    expect(prompt).toContain('- platform: Platform');
+  });
+
+  it('says every module is null where the project defines none (boundary)', () => {
+    expect(ask([])).toContain('(none: every `module` is null)');
+  });
+
+  it("reads a proposal's module, and one that leaves it out as unplaced", () => {
+    const base = { sentence: 's', scope: 'project', corrections: [uuid(1), uuid(2)] };
+    const read = groupingSchema.parse({ proposals: [{ ...base, module: 'execution' }, base] });
+    expect(read.proposals.map((p) => p.module)).toEqual(['execution', undefined]);
   });
 });

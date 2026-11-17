@@ -21,6 +21,7 @@ import {
 } from '@forge/contracts/lessons';
 import { z } from 'zod';
 import { callFastModelObject } from '../integrations/llm/index.js';
+import { moduleBySlug, moduleMapLines } from '../labels/index.js';
 import {
   type GatherCorrection,
   type GatherLesson,
@@ -109,6 +110,8 @@ export const groupingSchema = z.object({
         itemKind: z.enum(LESSON_ITEM_KINDS).nullish(),
         corrections: z.array(z.string()),
         supersedes: z.number().int().nullish(),
+        // the business module the lesson is about, by slug (ISS-1256); null where none fits
+        module: z.string().nullish(),
       }),
     )
     .default([]),
@@ -116,16 +119,26 @@ export const groupingSchema = z.object({
 export type LessonGrouping = z.infer<typeof groupingSchema>;
 
 /** How the pass groups: the fast model through the gateway, or a test's own answer. */
-export type Grouper = (
-  projectId: string,
-  input: { corrections: GatherCorrection[]; lessons: GatherLesson[] },
-) => Promise<LessonGrouping | null>;
+/** A business module as the grouping reads it, to place each lesson it proposes (ISS-1256). */
+export interface GroupingModule {
+  slug: string;
+  name: string;
+  description: string | null;
+}
+
+export interface GroupingInput {
+  corrections: GatherCorrection[];
+  lessons: GatherLesson[];
+  modules: readonly GroupingModule[];
+}
+
+export type Grouper = (projectId: string, input: GroupingInput) => Promise<LessonGrouping | null>;
+
+const moduleLine = (m: GroupingModule) =>
+  `- ${m.slug}: ${m.name}${m.description ? ` — ${m.description}` : ''}`;
 
 export function groupingPrompt(
-  input: {
-    corrections: GatherCorrection[];
-    lessons: GatherLesson[];
-  },
+  input: GroupingInput,
   cards: readonly { id: string; purpose: string }[] = [],
 ): string {
   return [
@@ -136,6 +149,7 @@ export function groupingPrompt(
     `Every proposal says what it is about in ${ABOUT_WORDS}`,
     `Every proposal names its \`anchor\`, what the lesson is about, so the change that moves it retires it: ${LESSON_ANCHOR_SHAPE}. Take it from the corrections' items and threads; a card anchor names only one of the cards below, never an item's id; a group whose anchor they do not show is left for a correction that shows it.`,
     cardChoices(cards),
+    `Every proposal names its \`module\`: the slug of the business module below that the lesson is about, as its corrections' items and threads show, or null where none fits, and the lesson waits Unplaced for an agent to place.\nModules:\n${input.modules.map(moduleLine).join('\n') || '(none: every \`module\` is null)'}`,
     'Corrections on different items make the same point when one general mistake lies behind them: the same rule missed, the same kind of check skipped, the same wording or habit corrected. Say that general rule, not the item.',
     'Leave a correction alone when nothing else makes its point; it waits for a second one.',
     "Before you draft from a correction that carries its thread, read the thread: the person's words answer the posts before them, so the lesson is about what those posts are about (a product's own messages, a record, a step), never by default about the assistant's own reply.",
@@ -182,6 +196,7 @@ async function proposeGroups(
 ) {
   let proposed = 0;
   let dropped = 0;
+  let placed = 0;
   for (const p of answer.proposals) {
     const corrections = [...new Set(p.corrections.filter((c) => ids.has(c)))];
     const scope = scopeOf(p);
@@ -213,9 +228,11 @@ async function proposeGroups(
       continue;
     }
     try {
+      const moduleId = await moduleIdOf(projectId, p.module);
       await proposeLesson({
         projectId,
         actor: { userId: stewardId, agency: 'agent' },
+        ...(moduleId ? { moduleId } : {}),
         body: {
           sentence: p.sentence,
           scope,
@@ -228,13 +245,32 @@ async function proposeGroups(
       });
       for (const c of corrections) ids.delete(c);
       proposed += 1;
+      if (moduleId) placed += 1;
     } catch (err) {
       if (!isRefusal(err)) throw err;
       dropped += 1;
       logger.warn({ projectId, err: err.message }, 'steward: a lesson proposal was refused');
     }
   }
-  return { proposed, dropped };
+  return { proposed, dropped, placed };
+}
+
+/**
+ * The module the grouping placed a proposal in, by its slug; one the project has no module for is
+ * said by name and the lesson is proposed Unplaced, never dropped for it and never placed elsewhere.
+ */
+async function moduleIdOf(projectId: string, slug: string | null | undefined) {
+  if (!slug?.trim()) return undefined;
+  try {
+    return (await moduleBySlug(projectId, slug.trim())).id;
+  } catch (err) {
+    if (!isRefusal(err)) throw err;
+    logger.warn(
+      { projectId, module: slug, err: err.message },
+      'steward: a proposed lesson names no module of this project; it is proposed unplaced',
+    );
+    return undefined;
+  }
 }
 
 const retireWhy = (due: RetirementDue) =>
@@ -273,6 +309,8 @@ export interface LessonsPassTally extends SettleTally, LifecycleTally {
   proposed: number;
   /** Groups the model proposed that did not become a lesson: too few open corrections, no scope, or refused. */
   dropped: number;
+  /** Proposals placed in the business module their grouping named (ISS-1256); the rest sit Unplaced. */
+  placed: number;
   /** Projects whose corrections the model gave no readable grouping for (logged with why). */
   ungrouped: number;
   retired: number;
@@ -301,8 +339,14 @@ interface Judges {
 async function passProject(projectId: string, now: Date, judges: Judges, tally: LessonsPassTally) {
   const { group } = judges;
   const stewardId = await stewardAccountOf(projectId);
-  const input = await gatherInput(projectId);
-  if (input.corrections.length > 0) {
+  const gathered = await gatherInput(projectId);
+  if (gathered.corrections.length > 0) {
+    const modules = (await moduleMapLines(projectId)).map(({ slug, name, description }) => ({
+      slug,
+      name,
+      description,
+    }));
+    const input = { ...gathered, modules };
     const answer = await group(projectId, input);
     if (answer) {
       const ids = new Set(input.corrections.map((c) => c.id));
@@ -319,6 +363,7 @@ async function passProject(projectId: string, now: Date, judges: Judges, tally: 
       const groups = await proposeGroups(projectId, stewardId, ids, answer);
       tally.proposed += groups.proposed;
       tally.dropped += groups.dropped;
+      tally.placed += groups.placed;
     } else {
       tally.ungrouped += 1;
     }
@@ -371,6 +416,7 @@ export async function runLessonsPass(
     linked: 0,
     proposed: 0,
     dropped: 0,
+    placed: 0,
     ungrouped: 0,
     approved: 0,
     rejected: 0,

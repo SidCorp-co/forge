@@ -152,6 +152,8 @@ export async function proposeLesson(input: {
   projectId: string;
   actor: LessonActor;
   body: ProposeLessonRequest;
+  /** The business module its drafter placed it in (ISS-1256), resolved by the module map; absent, it sits Unplaced. */
+  moduleId?: string | undefined;
 }): Promise<LessonMoved> {
   const { projectId, actor, body } = input;
   await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
@@ -198,6 +200,7 @@ export async function proposeLesson(input: {
         proposedBy: actor.userId,
         proposedAgency: actor.agency,
         supersedesId: supersedes?.id ?? null,
+        moduleId: input.moduleId ?? null,
       })
       .returning({ id: lessons.id });
     if (!row) throw new Error('lessons: a proposal inserted no row');
