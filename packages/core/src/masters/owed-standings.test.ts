@@ -6,6 +6,7 @@ import type { StandingActOwed } from './ports.js';
 // ISS-1282 (FB-710): the line ended "record why it waits as a decision on the item" and named no
 // door, so a master wrote a requirement's wait on the issue delivering it, where nothing reads it,
 // and the requirement was raised again on every pass. Each kind it lists is named with its own door.
+// @direct-test-of packages/core/src/masters/decision-doors.ts
 
 const act = (kind: StandingSubjectKind, key: string): StandingActOwed => ({
   subject: { kind, id: `${key}-id`, key },

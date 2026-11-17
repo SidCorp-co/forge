@@ -73,13 +73,13 @@ export { roomSettleWriter } from './room-settle.js';
 export { revisionFields } from './route-kit.js';
 export { linkIssueRefusal } from './rules.js';
 export { proposeRevision, returnRevision, withdrawRevision, writeRevision } from './service.js';
+export { heldByDecision } from './standing-held.js';
 export {
   criterionVerdictOf,
   deliveredAmong,
   requirementStatesOf,
   standingsOf,
 } from './standing-read.js';
-export { heldByDecision } from './standing-held.js';
 export { runnerBoundIn } from './standing-rows.js';
 export { completionStandingsOf } from './standing-share.js';
 export { type StepChange, stepChangeOf } from './step-notice.js';
