@@ -9,6 +9,19 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.714] - 2026-11-17
+
+Module terms and rules recorded, range links complete, masters kept for releases
+
+### Changed
+
+- **Agents now record the terms and rules their work names.** A landing is told what counts and how to write it, a room agent writes a person's own word as a term, and new lessons arrive placed in their module.
+
+### Fixed
+
+- **A change request titled with a key range links every issue in it.** `ISS-206..210` links all five, not only its ends; a range over 50 keys is refused by name, and the answer lists what it linked.
+- **A release waiting on the master keeps a master.** An act a release page gives the master, such as opening the promotion change request, now counts as its work, so it is never retired meanwhile.
+
 ## [0.4.0-dev.713] - 2026-11-17
 
 Agents run as watchable background sessions and learn from lessons they use

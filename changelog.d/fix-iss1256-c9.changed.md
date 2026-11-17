@@ -1,1 +1,0 @@
-**Agents now record the terms and rules their work names.** A landing is told what counts and how to write it, a room agent writes a person's own word as a term, and new lessons arrive placed in their module.
