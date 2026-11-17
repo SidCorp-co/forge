@@ -8,6 +8,9 @@
 //! of their own making, and were refused `TESTING_SECRETS_NOT_A_JOB_CREDENTIAL` each time. The box
 //! knows: the run is the checkout it was declared over, so `self` said from inside that checkout is
 //! sent as the run's id, and the line saying so goes to stderr.
+//!
+//! The same reading names the run every call made from that checkout is made in (`x-forge-run`), so
+//! core counts a run's reads and writes apart from its master's though one credential serves both.
 
 use std::path::{Path, PathBuf};
 
@@ -82,6 +85,38 @@ pub(crate) fn name_self(
             "note: `self` went as written: this box's run ledger could not be read ({e})"
         )),
     }
+}
+
+/// The header a call names its run by (`packages/contracts/src/run-context.ts:RUN_CONTEXT_RUN_HEADER`).
+pub(crate) const RUN_HEADER: &str = "x-forge-run";
+
+/// The run a call made from `here` is made in, so core counts its reads and writes under that run
+/// rather than under the box its master's credential is (ISS-1251): none where the call already names
+/// one (`-H x-forge-run`), else `$FORGE_RUN` as `forge-runner run`'s brief exports it, else the open
+/// run this box declared over the checkout `here` stands in. A subagent building a declared run shares
+/// its master's pane, so only its checkout says which run it is; a ledger that cannot be read names
+/// none, and the call goes as the box's.
+pub(crate) fn run_of_call(
+    headers: &[(String, String)],
+    env_run: Option<&str>,
+    here: &Path,
+    ledger: impl FnOnce() -> Result<Ledger, String>,
+) -> Option<String> {
+    if headers
+        .iter()
+        .any(|(name, _)| name.eq_ignore_ascii_case(RUN_HEADER))
+    {
+        return None;
+    }
+    if let Some(run) = env_run.map(str::trim).filter(|r| !r.is_empty()) {
+        return Some(run.to_string());
+    }
+    let tree = checkout_of(here)?;
+    ledger()
+        .ok()?
+        .open_run_at_tree(&tree)
+        .ok()?
+        .map(|run| run.run_id)
 }
 
 #[cfg(test)]
@@ -190,6 +225,28 @@ mod tests {
             matches!(&unread, SelfNamed::AsWritten(why) if why.contains("could not be read (no such file)")),
             "{unread:?}"
         );
+    }
+
+    /// dev.701: one box credential served forge's master and its runs, so their writes counted as
+    /// one; a call from a declared run's checkout now names the run.
+    #[test]
+    fn a_call_from_a_declared_runs_checkout_names_that_run_unless_it_names_one_itself() {
+        let (root, led) = box_with_a_run("header");
+        const RUN: &str = "53077902-cb16-408f-904c-e0e4b762a1c9";
+        let here = root.0.join("run/src");
+        let named = |headers: &[(String, String)], env: Option<&str>, at: &Path| {
+            run_of_call(headers, env, at, || Ok(reopen(&root)))
+        };
+        assert_eq!(named(&[], None, &here).as_deref(), Some(RUN));
+        assert_eq!(named(&[], Some(" r-env "), &here).as_deref(), Some("r-env"));
+        let own = [("X-Forge-Run".to_string(), "r-own".to_string())];
+        assert_eq!(named(&own, Some("r-env"), &here), None);
+        // the master's checkout, a pool job's nested in the run's, and no checkout at all name none
+        assert_eq!(named(&[], None, &root.0.join("run/nested")), None);
+        assert_eq!(named(&[], None, &root.0), None);
+        assert_eq!(run_of_call(&[], None, &here, || Err("gone".into())), None);
+        led.end_run(RUN, "master", "landed").unwrap();
+        assert_eq!(named(&[], None, &here), None);
     }
 
     #[test]

@@ -199,6 +199,16 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         Ok(r) => r,
         Err(message) => return usage(&message),
     };
+    if let Ok(here) = std::env::current_dir() {
+        let env_run = std::env::var("FORGE_RUN").ok();
+        if let Some(run) = run_self::run_of_call(&req.headers, env_run.as_deref(), &here, || {
+            Ledger::default_path()
+                .and_then(|p| Ledger::open_read_only(&p))
+                .map_err(|e| e.to_string())
+        }) {
+            req.headers.push((run_self::RUN_HEADER.to_string(), run));
+        }
+    }
     if let (Some(Body::Json(json)), Ok(here)) = (&req.body, std::env::current_dir()) {
         match mark_paths::attach(&req.method, &req.path, json, &here) {
             mark_paths::Attach::Sent(with_paths) => req.body = Some(Body::Json(with_paths)),
