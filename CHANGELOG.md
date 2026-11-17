@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.712] - 2026-11-17
+
+A master waiting for a run slot now gets the next free one
+
+### Fixed
+
+- **A master refused a run for want of a slot is now next in line.** Its refused declare waits ten minutes, renewed by each retry, so the next free slot goes to the master, not an automatic job.
+
 ## [0.4.0-dev.711] - 2026-11-17
 
 Technical needs go to each project's thread in the shared operations room
