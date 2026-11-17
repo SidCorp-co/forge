@@ -267,8 +267,11 @@ each one), \`REQUIREMENT_VERDICT_UNCITED\` (a pass, short or fail citing nothing
 \`REQUIREMENT_VERDICT_RELEASE_SHAPE\` (no release version), \`REQUIREMENT_VERDICT_RELEASE_UNUSED\` (a release
 where production reads its commit, or there is none), \`REQUIREMENT_VERDICT_RELEASE_UNKNOWN\` (no release
 recorded as shipped under it) and the \`VERDICT_*\`
-rules every verdict meets. The answer is the criterion's coverage, so you see at once whether it counts:
-only where the live build holds the commit (or the record carries the release), and a short never does. Each verdict reads on its BC in the
+rules every verdict meets. A release judgement counts one identity: the commit the live build serves where
+production declares a source probe, the release the record says is live where it declares none. The answer is
+the criterion's coverage and \`counts\`, so you see at once whether it counts, and a short never does; one at
+another identity is stored, its \`warnings\` \`REQUIREMENT_VERDICT_COUNTS_ON_NO_RELEASE\` naming in
+\`countsAt\` the identity that would. Each verdict reads on its BC in the
 standing's \`coverage[].verdicts\`; \`GET …/verdicts\` lists them, newest first. With no live issue and one
 such verdict the requirement rests on its shipped capability and owes no breakdown: every BC passing, it
 waits on its accept, which its checklist takes; a BC with no counted pass waits on the project's judge;

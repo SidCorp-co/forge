@@ -455,6 +455,13 @@ export interface CoverageRequirementVerdict {
 	awaitsAncestry?: true;
 	/** It counts on the build served before the live one, re-checked (`CoverageIssue.rechecking`). */
 	rechecking?: string;
+	/**
+	 * Set only where its identity is why it counts nowhere (ISS-1284): the identity a verdict at the
+	 * requirement would count at, as the door takes it, the release the record says is live where
+	 * production declares no source probe, else the commit the live build serves; null where none can
+	 * be named yet, its `notCounted` saying what is missing.
+	 */
+	countsAt?: RequirementVerdictIdentity | null;
 	/** It judged an earlier wording of the criterion, so it does not count for this one. */
 	stale: boolean;
 }
@@ -686,7 +693,26 @@ export type RecordRequirementVerdictRequest = z.infer<
 	typeof recordRequirementVerdictRequestSchema
 >;
 export const RECORD_REQUIREMENT_VERDICT_SHAPE =
-	"{ criterion: 'BC-n', verdict: pass | short | fail | skipped, reason?, identity?: { kind: 'commit', sha: <40 hex> } | { kind: 'release', version: <a version the project recorded as shipped, e.g. 0.76.0>, only where production declares no source probe }, evidence?: [link or repository path], run?: <the run recording it, as on an issue verdict> } — a pass, short or fail names what it judged and cites evidence; a skip gives its reason";
+	"{ criterion: 'BC-n', verdict: pass | short | fail | skipped, reason?, identity?: { kind: 'commit', sha: <40 hex> } | { kind: 'release', version: <a version the project recorded as shipped, e.g. 0.76.0>, only where production declares no source probe }, evidence?: [link or repository path], run?: <the run recording it, as on an issue verdict> } — a pass, short or fail names what it judged and cites evidence; a skip gives its reason. A release judgement counts the release the record says is live where production declares no source probe, else the commit the live build serves";
+
+/** What a verdict at the requirement names as judged: a whole commit, or a release version (ISS-900). */
+export type RequirementVerdictIdentity = NonNullable<
+	RecordRequirementVerdictRequest["identity"]
+>;
+
+/**
+ * What the verdicts door says about a verdict it stored and the writer should not miss (ISS-1284,
+ * FB-712): `REQUIREMENT_VERDICT_COUNTS_ON_NO_RELEASE`, a verdict at an identity the release judgement
+ * its standing reads does not count. It stays as evidence; `countsAt` names the identity that would
+ * (`CoverageRequirementVerdict.countsAt`), null where none can be named yet.
+ */
+export interface RequirementVerdictWarning {
+	code: "REQUIREMENT_VERDICT_COUNTS_ON_NO_RELEASE";
+	/** The identity it named, as a JSON pointer into the write. */
+	path: "/identity";
+	detail: string;
+	countsAt: RequirementVerdictIdentity | null;
+}
 
 /** One requirement-level verdict as its list answers it, the criterion it judged by code. */
 export interface RequirementVerdictRow {

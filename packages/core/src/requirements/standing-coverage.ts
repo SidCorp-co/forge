@@ -24,6 +24,7 @@ import {
   atRecordedLanding,
   atRelease,
   type CoverageIdentity,
+  countsAtOf,
   holdsFor,
   identityWords,
   type LandedHolds,
@@ -297,6 +298,7 @@ function requirementVerdictsOn(
         : null,
       // a newer verdict replacing it is a reason of its own, which no ancestry read lifts
       ...(judged && replaced === null ? marksOf(r) : {}),
+      ...countsAtOf(r, live),
       stale,
     };
   });
@@ -397,7 +399,7 @@ function judgesOf(ic: StandingIssueCriterion, judge: VerifiedJudge | null): Stan
 }
 
 /** Whether a judgement on an issue criterion or at the requirement counts toward its criterion. */
-const counted = (l: {
+export const counted = (l: {
   stale: boolean;
   verdict: CoverageIssue['verdict'];
   verdictAt: string | null;

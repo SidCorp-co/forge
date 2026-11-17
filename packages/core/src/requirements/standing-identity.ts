@@ -12,6 +12,7 @@ import {
   releaseHoldsIssue,
   releaseNotHoldingWhy,
 } from '@forge/contracts/released-line';
+import type { RequirementVerdictIdentity } from '@forge/contracts/requirements';
 import {
   landedCommitOf,
   type StorefrontDraftPart,
@@ -125,6 +126,25 @@ export function askedOnRelease(live: LiveBuildHolds | null | undefined): Release
   const line = live?.released;
   if (!line) return null;
   return line.live || !live?.landed || live.byRecord ? line : null;
+}
+
+/**
+ * Where a requirement's own verdict counts nowhere for its identity (ISS-1284, FB-712), the identity
+ * that would, by the record `askedOnRelease` reads, as the hint a coverage reason carries does: the
+ * release the record says is live where production names no commit it serves, the commit the live
+ * build serves where it does, and null where none can be named (no release recorded, the live build
+ * unread, a recorded landing on a project with no production), its reason saying what is missing.
+ * Nothing where it counts or its hold is unread (`Resolved.awaitsAncestry`).
+ */
+export function countsAtOf(
+  r: Resolved | null,
+  live: LiveBuildHolds | null,
+): { countsAt?: RequirementVerdictIdentity | null } {
+  if (!r || r.notCounted === null || r.awaitsAncestry) return {};
+  const line = askedOnRelease(live);
+  if (line) return { countsAt: line.live ? { kind: 'release', version: line.live.version } : null };
+  const sha = live?.landed && !live.promoted ? null : (live?.sha ?? null);
+  return { countsAt: sha ? { kind: 'commit', sha } : null };
 }
 
 /** A landing Forge recorded: the issue whose merge mark names it, its commit, time and target branch. */

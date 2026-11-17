@@ -550,9 +550,9 @@
     "by": "ISS-1251"
   },
   "POST /api/projects/:id/requirements/:req/verdicts": {
-    "hash": "4cd443efabc8fde1",
-    "on": "2026-11-16",
-    "by": "ISS-1251"
+    "hash": "d112255b5a0aba87",
+    "on": "2026-11-17",
+    "by": "ISS-1284"
   },
   "POST /api/projects/:id/shares": {
     "hash": "9870c8f3ff623cb0",

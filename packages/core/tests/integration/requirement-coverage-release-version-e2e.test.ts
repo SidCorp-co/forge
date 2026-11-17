@@ -19,6 +19,7 @@
  * @direct-test-of packages/core/src/requirements/standing-identity.ts
  * @direct-test-of packages/core/src/requirements/standing-proof.ts
  * @direct-test-of packages/core/src/requirements/standing-shipped.ts
+ * @direct-test-of packages/core/src/requirements/verdict-routes.ts
  * @direct-test-of packages/core/src/requirements/verdict-rules.ts
  * @direct-test-of packages/core/src/requirements/verdicts.ts
  */
@@ -157,6 +158,8 @@ describe('a project whose production names no commit counts verdicts on the rele
     for (const bc of ['BC-1', 'BC-2', 'BC-3']) {
       const res = await judge(req, bc, { kind: 'release', version: 'v0.76.0' });
       expect(res.status, JSON.stringify(res.body)).toBe(201);
+      // at the identity the release judgement counts, the answer warns of nothing (ISS-1284)
+      expect(res.body).toMatchObject({ counts: true, warnings: [] });
     }
 
     const read = await readOf(req);
@@ -177,6 +180,18 @@ describe('a project whose production names no commit counts verdicts on the rele
     // what agenfold could send before: a commit, which nothing on this project places
     const res = await judge(req, 'BC-1', { kind: 'commit', sha: F4 });
     expect(res.status, JSON.stringify(res.body)).toBe(201);
+    // stored, and the answer says it counts on no release and names the one that would (ISS-1284, FB-712)
+    expect(res.body).toMatchObject({
+      counts: false,
+      warnings: [
+        {
+          code: 'REQUIREMENT_VERDICT_COUNTS_ON_NO_RELEASE',
+          path: '/identity',
+          countsAt: { kind: 'release', version: '0.76.0' },
+          detail: expect.stringContaining('counts on no release'),
+        },
+      ],
+    });
 
     const read = await readOf(req);
     expect(read.standing.delivery.criteriaCoverage).toEqual({ criteria: 3, passing: 0, judged: 0 });
@@ -241,7 +256,13 @@ describe('a project whose production names no commit counts verdicts on the rele
     const req = await agreedRequirement(BCS.slice(0, 1));
     const refused = await judge(req, 'BC-1', { kind: 'release', version: '0.76.0' });
     expect(refusalsOf(refused.body)[0]?.code).toBe('REQUIREMENT_VERDICT_RELEASE_UNKNOWN');
-    await ok(judge(req, 'BC-1', { kind: 'commit', sha: F4 }));
+    const res = await judge(req, 'BC-1', { kind: 'commit', sha: F4 });
+    // no release can count it yet: the warning names none, its reason the record owed (ISS-1284)
+    expect(res.body).toMatchObject({
+      counts: false,
+      warnings: [{ code: 'REQUIREMENT_VERDICT_COUNTS_ON_NO_RELEASE', countsAt: null }],
+    });
+    expect(JSON.stringify(res.body.warnings)).toContain('record the release production serves');
 
     const read = await readOf(req);
     expect(read.standing.coverage[0]?.verdict).toBe('not_judged');
@@ -257,7 +278,8 @@ describe('a project whose production names no commit counts verdicts on the rele
 describe('a project whose production reads the commit it serves keeps weighing by commit (ISS-900)', () => {
   it('counts a commit the live build holds, and refuses a release identity by name', async () => {
     await agenfold(true);
-    unplant = plantLiveBuild(F4);
+    // C1: a build verified after the live one, which the live build does not hold
+    unplant = plantLiveBuild(F4, { [C1]: false });
     const req = await agreedRequirement(BCS.slice(0, 1));
     const refused = await judge(req, 'BC-1', { kind: 'release', version: '0.76.0' });
     expect(refused.status, JSON.stringify(refused.body)).toBe(422);
@@ -266,7 +288,22 @@ describe('a project whose production reads the commit it serves keeps weighing b
       path: '/identity/kind',
     });
 
-    await ok(judge(req, 'BC-1', { kind: 'commit', sha: F4 }));
+    // a commit other than the one the live build serves is stored, and warned of naming that one (ISS-1284)
+    const away = await judge(req, 'BC-1', { kind: 'commit', sha: C1 });
+    expect(away.status, JSON.stringify(away.body)).toBe(201);
+    expect(away.body).toMatchObject({
+      counts: false,
+      warnings: [
+        {
+          code: 'REQUIREMENT_VERDICT_COUNTS_ON_NO_RELEASE',
+          countsAt: { kind: 'commit', sha: F4 },
+          detail: expect.stringContaining(`does not hold`),
+        },
+      ],
+    });
+
+    const served = await judge(req, 'BC-1', { kind: 'commit', sha: F4 });
+    expect(served.body).toMatchObject({ counts: true, warnings: [] });
     const [bc1] = (await readOf(req)).standing.coverage;
     expect(bc1?.verdict).toBe('passing');
     expect(bc1?.verdicts[0]).toMatchObject({

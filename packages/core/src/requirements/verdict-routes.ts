@@ -29,7 +29,13 @@ requirementVerdictRoutes.post(
     });
     if (!written.ok) return refused(c, written.refusals, 'REQUIREMENT_REFUSED');
     return c.json(
-      { verdictId: written.verdictId, coverage: written.coverage, routed: written.routed },
+      {
+        verdictId: written.verdictId,
+        coverage: written.coverage,
+        routed: written.routed,
+        counts: written.counts,
+        warnings: written.warnings,
+      },
       201,
     );
   },

@@ -10,7 +10,9 @@ import { ISSUE_RESOLVED_STATUSES } from '@forge/contracts/issue-machine';
 import {
   type RecordRequirementVerdictRequest,
   type RequirementCoverage,
+  type RequirementVerdictIdentity,
   type RequirementVerdictRow,
+  type RequirementVerdictWarning,
   requirementKey,
 } from '@forge/contracts/requirements';
 import { eq, sql } from 'drizzle-orm';
@@ -24,6 +26,7 @@ import { requireDeclaredOn } from '../permissions/index.js';
 import { requirementDependents } from './dependents.js';
 import { type RequirementActor, rowIn } from './read.js';
 import { liveAt, type RequirementRefusal } from './rules.js';
+import { counted } from './standing-coverage.js';
 import { requirementVerdictsOf } from './standing-facts.js';
 import { standingsOf } from './standing-read.js';
 import { requirementVerdictRefusals } from './verdict-rules.js';
@@ -42,7 +45,15 @@ export interface FailRouted {
 }
 
 export type RecordedVerdict =
-  | { ok: true; verdictId: string; coverage: RequirementCoverage; routed: FailRouted[] }
+  | {
+      ok: true;
+      verdictId: string;
+      coverage: RequirementCoverage;
+      routed: FailRouted[];
+      /** Whether it counts toward its criterion as the standing reads it now (ISS-1284). */
+      counts: boolean;
+      warnings: RequirementVerdictWarning[];
+    }
   | { ok: false; refusals: RequirementRefusal[] };
 
 export interface Tracing {
@@ -251,7 +262,42 @@ export async function recordRequirementVerdict(input: {
       `requirements: ${judged.criterion.code} of ${row.id} has no coverage after its verdict`,
     );
   }
-  return { ok: true, verdictId: written.id, coverage, routed };
+  const line = coverage.verdicts.find((v) => v.verdictId === written.id);
+  return {
+    ok: true,
+    verdictId: written.id,
+    coverage,
+    routed,
+    counts: line !== undefined && counted(line),
+    warnings: line ? countsNowhere(bc, line) : [],
+  };
+}
+
+const identityOf = (i: RequirementVerdictIdentity) =>
+  i.kind === 'release'
+    ? `{ kind: 'release', version: '${i.version}' }`
+    : `{ kind: 'commit', sha: '${i.sha}' }`;
+
+/**
+ * The warning a verdict stored at an identity no release judgement counts answers with (ISS-1284,
+ * FB-712: gwork judged at the commit of release 0.22.0 where its standing asked for the release, and
+ * the answer said only its coverage). Read off the coverage line the standing reads, which names the
+ * identity that would (`standing-identity.ts:countsAtOf`); the verdict stands as evidence.
+ */
+function countsNowhere(
+  bc: string,
+  line: RequirementCoverage['verdicts'][number],
+): RequirementVerdictWarning[] {
+  if (line.countsAt === undefined) return [];
+  const would = line.countsAt ? `; it would count at ${identityOf(line.countsAt)}` : '';
+  return [
+    {
+      code: 'REQUIREMENT_VERDICT_COUNTS_ON_NO_RELEASE',
+      path: '/identity',
+      detail: `${bc}'s verdict is stored as evidence and counts on no release: ${line.notCounted}${would}`,
+      countsAt: line.countsAt,
+    },
+  ];
 }
 
 /** Every verdict recorded at the requirement, newest first, each naming the criterion it judged. */

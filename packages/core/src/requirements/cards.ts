@@ -182,8 +182,8 @@ export const REQUIREMENT_REST_CARDS = {
       },
     ],
     practice: [
-      'The identity is the commit the live build serves, or the release where production names none.',
-      'Read the answer’s coverage: a verdict counts only where the live build holds its commit.',
+      'A release judgement counts the commit the live build serves where production declares a source probe, and the release the record says is live where it declares none.',
+      'Read the answer’s `counts`: a verdict at another identity is stored, and `warnings` names the identity that would count.',
     ],
     example: {
       criterion: 'BC-2',
