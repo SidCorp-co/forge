@@ -24,7 +24,7 @@ use crate::pool_jobs::{self, Cancelled, PoolPanes};
 use runner_agent::claude_code::ClaudeCodeRunner;
 use runner_transport::inbox::{self, Ack};
 use runner_transport::CoreClient;
-use runner_workspace::bg_session::{resident, Priority};
+use runner_workspace::bg_session::{relay, resident, Priority};
 use runner_workspace::terminal;
 
 #[derive(Debug, Deserialize)]
@@ -43,6 +43,13 @@ struct SendFrame {
     /// as its peer message's `priority`.
     #[serde(default)]
     priority: Option<String>,
+    /// Who the message is from, a display name, and the authority its words carry: `owner`,
+    /// `core` or `peer`, as core's `SessionSendFrame` names them (ISS-1268 B4). A master's
+    /// message is framed by them.
+    #[serde(default)]
+    from: Option<String>,
+    #[serde(default)]
+    authority: Option<String>,
 }
 
 const DEFAULT_WRITE_MS: u64 = 8_000;
@@ -147,7 +154,15 @@ pub async fn handle_session_send(
                 Ok(p) => p,
                 Err(why) => return tracing::error!("[inbox] session={sid} seq={seq}: {why}"),
             };
-            let sent = resident::deliver(&name, &body, priority).await;
+            let text = match frame.kind.as_str() {
+                // the checkpoint prompt is this box's own, never anybody's word
+                "checkpoint" => body,
+                _ => match for_master(&frame, &body) {
+                    Ok(text) => text,
+                    Err(why) => return tracing::error!("[inbox] session={sid} seq={seq}: {why}"),
+                },
+            };
+            let sent = resident::deliver(&name, &text, priority).await;
             answer_from_master(client, &frame, &name, sent).await;
         }
         Held::PoolJob { pane, .. } => {
@@ -281,6 +296,34 @@ fn priority_of(frame: &SendFrame) -> Result<Priority, String> {
         Some(other) => Err(format!(
             "[SESSION_SEND_PRIORITY_UNKNOWN] priority {other:?} is neither `now` nor `next`; NO ack \
              is sent and nothing is delivered"
+        )),
+    }
+}
+
+/// What a master's background session is sent for `body` (ISS-1268 B4), by who it is from: the
+/// owner's word, quoted exactly, as their instruction; a teammate's as a request that approves
+/// nothing; Forge's own as core wrote it. Its session was started knowing the two frames
+/// (`relay::SESSION_AUTHORITY`). An authority outside the three, or an owner's or teammate's
+/// word from nobody, is refused by name: nothing is delivered and no ack is sent.
+fn for_master(frame: &SendFrame, body: &str) -> Result<String, String> {
+    let from = frame
+        .from
+        .as_deref()
+        .map(str::trim)
+        .filter(|f| !f.is_empty());
+    match (frame.authority.as_deref(), from) {
+        (Some("owner"), Some(from)) => Ok(relay::owner_word(from, body)),
+        (Some("peer"), Some(from)) => Ok(relay::peer_request(from, body)),
+        // Forge's own nudge, brief or notice is the box's instruction, as the brief a master is
+        // placed with is: it is no teammate's word, so it takes no teammate frame.
+        (Some("core"), _) => Ok(body.to_string()),
+        (Some(a @ ("owner" | "peer")), None) => Err(format!(
+            "[SESSION_SEND_FROM_MISSING] an {a} message names nobody it is from; NO ack is sent \
+             and nothing is delivered"
+        )),
+        (other, _) => Err(format!(
+            "[SESSION_SEND_AUTHORITY_UNKNOWN] authority {other:?} is none of owner, core or peer, \
+             so who the message is from is unknown; NO ack is sent and nothing is delivered"
         )),
     }
 }

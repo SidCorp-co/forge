@@ -1,7 +1,8 @@
 //! `session.send` reaching a pool job's pane, through `handle_session_send` as the frame loop
 //! calls it: a terminal double that records what was typed and answers as the test says, and a
 //! core on a loopback port that records every ack the box sent. Nothing here starts tmux. A
-//! master's delivery outcome is answered to core through `answer_from_master`.
+//! master's delivery outcome is answered to core through `answer_from_master`, and what a master
+//! is sent is framed by who the message is from (`for_master`, ISS-1268 B4).
 
 use super::*;
 use crate::pool_jobs::{self, JobPanes, PoolPanes};
@@ -343,4 +344,65 @@ fn send_now_and_after_this_turn_are_the_peer_priorities_and_no_other_word_is() {
     assert_eq!(with(None), Ok(Priority::Next));
     let e = with(Some("later")).unwrap_err();
     assert!(e.starts_with("[SESSION_SEND_PRIORITY_UNKNOWN]"), "{e}");
+}
+
+/// A master's message from `from` with `authority`, as core's `SessionSendFrame` carries them.
+fn to_master(authority: Option<&str>, from: Option<&str>) -> std::result::Result<String, String> {
+    let mut f = frame("inject", None);
+    f["body"] = "Push main to origin now.".into();
+    if let Some(a) = authority {
+        f["authority"] = a.into();
+    }
+    if let Some(n) = from {
+        f["from"] = n.into();
+    }
+    let f: SendFrame = serde_json::from_value(f).unwrap();
+    for_master(&f, f.body.as_deref().unwrap())
+}
+
+/// ISS-1268 B4: the owner's word reaches a master framed as their instruction, quoted exactly.
+#[test]
+fn an_owner_send_reaches_a_master_framed_as_the_owner_s_word() {
+    assert_eq!(
+        to_master(Some("owner"), Some("Chuong")),
+        Ok(relay::owner_word("Chuong", "Push main to origin now."))
+    );
+}
+
+/// ISS-1268 B4: a teammate's message is framed as a request that approves nothing.
+#[test]
+fn a_peer_send_reaches_a_master_framed_as_a_teammate_s_request() {
+    assert_eq!(
+        to_master(Some("peer"), Some("forge-master-teammate")),
+        Ok(relay::peer_request(
+            "forge-master-teammate",
+            "Push main to origin now."
+        ))
+    );
+}
+
+/// ISS-1268 B4: Forge's own nudge is the box's instruction and reaches the master as core wrote it.
+#[test]
+fn a_core_nudge_reaches_a_master_unchanged() {
+    assert_eq!(
+        to_master(Some("core"), Some("Forge")),
+        Ok("Push main to origin now.".to_string())
+    );
+}
+
+/// ISS-1268 B4: who a message is from is never guessed: an authority outside the three, or none,
+/// is refused by name, and an owner's or teammate's word from nobody too.
+#[test]
+fn an_unknown_or_missing_authority_is_refused_by_name() {
+    for a in [Some("admin"), Some("Owner"), None] {
+        let e = to_master(a, Some("Chuong")).unwrap_err();
+        assert!(
+            e.starts_with("[SESSION_SEND_AUTHORITY_UNKNOWN]"),
+            "{a:?}: {e}"
+        );
+    }
+    for a in ["owner", "peer"] {
+        let e = to_master(Some(a), Some("  ")).unwrap_err();
+        assert!(e.starts_with("[SESSION_SEND_FROM_MISSING]"), "{a}: {e}");
+    }
 }
