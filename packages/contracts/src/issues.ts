@@ -24,6 +24,10 @@ export const CRITERIA_REFUSAL_CODES = [
 	"CRITERIA_TRACE_UNRESOLVED",
 	"CRITERIA_TRACE_DROPPED",
 	"CRITERIA_TRACE_DUPLICATE",
+	/** A code sent to be added whose BC a live criterion of the issue already words: tie that line instead (ISS-1283). */
+	"CRITERIA_TRACE_WORDED",
+	/** A tie of a criterion that already traces a business criterion: its trace moves only by the whole-list write (ISS-1283). */
+	"CRITERIA_TIE_TRACED",
 	/** A person tying an issue to its requirement's criteria from the web: the agents' act (REQ-68 BC-6). */
 	"CRITERIA_TRACE_ACT_FORBIDDEN",
 	"CRITERIA_RENUMBER_AMBIGUOUS",

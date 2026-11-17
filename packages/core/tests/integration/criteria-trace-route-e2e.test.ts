@@ -5,8 +5,9 @@
  * the BC is at the requirement's current revision and traced to that wording (a trace left on an
  * earlier wording is refreshed: coverage-newest-verdict-e2e.test.ts). A closed
  * issue takes it, and then takes a verdict on it, since verifying shipped work is the point. Wrong
- * input is refused by name, with nothing written. Through the app's own routes, against real
- * Postgres.
+ * input is refused by name, with nothing written. An existing line is tied by number, keeping its
+ * verdicts, and an add of a code a line already words is refused naming it (ISS-1283). Through the
+ * app's own routes, against real Postgres.
  *
  * @direct-test-of packages/core/src/issues/criteria/routes.ts
  */
@@ -238,8 +239,126 @@ describe('wrong input is refused by name and writes nothing', () => {
     const issueId = await closedIssueOf(req);
 
     expect((await trace(issueId, [])).status).toBe(400);
+    const neither = await api(token, 'POST', `/api/issues/${issueId}/criteria/traces`, {});
+    expect(refusalCode(neither.body)?.code).toBe('CRITERIA_INPUT_INVALID');
     expect((await trace(issueId, ['BC-1'], viewerToken)).status).toBe(403);
     expect(await criteriaOf(issueId)).toHaveLength(0);
+  });
+});
+
+// ISS-1283 (FB-711, epod ISS-187): an issue with proven criteria sent their codes meaning "tie mine"
+// and got unjudged copies beside them, kept forever on a closed issue. A tie keeps the line and its
+// verdict; an add of a code a line already words is refused naming it. Planted red: the add form's
+// refusal taken out of `tie-plan.ts:planAdds`, the copy is written; on the code before, `ties` is
+// refused at the door.
+describe('a tie keeps an existing criterion and its verdicts; an add of one a line words is refused', () => {
+  const tie = (issueId: string, ties: unknown, codes?: unknown) =>
+    api(token, 'POST', `/api/issues/${issueId}/criteria/traces`, {
+      ties,
+      ...(codes ? { codes } : {}),
+    });
+
+  /** A closed issue of `req` holding two criteria, the second passed on the shipped commit. */
+  async function provenIssue(req: string, second: string): Promise<string> {
+    const issueId = await closedIssueOf(req);
+    await seedIssueStatus(issueId, 'in_progress');
+    const put = await api(token, 'PUT', `/api/issues/${issueId}/criteria`, {
+      criteria: [
+        { n: 1, statement: 'The reminder lists every due dose' },
+        { n: 2, statement: second },
+      ],
+    });
+    expect(put.status, JSON.stringify(put.body)).toBe(200);
+    await seedIssueStatus(issueId, 'closed');
+    const v = await api(token, 'POST', `/api/issues/${issueId}/verdicts`, {
+      criterion: 2,
+      verdict: 'pass',
+      reason: 'Seen on the live deployment',
+      identity: { kind: 'commit', sha: SHIPPED },
+      evidence: ['report-1440.png'],
+    });
+    expect(v.status, JSON.stringify(v.body)).toBe(201);
+    return issueId;
+  }
+
+  it('ties line 2 of a closed issue to its BC, adding no line and keeping its verdict', async () => {
+    const req = await agreedRequirement();
+    const issueId = await provenIssue(req, 'The doctor opens the weekly report');
+    const before = await criteriaOf(issueId);
+
+    const r = await tie(issueId, [{ n: 2, code: 'BC-2' }]);
+
+    expect(r.status, JSON.stringify(r.body)).toBe(201);
+    const rows = (await criteriaOf(issueId)) as Array<Row & { id: string; latest: unknown }>;
+    expect(rows.map((c) => [c.n, c.statement])).toEqual([
+      [1, 'The reminder lists every due dose'],
+      [2, `(${req} BC-2) The doctor opens the weekly report`],
+    ]);
+    expect(rows[1]?.id).toBe((before[1] as Row & { id: string }).id);
+    expect(rows[1]?.requirementCriterionId).not.toBeNull();
+    expect(rows[1]?.latest).toMatchObject({ verdict: 'pass', commitSha: SHIPPED });
+    const history = await api(token, 'GET', `/api/issues/${issueId}/criteria/2`);
+    expect(JSON.stringify(history.body)).toContain(`tied to ${req} BC-2, keeping its verdicts`);
+    const detail = await onProject('GET', `/requirements/${req}`);
+    const coverage = (
+      detail.body as { standing: { coverage: Array<{ code: string; issues: unknown[] }> } }
+    ).standing.coverage;
+    expect(coverage.find((c) => c.code === 'BC-2')?.issues).toHaveLength(1);
+  });
+
+  it('refuses an add of a code a live line already words, naming that line and the tie', async () => {
+    const req = await agreedRequirement();
+    // the BC's words, in another case, wrapped and closed by a full stop
+    const issueId = await provenIssue(req, 'a doctor sees   the Report.');
+
+    const r = await trace(issueId, ['BC-1', 'BC-2']);
+
+    expect(r.status, JSON.stringify(r.body)).toBe(422);
+    expect(refusalCode(r.body)).toMatchObject({
+      code: 'CRITERIA_TRACE_WORDED',
+      detail: expect.stringMatching(
+        /criterion 2 already words .* BC-2 .*Tie that line instead, `\{ ties: \[\{ n: 2, code: 'BC-2' \}\] \}`/,
+      ),
+    });
+    expect(await criteriaOf(issueId)).toHaveLength(2);
+  });
+
+  it('refuses a tie of a line that traces a BC, a line it does not hold, and a code another line traces', async () => {
+    const req = await agreedRequirement();
+    const issueId = await provenIssue(req, 'The doctor opens the weekly report');
+    expect((await tie(issueId, [{ n: 2, code: 'BC-2' }])).status).toBe(201);
+
+    const traced = await tie(issueId, [{ n: 2, code: 'BC-3' }]);
+    const missing = await tie(issueId, [{ n: 7, code: 'BC-3' }]);
+    const held = await tie(issueId, [{ n: 1, code: 'BC-2' }]);
+
+    expect(refusalCode(traced.body)?.code).toBe('CRITERIA_TIE_TRACED');
+    expect(refusalCode(missing.body)).toMatchObject({
+      code: 'CRITERION_UNKNOWN',
+      detail: expect.stringContaining('its live criteria are 1, 2'),
+    });
+    expect(refusalCode(held.body)).toMatchObject({
+      code: 'CRITERIA_TRACE_DUPLICATE',
+      detail: expect.stringContaining('already traced by criterion 2'),
+    });
+    expect((await criteriaOf(issueId)).map((c) => c.requirementCriterionId === null)).toEqual([
+      true,
+      false,
+    ]);
+  });
+
+  it('ties one line and adds an unworded code in one call', async () => {
+    const req = await agreedRequirement();
+    const issueId = await provenIssue(req, 'The doctor opens the weekly report');
+
+    const r = await tie(issueId, [{ n: 2, code: 'BC-2' }], ['BC-3']);
+
+    expect(r.status, JSON.stringify(r.body)).toBe(201);
+    expect((await criteriaOf(issueId)).map((c) => [c.n, c.statement])).toEqual([
+      [1, 'The reminder lists every due dose'],
+      [2, `(${req} BC-2) The doctor opens the weekly report`],
+      [3, `(${req} BC-3) A patient can opt out`],
+    ]);
   });
 });
 

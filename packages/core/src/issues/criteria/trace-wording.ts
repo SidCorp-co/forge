@@ -1,5 +1,5 @@
 // The wording of a business criterion a trace ties to: the one live at the revision the issue was
-// planned against (`store.ts:tracedInputs`, `tie.ts:appendTracedCriteria`).
+// planned against (`store.ts:tracedInputs`, `tie.ts:tieTracedCriteria`).
 
 import type { traceWordingsOf } from '../ports.js';
 

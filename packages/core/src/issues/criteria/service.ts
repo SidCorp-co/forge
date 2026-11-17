@@ -3,6 +3,7 @@ import {
   criterionNamed as criterionOfLine,
   isCriterionNumber,
 } from '../../messaging/criterion-named.js';
+import type { Actor } from '../activity.js';
 import { weighingOf } from '../criteria-weighing.js';
 import { criterionRoutesOf } from '../design-record.js';
 import { criteriaWeighingOf } from '../ports.js';
@@ -26,7 +27,7 @@ import {
 } from './store.js';
 import { withCurrentDrafts } from './storefront-draft.js';
 import { supersedeCriterionTx, supersessionsOf } from './supersede.js';
-import { appendTracedCriteria } from './tie.js';
+import { type TraceInput, tieTracedCriteria } from './tie.js';
 import { countingOf } from './verdict-counting.js';
 import { recordVerdict } from './verdict-record.js';
 import { verdictRefused } from './verdict-refused.js';
@@ -146,7 +147,7 @@ async function criterionNumberIn(tx: Tx, issueId: string, criterion: number | st
   throw verdictRefused({ code: 'VERDICT_CRITERION_UNKNOWN', criterion: 0, detail: named.why });
 }
 
-/** Ties the issue to business criteria of its requirement, one appended or refreshed criterion each, in one transaction. */
-export async function traceCriteria(issueId: string, codes: readonly string[]) {
-  return db.transaction((tx) => appendTracedCriteria(tx, issueId, codes));
+/** Ties the issue to business criteria of its requirement, existing lines tied and codes added, in one transaction. */
+export async function traceCriteria(issueId: string, input: TraceInput, actor: Actor) {
+  return db.transaction((tx) => tieTracedCriteria(tx, issueId, input, actor));
 }

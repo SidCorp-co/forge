@@ -69,9 +69,21 @@ export const criterionSupersedeSchema = z
   })
   .strict();
 
-/** The business criteria to tie an issue to, by code; a code of the wrong shape is refused by name. */
+const bcCode = z.string().trim().min(1).max(32);
+
+/**
+ * The business criteria to tie an issue to (ISS-1283): `ties` traces existing lines by number, `codes`
+ * adds a line per code; a body with neither, or a code of the wrong shape, is refused by name (`tie.ts`).
+ */
 export const criteriaTracePostSchema = z
-  .object({ codes: z.array(z.string().trim().min(1).max(32)).min(1).max(50) })
+  .object({
+    ties: z
+      .array(z.object({ n: z.number().int().min(1), code: bcCode }).strict())
+      .min(1)
+      .max(50)
+      .optional(),
+    codes: z.array(bcCode).min(1).max(50).optional(),
+  })
   .strict();
 
 const verdictIdentitySchema = z.discriminatedUnion('kind', [

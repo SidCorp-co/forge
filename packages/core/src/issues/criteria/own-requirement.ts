@@ -2,7 +2,7 @@
 // criterion proves a BC of its own issue's requirement. PUT /criteria took a `requirementCriterionId`
 // of another requirement's BC that the lead tag `(REQ-n BC-m)` was refused for (FB-209), so both
 // read this one check (`store.ts:tracedInputs`), and `POST /api/issues/:id/criteria/traces` takes
-// bare `BC-n` codes resolved on that requirement alone (`tie.ts:appendTracedCriteria`).
+// bare `BC-n` codes resolved on that requirement alone (`tie.ts:tieTracedCriteria`).
 
 import type { traceWordingsOf } from '../ports.js';
 

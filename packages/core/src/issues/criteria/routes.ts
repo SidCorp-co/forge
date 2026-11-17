@@ -12,7 +12,8 @@
  *                                   recording the old and new text on its history
  *   POST /api/issues/:id/criteria/:ref/supersede   retire a landed criterion as superseded by a later
  *                                   landed issue's criterion, with why (REQ-48 BC-18, ISS-1240)
- *   POST /api/issues/:id/criteria/traces   tie it to business criteria of its requirement (appends; refreshes a trace on an earlier wording);
+ *   POST /api/issues/:id/criteria/traces   tie it to business criteria of its requirement: `ties` traces existing lines
+ *                                   keeping their verdicts, `codes` adds a line per code (refreshes one on an earlier wording);
  *                                   the agents' act, refused from the web on a person's session (REQ-68 BC-6)
  *   POST /api/issues/:id/verdicts   one verdict on one criterion, with the probe it keeps, answering
  *                                   `notCounted` by name where it will never count (ISS-475)
@@ -206,9 +207,13 @@ issueCriteriaRoutes.post(
   zValidator('json', criteriaTracePostSchema),
   async (c) => {
     const { id } = c.req.valid('param');
-    const { codes } = c.req.valid('json');
+    const { ties = [], codes = [] } = c.req.valid('json');
     const issue = await heldIssue(id, c.get('userId'), 'project.write');
-    await traceCriteria(issue.id, codes);
+    await traceCriteria(
+      issue.id,
+      { ties, codes },
+      { type: 'user', id: c.get('userId'), agency: restActor(c).agency },
+    );
     return c.json(await criteriaShown(c.get('agency'), issue), 201);
   },
 );
