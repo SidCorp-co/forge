@@ -213,9 +213,9 @@ pub fn rss_mb(pids: &[i32]) -> u64 {
     }
 }
 
-/// A command that runs as part of `box_id`: marked, its own session, and never waited on by a
-/// shell between us and it. `kill_on_drop` stops a leader whose handle is lost; [`reap`] does the
-/// rest.
+/// A command that runs as part of `box_id`: marked, its own process group, and never waited on by
+/// a shell between us and it. `kill_on_drop` stops a leader whose handle is lost; [`reap`] does
+/// the rest.
 pub fn command(program: impl AsRef<std::ffi::OsStr>, box_id: &str) -> tokio::process::Command {
     let mut cmd = tokio::process::Command::new(program);
     cmd.env(MARK, box_id)

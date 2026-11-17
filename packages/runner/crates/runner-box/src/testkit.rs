@@ -15,7 +15,7 @@ impl Scratch {
         &self.0
     }
 
-    /// An executable script at `name` printing `out`, exiting `code`.
+    /// An executable `sh` script at `name` (parents made) running `body`.
     #[cfg(unix)]
     pub fn script(&self, name: &str, body: &str) -> PathBuf {
         use std::os::unix::fs::PermissionsExt;
