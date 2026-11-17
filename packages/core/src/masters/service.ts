@@ -349,8 +349,10 @@ export async function judgeMaster(args: {
   const passOpen = master ? (await readOpenPass(db, master.id)) !== null : false;
   // one reading of the project for the whole verdict: the releases the acts and the live checks are
   // read from, and every other fact two owed reads share, are each one statement under the memo
-  const work = await withReadMemo(() => readMasterWork(args.deviceId, args.projectId));
-  const facts = judged(args.facts, work);
+  const { work, releaseWaits } = await withReadMemo(() =>
+    readMasterWork(args.deviceId, args.projectId),
+  );
+  const facts = judged(args.facts, { ...work, releaseWaits });
   const verdict = masterVerdict(facts, {
     runnerStatus: runner.status,
     passOpen,

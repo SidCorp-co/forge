@@ -27,7 +27,7 @@ function facts(over: Partial<MasterJudged> = {}): MasterJudged {
     pane: 'absent',
     capability: null,
     serversReadable: true,
-    work: { admissible: 1, owed: 0, liveChecks: 0, poolWaits: false, jobPanes: 0 },
+    work: { ...noWork, admissible: 1 },
     conversation: { id: 'conv-1', transcript: 'present', elsewhere: 'none' },
     placement: null,
     holding: { kind: 'nothing' },
@@ -56,7 +56,8 @@ const holds = (live: string[], over: string[] = []): MasterJudged['holding'] => 
 });
 const alive = (over: Partial<MasterJudged> = {}) =>
   facts({ pane: 'alive', capability: 'current', ...over });
-const noWork = { admissible: 0, owed: 0, liveChecks: 0, poolWaits: false, jobPanes: 0 };
+const none = { owed: 0, liveChecks: 0, releaseWaits: [], poolWaits: false, jobPanes: 0 };
+const noWork = { admissible: 0, ...none };
 const quietHour = {
   noWorkForSeconds: HOUR,
   pane: { doing: 'idle' as const, lastEvent: 'stop', lastEventAgoSeconds: HOUR },

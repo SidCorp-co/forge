@@ -112,14 +112,14 @@ const NAMED = {
 describe('a master without project.admin is never asked to name a release (c2)', () => {
   it('leaves the unnamed release out of the master work: not counted, not in the nudge', async () => {
     const version = await unnamedCut();
-    const work = await readMasterWork(deviceId, projectId);
+    const { work } = await readMasterWork(deviceId, projectId);
     expect(work.owedLine, 'the nudge names no naming the master may not write').not.toContain(
       '/naming',
     );
     expect(work.nudge).not.toContain(version);
     expect(work.owed, 'an unnamed release is not owed to this master').toBe(0);
     // a second sweep reads the same: nothing repeats
-    expect((await readMasterWork(deviceId, projectId)).owed).toBe(0);
+    expect((await readMasterWork(deviceId, projectId)).work.owed).toBe(0);
   });
 
   it('keeps the rule: the master is still refused naming by name, an admin names it', async () => {
@@ -154,13 +154,13 @@ describe("the release's page names who names it (c1)", () => {
       sql`UPDATE project_members SET role = 'admin' WHERE project_id = ${projectId} AND user_id = ${masterId}`,
     );
     expect((await header(version)).namer).toEqual({ to: 'master' });
-    const work = await readMasterWork(deviceId, projectId);
+    const { work } = await readMasterWork(deviceId, projectId);
     expect(work.owedLine).toContain(`(${version})`);
     expect(work.owedLine).toContain('releases/<version>/naming -X PUT');
     expect(work.owed).toBe(1);
     const named = await as(masterToken, 'PUT', `/releases/${version}/naming`, NAMED);
     expect(named.status, JSON.stringify(named.body)).toBe(200);
-    expect((await readMasterWork(deviceId, projectId)).owed).toBe(0);
+    expect((await readMasterWork(deviceId, projectId)).work.owed).toBe(0);
   });
 
   it('freezes a share of the unnamed release with no namer: a share names no person', async () => {
@@ -184,7 +184,7 @@ describe("the release's page names who names it (c1)", () => {
     const version = await unnamedCut();
     await db.execute(sql`DELETE FROM organization_members WHERE org_id = ${orgId}`);
     expect((await header(version)).namer).toEqual({ to: 'nobody' });
-    expect((await readMasterWork(deviceId, projectId)).owed).toBe(0);
+    expect((await readMasterWork(deviceId, projectId)).work.owed).toBe(0);
   });
 });
 
@@ -198,8 +198,8 @@ describe('a box paired by a person admin, its pane writing as the project agent 
   it('asks the master nothing on any sweep and names the admins, the pane refused naming', async () => {
     const box = await personPairedBox(masterId);
     const version = await unnamedCut();
-    const first = await readMasterWork(box.deviceId, projectId);
-    const second = await readMasterWork(box.deviceId, projectId);
+    const { work: first } = await readMasterWork(box.deviceId, projectId);
+    const { work: second } = await readMasterWork(box.deviceId, projectId);
     expect(first.owedLine, 'c2: the nudge names no naming the pane may not write').not.toContain(
       '/naming',
     );
@@ -222,7 +222,7 @@ describe('a box paired by a person admin, its pane writing as the project agent 
       sql`UPDATE project_members SET role = 'admin' WHERE project_id = ${projectId} AND user_id = ${masterId}`,
     );
     expect((await header(version, ownerToken)).namer).toEqual({ to: 'master' });
-    expect((await readMasterWork(box.deviceId, projectId)).owed).toBe(1);
+    expect((await readMasterWork(box.deviceId, projectId)).work.owed).toBe(1);
     const named = await as(box.paneToken as string, 'PUT', `/releases/${version}/naming`, NAMED);
     expect(named.status, JSON.stringify(named.body)).toBe(200);
   });
@@ -231,6 +231,6 @@ describe('a box paired by a person admin, its pane writing as the project agent 
     const box = await personPairedBox(null);
     const version = await unnamedCut();
     expect((await header(version, ownerToken)).namer).toEqual({ to: 'admins', names: ['ada'] });
-    expect((await readMasterWork(box.deviceId, projectId)).owed).toBe(0);
+    expect((await readMasterWork(box.deviceId, projectId)).work.owed).toBe(0);
   });
 });

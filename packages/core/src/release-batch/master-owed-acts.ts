@@ -1,17 +1,18 @@
-// The release acts a project's releases wait on its master for (ISS-1058): each release's own standing
-// (`release-view.ts:turnOf`) names who owes its act by the one rule, and a routine one names the
-// master. This reads those standings, never a second rule, so the master's owed work counts exactly
-// the acts the release page names it for, and a project owing one gets a master placed.
+// The release acts a project's releases wait on its master for (ISS-1058, ISS-1278): each release's own
+// standing (`release-view.ts:turnOf`) names who owes its act, and this reads those standings, never a
+// second rule. Every wait naming the master is its owed work, whatever the act, so the master is
+// placed and kept exactly while the release page says a release waits on it.
 
 import type { Said } from '@forge/contracts/said';
-import { type OwedActKind, owedActOfSaid } from '@forge/contracts/who-owes';
+import { owedActOfSaid } from '@forge/contracts/who-owes';
 import { waitingIssueIds } from './queries.js';
 import { listReleases } from './release-list-read.js';
 import { readReleaseOwes } from './release-owes.js';
 
 export interface ReleaseActOwed {
   version: string;
-  kind: OwedActKind;
+  /** The said key of the act the release's wait names, read through what wraps it: the act's identity. */
+  key: string;
   /** The act as the release page says it to the master, in English. */
   act: string;
 }
@@ -43,12 +44,17 @@ export async function masterTakesReleaseAct(projectId: string, act: Said): Promi
   return owes(kind).by === 'master';
 }
 
+/**
+ * Every release whose standing waits on the project's master, with the act it names. Placement and
+ * retirement count each as owed work (`masters/verdict.ts:workWaits`), so no act the release page
+ * gives the master — opening a promotion change request (ISS-1278), answering a return, a gate's act
+ * on its issues — reads `nothing_owed` beside it.
+ */
 export async function releaseActsOwed(projectId: string): Promise<ReleaseActOwed[]> {
   const { releases } = await listReleases(projectId, null);
   return releases.flatMap((r) => {
     const w = r.waitingOn;
     if (w.kind !== 'agent' || w.says.who.key !== 'standing.who.master') return [];
-    const kind = owedActOfSaid(firstAct(w.says.act).key);
-    return kind ? [{ version: r.version, kind, act: w.act }] : [];
+    return [{ version: r.version, key: firstAct(w.says.act).key, act: w.act }];
   });
 }

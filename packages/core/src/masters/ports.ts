@@ -81,10 +81,11 @@ export interface JudgingEnvironmentRead {
   testing: string | null;
 }
 
-/** A release act its release's standing names the master for (`release-batch/master-owed-acts.ts`). */
+/** A release act its release's standing names the master for, whatever the act (`release-batch/master-owed-acts.ts`). */
 export interface ReleaseActOwed {
   version: string;
-  kind: string;
+  /** The said key of the act its wait names: the act's identity. */
+  key: string;
   /** The act as the release page says it. */
   act: string;
 }

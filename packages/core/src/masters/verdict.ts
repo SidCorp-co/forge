@@ -8,21 +8,32 @@ import {
 import { type Said, say, sayEn, verbatim } from '@forge/contracts/said';
 import { subagentOver } from '../devices/index.js';
 
+/** A release whose standing waits on the master, with the act it names (ISS-1278); of `owed`. */
+export interface ReleaseWait {
+  version: string;
+  act: string;
+}
+
+/** The work core read for the project, as the rules below weigh it. */
+export interface JudgedWork {
+  admissible: number;
+  owed: number;
+  liveChecks: number;
+  releaseWaits: readonly ReleaseWait[];
+}
+
 /**
  * The box's facts with the work core read beside them: the admissible and owed counts in `work`,
- * the live verdicts of those owed (ISS-1200), and the digest of that work in `nudge`, so every rule
- * below reads one document.
+ * the live verdicts of those owed (ISS-1200), the releases waiting on the master (ISS-1278), and the
+ * digest of that work in `nudge`, so every rule below reads one document.
  */
 export type MasterJudged = Omit<MasterFacts, 'work' | 'nudge'> & {
-  work: MasterFacts['work'] & { admissible: number; owed: number; liveChecks: number };
+  work: MasterFacts['work'] & JudgedWork;
   nudge: MasterFacts['nudge'] & { digest: string };
 };
 
 /** The box's facts joined to the work core read for the project. */
-export function judged(
-  facts: MasterFacts,
-  work: { admissible: number; owed: number; liveChecks: number; digest: string },
-): MasterJudged {
+export function judged(facts: MasterFacts, work: JudgedWork & { digest: string }): MasterJudged {
   return {
     ...facts,
     work: {
@@ -30,6 +41,7 @@ export function judged(
       admissible: work.admissible,
       owed: work.owed,
       liveChecks: work.liveChecks,
+      releaseWaits: work.releaseWaits,
     },
     nudge: { ...facts.nudge, digest: work.digest },
   };
@@ -411,13 +423,24 @@ function placeVerdict(facts: MasterJudged): MasterVerdict {
     resume,
     nudge: passAsked(facts),
     ...because(
-      resume !== null
-        ? say('masters.verdict.placeResume', { id: resume })
-        : facts.conversation.id === null
-          ? say('masters.verdict.placeColdNone')
-          : say('masters.verdict.placeColdNoTranscript', { id: facts.conversation.id }),
+      releasesNamed(
+        facts,
+        resume !== null
+          ? say('masters.verdict.placeResume', { id: resume })
+          : facts.conversation.id === null
+            ? say('masters.verdict.placeColdNone')
+            : say('masters.verdict.placeColdNoTranscript', { id: facts.conversation.id }),
+      ),
     ),
   };
+}
+
+/** A placement names each release waiting on the master, with its act, so the box's line says why (ISS-1278). */
+function releasesNamed(facts: MasterJudged, placed: Said): Said {
+  const waits = facts.work.releaseWaits;
+  if (waits.length === 0) return placed;
+  const releases = waits.map((w) => `${w.version}: ${w.act}`).join('; ');
+  return say('masters.verdict.releasesWait', { verdict: placed, n: waits.length, releases });
 }
 
 /**

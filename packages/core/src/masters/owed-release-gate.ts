@@ -1,16 +1,18 @@
 // What waits at the release gate on the master's own record (ISS-774, ISS-888, ISS-961): the drafts
 // filed for an owed merge, every release hold whose act is the agent's, and every ended release run
 // still claiming gate issues, each named with its command; and what a release waits on the master
-// for: the routine act its standing names it for (ISS-1058), its approval request and its merges.
+// for: every act its standing names it for (ISS-1058, ISS-1278), its approval request, its merges
+// and its name.
 
 import type { ReleaseEndedRunHold } from '@forge/contracts/releases';
 import { guideCall } from '../guides/index.js';
 import { agrees } from '../lib/plural.js';
-import type {
-  FilingRecordOwed,
-  ReleaseActOwed,
-  ReleaseHoldOwed,
-  ReleaseMergeOwed,
+import {
+  type FilingRecordOwed,
+  mastersPorts,
+  type ReleaseActOwed,
+  type ReleaseHoldOwed,
+  type ReleaseMergeOwed,
 } from './ports.js';
 
 /** A line names the guide that holds its method by slug, never restates it (REQ-23 BC-2). */
@@ -92,8 +94,9 @@ export function endedRunHoldsWork(holds: ReleaseEndedRunHold[]): string[] {
 }
 
 /**
- * ISS-1058: a release act its standing names the master for — a cut, a split over the roster cap, a
- * landing to record — is routine, so it is yours whether or not a master stood when it fell due.
+ * ISS-1058, ISS-1278: every act a release's standing names the master for — a cut, a landing to
+ * record, a promotion change request to open, a return to answer, a gate's act on its issues — is
+ * yours whether or not a master stood when it fell due.
  */
 function releaseActsLine(acts: readonly ReleaseActOwed[]): string {
   if (acts.length === 0) return '';
@@ -122,4 +125,16 @@ export function releasesLine(
     line += ` ${releaseMerges.length} accepted release${agrees(releaseMerges.length, ' waits', 's wait')} for you to merge its requests in their declared order (${steps.join('; ')}): merge each next one with \`forge-runner api issues/<issueId>/merge-pull-request -X POST -d '{"pullRequest":<number>}'\`, one at a time; the release ends at its last merge, and where its owner deploys nothing is deployed for it. A refusal names its fault: \`RELEASE_MERGE_HEAD_MOVED\` means the request's head is not the one the owner accepted, so abort the release and cut it again on the new head, or have the new head approved.`;
   }
   return line;
+}
+
+/**
+ * The unnamed releases the master is asked to name: none where naming goes to somebody else (ISS-590).
+ * Naming takes project.admin, which a master acting as a member is refused, so asking it would ask
+ * every pass for a write it can never make; the release's page names its admins instead.
+ */
+export async function releasesTheMasterNames(projectId: string): Promise<{ version: string }[]> {
+  const ports = mastersPorts();
+  const unnamed = await ports.releasesUnnamed(projectId);
+  if (unnamed.length === 0) return unnamed;
+  return (await ports.releaseNamer(projectId)).to === 'master' ? unnamed : [];
 }

@@ -32,7 +32,7 @@ const none = {
   unnamedReleases: [] as { version: string }[],
   releaseMerges: [] as ReleaseMergeOwed[],
   releaseApprovals: [] as { runId: string; version: string | null }[],
-  releaseActs: [] as { version: string; kind: string; act: string }[],
+  releaseActs: [] as { version: string; key: string; act: string }[],
   answers: [],
   stewardAsks: [] as StewardAsk[],
   questions: [],

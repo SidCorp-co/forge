@@ -28,6 +28,7 @@ import {
   recordingsLine,
   releaseHoldsLine,
   releasesLine,
+  releasesTheMasterNames,
 } from './owed-release-gate.js';
 import { reviewsLine } from './owed-reviews.js';
 import { triagesLine } from './owed-triages.js';
@@ -50,6 +51,9 @@ import {
   type UnhandledRoomMessages,
   type WaitingRequest,
 } from './ports.js';
+
+/** The work, beside the releases of it waiting on the master, which a placement names (ISS-1278). */
+type MasterRead = { work: MasterWork; releaseWaits: ReleaseActOwed[] };
 
 /** The edge kind that gates dispatch, the one whose blocker's state changes what a master can take. */
 const GATING_KIND = 'blocks';
@@ -79,7 +83,7 @@ interface Owed {
   releaseMerges: ReleaseMergeOwed[];
   /** Running releases the project requires approval for, with no request asked (ISS-591). */
   releaseApprovals: { runId: string; version: string | null }[];
-  /** Release acts each release's standing names the master for by the one rule (ISS-1058). */
+  /** Every act a release's standing names the master for, read from the release page (ISS-1058, ISS-1278). */
   releaseActs: ReleaseActOwed[];
   /** Park questions answered since the master's last finished pass began, with what each did. */
   answers: { issueKey: string; questionId: string; outcome: AnswerResume | null }[];
@@ -355,7 +359,7 @@ function workLines(admissible: Admissible[], owed: Owed): string[] {
     // the next merge, so each merge made moves the digest and the master is asked for the one after
     ...owed.releaseMerges.map((m) => `release-merge:${m.runId}|${m.next.number}`),
     ...owed.releaseApprovals.map((r) => `release-approval:${r.runId}`),
-    ...owed.releaseActs.map((a) => `release-act:${a.version}|${a.kind}`),
+    ...owed.releaseActs.map((a) => `release-act:${a.version}|${a.key}`),
   ];
   return [...issues, ...ids].sort();
 }
@@ -405,7 +409,7 @@ export function masterWork(admissible: Admissible[], owed: Owed, mode: MasterMod
  * judge owes that owe it a turn, and the live verdicts its latest shipped release owes.
  * A read that fails fails the verdict, which the box says and acts on nothing: none is skipped.
  */
-export async function readMasterWork(deviceId: string, projectId: string): Promise<MasterWork> {
+export async function readMasterWork(deviceId: string, projectId: string): Promise<MasterRead> {
   const ports = mastersPorts();
   const [
     admissible,
@@ -469,7 +473,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
   const lastPass = await lastFinishedPassStart(projectId);
   const answers = lastPass ? await ports.answersSince(projectId, lastPass) : [];
   const mode = await ports.masterMode(projectId);
-  return masterWork(
+  const work = masterWork(
     admissible.items,
     {
       designs,
@@ -508,16 +512,5 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     },
     mode,
   );
-}
-
-/**
- * The unnamed releases the master is asked to name: none where naming goes to somebody else (ISS-590).
- * Naming takes project.admin, which a master acting as a member is refused, so asking it would ask
- * every pass for a write it can never make; the release's page names its admins instead.
- */
-async function releasesTheMasterNames(projectId: string): Promise<{ version: string }[]> {
-  const ports = mastersPorts();
-  const unnamed = await ports.releasesUnnamed(projectId);
-  if (unnamed.length === 0) return unnamed;
-  return (await ports.releaseNamer(projectId)).to === 'master' ? unnamed : [];
+  return { work, releaseWaits: releaseActs };
 }
