@@ -1,0 +1,1 @@
+**A master can hand another project its part of an issue.** When its credential cannot write there, the refusal names the change request to send through the shared ecosystem, or who can link the two projects.

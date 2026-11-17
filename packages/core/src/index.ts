@@ -32,7 +32,12 @@ import { closeDb, db } from './db/client.js';
 import { MEMORY_EMBEDDING_DIM } from './db/schema.js';
 import { needsYouViewerOf, readNeedsYouDecisions } from './development/index.js';
 import { recordDevicePluginVersion } from './devices/index.js';
-import { contractHolding, contractVersionReads, interfaceContractsOf } from './ecosystem/index.js';
+import {
+  contractHolding,
+  contractVersionReads,
+  fenceChannelWay,
+  interfaceContractsOf,
+} from './ecosystem/index.js';
 import { declaredRunSecretPorts, provideExecutionPorts } from './execution-ports.js';
 import { provideFastLanePorts } from './fast-lane/index.js';
 import { provideFeedbackDependents, requirementFeedbackAs } from './feedback/index.js';
@@ -89,6 +94,7 @@ import { provideChatWriteHold } from './middleware/chat-write-hold.js';
 import { allowedOrigins, corsMiddleware } from './middleware/cors.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
+import { provideFenceWay } from './middleware/pat-fence.js';
 import { providePluginVersionRecorders } from './middleware/plugin-version.js';
 import { closeRateLimitStore } from './middleware/rate-limit.js';
 import { readMemo } from './middleware/read-memo.js';
@@ -199,6 +205,8 @@ provideRouteRefSources({
   issueExists,
   refuseIssueKey: refuseUnresolvedIssueKey,
 });
+// a fence refusal names the channel act toward a project its credential does not reach (ISS-1279)
+provideFenceWay(fenceChannelWay);
 provideVisibleProjects(findVisibleProjectIds);
 provideEphemeralPublisher(publishEphemeralFrame);
 provideCredentialsPorts({

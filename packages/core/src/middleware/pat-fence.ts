@@ -6,6 +6,8 @@
  * the web app, with nothing saying the credential was the cause (a release job for sidcorp-mail
  * sent the box's PAT, fenced to `forge`, 2026-10-27). The refusal reads the same whether or not the
  * named project exists, so it tells a caller nothing about projects beyond its own token's reach.
+ * It names the door that does work there (ISS-1279): the ecosystem channel act toward that project
+ * where the two are counterparties, or who links them where none is; the fence itself never widens.
  */
 
 import { HTTPException } from 'hono/http-exception';
@@ -14,6 +16,33 @@ import { tokenNameOf } from '../credentials/token-identity.js';
 import { projectNames } from './route-refs.js';
 
 export const PAT_PROJECT_OUTSIDE_FENCE = 'PAT_PROJECT_OUTSIDE_FENCE';
+
+/** The channel's way from a fence's projects toward the project named: the sentence and its facts. */
+export interface FenceWayOut {
+  said: string;
+  ways: unknown[];
+}
+
+type FenceWayReader = (
+  fence: readonly string[],
+  named: { id: string | null; ref: string },
+) => Promise<FenceWayOut>;
+
+let wayReader: FenceWayReader | null = null;
+
+/** The ecosystem module answers what its channel offers across a fence; the HTTP door provides it at boot. */
+export function provideFenceWay(reader: FenceWayReader): void {
+  wayReader = reader;
+}
+
+function fenceWayOf(...args: Parameters<FenceWayReader>): Promise<FenceWayOut> {
+  if (!wayReader) {
+    throw new Error(
+      'pat fence: no channel reader was provided, so a fence refusal cannot name the door that works; the process entry calls provideFenceWay before it serves',
+    );
+  }
+  return wayReader(...args);
+}
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -77,9 +106,10 @@ export async function refuseOutsideFence(args: {
   const id = named.by === 'header' ? await projectNames().projectIdOfSlug(named.ref) : named.ref;
   if (id !== null && reach.has(id.toLowerCase())) return;
 
-  const [name, slugs] = await Promise.all([
+  const [name, slugs, way] = await Promise.all([
     tokenNameOf(tokenId),
     projectNames().projectSlugsOf(fence),
+    fence.length > 0 ? fenceWayOf(fence, { id, ref: named.ref }) : null,
   ]);
   const reaches = fence.map((projectId) => ({ id: projectId, slug: slugs.get(projectId) ?? null }));
   const reachSaid =
@@ -91,12 +121,12 @@ export async function refuseOutsideFence(args: {
     message:
       `${PAT_PROJECT_OUTSIDE_FENCE}: this request came on token ${token}, which reaches ${reachSaid}; ` +
       `${WHERE[named.by]} names project ${named.ref}, which it does not reach, so nothing on that ` +
-      'project is answered to it. Call that project with a credential minted for it: a pane a ' +
-      "runner box starts for a project carries its checkout's credential under $FORGE_BORROW_FROM, " +
-      'and a person mints one under Settings → API Tokens naming the project.',
+      `project is answered to it. ${way ? `${way.said} ` : ''}To act on that project itself, call ` +
+      "it with a credential minted for it: a pane a runner box starts for a project carries its checkout's " +
+      'credential under $FORGE_BORROW_FROM, and a person mints one under Settings → API Tokens naming the project.',
     cause: {
       code: PAT_PROJECT_OUTSIDE_FENCE,
-      details: { token: { id: tokenId, name }, named, reaches },
+      details: { token: { id: tokenId, name }, named, reaches, channel: way?.ways ?? [] },
     },
   });
 }

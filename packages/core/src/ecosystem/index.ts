@@ -13,6 +13,7 @@ export { contractVersionReads } from './contract/version-read.js';
 export { settlingContractVersion } from './contract/waits.js';
 export { contractProviderGate } from './contract/waits-live.js';
 export { contractHolding } from './contract-holding.js';
+export { fenceChannelWay } from './fence-way.js';
 export { interfaceContractsOf } from './interface-contracts.js';
 export { ecosystemJsonSchemas } from './json-schema.js';
 export { openRunsOf } from './link-service.js';
