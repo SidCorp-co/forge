@@ -104,8 +104,8 @@ export interface SessionRow {
    *  endpoint (ISS-698). Null when no previewable turn exists yet (e.g. a
    *  brand-new session, or a legacy row with only the jsonb transcript). */
   lastMessagePreview?: string | null;
-  /** `tmux -S <socket> attach -t <pane>` where a channel agent's session runs in a pane on its
-   *  box (ISS-946), as the box named it; on the `GET /:id` detail row only. */
+  /** `forge-runner chat attach <slug>` where a channel agent's session runs as a room agent's
+   *  background session on its box (ISS-1268); on the `GET /:id` detail row only. */
   paneAttach?: string | null;
 }
 
