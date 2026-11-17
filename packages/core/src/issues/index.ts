@@ -143,6 +143,7 @@ export {
   explainNoIssue,
   resolveIssueForHeadRef,
   resolveIssuesForChangeRequest,
+  titleRangeRefusals,
 } from './head-ref-link.js';
 export { landedSql, mergeSinceLastReopenSql } from './host-landing.js';
 export {

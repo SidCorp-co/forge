@@ -58,9 +58,11 @@ import {
   explainNoIssue,
   heldIssuePrefixes,
   issueIdOfKey,
+  issueKeysAndTitles,
   issueTaskOf,
   refuseUnresolvedIssueKey,
   resolveIssuesForChangeRequest,
+  titleRangeRefusals,
 } from './issues/index.js';
 import { recordSecretResolve, rememberHandedOut, resolvePipelineContext } from './jobs/index.js';
 import { provideKnowledgeDomainPorts } from './knowledge-ports.js';
@@ -299,6 +301,9 @@ provideForgeReads({
   issuesForChangeRequest: (args) => resolveIssuesForChangeRequest(args),
   noIssueForChangeRequest: (args) => explainNoIssue(args),
   changeRequestLinkReadings: (args) => changeRequestLinkReadings(args),
+  unreadTitleRanges: (title) => titleRangeRefusals(title ?? ''),
+  issueKeys: async (projectId, ids) =>
+    new Map([...(await issueKeysAndTitles(projectId, ids))].map(([id, v]) => [id, v.key])),
   projectSlug: async (projectId) => (await projectHead(projectId))?.slug ?? null,
   projectsByIds: listProjectHeads,
   runProjectOf: pipelineRunProjectId,

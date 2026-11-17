@@ -305,6 +305,40 @@ describe('a Batch title links every key its list holds', () => {
   });
 });
 
+// FB-694 (epod MR 341): titled `ISS-206..210: …`, it linked the ends and left the issues between
+describe('ISS-1264: a key range in the title links every key in it, and the answer lists them', () => {
+  it.each([
+    ['ISS-206..210: the batch', '..'],
+    ['ISS-206\u2013210: the batch', 'an en dash'],
+  ])('links all five keys of %s (%s) and answers their keys', async (title) => {
+    const ids = [];
+    for (const seq of [206, 207, 208, 209, 210]) ids.push(await issue(seq));
+    const res = await open({ head: 'chore/lift', title });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body).toMatchObject({
+      projection: {
+        outcome: 'recorded',
+        issueIds: ids,
+        linked: ['ISS-206', 'ISS-207', 'ISS-208', 'ISS-209', 'ISS-210'],
+        unread: [],
+      },
+    });
+    expect(await linked(201)).toEqual([206, 207, 208, 209, 210]);
+  });
+
+  it('refuses a range over the most one links by name in the answer, and links none of it', async () => {
+    await issue(206);
+    await issue(300);
+    const res = await open({ head: 'chore/lift', title: 'ISS-206..300: too wide' });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const projection = (res.body as { projection: { linked: string[]; unread: string[] } })
+      .projection;
+    expect(projection.linked).toEqual([]);
+    expect(projection.unread).toEqual([expect.stringContaining('ISS-206..300 spans 95 keys')]);
+    expect(await linked(201)).toEqual([]);
+  });
+});
+
 describe('a request whose title changes is re-linked on its next refresh', () => {
   it('links past the draft marker, then follows the title to its new key', async () => {
     await issue(70);

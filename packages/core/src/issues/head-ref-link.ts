@@ -185,13 +185,28 @@ const DRAFT_MARKERS =
 
 /** One issue prefix, as a key spells it. */
 const PREFIX = '[A-Za-z][A-Za-z0-9]{1,5}';
+/** One number of a title's key list, under a prefix of its own or the one before it. */
+const LIST_ITEM = `(?:${PREFIX}-)?\\d{1,10}`;
+/** A range inside a title's key list (ISS-1264): `206..210` or `206\u2013210`, an en dash. */
+const RANGE_MARK = '(?:\\.\\.|\\u2013)';
 /**
- * A title's key with the slash shorthand after it (ISS-980, FB-546): `ISS-103/105/107`, where a bare
- * number after a slash takes the prefix of the key before it, and `ISS-7/AH-3`, a whole key.
+ * The most keys one range in a title links (ISS-1264). A batch branch lists its keys and a title
+ * range stands for the same batch; a range wider than this is far more likely a typo (`ISS-2..2100`)
+ * than fifty issues one review can hold, so it links nothing and is refused by name.
  */
-const SLASHED_KEYS = `${PREFIX}-\\d{1,10}(?:\\/(?:${PREFIX}-)?\\d{1,10})*(?![A-Za-z0-9-])`;
+export const TITLE_RANGE_MAX = 50;
+/**
+ * A title's key with the slash shorthand and ranges after it (ISS-980, FB-546, ISS-1264):
+ * `ISS-103/105/107`, where a bare number after a slash takes the prefix of the key before it,
+ * `ISS-7/AH-3`, a whole key, and `ISS-206..210`, every key from one to the other.
+ */
+const SLASHED_KEYS = `${PREFIX}-\\d{1,10}(?:${RANGE_MARK}${LIST_ITEM})?(?:\\/${LIST_ITEM}(?:${RANGE_MARK}${LIST_ITEM})?)*(?![A-Za-z0-9-])`;
 const SLASHED_GLOBAL = new RegExp(
-  `(${PREFIX})-(\\d{1,10})((?:\\/(?:${PREFIX}-)?\\d{1,10})*)(?![A-Za-z0-9-])`,
+  `(${PREFIX})-(\\d{1,10})((?:${RANGE_MARK}${LIST_ITEM})?(?:\\/${LIST_ITEM}(?:${RANGE_MARK}${LIST_ITEM})?)*)(?![A-Za-z0-9-])`,
+  'gi',
+);
+const LIST_PART = new RegExp(
+  `(?:(${PREFIX})-)?(\\d{1,10})(?:${RANGE_MARK}(?:(${PREFIX})-)?(\\d{1,10}))?`,
   'gi',
 );
 
@@ -204,20 +219,41 @@ const TITLE_LEAD_KEYS = new RegExp(
   'gi',
 );
 
-/** The keys of a title's lead list, each slash shorthand number under the prefix before it. */
-function slashedKeysIn(text: string): IssueReference[] {
-  const out: IssueReference[] = [];
+/**
+ * The keys of a title's lead list, each slash shorthand number under the prefix before it, a range
+ * as every key it spans; a range read as no key (over `TITLE_RANGE_MAX`, backwards, or across two
+ * prefixes) is named in `refused` and links nothing, not even its ends.
+ */
+function slashedKeysIn(text: string): { refs: IssueReference[]; refused: string[] } {
+  const refs: IssueReference[] = [];
+  const refused: string[] = [];
   for (const hit of text.matchAll(SLASHED_GLOBAL)) {
     let prefix = (hit[1] ?? '').toUpperCase();
-    const parts = [`${prefix}-${hit[2]}`, ...(hit[3] ?? '').split('/').filter(Boolean)];
-    for (const part of parts) {
-      const [named, seq] = part.includes('-') ? part.split('-') : [prefix, part];
-      prefix = (named ?? prefix).toUpperCase();
-      const issSeq = Number(seq);
-      if (inRange(issSeq)) out.push({ prefix, issSeq });
+    const parts = `${prefix}-${hit[2]}${hit[3] ?? ''}`;
+    for (const part of parts.matchAll(LIST_PART)) {
+      const from = Number(part[2]);
+      prefix = (part[1] ?? prefix).toUpperCase();
+      if (part[4] === undefined) {
+        if (inRange(from)) refs.push({ prefix, issSeq: from });
+        continue;
+      }
+      const to = Number(part[4]);
+      const endPrefix = (part[3] ?? prefix).toUpperCase();
+      const named = part[0].trim();
+      if (endPrefix !== prefix) {
+        refused.push(`${named} spans two prefixes`);
+      } else if (to < from) {
+        refused.push(`${named} runs backwards`);
+      } else if (to - from + 1 > TITLE_RANGE_MAX) {
+        refused.push(
+          `${named} spans ${to - from + 1} keys, over the most one range links (${TITLE_RANGE_MAX})`,
+        );
+      } else if (inRange(from) && inRange(to)) {
+        for (let n = from; n <= to; n++) refs.push({ prefix, issSeq: n });
+      }
     }
   }
-  return out;
+  return { refs, refused };
 }
 
 /**
@@ -229,15 +265,30 @@ function slashedKeysIn(text: string): IssueReference[] {
  * and a key another project's slug qualifies (`adminhub-api ISS-11`) sits in neither form (FB-295).
  */
 export function titleIssueReferences(title: string): IssueReference[] {
+  return readTitle(title).refs;
+}
+
+/**
+ * The key ranges a title names that link nothing (ISS-1264), each as the title spells it and why:
+ * said in the create door's answer, so a batch is never silently cut to some of its keys.
+ */
+export function titleRangeRefusals(title: string): string[] {
+  return readTitle(title).refused;
+}
+
+function readTitle(title: string): { refs: IssueReference[]; refused: string[] } {
   const line = title.replace(EMPHASIS, '').trim().replace(DRAFT_MARKERS, '');
   const hits: Array<{ at: number; refs: IssueReference[] }> = [];
+  const refused: string[] = [];
   for (const hit of line.matchAll(TITLE_LEAD_KEYS)) {
-    hits.push({ at: hit.index ?? 0, refs: slashedKeysIn(hit[1] ?? '') });
+    const read = slashedKeysIn(hit[1] ?? '');
+    hits.push({ at: hit.index ?? 0, refs: read.refs });
+    refused.push(...read.refused);
   }
   for (const hit of line.matchAll(VERB_THEN_KEYS)) {
     hits.push({ at: hit.index ?? 0, refs: keysIn(hit[1] ?? '') });
   }
-  return hits.sort((a, b) => a.at - b.at).flatMap((h) => h.refs);
+  return { refs: hits.sort((a, b) => a.at - b.at).flatMap((h) => h.refs), refused };
 }
 
 /**
@@ -250,7 +301,9 @@ export const CHANGE_REQUEST_LINK_RULE =
   'segment opening with the key (`fix/iss-n-…`, `iss-n-…`), a `feat/…-iss-n` or `fix/…-iss-n` branch ' +
   'ending with it, or a `batch-iss-n-m` branch listing every key; a title leading with the key or a ' +
   'list of keys (`ISS-n: …`, `[ISS-n] …`, `ISS-n, ISS-m …`, `Batch ISS-n/m: …`, where a bare number ' +
-  'after a slash takes the prefix before it), after any `Draft:`, `[Draft]`, `WIP:` or `Draft -` ' +
+  'after a slash takes the prefix before it, or `Batch ISS-n..m: …`, a range that links every key ' +
+  `from n to m, at most ${TITLE_RANGE_MAX} of them and none cut), after any ` +
+  '`Draft:`, `[Draft]`, `WIP:` or `Draft -` ' +
   'marker, or naming it after a closing verb (`… (fixes ISS-n)`); or a description line ' +
   'holding only keys, or `Closes ISS-n`. A key elsewhere in a title or description is prose and ' +
   'links nothing.';
@@ -272,6 +325,7 @@ export function noIssueReason(args: {
     ...deliveredDescriptionReferences(args.description ?? ''),
   ].map((r) => `${r.prefix}-${r.issSeq}`);
   const named = [...new Set(read)];
+  const refused = titleRangeRefusals(args.title ?? '');
   const keys =
     named.length === 0
       ? 'no issue key in a delivery form'
@@ -279,6 +333,7 @@ export function noIssueReason(args: {
   return (
     `linked to no issue: branch \`${args.headRef}\`, title ${JSON.stringify(args.title ?? '')}, and ` +
     `${args.description?.trim() ? 'its description' : 'no description'} carry ${keys}. ` +
+    (refused.length > 0 ? `Its title's range linked nothing: ${refused.join('; ')}. ` : '') +
     `${CHANGE_REQUEST_LINK_RULE} Edit the title or description and refresh it.`
   );
 }

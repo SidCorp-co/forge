@@ -22,7 +22,8 @@ export const INTEGRATION_DOOR_REST_CARDS = {
       },
     ],
     practice: [
-      'Name the issue key in the title or body: the host’s merge then links the issue on its own.',
+      'Name the issue key in the title or body: the host’s merge then links the issue on its own. A batch in one request: `Batch ISS-206..210: …` (a range, at most 50 keys, none cut) or `ISS-206/208/210`.',
+      'Read the answer’s `projection.linked` (the keys it linked) and `projection.unread` (a range it refused, with why) before you merge.',
       'Never with a host token of your own: core records only what it opened.',
     ],
     example: {

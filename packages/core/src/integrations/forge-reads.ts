@@ -21,6 +21,10 @@ interface ForgeReads {
     title: string | null;
     description: string | null;
   }): Promise<string>;
+  /** The key ranges a title names that link nothing, each with why (ISS-1264); empty where none. */
+  unreadTitleRanges(title: string | null): string[];
+  /** `ISS-nn` of each of these issues of the project, by issue id. */
+  issueKeys(projectId: string, issueIds: readonly string[]): Promise<Map<string, string>>;
   /**
    * Each stored link of a change request with the reading that named it (ISS-1027): the branch's
    * leading key, the numbers its tail lists, its title or its body.

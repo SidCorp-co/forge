@@ -40,6 +40,10 @@ interface OpenedProjectionResult {
   issueIds: string[];
   /** The same issues, each with the reading that named it: branch lead or tail, title or body (ISS-1027). */
   linkedIssues: NamedLink[];
+  /** The `ISS-nn` of each issue it linked, in the order of `issueIds`, so one missing from a batch shows at once (ISS-1264). */
+  linked: string[];
+  /** A key range in its title that linked nothing, each with why (ISS-1264); empty where none. */
+  unread: string[];
   /** The primary issue: the branch's, else the first the title or description delivers; null where none is linked. */
   issueId: string | null;
   /** Where it links no issue, why, named by what was read (ISS-855); null where it links one, or nothing was read back. */
@@ -217,6 +221,9 @@ export async function projectOpenedPullRequest(args: {
   const issueIds = row?.issueIds ?? [];
   const linkedIssues = row?.links ?? [];
   const issueId = issueIds[0] ?? null;
+  const keyOf = await forgeReads().issueKeys(args.projectId, issueIds);
+  const linked = issueIds.map((id) => keyOf.get(id) ?? id);
+  const unreadRanges = forgeReads().unreadTitleRanges(args.opened.title ?? null);
   const noIssue =
     row && issueIds.length === 0
       ? await forgeReads().noIssueForChangeRequest({
@@ -232,6 +239,8 @@ export async function projectOpenedPullRequest(args: {
       outcome: 'recorded',
       issueIds,
       linkedIssues,
+      linked,
+      unread: unreadRanges,
       issueId,
       noIssue,
       reason: unread === null ? null : `${unread} The row itself was written.`,
@@ -249,6 +258,8 @@ export async function projectOpenedPullRequest(args: {
       outcome: 'superseded',
       issueIds: [],
       linkedIssues: [],
+      linked: [],
+      unread: unreadRanges,
       issueId: null,
       noIssue: null,
       reason:
@@ -261,6 +272,8 @@ export async function projectOpenedPullRequest(args: {
       outcome: 'superseded',
       issueIds,
       linkedIssues,
+      linked,
+      unread: unreadRanges,
       issueId,
       noIssue,
       reason:
@@ -272,6 +285,8 @@ export async function projectOpenedPullRequest(args: {
     outcome: 'not-recorded',
     issueIds: [],
     linkedIssues: [],
+    linked: [],
+    unread: unreadRanges,
     issueId: null,
     noIssue: null,
     reason:

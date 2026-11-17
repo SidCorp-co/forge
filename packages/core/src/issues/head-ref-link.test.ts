@@ -5,7 +5,9 @@ import {
   deliveredDescriptionReferences,
   noIssueReason,
   readingOfLink,
+  TITLE_RANGE_MAX,
   titleIssueReferences,
+  titleRangeRefusals,
 } from './head-ref-link.js';
 
 const keys = (refs: Array<{ prefix: string; issSeq: number }>) =>
@@ -236,6 +238,52 @@ describe('ISS-980: a Batch lead and the slash shorthand link every key the list 
 
   it('names the Batch lead and the slash shorthand in its rule', () => {
     expect(CHANGE_REQUEST_LINK_RULE).toContain('Batch ISS-n/m');
+  });
+});
+
+// ISS-1264 (FB-694, epod MR 341): `ISS-206..210: …` linked the ends and silently left the rest
+describe('ISS-1264: a key range in a title is every key in it, or refused by name', () => {
+  it('reads two dots and an en dash as every key from one end to the other', () => {
+    const all = ['ISS-206', 'ISS-207', 'ISS-208', 'ISS-209', 'ISS-210'];
+    expect(keys(titleIssueReferences('ISS-206..210: the batch'))).toEqual(all);
+    expect(keys(titleIssueReferences('Batch ISS-206\u2013210: the batch'))).toEqual(all);
+    expect(keys(titleIssueReferences('ISS-1..2/5, AH-3'))).toEqual([
+      'ISS-1',
+      'ISS-2',
+      'ISS-5',
+      'AH-3',
+    ]);
+  });
+
+  it('keeps the slash shorthand as it was', () => {
+    expect(keys(titleIssueReferences('ISS-103/105/107: x'))).toEqual([
+      'ISS-103',
+      'ISS-105',
+      'ISS-107',
+    ]);
+  });
+
+  it('links nothing of a range over the maximum and names it, never its ends alone', () => {
+    const title = `ISS-1..${TITLE_RANGE_MAX + 1}: too wide`;
+    expect(titleIssueReferences(title)).toEqual([]);
+    expect(titleRangeRefusals(title)).toEqual([expect.stringContaining('ISS-1..51 spans 51 keys')]);
+    expect(titleIssueReferences(`ISS-1..${TITLE_RANGE_MAX}: ok`)).toHaveLength(TITLE_RANGE_MAX);
+  });
+
+  it('refuses a backwards range and one across two prefixes, and says so where nothing links', () => {
+    expect(titleRangeRefusals('ISS-210..206: x')).toEqual([expect.stringContaining('backwards')]);
+    expect(titleRangeRefusals('ISS-1..AH-3: x')).toEqual([expect.stringContaining('two prefixes')]);
+    const why = noIssueReason({
+      headRef: 'chore/x',
+      title: 'ISS-1..99: x',
+      description: null,
+      prefixes: ['ISS'],
+    });
+    expect(why).toContain('ISS-1..99 spans 99 keys');
+  });
+
+  it('names the range form in its rule', () => {
+    expect(CHANGE_REQUEST_LINK_RULE).toContain('Batch ISS-n..m');
   });
 });
 
