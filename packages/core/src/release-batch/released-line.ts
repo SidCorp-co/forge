@@ -77,14 +77,6 @@ async function lineWhy(
   return why === null ? null : { why, production };
 }
 
-/**
- * Whether `releasedLineOf` answers a line for the project, from its document alone: what a read that
- * needs only that asks, so it never waits on the line's own reads (ISS-1070 r17).
- */
-export async function holdsReleasedLine(projectId: string): Promise<boolean> {
-  return (await lineWhy(projectId)) !== null;
-}
-
 export async function releasedLineOf(projectId: string): Promise<ReleasedLineRead | null> {
   const declared = await lineWhy(projectId);
   if (!declared) return null;

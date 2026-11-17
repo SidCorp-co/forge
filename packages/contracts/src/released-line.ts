@@ -161,16 +161,30 @@ export function liveReleaseHolding(
 }
 
 /**
- * The release versions a verdict may name and count on release `version`: that release, and every one
- * the record says it carries (`ReleasedLine.shipped[].carries`). Empty with no version; the release
- * alone where no line is read.
+ * The release versions a verdict on issue `issueId` may name and count on release `version`, which
+ * carries that issue (ISS-1280): that release, every one the record says it carries
+ * (`ReleasedLine.shipped[].carries`), and every later one the record says carries it, where it holds
+ * the issue's current round (`releaseHoldsIssue`). A judge sent to the live release so proves the
+ * release that shipped the issue, and no release counts a verdict for an issue it does not carry.
+ * Empty with no version; the release alone where no line is read.
  */
 export function versionsCountedOn(
 	line: ReleasedLine | null | undefined,
 	version: string | null,
+	issueId: string,
 ): ReadonlySet<string> {
 	if (version === null) return new Set();
-	return new Set([version, ...(line?.shipped.get(version)?.carries ?? [])]);
+	const later =
+		line && releaseHoldsIssue(line, version, issueId) !== false
+			? [...line.shipped]
+					.filter(([, s]) => s.carries.includes(version))
+					.map(([v]) => v)
+			: [];
+	return new Set([
+		version,
+		...(line?.shipped.get(version)?.carries ?? []),
+		...later,
+	]);
 }
 
 /** Why a release a verdict names is refused: no version, no place for one, or none recorded. */

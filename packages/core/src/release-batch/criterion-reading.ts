@@ -20,9 +20,10 @@ import type { CarriedVerdict, IssueFact, ReleaseProof } from './release-facts.js
  * (`judgedOnReleaseBuild`: on a project naming a testing environment, a runtime verdict at it and
  * never a commit one, REQ-36 BC-18), so a verdict on an earlier build never counts, and none on it
  * reads not judged — "Not judged on <environment>" where the project names one (BC-19). A verdict
- * judged on a release counts on release `version` and on every release its record says carries
- * that one (`versionsCountedOn`, ISS-900). A code-property criterion, which only the review judges,
- * also counts its commit verdicts since the last reopen, at any build (`countedForClass`, ISS-914).
+ * judged on a release counts on release `version`, which carries the issue, where it names that
+ * release, one it carries, or a later one carrying it (`versionsCountedOn`, ISS-900, ISS-1280). A
+ * code-property criterion, which only the review judges, also counts its commit verdicts since the
+ * last reopen, at any build (`countedForClass`, ISS-914).
  * A commit pass naming an owner's decision that accepts its proof counts at any build and reads
  * `accepted` on that decision, never proven (REQ-36 BC-22), unless its landing earned it (FB-515).
  */
@@ -60,7 +61,7 @@ export function criterionReadingsAt(
   version: string | null = null,
   shippedAt: Date | null = version === null ? null : (released?.shipped.get(version)?.at ?? null),
 ): CriterionReading[] {
-  const versions = versionsCountedOn(released, version);
+  const versions = versionsCountedOn(released, version, issue.id);
   const reader = { shippedAt, build, judgedOn, versions };
   const reopenedAt = issue.reopenedAt?.toISOString() ?? null;
   return issue.criteria.map((c) => {

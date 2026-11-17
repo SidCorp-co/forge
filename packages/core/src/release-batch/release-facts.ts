@@ -37,9 +37,8 @@ import {
   type LandingCriteriaReport,
   landingCriteriaReports,
 } from './criteria-basis.js';
-import { issuesJudgedOnRelease } from './judged-on-release.js';
 import type { CompletionFacts } from './release-view.js';
-import { holdsReleasedLine, releasedLineOf } from './released-line.js';
+import { releasedLineOf } from './released-line.js';
 
 export interface IssueFact {
   id: string;
@@ -97,8 +96,6 @@ export interface ReleaseFacts {
    * what each release carries (`released-line.ts:releasedLineOf`, ISS-900); null on any other project.
    */
   released: ReleasedLine | null;
-  /** The issues of the project holding a verdict judged on a release, loaded beside the rosters'. */
-  judgedOnRelease: readonly string[];
   /**
    * Where the project earns criteria at an issue's landing (`criteria-basis.ts:criteriaBasisOf`), what
    * each issue earned there, by issue id: the weighing the issue's own criteria read shows
@@ -397,18 +394,13 @@ export async function loadReleaseFacts(
   issueIds: readonly string[],
   runIds: readonly string[],
 ): Promise<ReleaseFacts> {
-  // the line is read beside everything below, none of which waits on its reads: whether the project
-  // holds one is its document's, and the issues judged on a release are asked of every project at
-  // once, so each issue's rows, criteria, reopen and close are asked once, one wave in (ISS-1070 r17)
+  // the line is read beside everything below, none of which waits on its reads, so each issue's
+  // rows, criteria, reopen and close are asked once, one wave in (ISS-1070 r17); a release reads only
+  // the issues it carries, whichever release a verdict on them names (ISS-1280)
   const releasedRead = releasedLineOf(projectId);
   // awaited at the end, where its failure is thrown; never an unhandled rejection meanwhile
   releasedRead.catch(() => undefined);
-  // a verdict names a release only where the line is the agent's record (`VERDICT_RELEASE_UNUSED`
-  // refuses one anywhere else), so a project with no line holds none, and its reads ask nothing more
-  const judgedOnRelease = (await holdsReleasedLine(projectId))
-    ? await issuesJudgedOnRelease(projectId)
-    : [];
-  const ids = [...new Set([...issueIds, ...judgedOnRelease])];
+  const ids = [...new Set(issueIds)];
   // the landing basis waits on production's reading where a project has one: the reads after these
   // do not wait on it, so a project deployed through a binding asks them beside every other project
   const landingRead = landingCountedOf(projectId, ids);
@@ -510,7 +502,6 @@ export async function loadReleaseFacts(
     judge,
     judgedOn: judgedOnOf(held?.document.delivery),
     released: await releasedRead,
-    judgedOnRelease,
     landing: earnedByJudge(await landingRead, byIssue),
   };
 }

@@ -2,18 +2,20 @@
  * ISS-900 part 3 (agenfold, 2026-11-02, on d51e3ff5d) — a release's criteria count and verified level
  * read a criterion judged on a release. agenfold's owner rule `release-is-the-agents-record` rules out
  * commit fields: production reports only a version, and every release is its agent's record by
- * version. REQ-11's issue verdicts on release 0.76.0 counted for the requirement (7/7), yet
- * `GET …/releases/0.76.0` and `…/releases/0.78.0` read criteria 0/0, verified level `none`: neither
- * roster carries REQ-11's issues, which an earlier release shipped, and a release counted only the
- * criteria of the issues it carries.
+ * version. REQ-11's issue verdicts on release 0.76.0 counted for the requirement (7/7), yet no
+ * release read counted them.
+ *
+ * ISS-1280 (adminhub-fe, 2026-11-17): ISS-900 counted a criterion on the release it was judged on and
+ * on every later one, whatever release shipped its issue. One qa run skipped the open criteria of 13
+ * old releases, each on its own release, and 0.42.0, carrying one issue, then listed all 13 issues'
+ * criteria, 31 where it had 3. A release reads only the criteria of the issues it carries: a
+ * criterion judged on the release that shipped its issue, on one it carries, or on a later one
+ * carrying it counts there, and on no release that does not carry its issue.
  *
  * Planted as agenfold stands: ISS-1, tracing REQ-11, shipped in 0.75.0; 0.76.0 and 0.78.0 carry only
- * issues with no criteria; ISS-1 judged on 0.76.0. A criterion judged on 0.76.0 belongs to 0.76.0 and
- * is carried by the live 0.78.0, as the release record says; 0.75.0, which shipped before it was
- * judged and carries no later release, does not count it. Through the app's own routes, against real
+ * issues with no criteria; ISS-1 judged on 0.76.0. Through the app's own routes, against real
  * Postgres; nothing reads production.
  *
- * @direct-test-of packages/core/src/release-batch/judged-on-release.ts
  * @direct-test-of packages/core/src/release-batch/release-facts.ts
  * @direct-test-of packages/core/src/release-batch/release-read-views.ts
  * @direct-test-of packages/core/src/release-batch/released-line.ts
@@ -87,8 +89,8 @@ beforeEach(async () => {
   reads.n = 0;
 });
 
-describe('a release reads a criterion judged on a release it is or carries (ISS-900)', () => {
-  it('counts ISS-1 judged on 0.76.0 on 0.76.0 and on the live 0.78.0, though 0.75.0 shipped it', async () => {
+describe('a release reads the criteria of the issues it carries, judged on a release it is, carries or is carried by (ISS-900, ISS-1280)', () => {
+  it('counts ISS-1 judged on 0.76.0 on 0.75.0, which shipped it, and on no release that does not carry it', async () => {
     await agenfold();
     const req = await agreedRequirement([
       'A member opens the workspace',
@@ -114,21 +116,20 @@ describe('a release reads a criterion judged on a release it is or carries (ISS-
     }
     await recordRelease([await landedIssue(3, F4, [])], '0.78.0');
 
+    // 0.76.0 and the live 0.78.0 carry 0.75.0, but not ISS-1 on their own rosters: none of its criteria
     for (const version of ['0.76.0', '0.78.0']) {
       const release = await releaseOf(version);
-      expect(release.criteria, version).toMatchObject({ proven: 2, total: 2 });
-      expect(release.verified, version).toMatchObject({ level: 'criteria', proven: 2, total: 2 });
-      const iss = release.issueCriteria.find((i) => i.key === 'ISS-1');
-      expect(
-        iss?.criteria.map((c) => c.identity),
-        version,
-      ).toEqual(['release 0.76.0', 'release 0.76.0']);
+      expect(release.criteria, version).toMatchObject({ proven: 0, total: 0 });
+      expect(release.issueCriteria.map((i) => i.key)).not.toContain('ISS-1');
     }
 
-    // 0.75.0 shipped ISS-1 before it was judged, and carries no later release: not proven there
-    const earlier = await releaseOf('0.75.0');
-    expect(earlier.criteria).toMatchObject({ proven: 0, total: 2 });
-    expect(earlier.verified.level).toBe('some_criteria');
+    // 0.75.0 shipped ISS-1, and 0.76.0, which carries it, is where it was judged
+    const shipped = await releaseOf('0.75.0');
+    expect(shipped.criteria).toMatchObject({ proven: 2, total: 2 });
+    expect(shipped.verified).toMatchObject({ level: 'criteria', proven: 2, total: 2 });
+    expect(shipped.issueCriteria.map((i) => [i.key, i.criteria.map((c) => c.identity)])).toEqual([
+      ['ISS-1', ['release 0.76.0', 'release 0.76.0']],
+    ]);
     expect(reads.n).toBe(0);
   });
 
@@ -207,7 +208,7 @@ describe('a release reads a criterion judged on a release it is or carries (ISS-
   // agenfold ISS-59 on 3d747ff16: its passes judged on 0.77.0 are carried by 0.78.0; a fail judged on
   // 0.78.0 reopened it, and its fix awaits a later release. The reopen voids the fail for the fix's
   // round, so 0.78.0 read 19/19, failing 0, though criterion 1 failed on it.
-  it('reads a fail judged on a release as failing there and on every release until one ships the fix', async () => {
+  it('reads a fail judged on a release carrying its issue as failing on the release that shipped it, until one ships the fix', async () => {
     await agenfold();
     const req = await agreedRequirement(['A fold opens', 'A fold saves']);
     const iss59 = await landedIssue(59, F4, ['A fold opens', 'A fold saves']);
@@ -239,16 +240,17 @@ describe('a release reads a criterion judged on a release it is or carries (ISS-
     });
     expect(await statusOf(iss59)).toBe('reopen');
 
-    const live = await releaseOf('0.78.0');
-    expect(live.criteria).toMatchObject({ proven: 1, failing: 1, total: 2 });
-    expect(live.verified.level).toBe('some_criteria');
-    const iss = live.issueCriteria.find((i) => i.key === 'ISS-59');
+    // 0.77.0 shipped ISS-59, and 0.78.0, which carries it, is where criterion 1 failed
+    const shipped = await releaseOf('0.77.0');
+    expect(shipped.criteria).toMatchObject({ proven: 1, failing: 1, total: 2 });
+    expect(shipped.verified.level).toBe('some_criteria');
+    const iss = shipped.issueCriteria.find((i) => i.key === 'ISS-59');
     expect(iss?.criteria.map((c) => c.identity)).toEqual(['release 0.78.0', 'release 0.77.0']);
-    // 0.77.0 shipped before the fail and does not carry 0.78.0: it reads what was judged on it
-    expect((await releaseOf('0.77.0')).criteria).toMatchObject({ proven: 2, total: 2 });
-    // a later release without the fix still serves the failing criterion
+    // 0.78.0 and a later release carry 0.77.0, not ISS-59 on their own rosters: none of its criteria
     await recordRelease([await landedIssue(61, F4, [])], '0.79.0');
-    expect((await releaseOf('0.79.0')).criteria).toMatchObject({ proven: 1, failing: 1, total: 2 });
+    for (const version of ['0.78.0', '0.79.0']) {
+      expect((await releaseOf(version)).criteria, version).toMatchObject({ total: 0 });
+    }
 
     // the release that ships the fix judges it anew: the void holds there
     await seedIssueStatus(iss59, 'awaiting_release');
@@ -256,6 +258,52 @@ describe('a release reads a criterion judged on a release it is or carries (ISS-
     const fixed = await releaseOf('0.80.0');
     const round = fixed.issueCriteria.find((i) => i.key === 'ISS-59');
     expect(round?.criteria.map((c) => c.identity)).toEqual([null, 'release 0.77.0']);
+    expect(reads.n).toBe(0);
+  });
+});
+
+describe('one qa run judging the issues of several releases (ISS-1280)', () => {
+  // adminhub-fe qa run 2f3c8c02: the open criteria of 13 releases skipped, each on its own release
+  it('leaves each release of one qa run judging three releases with only its own issue', async () => {
+    await agenfold();
+    const shipped = [
+      { n: 1, version: '0.75.0', criteria: ['A member signs in'] },
+      { n: 2, version: '0.76.0', criteria: ['A member opens a fold', 'A fold lists its notes'] },
+      { n: 3, version: '0.78.0', criteria: ['A note saves', 'A note shares', 'A note prints'] },
+    ];
+    const ids: string[] = [];
+    for (const s of shipped) {
+      const id = await landedIssue(s.n, F4, s.criteria);
+      ids.push(id);
+      await recordRelease([id], s.version);
+    }
+    // the one run, after the last release shipped
+    for (const [k, s] of shipped.entries()) {
+      for (const [i] of s.criteria.entries()) {
+        await ok(
+          api(world.token, 'POST', `/api/issues/${ids[k]}/verdicts`, {
+            criterion: i + 1,
+            verdict: i === 0 ? 'pass' : 'skipped',
+            reason:
+              i === 0
+                ? `Held on production ${s.version}.`
+                : `No route: production no longer serves ${s.version}.`,
+            identity: { kind: 'release', version: s.version },
+            ...(i === 0 ? { evidence: ['https://agenfold.example.test/clips/run.webm'] } : {}),
+          }),
+        );
+      }
+    }
+
+    for (const s of shipped) {
+      const release = await releaseOf(s.version);
+      expect(
+        release.issueCriteria.map((i) => i.key),
+        s.version,
+      ).toEqual([`ISS-${s.n}`]);
+      expect(release.criteria, s.version).toMatchObject({ proven: 1, total: s.criteria.length });
+      expect(release.verified, s.version).toMatchObject({ proven: 1, total: s.criteria.length });
+    }
     expect(reads.n).toBe(0);
   });
 });

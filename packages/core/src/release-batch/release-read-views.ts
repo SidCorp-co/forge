@@ -35,7 +35,6 @@ import {
 } from './change-request-roster.js';
 import type { RecordedVerification } from './channel.js';
 import { type CriterionReading, criterionReadingsAt } from './criterion-reading.js';
-import { judgedOnReleaseAt } from './judged-on-release.js';
 import { gapOf, releaseChangesOf, surfacesOf } from './landing-surfaces.js';
 import type { IssueFact, ReleaseFacts } from './release-facts.js';
 import { noteSections } from './release-notes-view.js';
@@ -237,21 +236,21 @@ export interface WeighedIssue {
 }
 
 /**
- * Every criterion a release counts, once: those of the issues it carries, then those judged on a
- * release it counts (`judgedOnReleaseAt`, ISS-900). The header's proof sums these, and the release
- * page lists these (`release-page/claims.ts:claimsOf`), so the two never weigh a criterion apart
- * (ISS-1001: 110/111 at the top of adminhub-api 0.10.0, ISS-25 "9 open" under it).
+ * Every criterion a release counts, once: those of the issues it carries, whichever run judged them
+ * and on whichever release (ISS-1280: one qa run judging adminhub-fe's 13 old releases left 0.42.0,
+ * carrying one issue, listing all 13 issues' criteria). The header's proof sums these, and the
+ * release page lists these (`release-page/claims.ts:claimsOf`), so the two never weigh a criterion
+ * apart (ISS-1001: 110/111 at the top of adminhub-api 0.10.0, ISS-25 "9 open" under it).
  */
 export function weighedOf(p: Part, s: Shared): WeighedIssue[] {
-  const keyOf = (issue: IssueFact) =>
-    issue.requirementId ? (s.facts.requirements.get(issue.requirementId)?.key ?? null) : null;
-  return [
-    ...p.issueIds.flatMap((id) => {
-      const issue = s.facts.issues.get(id);
-      return issue ? [{ issue, readings: readingsOf(p, s, issue) }] : [];
-    }),
-    ...judgedOnReleaseAt(s.facts, p.issueIds, p.version),
-  ].map((w) => ({ ...w, requirementKey: keyOf(w.issue) }));
+  return p.issueIds.flatMap((id) => {
+    const issue = s.facts.issues.get(id);
+    if (!issue) return [];
+    const requirementKey = issue.requirementId
+      ? (s.facts.requirements.get(issue.requirementId)?.key ?? null)
+      : null;
+    return [{ issue, requirementKey, readings: readingsOf(p, s, issue) }];
+  });
 }
 
 /** The change request shown beside each issue this release carries. */
@@ -482,7 +481,6 @@ export function detailOf(
           Number(b.completes) - Number(a.completes) ||
           a.key.localeCompare(b.key, 'en', { numeric: true }),
       ),
-    // judged on a release it carries too (ISS-900)
     issueCriteria: weighedOf(p, s).map(({ issue, readings }) => ({
       key: issue.key,
       title: issue.title,

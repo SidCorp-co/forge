@@ -48,7 +48,6 @@ const facts = (n: number): ReleaseFacts => ({
   judge: null,
   judgedOn: null,
   released: null,
-  judgedOnRelease: [],
   landing: null,
 });
 

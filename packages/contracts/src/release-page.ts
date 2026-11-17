@@ -181,8 +181,8 @@ const NO_VERSIONS: ReadonlySet<string> = new Set();
  * the merge. A code-property criterion is the exception, read by `countedForClass` (ISS-914): only the
  * review judges it, against the diff, so its commit pass proves it. A verdict judged on a release (ISS-900: where production
  * names no commit it serves, a release is its agent's record by version) counts on a release whose
- * `versions` hold the one it names: that release and those its record says it carries
- * (`released-line.ts:versionsCountedOn`), whether or not the release names a build.
+ * `versions` hold the one it names: that release, those its record says it carries, and those that
+ * carry it (`released-line.ts:versionsCountedOn`), whether or not the release names a build.
  */
 export function judgedOnReleaseBuild(
 	v: Pick<
