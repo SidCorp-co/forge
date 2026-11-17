@@ -1,7 +1,10 @@
 // A requirement's spec as `GET .../requirements/:req` answers it is a spec a revision write takes:
 // the derived `corrected` mark on an assumption is accepted at the write and never stored, and the
 // next read derives it again from the revision it is on.
-import { requirementSpecSchema } from '@forge/contracts/suggestions';
+import {
+  REQUIREMENT_OPEN_QUESTIONS_MAX_BYTES,
+  requirementSpecSchema,
+} from '@forge/contracts/suggestions';
 import { describe, expect, it } from 'vitest';
 import { withCorrections } from './assumption-corrections.js';
 import { specOf } from './revision-write.js';
@@ -51,5 +54,21 @@ describe('a spec read back is writable as it stands', () => {
       assumptions: [{ text: 'a person wrote this', owner: 'owner', confirmBy: 'by release' }],
     };
     expect(specOf(undefined, carried)).toBe(carried);
+  });
+
+  // ISS-904: a spec carries every question its input leaves open; only the list's bytes are bounded
+  it('takes 51 open questions, and refuses a list over its byte bound by the bound', () => {
+    const asked = (n: number, length = 20) =>
+      Array.from({ length: n }, (_, i) => ({
+        question: `Open question ${i}: ${'x'.repeat(length)}`,
+        whoAnswers: 'owner',
+        blocking: false,
+      }));
+    expect(requirementSpecSchema.safeParse({ openQuestions: asked(51) }).success).toBe(true);
+    const over = requirementSpecSchema.safeParse({ openQuestions: asked(200, 1_500) });
+    expect(over.success).toBe(false);
+    expect(over.error?.issues[0]?.message).toContain(
+      `${REQUIREMENT_OPEN_QUESTIONS_MAX_BYTES} bytes`,
+    );
   });
 });

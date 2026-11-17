@@ -2699,7 +2699,6 @@
                   ],
                   "type": "object"
                 },
-                "maxItems": 50,
                 "type": "array"
               },
               "personas": {
@@ -3989,5 +3988,5 @@
       }
     }
   ],
-  "version": "8.4.2"
+  "version": "8.4.3"
 }

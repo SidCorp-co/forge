@@ -212,12 +212,26 @@ export const requirementAssumptionSchema = z.strictObject({
 	corrected: z.boolean().optional(),
 });
 
+/**
+ * What bounds a spec's open questions: the list as JSON, in bytes. A bound on the payload, never on
+ * how many questions a requirement leaves open (ISS-904): it carries every one its input leaves unsettled.
+ */
+export const REQUIREMENT_OPEN_QUESTIONS_MAX_BYTES = 256 * 1024;
+
 export const requirementSpecSchema = z.strictObject({
 	goal: z.string().max(20_000).optional(),
 	personas: z.array(z.string().max(500)).max(50).optional(),
 	scopeIn: z.array(z.string().max(2_000)).max(100).optional(),
 	scopeOut: z.array(z.string().max(2_000)).max(100).optional(),
-	openQuestions: z.array(requirementOpenQuestionSchema).max(50).optional(),
+	openQuestions: z
+		.array(requirementOpenQuestionSchema)
+		.refine(
+			(list) =>
+				new TextEncoder().encode(JSON.stringify(list)).length <=
+				REQUIREMENT_OPEN_QUESTIONS_MAX_BYTES,
+			`the open questions are at most ${REQUIREMENT_OPEN_QUESTIONS_MAX_BYTES} bytes of JSON`,
+		)
+		.optional(),
 	assumptions: z.array(requirementAssumptionSchema).max(50).optional(),
 });
 

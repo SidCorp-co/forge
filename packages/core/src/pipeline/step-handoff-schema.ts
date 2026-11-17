@@ -1,6 +1,20 @@
 import { z } from 'zod';
 import { testResults } from '../db/schema.js';
 
+/**
+ * What bounds the questions a step leaves open (and a plan's unknowns): the list as JSON, in bytes. A
+ * bound on the payload, never on how many questions stand open (ISS-904): a step leaves open what it
+ * could not settle.
+ */
+export const HANDOFF_QUESTIONS_MAX_BYTES = 64 * 1024;
+
+const openList = z
+  .array(z.string().min(1))
+  .refine(
+    (list) => new TextEncoder().encode(JSON.stringify(list)).length <= HANDOFF_QUESTIONS_MAX_BYTES,
+    `the list is at most ${HANDOFF_QUESTIONS_MAX_BYTES} bytes of JSON`,
+  );
+
 const triageHandoff = z.object({
   step: z.literal('triage'),
   schema_version: z.literal(1),
@@ -27,7 +41,7 @@ const clarifyHandoff = z.object({
     .array(z.object({ step: z.string().min(1), observation: z.string().min(1).max(500) }))
     .max(15),
   rootCauseHypothesis: z.string().max(2000).optional(),
-  openQuestions: z.array(z.string().min(1)).max(10),
+  openQuestions: openList,
 });
 
 const filesModified = z
@@ -41,7 +55,7 @@ const planHandoff = z.object({
   planSummary: z.string().min(1).max(2000),
   affectedFiles: z.array(z.string().min(1)).max(30),
   acceptanceChecklist: z.array(z.string().min(1)).max(15),
-  unknowns: z.array(z.string().min(1)).max(10),
+  unknowns: openList,
 });
 
 const codeHandoff = z.object({
@@ -99,7 +113,7 @@ const driveHandoff = z.object({
   outcome: z.enum(['advanced', 'parked', 'blocked', 'no_change']),
   summary: z.string().min(1).max(2000),
   workDone: z.array(z.string().min(1)).max(15),
-  openQuestions: z.array(z.string().min(1)).max(10),
+  openQuestions: openList,
   commitSha: z.string().optional(),
 });
 
