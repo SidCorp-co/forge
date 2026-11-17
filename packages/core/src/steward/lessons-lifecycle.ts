@@ -46,6 +46,7 @@ import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
 import { markUntrusted } from '../lib/untrusted-text.js';
 import { type CardChoices, cardChoices, takenAnchor } from './lessons-anchor.js';
+import { noteJudgeMiss } from './lessons-pass-report.js';
 
 const JUDGE_MAX_TOKENS = 800;
 const reason = z.string().min(1).max(REASON_SENTENCE_MAX);
@@ -171,6 +172,7 @@ async function modelCall<T extends z.ZodType>(
     },
   );
   if (answer.ok) return answer.value as z.infer<T>;
+  noteJudgeMiss(answer.miss, answer.detail);
   logger.warn(
     { projectId, what, miss: answer.miss },
     'steward: a lesson lifecycle step gave no answer',
@@ -466,17 +468,25 @@ async function foldHolding(
   }
 }
 
-/** One project's lifecycle steps: anchors owed, invalidated lessons re-checked, held ones folded. */
+/**
+ * One project's lifecycle steps: anchors owed, invalidated lessons re-checked, held ones folded; `at`
+ * is told each step as it starts, so a pass that stops names where.
+ */
 export async function runLessonLifecycle(
   projectId: string,
   stewardId: string,
   judges: LifecycleJudges,
   tally: LifecycleTally,
+  at: (step: 'anchor' | 'recheck' | 'card-deltas' | 'fold') => void = () => {},
 ): Promise<void> {
   const actor: LessonActor = { userId: stewardId, agency: 'agent' };
+  at('anchor');
   await anchorOwed(projectId, actor, judges, tally);
+  at('recheck');
   await recheckInvalid(projectId, actor, judges, tally);
+  at('card-deltas');
   await recheckCardDeltas(projectId, tally);
+  at('fold');
   await foldHolding(projectId, actor, judges, tally);
 }
 

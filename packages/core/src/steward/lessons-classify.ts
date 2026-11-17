@@ -12,6 +12,7 @@ import { callFastModelObject } from '../integrations/llm/index.js';
 import type { OwedCheck } from '../lessons/index.js';
 import { logger } from '../lib/logger.js';
 import { markUntrusted } from '../lib/untrusted-text.js';
+import { noteJudgeMiss } from './lessons-pass-report.js';
 
 const CLASSIFY_MAX_TOKENS = 300;
 
@@ -52,6 +53,7 @@ export const modelClassifier: Classifier = async (projectId, owed) => {
     { maxTokens: CLASSIFY_MAX_TOKENS },
   );
   if (answer.ok) return answer.value;
+  noteJudgeMiss(answer.miss, answer.detail);
   logger.warn(
     { projectId, lesson: lessonKey(owed.number), miss: answer.miss, detail: answer.detail },
     'steward: a lesson was not classified',

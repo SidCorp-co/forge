@@ -58,6 +58,13 @@ import {
   type Replayer,
   runLessonLifecycle,
 } from './lessons-lifecycle.js';
+import {
+  keepReport,
+  noteJudgeMiss,
+  PassRecord,
+  recording,
+  reportingJudges,
+} from './lessons-pass-report.js';
 import { type Merger, modelMerger, openPileConsolidations } from './lessons-piles.js';
 import {
   modelReviewer,
@@ -175,6 +182,7 @@ export const modelGrouper: Grouper = async (projectId, input) => {
     { maxTokens: groupingBudget(input.corrections.length) },
   );
   if (answer.ok) return answer.value;
+  noteJudgeMiss(answer.miss, answer.detail);
   logger.warn(
     { projectId, miss: answer.miss, detail: answer.detail },
     'steward: corrections were not grouped',
@@ -336,10 +344,17 @@ interface Judges {
   merge: Merger;
 }
 
-async function passProject(projectId: string, now: Date, judges: Judges, tally: LessonsPassTally) {
+async function passProject(
+  projectId: string,
+  now: Date,
+  judges: Judges,
+  tally: LessonsPassTally,
+  record: PassRecord,
+) {
   const { group } = judges;
   const stewardId = await stewardAccountOf(projectId);
   const gathered = await gatherInput(projectId);
+  record.at('group');
   if (gathered.corrections.length > 0) {
     const modules = (await moduleMapLines(projectId)).map(({ slug, name, description }) => ({
       slug,
@@ -368,10 +383,14 @@ async function passProject(projectId: string, now: Date, judges: Judges, tally: 
       tally.ungrouped += 1;
     }
   }
+  record.at('settle');
   await settleLessons(projectId, stewardId, judges, tally);
-  await runLessonLifecycle(projectId, stewardId, judges, tally);
+  await runLessonLifecycle(projectId, stewardId, judges, tally, (step) => record.at(step));
+  record.at('retire');
   tally.retired += await retireDue(projectId, stewardId, now);
+  record.at('checks');
   await fileChecks(projectId, stewardId, judges.classify, tally);
+  record.at('piles');
   try {
     tally.consolidations += await openPileConsolidations(projectId, stewardId, judges.merge);
   } catch (err) {
@@ -379,7 +398,54 @@ async function passProject(projectId: string, now: Date, judges: Judges, tally: 
     tally.pilesUnread += 1;
     logger.error({ projectId, err }, 'steward: the piles could not be read; consolidation waits');
   }
+  record.at('months');
   await recordLessonsMonths(projectId, now);
+}
+
+const emptyTally = (): LessonsPassTally => ({
+  projects: 0,
+  correctionsRejected: 0,
+  linked: 0,
+  proposed: 0,
+  dropped: 0,
+  placed: 0,
+  ungrouped: 0,
+  approved: 0,
+  rejected: 0,
+  settled: 0,
+  waiting: 0,
+  retired: 0,
+  checks: 0,
+  unclassified: 0,
+  consolidations: 0,
+  pilesUnread: 0,
+  failed: 0,
+  ...emptyLifecycleTally(),
+});
+
+/**
+ * One project's pass, its tally added to the pass's: a failure is counted and named, and either way
+ * the project's outcome is kept on its read (`lessons-pass-report.ts`), each judge's empty answers too.
+ */
+async function passOne(projectId: string, now: Date, judges: Judges, total: LessonsPassTally) {
+  const tally = { ...emptyTally(), projects: 1 };
+  const record = new PassRecord();
+  let failed: unknown;
+  try {
+    await recording(record, () =>
+      passProject(projectId, now, reportingJudges(judges, record), tally, record),
+    );
+  } catch (err) {
+    // one project's failure is named and counted; the other projects still get their pass
+    failed = err;
+    tally.failed += 1;
+    logger.error(
+      { err, projectId, step: record.step },
+      'steward: the lessons pass failed on a project',
+    );
+  }
+  await keepReport(projectId, record.report({ ...tally }, failed));
+  for (const key of Object.keys(total) as (keyof LessonsPassTally)[]) total[key] += tally[key];
 }
 
 /** One pass over every project with lesson work whose steward is on. */
@@ -410,36 +476,10 @@ export async function runLessonsPass(
     replay: opts.replay ?? modelReplayer,
     merge: opts.merge ?? modelMerger,
   };
-  const tally: LessonsPassTally = {
-    projects: 0,
-    correctionsRejected: 0,
-    linked: 0,
-    proposed: 0,
-    dropped: 0,
-    placed: 0,
-    ungrouped: 0,
-    approved: 0,
-    rejected: 0,
-    settled: 0,
-    waiting: 0,
-    retired: 0,
-    checks: 0,
-    unclassified: 0,
-    consolidations: 0,
-    pilesUnread: 0,
-    failed: 0,
-    ...emptyLifecycleTally(),
-  };
+  const tally = emptyTally();
   for (const projectId of opts.projectIds ?? (await projectsWithLessonWork(now))) {
     if (!(await stewardStanceOf(projectId)).enabled) continue;
-    tally.projects += 1;
-    try {
-      await passProject(projectId, now, judges, tally);
-    } catch (err) {
-      // one project's failure is named and counted; the other projects still get their pass
-      tally.failed += 1;
-      logger.error({ err, projectId }, 'steward: the lessons pass failed on a project');
-    }
+    await passOne(projectId, now, judges, tally);
   }
   return tally;
 }

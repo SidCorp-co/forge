@@ -4327,6 +4327,13 @@
       "when": 1841788800000,
       "tag": "0681_a_copied_application_counts_nowhere_and_an_approved_lesson_reads_valid",
       "breakpoints": true
+    },
+    {
+      "idx": 682,
+      "version": "7",
+      "when": 1841875200000,
+      "tag": "0682_each_lessons_pass_leaves_its_outcome_on_a_read",
+      "breakpoints": true
     }
   ]
 }

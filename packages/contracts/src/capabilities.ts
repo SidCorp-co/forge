@@ -58,6 +58,59 @@ export interface CapabilityFreshnessRow {
 	proposed: { field: "situation" | "bestPractice" | "redFlag"; text: string }[];
 }
 
+/**
+ * The steps the steward's lessons pass takes on a project, in order (`steward/lessons-pass.ts`):
+ * gather what waits, group corrections, settle proposals and confusions, anchor, re-check the
+ * invalidated, apply carried card deltas, fold, retire, file checks, read the piles, record the month.
+ */
+export const LESSONS_PASS_STEPS = [
+	"gather",
+	"group",
+	"settle",
+	"anchor",
+	"recheck",
+	"card-deltas",
+	"fold",
+	"retire",
+	"checks",
+	"piles",
+	"months",
+] as const;
+export type LessonsPassStep = (typeof LESSONS_PASS_STEPS)[number];
+
+/** The model judges a lessons pass asks; each may give no answer, which leaves its item where it was. */
+export const LESSONS_PASS_JUDGES = [
+	"group",
+	"review",
+	"settle",
+	"classify",
+	"anchor",
+	"recheck",
+	"fold",
+	"replay",
+	"merge",
+] as const;
+export type LessonsPassJudge = (typeof LESSONS_PASS_JUDGES)[number];
+
+/**
+ * The last lessons pass the steward ran on this project (ISS-1251 round 6): when, what it moved and
+ * left waiting, the step it stopped at, and each judge that gave no answer. A pass that fails or moves
+ * nothing says so here, not only in core's log.
+ */
+export interface LessonsPassReport {
+	startedAt: string;
+	endedAt: string;
+	/** The step the pass failed at and the error it failed on; null where it ran every step. */
+	stopped: { step: LessonsPassStep; error: string } | null;
+	/** This project's tally, by the pass's own names (`settled`, `readmitted`, `waiting`, …). */
+	tally: Record<string, number>;
+	/**
+	 * Each judge that gave no answer this pass: how many times, and the last reason its model call
+	 * gave (`unconfigured`, `withheld`, `failed`, `unreadable`) with its detail, null where none was said.
+	 */
+	unanswered: { judge: LessonsPassJudge; count: number; miss: string | null; detail: string | null }[];
+}
+
 export interface CapabilitiesView {
 	projectId: string;
 	window: { days: number; since: string; until: string };
@@ -70,6 +123,8 @@ export interface CapabilitiesView {
 	 * narrowed to; null where no module was asked.
 	 */
 	module: { path: string; cards: string[] } | null;
+	/** The steward's last lessons pass on this project; null where none has run since passes were kept. */
+	lessonsPass: LessonsPassReport | null;
 	/** What these reads cannot tell, so a gap is never read as "nobody did it". */
 	limits: string[];
 }

@@ -76,6 +76,7 @@ export {
   lessonsMonthText,
   recordLessonsMonths,
 } from './month.js';
+export { keepLessonsPassReport, lessonsPassReportOf } from './pass-report.js';
 export { type CardDelta, type CardText, lessonsPorts, provideLessonsPorts } from './ports.js';
 export { proposedDeltasFor, proposedSituations } from './proposed-deltas.js';
 export { lessonRoutes } from './routes.js';

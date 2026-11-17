@@ -1,3 +1,4 @@
+import { LESSONS_PASS_STEPS } from '@forge/contracts/capabilities';
 import {
   CORRECTION_ITEM_KINDS,
   CORRECTION_SOURCES,
@@ -15,6 +16,7 @@ import {
   foreignKey,
   index,
   integer,
+  jsonb,
   pgTable,
   real,
   text,
@@ -352,6 +354,36 @@ export const cardDeltas = pgTable(
     replacesChk: check(
       'card_deltas_replaces_chk',
       sql`(${t.op} = 'update') = (${t.replaces} IS NOT NULL)`,
+    ),
+  }),
+);
+
+// the steward's last lessons pass on each project (ISS-1251 round 6): when it ran, the step it
+// stopped at with its error, its tally and each judge that gave no answer, so a pass that fails or
+// moves nothing is read on the capabilities read (`metrics/capabilities.ts`), not only in a log
+export const lessonsPassReports = pgTable(
+  'lessons_pass_reports',
+  {
+    projectId: uuid('project_id')
+      .primaryKey()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
+    endedAt: timestamp('ended_at', { withTimezone: true }).notNull(),
+    stoppedStep: text('stopped_step', { enum: LESSONS_PASS_STEPS }),
+    stoppedError: text('stopped_error'),
+    tally: jsonb('tally').$type<Record<string, number>>().notNull(),
+    unanswered: jsonb('unanswered')
+      .$type<{ judge: string; count: number; miss: string | null; detail: string | null }[]>()
+      .notNull(),
+  },
+  (t) => ({
+    stepChk: check(
+      'lessons_pass_reports_step_chk',
+      sql`${t.stoppedStep} IS NULL OR ${t.stoppedStep} IN (${inList(LESSONS_PASS_STEPS)})`,
+    ),
+    stoppedChk: check(
+      'lessons_pass_reports_stopped_chk',
+      sql`(${t.stoppedStep} IS NULL) = (${t.stoppedError} IS NULL)`,
     ),
   }),
 );

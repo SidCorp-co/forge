@@ -39,6 +39,7 @@ import { isRefusal, type RefusalError } from '../lib/refusal.js';
 import { markUntrusted } from '../lib/untrusted-text.js';
 import { cardChoices, takenAnchor } from './lessons-anchor.js';
 import { adopts, CARD_CHOICES, type Replayer } from './lessons-lifecycle.js';
+import { noteJudgeMiss } from './lessons-pass-report.js';
 import { lessonScopeText } from './lessons-scope.js';
 
 const JUDGE_MAX_TOKENS = 800;
@@ -140,6 +141,7 @@ export const modelReviewer: Reviewer = async (projectId, input) => {
     { maxTokens: JUDGE_MAX_TOKENS },
   );
   if (answer.ok) return answer.value;
+  noteJudgeMiss(answer.miss, answer.detail);
   logger.warn(
     { projectId, lesson: lessonKey(input.lesson.number), miss: answer.miss, detail: answer.detail },
     'steward: a proposed lesson was not reviewed',
@@ -155,6 +157,7 @@ export const modelSettler: Settler = async (projectId, input) => {
     { maxTokens: JUDGE_MAX_TOKENS },
   );
   if (answer.ok) return answer.value;
+  noteJudgeMiss(answer.miss, answer.detail);
   logger.warn(
     { projectId, confusion: input.confusion.id, miss: answer.miss, detail: answer.detail },
     'steward: a lesson confusion was not settled',

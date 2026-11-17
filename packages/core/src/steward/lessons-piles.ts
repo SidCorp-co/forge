@@ -18,6 +18,7 @@ import { callFastModelObject } from '../integrations/llm/index.js';
 import { logger } from '../lib/logger.js';
 import { markUntrusted } from '../lib/untrusted-text.js';
 import { findProjectSlugs } from '../projects/index.js';
+import { noteJudgeMiss } from './lessons-pass-report.js';
 import { type PileEntry, stewardPorts } from './ports.js';
 
 const TITLE_CHARS = 120;
@@ -72,7 +73,9 @@ export const modelMerger: Merger = async (projectId, pile, entries) => {
     mergeSchema,
     { maxTokens: 1500 },
   );
-  return answer.ok ? answer.value.merges : null;
+  if (answer.ok) return answer.value.merges;
+  noteJudgeMiss(answer.miss, answer.detail);
+  return null;
 };
 
 /** The merges that name entries the pile holds, each folding into one of its own. */

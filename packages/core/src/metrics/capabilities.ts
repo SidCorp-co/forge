@@ -2,7 +2,8 @@
  * What the capabilities page reads beside a project's door use (ISS-1251 §7): the reports this
  * project's agents filed on a door (`forge-door/door-report.ts`, one feedback item per door and verdict
  * under `door:<verdict>:<door>`, each report an occurrence), the live lessons anchored to a card
- * (`card:<id>`, `lessons/anchors.ts`) and each card's freshness (`lessons/card-freshness.ts`). Door
+ * (`card:<id>`, `lessons/anchors.ts`), each card's freshness (`lessons/card-freshness.ts`) and the
+ * steward's last lessons pass on the project (`lessons/pass-report.ts`). Door
  * use, piles and the cards themselves are `door-use.ts` and `piles.ts`'s; this read answers only what
  * those leave out, over records Forge already keeps.
  */
@@ -17,7 +18,7 @@ import { DOOR_REPORT_VERDICTS, type DoorReportVerdict } from '@forge/contracts/d
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { capabilitiesIn } from '../labels/index.js';
-import { type CardFreshness, cardFreshness } from '../lessons/index.js';
+import { type CardFreshness, cardFreshness, lessonsPassReportOf } from '../lessons/index.js';
 
 const DAY_MS = 86_400_000;
 
@@ -129,11 +130,12 @@ export async function readCapabilities(
   module?: string,
 ): Promise<CapabilitiesView> {
   const since = new Date(now.getTime() - days * DAY_MS);
-  const [reports, lessons, freshness, held] = await Promise.all([
+  const [reports, lessons, freshness, held, lessonsPass] = await Promise.all([
     reportRows(projectId, since),
     lessonRows(projectId),
     cardFreshness(),
     module ? capabilitiesIn(projectId, module) : Promise.resolve(null),
+    lessonsPassReportOf(projectId),
   ]);
   // the module map's Capabilities branch (ISS-1256): every list narrowed to the module's own cards
   const cards = held ? new Set(held.cards) : null;
@@ -145,6 +147,7 @@ export async function readCapabilities(
     lessons: lessons.filter((l) => inModule(l.card)),
     freshness: freshnessFor(projectId, freshness).filter((f) => inModule(f.card)),
     module: held ? { path: held.module, cards: held.cards } : null,
+    lessonsPass,
     limits: CAPABILITIES_LIMITS,
   };
 }
