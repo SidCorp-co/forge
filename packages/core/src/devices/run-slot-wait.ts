@@ -8,8 +8,9 @@
  * - kept: by a preflight refused only for want of a slot; a hold that is not a slot refuses first and
  *   never reaches here;
  * - renewed: by each re-declare refused the same way;
- * - ended: by the master's own open taking a slot (`run-session.ts:openRunSession`), or by lapsing
- *   `SLOT_WAIT_WINDOW_S` after its last declare, after which it holds the slot for nobody.
+ * - ended: by an open of the project on the box taking a slot (`run-slots-read.ts:refuseRunWithoutSlot`
+ *   inside `run-session.ts:openRunSession`), or by lapsing `SLOT_WAIT_WINDOW_S` after its last
+ *   declare, after which it holds the slot for nobody.
  */
 
 import { MASTER_SESSION_KIND } from '@forge/contracts/agent-sessions';
@@ -94,9 +95,13 @@ export async function freshSlotWait(deviceId: string, projectId: string): Promis
   };
 }
 
-/** The master's own open took a slot: its wait is over. Inside the open, so a rolled-back open keeps it. */
-export async function endSlotWait(tx: Tx, masterSessionId: string): Promise<void> {
+/**
+ * An open of the project took a slot on the box (`refuseRunWithoutSlot` inside the open's
+ * transaction): the master's wait is over. Inside the open, so a rolled-back open keeps it.
+ */
+export async function endSlotWait(tx: Tx, deviceId: string, projectId: string): Promise<void> {
   await tx.execute(sql`
     UPDATE agent_sessions SET metadata = metadata - ${SLOT_WAIT_METADATA_KEY}::text
-     WHERE id = ${masterSessionId} AND metadata ? ${SLOT_WAIT_METADATA_KEY}::text`);
+     WHERE device_id = ${deviceId} AND project_id = ${projectId} AND ${LIVE_MASTER}
+       AND metadata ? ${SLOT_WAIT_METADATA_KEY}::text`);
 }

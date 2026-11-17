@@ -28,7 +28,7 @@ import { isRefusal } from '../lib/refusal.js';
 import { readAdmissibleIssues } from './admissible.js';
 import { devicesPorts } from './ports.js';
 import { refuseDevice } from './refusals.js';
-import { freshSlotWait, recordSlotWait } from './run-slot-wait.js';
+import { endSlotWait, freshSlotWait, recordSlotWait } from './run-slot-wait.js';
 import { type SlotDemand, slotsFor } from './run-slots.js';
 import { SESSION_SILENCE_TIMEOUT_S } from './session-silence.js';
 
@@ -201,7 +201,8 @@ async function slotOwedTo(deviceId: string, projectId: string): Promise<string |
 
 /**
  * Refuse a run this project has no free slot for on this box. Inside an open, `tx` serializes every
- * open on the box, so two declarations racing for the last slot cannot both take it.
+ * open on the box, so two declarations racing for the last slot cannot both take it, and the open
+ * that takes one ends its master's wait.
  *
  * `yieldToQueued` is for work core starts on its own (the steward's jobs): a slot a master's
  * declaration waits for goes to that declaration, so such work is refused while one waits. A queued
@@ -233,6 +234,8 @@ export async function refuseRunWithoutSlot(args: {
   const mine = box.projects.find((p) => p.projectId === args.projectId);
   if (!mine) throw new Error('refuseRunWithoutSlot: the declaring project was not allocated');
   if (mine.inUse >= mine.slots) throw slotRefusal(args.projectId, box, mine);
+  // inside an open the slot is taken: the master's wait a refused declare left is over (ISS-1266)
+  if (args.tx) await endSlotWait(args.tx, args.deviceId, args.projectId);
 }
 
 /**
