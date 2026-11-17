@@ -8,7 +8,7 @@
 
 import { LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { and, desc, eq, inArray, notInArray } from 'drizzle-orm';
-import { requestSessionSend } from '../agent-sessions/index.js';
+import { FORGE_SAYS, requestSessionSend } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import { agentSessions, jobs, pipelineRuns, terminalAgentSessionStatuses } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
@@ -96,7 +96,14 @@ export async function carryReleaseRunOn(input: {
   const { projectId, runId, intentId, body } = input;
   const sessionId = await releaseRunSession(runId);
   if (sessionId) {
-    await requestSessionSend({ agentSessionId: sessionId, kind: 'answer', intentId, body });
+    // Forge's account of a decision it recorded (an approval, a confirm), never a relayed word
+    await requestSessionSend({
+      agentSessionId: sessionId,
+      kind: 'answer',
+      intentId,
+      body,
+      from: FORGE_SAYS,
+    });
     return 'told';
   }
   // a run that ended takes no job: whatever ended it (its abort, its ship) settled its roster

@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { classifyLane } from '@forge/contracts/fast-lane';
 import { PREVIEW_MACHINE, type PreviewReport } from '@forge/contracts/preview';
 import { eq } from 'drizzle-orm';
-import { requestSessionSend } from '../agent-sessions/index.js';
+import { FORGE_SAYS, requestSessionSend } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import { type PreviewRow, previews } from '../db/schema-previews.js';
 import { logger } from '../lib/logger.js';
@@ -15,6 +15,7 @@ import { readProjectDocument } from '../project-config/index.js';
 import {
   accessFor,
   type PreviewActor,
+  personSays,
   pushBox,
   refuse,
   refuseRoomPreview,
@@ -157,6 +158,7 @@ async function tellRun(
       intentId,
       body,
       actor: { userId: actor.userId, reason: 'preview', source: 'rest' },
+      from: FORGE_SAYS,
     });
     return sent.published;
   } catch (err) {
@@ -189,6 +191,7 @@ export async function sendPreviewMessage(previewId: string, actor: PreviewActor,
     intentId: randomUUID(),
     body: `A person viewing the live preview of this issue (${url}) asks for a change:\n\n${text}\n\nMake it in this worktree; the preview shows it by hot reload, with no build or deploy.`,
     actor: { userId: actor.userId, reason: 'preview message', source: 'rest' },
+    from: await personSays(actor),
   });
   if (!sent.published) {
     throw refuse(

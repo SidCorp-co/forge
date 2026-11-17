@@ -7,6 +7,7 @@
 // write, and the sweep below gives the messages back for the next turn.
 
 import {
+  FORGE_SAYS,
   requestSessionSend,
   sessionRowById,
   sessionSendStanding,
@@ -50,6 +51,8 @@ export async function injectWaiting(room: RoomRow, session: SessionRow): Promise
       kind: 'inject',
       intentId: `${INJECT_INTENT}${first.id}`,
       body: `${INJECT_LEAD}\n\n${await roomMessages(room, rows)}`,
+      // core's composition: it names each message's writer and role itself (`prompt.ts:roomMessages`)
+      from: FORGE_SAYS,
     });
     if (!sent.published) {
       await unclaim(ids, at);

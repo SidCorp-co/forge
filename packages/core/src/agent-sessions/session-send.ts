@@ -14,6 +14,11 @@
  * agent actually read the message.
  */
 
+import {
+  SESSION_SEND_AUTHORITIES,
+  type SessionSendFrame,
+  type SessionSendFrom,
+} from '@forge/contracts/agent-sessions';
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, jobs, runners, terminalAgentSessionStatuses } from '../db/schema.js';
@@ -55,6 +60,11 @@ interface SessionSendRequest {
   body?: string;
   /** Present for human-originated kinds; drives the audited `job_events` row. */
   actor?: SessionSendActor;
+  /**
+   * Who the message is from and the authority its words carry (ISS-1268 B4): the box frames the
+   * body by it, so a teammate's words never reach a master as the owner's or as Forge's own.
+   */
+  from: SessionSendFrom;
 }
 
 interface SessionSendRequestResult {
@@ -63,6 +73,26 @@ interface SessionSendRequestResult {
   published: boolean;
   /** True when this intent already had a row, i.e. this call is a redelivery. */
   duplicate: boolean;
+}
+
+/** Forge's own words, composed by core: a nudge, a brief, a notice of a fact it recorded (ISS-1268 B4). */
+export const FORGE_SAYS: SessionSendFrom = Object.freeze({ from: 'Forge', authority: 'core' });
+
+/**
+ * The send's `from`, refused by name where it names nobody or an authority outside the contract:
+ * who a message is from is never guessed, and a send that cannot say is not sent.
+ */
+function fromOf(req: SessionSendRequest): SessionSendFrom {
+  const from = (req as { from?: Partial<SessionSendFrom> }).from;
+  const name = typeof from?.from === 'string' ? from.from.trim() : '';
+  const authority = from?.authority;
+  if (!name || !(SESSION_SEND_AUTHORITIES as readonly unknown[]).includes(authority)) {
+    throw refuseSession(
+      'SESSION_SEND_FROM_MISSING',
+      `a ${req.kind} send to session ${req.agentSessionId} (intent ${req.intentId}) names ${name ? `"${name}"` : 'nobody'} with authority ${JSON.stringify(authority ?? null)}; every send names who it is from, a display name, and one of ${SESSION_SEND_AUTHORITIES.join(', ')}`,
+    );
+  }
+  return { from: name, authority: authority as SessionSendFrom['authority'] };
 }
 
 async function allocateSeq(agentSessionId: string): Promise<number> {
@@ -122,6 +152,7 @@ async function jobKeyOf(agentSessionId: string): Promise<string | undefined> {
 export async function requestSessionSend(
   req: SessionSendRequest,
 ): Promise<SessionSendRequestResult> {
+  const from = fromOf(req);
   const [session] = await db
     .select({ id: agentSessions.id, deviceId: agentSessions.deviceId })
     .from(agentSessions)
@@ -167,19 +198,21 @@ export async function requestSessionSend(
 
   if (!session.deviceId) return { row, published: false, duplicate };
 
+  const frame: SessionSendFrame = {
+    sessionId: req.agentSessionId,
+    seq: row.seq,
+    kind: row.kind,
+    body: row.body ?? undefined,
+    deadlineMs: SEND_GRACE_MS,
+    jobId: await jobKeyOf(req.agentSessionId),
+    ...from,
+  };
   await pushSession({
     projectId: null,
     deviceId: session.deviceId,
     userIds: [],
     event: 'session.send',
-    data: {
-      sessionId: req.agentSessionId,
-      seq: row.seq,
-      kind: row.kind,
-      body: row.body ?? undefined,
-      deadlineMs: SEND_GRACE_MS,
-      jobId: await jobKeyOf(req.agentSessionId),
-    },
+    data: { ...frame },
   });
   return { row, published: true, duplicate };
 }

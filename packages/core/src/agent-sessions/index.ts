@@ -41,6 +41,7 @@ export {
 } from './session-credential.js';
 export { isPipelineSessionKind } from './session-kinds.js';
 export {
+  FORGE_SAYS,
   provideSendRefusedListener,
   requestSessionSend,
   resolveSessionSend,

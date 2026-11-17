@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createChatSessionRow } from '../../src/agent-sessions/chat-turn.js';
 import {
   confirmSessionSend,
+  FORGE_SAYS,
   requestSessionSend,
   sessionSendStanding,
 } from '../../src/agent-sessions/session-send.js';
@@ -37,6 +38,7 @@ describe('ISS-1202: a send the box refused, asked again, is a new episode', () =
         kind: 'inject',
         intentId: 'support:again',
         body: 'more',
+        from: FORGE_SAYS,
       });
     const first = await ask();
     expect(first.published).toBe(true);
@@ -57,6 +59,7 @@ describe('ISS-1202: a send the box refused, asked again, is a new episode', () =
         kind: 'inject',
         intentId: 'support:taken',
         body: 'once',
+        from: FORGE_SAYS,
       });
     const first = await ask();
     await confirmSessionSend(sessionId, first.row.seq, 'delivered');

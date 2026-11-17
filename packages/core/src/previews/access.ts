@@ -1,6 +1,7 @@
 // What every preview write shares (REQ-39): the caller's access, the row it names, the refusals,
 // and the frames the box is sent, which ride the outbox in the transaction of the move that owes them.
 
+import type { SessionSendFrom } from '@forge/contracts/agent-sessions';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import {
   PREVIEW_LIMITS,
@@ -10,6 +11,7 @@ import {
 import type { Tx } from '../db/client.js';
 import type { PreviewRow } from '../db/schema-previews.js';
 import { loadProjectAccess } from '../lib/authz.js';
+import { peopleOf } from '../lib/people.js';
 import { type Refusal, RefusalError, refuser } from '../lib/refusal.js';
 import type { KernelActor } from '../lifecycle/index.js';
 import { emitEvent } from '../outbox/index.js';
@@ -27,6 +29,17 @@ export interface PreviewActor {
 }
 
 export const SOURCE = 'previews';
+
+/**
+ * A person's words to a preview's run, by their name: a teammate's request (ISS-1268 B4), whatever
+ * their role. The owner's authority is for a master taking the owner's exact words; a preview's run
+ * takes a change asked of it, often inside core's own lead.
+ */
+export async function personSays(actor: PreviewActor): Promise<SessionSendFrom> {
+  const person = (await peopleOf([actor.userId])).get(actor.userId);
+  if (!person) throw new Error(`previews: no user ${actor.userId} to name as a message's sender`);
+  return { from: person.name, authority: 'peer' };
+}
 
 export const userActor = (a: PreviewActor): KernelActor => ({
   type: 'user',

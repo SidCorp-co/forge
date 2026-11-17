@@ -14,6 +14,7 @@ import {
   type PreviewReport,
 } from '@forge/contracts/preview';
 import { and, asc, eq } from 'drizzle-orm';
+import { FORGE_SAYS } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import {
   type PocRoomRow,
@@ -142,7 +143,8 @@ export async function settleRoom(
     );
     try {
       await insertTurn(room.id, 'trim', null, text);
-      await deliverToSketch(preview, null, actor, text);
+      // the trim is Forge's own brief, composed from the room's asks and items
+      await deliverToSketch(preview, null, actor, text, FORGE_SAYS);
     } catch (err) {
       // nothing was merged: the room goes back to open, naming why, rather than standing at settling
       await backToOpen(

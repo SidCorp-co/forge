@@ -31,6 +31,8 @@ export const AGENT_SESSION_REFUSAL_CODES = [
 	"NO_DEVICE",
 	"SEND_SEQ_UNKNOWN",
 	"SEND_ALREADY_SETTLED",
+	/** A `session.send` naming no `from` or no `authority` it carries (ISS-1268 B4). */
+	"SESSION_SEND_FROM_MISSING",
 	"ATTACHMENT_NOT_IN_SESSION",
 	"SESSION_METADATA_CORE_OWNED",
 ] as const;
@@ -47,6 +49,32 @@ export const AGENT_SESSION_REFUSAL_STATUSES = {
 	SEND_ALREADY_SETTLED: 409,
 	CONVERSATION_TURN_ASKER_ONLY: 403,
 } as const satisfies RefusalStatuses<AgentSessionRefusalCode>;
+
+/**
+ * Who a message core sends into a live session is from (ISS-1268 B4), and so how the box frames it
+ * for the agent: `owner`, the words of a person holding owner or admin on the session's project,
+ * quoted exactly (framed as that person's instruction); `core`, Forge's own composition, a nudge, a
+ * brief or a notice of a fact Forge recorded (delivered as written); `peer`, anybody else's words, an
+ * agent's or a person's not quoted exactly (framed as a teammate's request, never an approval).
+ */
+export const SESSION_SEND_AUTHORITIES = ["owner", "core", "peer"] as const;
+export type SessionSendAuthority = (typeof SESSION_SEND_AUTHORITIES)[number];
+
+/** Who a send is from: a display name, never an id, and the authority the words carry. */
+export interface SessionSendFrom {
+	from: string;
+	authority: SessionSendAuthority;
+}
+
+/** The `session.send` frame core sends a box (RFC 0003), as `runner-daemon/src/inbox.rs:SendFrame` reads it. */
+export interface SessionSendFrame extends SessionSendFrom {
+	sessionId: string;
+	seq: number;
+	kind: "work" | "answer" | "inject" | "checkpoint" | "cancel";
+	body?: string | undefined;
+	deadlineMs: number;
+	jobId?: string | undefined;
+}
 
 /** The metadata key a session carries when its answer belongs to a conversation turn. */
 export const CONVERSATION_AGENT_MARKER = "conversationAgent";

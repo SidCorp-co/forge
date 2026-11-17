@@ -30,7 +30,7 @@ import { logger } from '../lib/logger.js';
 import { refuser } from '../lib/refusal.js';
 import { movedRow, transition } from '../lifecycle/index.js';
 import { requireDeclaredHeld, requireHeld } from '../permissions/index.js';
-import { type PreviewActor, rowOf, siteOrRefuse, userActor, view } from './access.js';
+import { type PreviewActor, personSays, rowOf, siteOrRefuse, userActor, view } from './access.js';
 import { OPEN_STATES } from './rules.js';
 import { closeAbandoned, reopenForViewer } from './service.js';
 import { deliverToSketch, openIdeaPreview } from './subjects.js';
@@ -213,7 +213,7 @@ export async function askRoom(roomId: string, actor: PreviewActor, text: string)
     );
   }
   await insertTurn(room.id, 'ask', actor.userId, text);
-  await deliverToSketch(preview, null, actor, text);
+  await deliverToSketch(preview, null, actor, text, await personSays(actor));
   return readRoom(room.id, actor);
 }
 

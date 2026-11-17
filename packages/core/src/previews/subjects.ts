@@ -5,6 +5,7 @@
 // Core names the box, the paths and the branch; the box cuts the checkout and decides nothing.
 
 import { randomBytes, randomUUID } from 'node:crypto';
+import type { SessionSendFrom } from '@forge/contracts/agent-sessions';
 import {
   type OpenPreviewRequest,
   PREVIEW_LIMITS,
@@ -30,7 +31,15 @@ import {
   resolveSessionRepoPathForDevice,
 } from '../lib/device-pool.js';
 import { logger } from '../lib/logger.js';
-import { accessFor, type PreviewActor, planOf, pushStart, refuse, siteOrRefuse } from './access.js';
+import {
+  accessFor,
+  type PreviewActor,
+  personSays,
+  planOf,
+  pushStart,
+  refuse,
+  siteOrRefuse,
+} from './access.js';
 import { newPreviewLabel } from './domain.js';
 import { previewView } from './read.js';
 import type { PreviewPlan } from './rules.js';
@@ -381,7 +390,7 @@ export async function sendIdeaMessage(
     sketch: { ...sketch, asked: [...(sketch.asked ?? []), text] },
   });
   const body = `A person viewing this idea's live preview (${url}) asks for a change:\n\n${text}\n\nMake it in this working directory; the preview shows it by hot reload. Never push, merge or file anything.`;
-  return deliverToSketch(row, session, actor, body);
+  return deliverToSketch(row, session, actor, body, await personSays(actor));
 }
 
 /**
@@ -393,6 +402,7 @@ export async function deliverToSketch(
   held: typeof agentSessions.$inferSelect | null,
   actor: PreviewActor,
   body: string,
+  from: SessionSendFrom,
 ): Promise<{ sent: true; seq: number }> {
   const session = held ?? (row.sessionId === null ? null : await sessionOf(row.sessionId));
   if (!session) throw refuse('PREVIEW_NO_RUN', `preview ${row.id}'s sketch run is gone`);
@@ -403,6 +413,7 @@ export async function deliverToSketch(
       intentId: randomUUID(),
       body,
       actor: { userId: actor.userId, reason: 'preview message', source: 'rest' },
+      from,
     });
     if (!sent.published) {
       throw refuse(

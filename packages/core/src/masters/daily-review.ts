@@ -8,7 +8,7 @@
 import { MASTER_SESSION_KIND } from '@forge/contracts/agent-sessions';
 import type { DailyReviewFireRefusal } from '@forge/contracts/schedules';
 import { sql } from 'drizzle-orm';
-import { requestSessionSend } from '../agent-sessions/index.js';
+import { FORGE_SAYS, requestSessionSend } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
 import { masterSilentSql } from '../devices/index.js';
@@ -139,6 +139,8 @@ export async function deliverDailyReview(args: {
     agentSessionId: master.id,
     kind: 'inject',
     intentId: `daily-review:${args.fireId}`,
+    // Forge's own brief: delivered to the master as written, the box's instruction (ISS-1268 B4)
+    from: FORGE_SAYS,
     body: dailyReviewBrief({
       projectId: args.projectId,
       slug: args.slug,
