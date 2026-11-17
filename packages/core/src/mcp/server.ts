@@ -5,6 +5,7 @@ import pkg from '../../package.json' with { type: 'json' };
 import {
   type AuditResultCode,
   answeredAudit,
+  auditResultOf,
   digestArgs,
   writeMcpAudit,
 } from '../credentials/mcp-audit.js';
@@ -232,9 +233,11 @@ export function createMcpServer(ctx: McpContext): Server {
       } catch (err) {
         if (err instanceof RefusalError) {
           const answer = thrownEnvelope(err);
-          const resultCode =
-            answer.status === 403 ? 'forbidden' : answer.status === 404 ? 'not_found' : 'error';
-          writeMcpAudit({ ...auditBase, resultCode, refusalCode: answer.code });
+          writeMcpAudit({
+            ...auditBase,
+            resultCode: auditResultOf(answer.status),
+            refusalCode: answer.code,
+          });
           return refusalAnswer({ _mcpIsError: true, ...answer });
         }
         const { code, message } = classifyError(err);
