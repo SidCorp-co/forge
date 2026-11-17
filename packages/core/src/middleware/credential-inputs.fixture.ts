@@ -83,7 +83,7 @@ export const CREDENTIAL_INPUTS: Readonly<Record<string, string>> = {
   'header:authorization': 'a bearer token: a PAT, a session JWT, a box token',
   'header:cookie': 'the session, refresh and preview viewer cookies',
   'header:sec-websocket-protocol': 'a browser socket’s bearer, as forge.bearer.<token>',
-  'query:ticket': 'a preview ticket, spent once for the viewer cookie',
+  'query:ticket': 'a preview ticket, spent once for the viewer cookie; a box ticket, spent once for one socket',
   'param:token': 'an invitation token, looked up by its digest',
   'field:json:password': 'a password: checked at sign-in and re-auth, hashed at sign-up',
   'field:json:pairing_code': 'a device login’s pairing code, approved by a signed-in person',
@@ -173,6 +173,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:supersedes field:json:replaces field:json:updates field:param:rid field:param:ruleId
     field:param:username
     field:json:member field:json:threads field:json:after field:json:check
+    field:json:actId field:json:spanId field:param:spanId
     field:json:fire field:json:covers field:json:profile field:param:debt
     field:param:n field:param:environment field:param:proposal field:param:variable field:json:environment
     field:param:keyId field:param:messageId field:json:module field:param:relationId`,
@@ -233,12 +234,13 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:screenshot field:json:args
     field:json:impact field:json:debts field:json:cleared field:json:remains field:json:ci
     field:json:set field:json:failed field:json:missed
-    field:json:door`,
+    field:json:door field:json:mode`,
   'a time, a version or a time zone': words`
     field:json:agentVersion field:json:dueAt field:json:dueBy field:json:expectedEditedAt
     field:json:expiresAt field:json:minVersion field:json:parkDeadlineAt field:json:readAt
     field:json:readWhen field:json:timeZone field:json:until field:json:validUntil
-    field:json:startedAt field:json:version field:json:corrects field:query:tz`,
+    field:json:startedAt field:json:version field:json:corrects field:query:tz
+    field:json:recordingStartedAt`,
   'a git name: a branch, a commit, a path in a repository, the smart-HTTP service git asks for': words`
     param:rest field:query:service field:json:agentCommit field:json:atSha field:json:base field:json:branch field:json:commit
     field:json:head field:json:repoPath field:json:sha`,
@@ -308,6 +310,10 @@ export const CREDENTIAL_READS: Readonly<Record<string, string>> = {
       'a viewer’s request, forwarded to the preview with Forge’s cookies cut out; its URL may carry a ticket',
     ]),
   ),
+  'boxes/viewer.ts IncomingMessage.url in acceptBoxUpgrade':
+    'a box socket’s URL: its one-minute ticket, spent once (ISS-1276)',
+  'boxes/viewer.ts URLSearchParams handed to lib:fromEntries in acceptBoxUpgrade':
+    'the same query, the ticket and the frame rate, read through boxViewQuerySchema',
 };
 
 /** Every whole read no credential arrives in, grouped by why. */
@@ -363,6 +369,7 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     agent-sessions/attachment-routes.ts HonoRequest.parseBody in module code
     comments/attachment-routes.ts HonoRequest.parseBody in module code
     issues/attachment-routes.ts HonoRequest.parseBody in module code
+    boxes/routes.ts HonoRequest.parseBody in module code
     uploads/routes.ts HonoRequest.arrayBuffer in module code`,
   'a chat’s held write, its body and query replayed as they came once the person agrees': lines`
     assistant/agreement/rest-hold.ts HonoRequest.arrayBuffer in holdSessionWrite
@@ -479,6 +486,11 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     previews/tunnel.ts WebSocket.on(message) in adoptTunnel
     ws/server.ts WebSocket handed to @types/node:emit in attachWs
     ws/server.ts WebSocket.on(message) in attachWs`,
+  'a box socket, opened once its ticket was spent, and its frames: a viewer’s, dropped; a holder’s BoxInput lines; the device’s screen frames (ISS-1276)': lines`
+    boxes/viewer.ts IncomingMessage handed to @types/ws:handleUpgrade in acceptBoxUpgrade
+    boxes/viewer.ts WebSocket.on(message) in relayFrames
+    boxes/viewer.ts WebSocket.on(message) in serveInput
+    boxes/viewer.ts WebSocket.on(message) in serveView`,
 };
 
 /** Every value import of hono, hono/* and @hono/*: whether it reads a credential, and why. */

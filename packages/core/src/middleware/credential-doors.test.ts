@@ -118,6 +118,8 @@ const DOORS: Readonly<Record<string, string>> = {
     'handleCallback signs a person in from the provider’s answer and its state cookie, never a presented token',
   'previews/ticket.ts':
     'a preview ticket and viewer cookie are JWTs under their own issuers; a PAT verifies as neither',
+  'boxes/viewer.ts':
+    'a box ticket is a JWT under its own issuer naming one box and channel, minted behind requireAuth and spent once; a PAT verifies as none',
   'previews/relay.ts':
     'the preview host admits a viewer by its cookie or a ticket it spends, never a bearer token',
   'middleware/route-refs.ts':
