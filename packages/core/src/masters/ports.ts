@@ -178,6 +178,12 @@ interface MastersPorts {
   revisionsOwed(projectId: string): Promise<{ key: string; revision: number }[]>;
   /** Feedback items owed a triage, each naming the feedback_triage suggestion proposed on it where the master decides one (ISS-1132). */
   triagesOwed(projectId: string): Promise<{ key: string; proposed: string | null }[]>;
+  /**
+   * What the master's own credential may do about a proposed feedback triage (ISS-1273): `accept`
+   * where an account it acts as holds what the accept door checks, else `route` where it holds what
+   * routing the item takes, else null: the item waits on whoever can.
+   */
+  proposedTriageAct(projectId: string): Promise<'accept' | 'route' | null>;
   /** Shipped feedback items an agent of this project reported, owing that agent's confirm or reopen (REQ-66 BC-8). */
   confirmsOwed(projectId: string): Promise<AgentConfirmOwed[]>;
   /** Returned workflow designs no live issue carries, owed a revision. */

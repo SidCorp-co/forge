@@ -74,6 +74,7 @@ import {
   gateOf,
   judgingEnvironmentOf,
   parseRepository,
+  personGateOf,
   policyGapOf,
   policyRefusal,
   policyRefusalOf,
@@ -144,11 +145,13 @@ import { recordSkillActivityEvent, resolveRegisteredEffectiveSkills } from './sk
 import { sendStatusReport } from './status-reports/index.js';
 import {
   breakdownsHeldBySteward,
+  masterHolds,
   openStewardAsks,
   releaseNamerOf,
   stewardJobCredential,
   stewardSlotDemand,
 } from './steward/index.js';
+import { acceptGateOf } from './suggestions/index.js';
 import {
   classifyCommand,
   masterAsksOf,
@@ -414,6 +417,13 @@ export function provideExecutionPorts(): void {
     breakdownsOwed: owedBreakdowns,
     revisionsOwed: owedRequirementRevisions,
     triagesOwed: (projectId) => owedTriages(projectId),
+    // the accept door's own check, then the triage door's, each on the master's own account (ISS-1273)
+    proposedTriageAct: async (projectId) => {
+      const accept = await acceptGateOf(projectId, 'feedback_triage');
+      if (await masterHolds(projectId, accept.permission)) return 'accept';
+      const route = await personGateOf(projectId, 'triage');
+      return (await masterHolds(projectId, route.permission)) ? 'route' : null;
+    },
     confirmsOwed: owedAgentConfirms,
     designsOwed: owedDesignRevisions,
     designApprovalsOwed: owedDesignApprovals,

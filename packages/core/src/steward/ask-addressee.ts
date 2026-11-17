@@ -147,6 +147,17 @@ async function masterStanding(
   return { holds: false, unread };
 }
 
+/**
+ * Whether an account the project's master acts as holds `permission` there, read as an ask's
+ * addressee is (ISS-1273): a master's work names an act only where its own credential can take it.
+ */
+export async function masterHolds(
+  projectId: string,
+  permission: ProjectPermission,
+): Promise<boolean> {
+  return (await masterStanding(projectId, permission)).holds;
+}
+
 /** The line saying which serving boxes' master account is unread, or '' where none is. */
 export function unreadLine(unread: readonly string[]): string {
   if (unread.length === 0) return '';

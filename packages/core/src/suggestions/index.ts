@@ -1,3 +1,4 @@
+export { acceptGateOf } from './accept-gate.js';
 export { writeKeptPreview } from './kept-preview.js';
 export { listSuggestions } from './list.js';
 export { provideSuggestionsPorts } from './ports.js';

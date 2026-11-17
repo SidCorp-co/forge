@@ -31,7 +31,7 @@ import {
   releasesTheMasterNames,
 } from './owed-release-gate.js';
 import { reviewsLine } from './owed-reviews.js';
-import { triagesLine } from './owed-triages.js';
+import { type TriageOwed, triagesLine, triagesTheMasterTakes } from './owed-triages.js';
 import { DIRECT_NUDGE, DIRECT_ORDER, NUDGE } from './pass-order.js';
 import {
   type AgentAskOwed,
@@ -67,8 +67,8 @@ interface Owed {
   designApprovals: DesignApprovalOwed[];
   revisions: { key: string; revision: number }[];
   breakdowns: { key: string; overdue: boolean }[];
-  /** Each naming its proposed feedback_triage suggestion, which the master decides (ISS-1132). */
-  triages: { key: string; proposed?: string | null }[];
+  /** Each naming its proposed feedback_triage suggestion, where the master's credential can act on it (ISS-1132, ISS-1273). */
+  triages: TriageOwed[];
   /** Shipped feedback items an agent of this project reported, each owing that agent's confirm (REQ-66 BC-8). */
   confirms: AgentConfirmOwed[];
   comments: { issueKey: string; commentId: string }[];
@@ -331,7 +331,7 @@ function workLines(admissible: Admissible[], owed: Owed): string[] {
     ...owed.designApprovals.map((d) => `design-approval:${d.workflowId}#r${d.revision}`),
     ...owed.revisions.map((r) => `revision:${r.key}#r${r.revision}`),
     ...owed.breakdowns.map((b) => `breakdown:${b.key}`),
-    ...owed.triages.map((t) => `triage:${t.key}${t.proposed ? `|${t.proposed}` : ''}`),
+    ...owed.triages.map((t) => `triage:${t.key}${t.proposed ? `|${t.proposed}:${t.act}` : ''}`),
     ...owed.confirms.map((c) => `confirm:${c.feedbackId}`),
     ...owed.comments.map((c) => `comment:${c.commentId}`),
     ...owed.answers.map((a) => `answer:${a.questionId}|${a.outcome?.kind ?? ''}`),
@@ -438,7 +438,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     ports.channelOwed(projectId),
     ports.breakdownsOwed(projectId),
     ports.revisionsOwed(projectId),
-    ports.triagesOwed(projectId),
+    triagesTheMasterTakes(projectId),
     ports.confirmsOwed(projectId),
     ports.designsOwed(projectId),
     ports.designApprovalsOwed(projectId),

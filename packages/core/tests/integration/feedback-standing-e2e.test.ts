@@ -10,6 +10,7 @@
  * @direct-test-of packages/core/src/feedback/standing-carrier.ts
  * @direct-test-of packages/core/src/lib/standing-times.ts
  * @direct-test-of packages/core/src/feedback/owed-triage.ts
+ * @direct-test-of packages/core/src/masters/owed-triages.ts
  */
 
 import { afterAll, beforeAll, describe, expect, it, type MockInstance, vi } from 'vitest';
@@ -225,8 +226,20 @@ describe('with a live master, every untriaged item is owed to it, most severe fi
     },
   );
 
-  // ISS-1132: a proposed triage left the item on its holders' Needs you and off the master's pass
+  // ISS-1132: a proposed triage left the item on its holders' Needs you and off the master's pass.
+  // ISS-1273: it is named to accept only where the master's own account can; this box's pane writes
+  // as the owner, who holds suggestions.approve (master-proposed-triage-act-e2e has the others)
   it('keeps an item carrying a proposed triage on the master’s pass, naming the suggestion to decide', async () => {
+    const { mintPat } = await import('../../src/credentials/pat.js');
+    const { workspaceTokenNameFor } = await import('../../src/credentials/pat-format.js');
+    await mintPat({
+      userId: ownerId,
+      name: workspaceTokenNameFor(box, projectId),
+      scopes: ['read', 'write'],
+      permissions: ['*'],
+      projectIds: [projectId],
+      deviceId: box,
+    });
     const proposed = ok(
       await say('member', 'POST', `/api/projects/${projectId}/suggestions`, {
         kind: 'feedback_triage',
