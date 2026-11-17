@@ -406,7 +406,7 @@ export async function loadReleaseFacts(
   const landingRead = landingCountedOf(projectId, ids);
   // awaited at the end, where its failure is thrown; never an unhandled rejection meanwhile
   landingRead.catch(() => undefined);
-  const [rows, prefix, cutters, judge, held, criteria, reopened] = await Promise.all([
+  const [rows, prefix, cutters, judge, held, criteria] = await Promise.all([
     rowsPerId(
       'releaseIssueRows',
       ids,
@@ -437,17 +437,18 @@ export async function loadReleaseFacts(
     readProjectDocument(projectId),
     // a criterion reads its newest verdict but a close's, as its carried verdicts do (ISS-1148)
     listCriteriaOf(db, ids, true),
-    // only a reopen's void reads a close: read with the reopen, as a release's rounds read it
-    reopenedMovesOf(db, ids),
   ]);
   const criterionIds = [...criteria.values()].flatMap((list) => list.map((c) => c.id));
-  const [reqs, verdicts, routes] = await Promise.all([
+  const [reqs, verdicts, routes, reopened] = await Promise.all([
     requirementFacts(
       projectId,
       rows.flatMap((r) => (r.requirementId ? [r.requirementId] : [])),
     ),
     carriedVerdictsOf(criterionIds),
     criterionRoutesOf(criterionIds),
+    // only a reopen's void reads a close: read with the reopen, a wave in, where the line's rounds
+    // (`released-line.ts:reworkedOf`) ask theirs, so the two are one statement
+    reopenedMovesOf(db, ids),
   ]);
   const byIssue = new Map<string, IssueFact>(
     rows.map((r) => {
