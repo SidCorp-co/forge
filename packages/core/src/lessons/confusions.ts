@@ -14,7 +14,7 @@ import {
   lessonKey,
   type RaiseConfusionRequest,
 } from '@forge/contracts/lessons';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { lessonApplications, lessonConfusions, lessons } from '../db/schema-lessons.js';
 import { movedRow, transition } from '../lifecycle/index.js';
@@ -129,6 +129,11 @@ async function markApplication(
     .update(lessonApplications)
     .set({ wrongAt: new Date(), wrongBy: actor.userId, wrongReason: reason })
     .where(eq(lessonApplications.id, app.id));
+  // a wrong application is no use of the lesson: it leaves the count a fold is weighed on
+  await tx
+    .update(lessons)
+    .set({ appliedCount: sql`GREATEST(${lessons.appliedCount} - 1, 0)` })
+    .where(eq(lessons.id, row.id));
   return app.id;
 }
 

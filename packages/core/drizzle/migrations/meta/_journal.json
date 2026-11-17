@@ -4320,6 +4320,13 @@
       "when": 1841702400000,
       "tag": "0680_a_forge_box_is_a_kernel_record_whose_health_the_device_reports",
       "breakpoints": true
+    },
+    {
+      "idx": 681,
+      "version": "7",
+      "when": 1841788800000,
+      "tag": "0681_an_application_copied_from_the_lessons_map_example_is_not_applied",
+      "breakpoints": true
     }
   ]
 }

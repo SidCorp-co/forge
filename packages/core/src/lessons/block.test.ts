@@ -64,7 +64,10 @@ describe('a prompt carries a map of the lessons, never their sentences (ISS-867,
       ].join('\n'),
     );
     expect(text).toContain('the read door');
-    expect(text).toContain('Lessons applied: L-3, L-7');
+    // the example names no real lesson: forge-dev's only applications were the steward copying `L-3, L-7`
+    expect(text).toContain('Lessons applied: L-<n>, …');
+    expect(text).toContain('`Lessons applied: none`');
+    expect(text).not.toMatch(/Lessons applied: L-\d/);
     expect(text).toContain('(the raise door)');
     expect(text).not.toContain('the list door');
     expect(lessonNamedIn(text, 'lesson-2')).toBe(true);

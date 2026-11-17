@@ -255,6 +255,7 @@ async function readRows(projectId: string, since: Date): Promise<DoorReadRow[]> 
     .sort((a, b) => b.reaches - a.reaches || a.agent.localeCompare(b.agent));
 }
 
+/** The lessons each agent kind applied; one marked wrongly applied, or copied from the map's example, is not counted. */
 async function lessonRows(projectId: string, since: Date): Promise<DoorLessonAppliedRow[]> {
   const rows = (await db.execute(sql`
       SELECT 'L-' || l.number AS lesson,
@@ -268,6 +269,7 @@ async function lessonRows(projectId: string, since: Date): Promise<DoorLessonApp
       JOIN lessons l ON l.id = la.lesson_id
       LEFT JOIN users u ON u.id = la.agent_user_id
       WHERE la.project_id = ${projectId}::uuid AND la.at >= ${since.toISOString()}::timestamptz
+        AND la.wrong_at IS NULL
       GROUP BY 1, 2 ORDER BY 3 DESC, 1`)) as unknown as DoorLessonAppliedRow[];
   return rows;
 }

@@ -233,7 +233,8 @@ describe('an approved lesson reaches every agent in its scope by retrieval, and 
     const assistant = await block({ produces: ['chat', 'requirement'], area: 'any' });
     for (const text of [preamble, orientation, assistant]) {
       expect(text).toContain(`When any work:\n- lesson-${n}: Name the ward on every reminder.`);
-      expect(text).toContain('Lessons applied: L-3, L-7');
+      expect(text).toContain('Lessons applied: L-<n>, …');
+      expect(text).not.toMatch(/Lessons applied: L-\d/);
       expect(text).toContain('go on without it');
       expect(text).not.toContain('Use plain words, never codes.');
       expect(text).not.toMatch(/by a person|a person decides/);
@@ -418,6 +419,11 @@ describe('an output lists the lessons it applied, and an agent marks one wrongly
     const held = await lesson(n);
     expect(held.status).toBe('held');
     expect(held.applications[0]).toMatchObject({ wrong_reason: 'ISS-7 is about day wards.' });
+    // a wrong application is no use: it leaves the count a fold is weighed on, and the door use read
+    // counts it under no agent (ISS-1251 round 5)
+    expect(held.applied_count).toBe(0);
+    const use = ok(await say('member', 'GET', at('/metrics/doors')));
+    expect(use.lessonsApplied).not.toContainEqual(expect.objectContaining({ lesson: `L-${n}` }));
     expect(held.confusions).toEqual([
       expect.objectContaining({
         kind: 'wrongly_applied',

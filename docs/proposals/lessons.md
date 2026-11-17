@@ -121,7 +121,8 @@ is about one item, and this pass is about the whole project.
 applied once.
 
 - The Lessons block tells every agent to end an output a lesson shaped with the line
-  `Lessons applied: L-3, L-7`.
+  `Lessons applied: L-<n>, …`, or `Lessons applied: none`: a placeholder, since agents copied a
+  real pair of numbers from the example.
 - Core reads that line out of the assistant's stored reply and the steward run's final text.
 - A run or master records it with `POST /api/projects/:id/lessons/applied
   {lessons, output:{kind, ref}}`.

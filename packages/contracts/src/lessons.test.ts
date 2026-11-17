@@ -22,6 +22,8 @@ describe("the lessons an output says it applied (REQ-50 BC-4)", () => {
 	it("reads nothing from text with no such line, or one naming no lesson", () => {
 		expect(appliedLessonsIn("I applied the lesson about dates.")).toEqual([]);
 		expect(appliedLessonsIn("Lessons applied: none")).toEqual([]);
+		// the map's own example, copied as it reads, applies nothing (ISS-1251 round 5)
+		expect(appliedLessonsIn("Lessons applied: L-<n>, …")).toEqual([]);
 		expect(
 			appliedLessonsIn("We discussed Lessons applied: L-2 in passing"),
 		).toEqual([]);

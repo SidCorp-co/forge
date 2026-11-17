@@ -13,6 +13,15 @@
 import type { LessonItemKind } from '@forge/contracts/lessons';
 import { type LessonEntry, selectLessonEntries } from '../knowledge/index.js';
 
+/**
+ * How the map asks an agent to say what it applied: a placeholder, never a real lesson's number. Its
+ * example read `L-3, L-7` until ISS-1251 round 5, and the only applications forge-dev ever recorded
+ * were exactly L-3 and L-7, by the steward, which had copied it (`appliedLessonsIn` reads `none` and a
+ * placeholder as nothing applied).
+ */
+export const APPLIED_TAIL =
+  'End with `Lessons applied: L-<n>, …` naming only the lessons that changed what you did, else `Lessons applied: none`.';
+
 /** The most characters the map takes in any prompt, whatever the lessons and the audience. */
 export const LESSONS_MAP_MAX_CHARS = 1200;
 
@@ -151,7 +160,7 @@ function composeMap(
     `${'#'.repeat(depth)} Lessons`,
     `Read first each that fits your work: ${audience.fetch}.`,
   ].join('\n');
-  const tail = `End with \`Lessons applied: L-3, L-7\`. Raise one that conflicts or cannot apply (${audience.raise}) and go on without it.`;
+  const tail = `${APPLIED_TAIL} Raise one that conflicts or cannot apply (${audience.raise}) and go on without it.`;
   const textOf = (gists: readonly number[], past = '') =>
     `${head}\n\n${groups.flatMap((g, i) => groupLines(g, gists[i] ?? 0)).join('\n')}${past ? `\n${past}` : ''}\n\n${tail}`;
   const gists = groups.map(() => 0);
