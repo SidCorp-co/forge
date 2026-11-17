@@ -1,0 +1,1 @@
+**Onboarding and BA assistants can ask every question they need.** A questionnaire card is no longer limited to fifteen questions, and a new card can be sent while an earlier one still waits for answers.
