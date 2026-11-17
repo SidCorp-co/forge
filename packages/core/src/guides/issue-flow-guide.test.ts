@@ -124,3 +124,23 @@ describe('the landing teaches recording what the work named, at the mark', () =>
     expect(DIRECT_ORDER).toContain('say in the landing comment which you wrote');
   });
 });
+
+// ISS-1251 round 5: audit.self had no call from a master or a run in 30 days, and the only text
+// naming it was one Tier-0 map line among ten doors; the step where each closes its work teaches it
+describe('the step that closes work teaches the self-audit where it is taken', () => {
+  const dispatch = DISPATCH_GUIDE.body.split(/\s+/).join(' ');
+
+  it('asks a run, at its report, to audit its own output once against its rubric', () => {
+    expect(prose).toContain('Then audit your own output once, as the role you held');
+    expect(prose).toContain('`POST /api/projects/:id/self-audits`');
+    expect(prose).toContain('criteria_proven, in_scope');
+    expect(ISSUE_FLOW_GUIDE.doors).toContain('POST /api/projects/:id/self-audits');
+  });
+
+  it('asks a master, at its fold and its direct-mode record, to audit each issue it landed', () => {
+    expect(dispatch).toContain('Then audit your own part once per issue you landed or folded');
+    expect(dispatch).toContain("{ as: 'master', output: { kind: 'issue', ref }, failed, missed }");
+    expect(dispatch).toContain('hand the lease back, and audit the issue as `master` (Fold)');
+    expect(DIRECT_ORDER).toContain('then audit each issue you landed once, as master');
+  });
+});

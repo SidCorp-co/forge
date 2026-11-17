@@ -6,6 +6,7 @@
 // forge-master skill the box installs; what a dispatched run does is the `issue-flow` guide.
 
 import { PLAIN_DECISION_RULE } from '@forge/contracts/plain-decision';
+import { ROLE_RUBRICS } from '@forge/contracts/support-reply-audit';
 import {
   ROOM_DOCUMENT_CAPS,
   ROOM_IMAGE_CAPS,
@@ -22,7 +23,7 @@ export const DISPATCH_GUIDE: CoreGuide = {
   title: "Running a wave: a master's dispatch and fold",
   summary:
     "The method a project's master follows for one wave: read the order, triage each candidate, batch by files, give each run its tree and a brief, declare and record each dispatch, and fold what comes back — over REST and `forge-runner`; on a project that runs direct (not strict, fast delivery on), build, land, release and judge a whole batch at once instead.",
-  version: 12,
+  version: 13,
   body: `## Running a wave
 
 A wave is the set of runs one master pass sends out, and the fold is the reading of what came back.
@@ -153,6 +154,10 @@ records — before acting on it.
   \`{ by: <the later issue's key>, criterion: <its criterion now holding it>, reason }\`.
 - The fold ends with a \`fold\` record on the headline carrying the wave's one-line summary. Until it
   is written the wave is open, whatever its members' statuses say.
+- Then audit your own part once per issue you landed or folded, as \`master\`:
+  \`POST /api/projects/:id/self-audits\` \`{ as: 'master', output: { kind: 'issue', ref }, failed, missed }\`
+  (\`audit.self\`), \`failed\` naming each rubric line you fail
+  (${Object.keys(ROLE_RUBRICS.master).join(', ')}) or a red flag you tripped, \`[]\` where none.
 
 ### Answering a room agent's ask
 A room agent asks you in its turn (\`ask_master\`) while a person waits in its thread: the ask wakes
@@ -272,7 +277,8 @@ It works in batches, as §4 splits them:
    Record the terms and rules the work named under its module, as the mark's \`moduleMap\` says
    (${guideRef('issue-flow')}, Land, mark, move): each builder's report names them, the names its
    issue, criteria, decision or code give a thing and the limits it settled, each with its
-   \`file.ts:symbol\`. Comment what landed and which you wrote, then hand the lease back.
+   \`file.ts:symbol\`. Comment what landed and which you wrote, hand the lease back, and audit the
+   issue as \`master\` (Fold).
 5. Release the batch once, on the minimum bar: it builds and the app answers its health check. Then
    one live judge pass over the batch: a criterion's or a requirement BC's verdict is recorded only
    once it was checked on the running build, and a screen is checked at the widths the qa guide

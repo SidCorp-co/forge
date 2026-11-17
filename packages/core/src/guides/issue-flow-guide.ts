@@ -9,6 +9,7 @@
 
 import { WORK_STEPS } from '@forge/contracts/issue-vocabulary';
 import { PLAIN_DECISION_RULE } from '@forge/contracts/plain-decision';
+import { ROLE_RUBRICS } from '@forge/contracts/support-reply-audit';
 import { RELEASE_CLIP_MAX_BYTES, RELEASE_CLIP_MAX_SECONDS } from '@forge/contracts/release-page';
 import {
   VERDICT_EVIDENCE_ITEM_MAX,
@@ -24,7 +25,7 @@ export const ISSUE_FLOW_GUIDE: CoreGuide = {
   title: 'Taking one issue from open to awaiting_release',
   summary:
     'The method a run follows for one issue or a batch, every tracker act a REST call: read it whole, take it, write criteria (a plan where the work needs one), build in its own tree, prove it, land, mark the merge, move it to `awaiting_release`, and close it once its criteria are met in scope.',
-  version: 20,
+  version: 21,
   doors: [
     'POST /api/questions',
     'POST /api/issues/:id/transition',
@@ -32,6 +33,7 @@ export const ISSUE_FLOW_GUIDE: CoreGuide = {
     'POST /api/issues/:id/dependencies',
     'POST /api/issues/:id/merge-check',
     'POST /api/projects/:projectId/integrations/source/change-requests',
+    'POST /api/projects/:id/self-audits',
   ],
   body: `## Taking one issue from open to awaiting_release
 
@@ -520,5 +522,12 @@ Each defect you see goes to exactly one place (guide \`what-is-an-issue\`, *Wher
 ### 8. Clean up and report
 Remove what this run made and no longer needs: scratch files, servers it started. A workspace
 holding work no record cites stays standing and is named in the report. The report gives one line
-per outcome: what landed, what was filed, what a restart is owed for, and what was not done and why.`,
+per outcome: what landed, what was filed, what a restart is owed for, and what was not done and why.
+
+Then audit your own output once, as the role you held: \`POST /api/projects/:id/self-audits\`
+\`{ "as": "run", "output": { "kind": "issue", "ref": "<its key>" }, "failed": [], "missed": [] }\`
+(\`audit.self\` over MCP). \`failed\` names each line of your rubric the work fails
+(${Object.keys(ROLE_RUBRICS.run).join(', ')}) or a card's red flag you tripped, each with why;
+\`missed\` each door you should have reached for. A failed line becomes a correction the steward
+learns lessons from; an audit never made leaves your misses read nowhere.`,
 };
