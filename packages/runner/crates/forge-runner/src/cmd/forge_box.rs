@@ -135,7 +135,10 @@ async fn act(
         run.as_deref(),
     )
     .await?;
-    let mut record = answered(&resp);
+    let (mut record, hand_back) = act_of(answered(&resp));
+    if let Some(said) = hand_back {
+        eprintln!("{said}");
+    }
     let deadline = tokio::time::Instant::now() + Duration::from_secs(300);
     while record["state"] == "pending" && tokio::time::Instant::now() < deadline {
         tokio::time::sleep(Duration::from_secs(2)).await;
@@ -201,6 +204,19 @@ fn answered(resp: &Response) -> Value {
         std::process::exit(resp.outcome.exit_code);
     }
     serde_json::from_slice(&resp.stdout).unwrap_or(Value::Null)
+}
+
+/// Core's answer to an act (`{ act, personActed? }`, `AgentActAnswer`): the act's record, and a
+/// line saying a person acted on the box since this agent's previous act, where one did.
+fn act_of(mut answer: Value) -> (Value, Option<String>) {
+    let said = answer.get("personActed").map(|p| {
+        format!(
+            "a person acted on this box since your last act ({} input(s)); read them: forge-runner api {}",
+            p["inputs"],
+            p["feed"].as_str().unwrap_or("").trim_start_matches("/api/")
+        )
+    });
+    (answer["act"].take(), said)
 }
 
 /// The act named `id` in a feed answer (`{ acts: [...] }` or a bare list).
@@ -273,6 +289,15 @@ mod tests {
         );
         let feed =
             json!({ "acts": [{ "id": "a", "state": "pending" }, { "id": "b", "state": "done" }] });
+        let (act, said) = act_of(json!({
+            "act": { "id": "c", "state": "done", "exitCode": 0, "stdout": "ok" },
+            "personActed": { "inputs": 2, "feed": "/api/boxes/x/acts?by=person&after=4" }
+        }));
+        assert_eq!(print_act(&act), 0, "the record is read from `act`");
+        assert!(said
+            .unwrap()
+            .ends_with("forge-runner api boxes/x/acts?by=person&after=4"));
+        assert_eq!(act_of(json!({ "act": { "state": "pending" } })).1, None);
         assert_eq!(find_act(&feed, &json!("b")).unwrap()["state"], "done");
     }
 }

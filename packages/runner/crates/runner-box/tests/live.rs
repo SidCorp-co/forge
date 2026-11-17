@@ -137,6 +137,17 @@ async fn open(
     t.elapsed()
 }
 
+/// The heartbeat names the box among those held from the moment it is ready; the health it
+/// reports is printed for a check against core's schema.
+fn print_health_naming(b: &Boxes, id: &str) {
+    let health = b.health().expect("this device measures its box health");
+    assert!(
+        health["held"].as_array().unwrap().iter().any(|h| h == id),
+        "{health}"
+    );
+    println!("BOX_HEALTH {health}");
+}
+
 async fn act(b: &Boxes, said: &Said, id: &str, cmd: &[&str]) -> Value {
     let act_id = uuid::Uuid::new_v4().to_string();
     b.on_frame(
@@ -237,6 +248,7 @@ async fn a_real_browser_box_is_driven_watched_taken_recorded_and_reaped() {
     )
     .await;
     println!("MEASURED browser box ready in {ready:?}");
+    print_health_naming(&b, &id);
     let rss = runner_box::proc::rss_mb(&runner_box::proc::pids_of(&id));
     println!(
         "MEASURED browser box resident memory {rss} MB over {} processes",
