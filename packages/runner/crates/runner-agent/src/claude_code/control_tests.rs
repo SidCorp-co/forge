@@ -54,6 +54,30 @@ for line in sys.stdin:
         out({"type": "result", "subtype": "success", "is_error": False, "terminal_reason": "completed", "session_id": "stand-in"})
 "#;
 
+/// A spawned process adopted as `start` adopts one, under `job_id`.
+fn spawned(
+    job_id: &str,
+    child: tokio::process::Child,
+    stdin: tokio::process::ChildStdin,
+) -> Spawned {
+    Spawned {
+        job_id: job_id.into(),
+        child,
+        stdin,
+        egress: None,
+        mcp_path: std::env::temp_dir().join(format!("absent-{job_id}.json")),
+        bearer_dir: None,
+        invoked_with_resume: false,
+        permit: None,
+        keep_resident: false,
+        model: None,
+        project_slug: None,
+        checkout: crate::CheckoutView::Write,
+        siblings: Vec::new(),
+        repo_path: std::env::temp_dir(),
+    }
+}
+
 async fn next_terminal(rx: &mut mpsc::Receiver<RunnerEvent>) -> RunnerEvent {
     loop {
         match rx.recv().await {
@@ -84,28 +108,7 @@ async fn an_interrupt_ends_the_running_turn_and_the_session_answers_the_next_mes
     let pid = child.id();
     let stdin = child.stdin.take().unwrap();
     let (tx, mut rx) = mpsc::channel::<RunnerEvent>(256);
-    runner
-        .adopt(
-            Spawned {
-                job_id: "k".into(),
-                child,
-                stdin,
-                egress: None,
-                mcp_path: dir.join("absent.json"),
-                bearer_dir: None,
-                invoked_with_resume: false,
-                permit: None,
-                keep_resident: false,
-                model: None,
-                project_slug: None,
-                checkout: crate::CheckoutView::Write,
-                siblings: Vec::new(),
-                repo_path: std::env::temp_dir(),
-            },
-            tx,
-        )
-        .await
-        .unwrap();
+    runner.adopt(spawned("k", child, stdin), tx).await.unwrap();
     // the first turn streams; a turn with no reply yet is the one Stop reaches
     loop {
         if let Some(RunnerEvent::Stdout(l)) = rx.recv().await {
@@ -196,23 +199,10 @@ async fn real_claude_stops_within_two_seconds_and_continues_the_session() {
         .await
         .unwrap();
     let (tx, mut rx) = mpsc::channel::<RunnerEvent>(4096);
-    let spawned = Spawned {
-        job_id: "real".into(),
-        child,
-        stdin,
-        egress: None,
-        mcp_path: std::env::temp_dir().join("absent-real.json"),
-        bearer_dir: None,
-        invoked_with_resume: false,
-        permit: None,
-        keep_resident: false,
-        model: None,
-        project_slug: None,
-        checkout: crate::CheckoutView::Write,
-        siblings: Vec::new(),
-        repo_path: std::env::temp_dir(),
-    };
-    runner.adopt(spawned, tx).await.unwrap();
+    runner
+        .adopt(spawned("real", child, stdin), tx)
+        .await
+        .unwrap();
     let mut sid = None;
     loop {
         match rx.recv().await {
