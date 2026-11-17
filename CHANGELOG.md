@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.709] - 2026-11-17
+
+Every tool card is checked against how agents really use it
+
+### Changed
+
+- **Every tool card is now checked against how agents really use it.** The Capabilities page shows each tool's real use scenarios and their replay results, counts masters and runs apart, and keeps lessons current when a file is only reformatted.
+
 ## [0.4.0-dev.708] - 2026-11-17
 
 Judges, agents and masters each see what is really theirs
