@@ -3,18 +3,27 @@
 //
 // HTTP drains first: from the signal on, a new request is answered 503 with Retry-After by the
 // drain (lib/drain.ts) and a request already in flight finishes while everything it uses still
-// runs. Then the services stop, then the listener closes, and the database goes last (ISS-930).
+// runs. The listener stays open, answering 503, until the proxy in front can have stopped routing
+// to this container; then the services stop, then the listener closes, and the database goes last
+// (ISS-930).
 
 import { coreDrain } from './lib/drain.js';
 import { logger } from './lib/logger.js';
 
 /**
- * Core's own budget, and the part of it HTTP requests in flight may take. A deploy stops the old
- * container with a grace that must exceed `timeoutMs`, or a write that committed is killed before
- * it answers: `stop_grace_period` in both compose files (scripts/check-stop-grace.mjs holds them
- * over it), and Coolify's own stop on a deploy, which is 30 s unless the application sets one.
+ * Core's own budget, and the parts of it HTTP takes. A deploy stops the old container with a grace
+ * that must exceed `timeoutMs`, or a write that committed is killed before it answers:
+ * `stop_grace_period` in both compose files, and Coolify's own stop on a deploy, which is 30 s
+ * unless the application sets one (shutdown-grace.test.ts holds both over it).
+ *
+ * `deregisterMs` is how long core keeps its listener open after SIGTERM. Traefik reads Docker's
+ * events, so it routes to the old container until the container's healthcheck reads it unhealthy
+ * (or it dies) and then for up to its provider throttle (2 s) more; a listener closed before that
+ * is a refused connection, which Traefik answers 502. `/health` answers 503 from the signal on, so
+ * the compose healthcheck's interval x retries + timeout + the throttle has to fit inside it
+ * (shutdown-grace.test.ts holds them).
  */
-export const SHUTDOWN_LIMITS = { httpDrainMs: 15_000, timeoutMs: 25_000 };
+export const SHUTDOWN_LIMITS = { deregisterMs: 10_000, httpDrainMs: 15_000, timeoutMs: 25_000 };
 
 /** One thing core tears down on its way out, named so a slow one can be told apart in the log. */
 export type ShutdownStep = { name: string; run: () => Promise<void> };
@@ -42,10 +51,13 @@ export async function runShutdown(
   logger.info({ signal, inFlight: coreDrain.inFlight() }, '@forge/core shutdown initiated');
   coreDrain.begin();
 
+  // only a container stop has a proxy routing to it; SIGINT is a terminal's stop, with none in front
+  const deregisterMs = signal === 'SIGTERM' ? limits.deregisterMs : 0;
+
   const sequence = (async () => {
-    const drained = await Promise.race([
-      coreDrain.settled().then(() => true),
-      after(limits.httpDrainMs, false),
+    const [drained] = await Promise.all([
+      Promise.race([coreDrain.settled().then(() => true), after(limits.httpDrainMs, false)]),
+      after(deregisterMs, undefined),
     ]);
     if (!drained) {
       logger.error(
@@ -54,8 +66,9 @@ export async function runShutdown(
       );
     }
     for (const step of steps.services) await step.run();
-    // the listener stays open until here so a request arriving meanwhile is answered 503 by the
-    // drain; closed, the proxy's next connection is refused and it answers 502
+    // the listener stays open until here so a request arriving meanwhile, on a new connection or a
+    // kept-alive one, is answered 503 by the drain and its socket closed after; by now the proxy
+    // has stopped routing here, so cutting the idle sockets left cuts no request
     const closed = new Promise<void>((resolve, reject) => {
       server.close((err) => (err ? reject(err) : resolve()));
     });
