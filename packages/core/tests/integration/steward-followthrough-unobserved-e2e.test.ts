@@ -88,8 +88,10 @@ describe('a release follow-through is briefed by what runs', () => {
     await seedProduction({ projectId, ownerId, probes: 'none' });
     const brief = await followthroughBrief(projectId);
 
+    // ISS-1267: it reads the criteria and judged-build before its first verdict
+    expect(brief).toContain('Read before your first verdict');
     expect(brief).toContain(
-      'Judge each carried criterion on the running build and record a verdict (`POST /api/issues/<id>/verdicts`, identity `runtime`).',
+      'Judge each on the build judged-build names and record its verdict once (`POST /api/issues/<id>/verdicts`)',
     );
     expect(brief).toContain('This project has a production environment');
   });

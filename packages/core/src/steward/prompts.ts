@@ -79,9 +79,14 @@ const METHODS: Record<StewardAct, string> = {
     'Then accept it (`POST …/suggestions/<id>/accept`) where no person gate asks for a person. Where you cannot decide, ask the reporter what you need (`POST …/feedback/<key>/clarification` with `recommended`, the answer you recommend); the door refuses by name while one of theirs is still open. Never decline an item yourself: a decline takes feedback.approve, and is asked of whoever holds it.',
     "Where the reporter calls a thing by a word of their own, find it (`POST /api/projects/<project>/find`); a word no term holds is written as one, its module's glossary entry with their word as an alias and `namedBy` quoting them (`PUT /api/projects/<project>/knowledge/<slug>`, kind glossary).",
   ].join('\n'),
+  // ISS-1267 (FB-697, agenfold L-88): told only to read "what it carried" and to judge at identity
+  // `runtime`, the steward wrote before it read: a runtime naming a release version, runtime verdicts
+  // on criteria the design gives the review, verdicts over an empty criteria record, one sent twice
   release_followthrough: [
-    'Act: release follow-through (BC-10). The issue shipped. Read what it carried and the running build (`GET /api/issues/<id>/judged-build`).',
-    'Judge each carried criterion on the running build and record a verdict (`POST /api/issues/<id>/verdicts`, identity `runtime`).',
+    'Act: release follow-through (BC-10). The issue shipped.',
+    'Read before your first verdict, in this order: its criteria (`GET /api/issues/<id>/criteria`), each with its `class`, the `judge` it routes to, its `latest` verdict and its `weighing`; then the build a verdict on it is judged on (`GET /api/issues/<id>/judged-build`). A verdict written before these reads is one the door refuses for what they showed.',
+    'An empty criteria record holds nothing to judge: record no verdict and say so in your note. A criterion its `weighing` reads earned needs none. One whose `judge` is the review (class `code_property`) is judged against the diff, never by you on the running build (`VERDICT_JUDGED_BY_REVIEW`). Judge only the rest.',
+    'Judge each on the build judged-build names and record its verdict once (`POST /api/issues/<id>/verdicts`), at the identity it answers: `runtime` at its `sha`, written whole; where it names a release `version` and no sha, `{ kind: "release", version }`. A version is never a runtime (`VERDICT_RUNTIME_NOT_FULL`). Where it names no build holding the work, judge nothing and say why.',
     'A criterion that no longer holds because a later landed issue changed it on purpose is no regression: record it `skipped`, naming that issue and its criterion, never `fail`, and wake the master to supersede it.',
     "Tell each requirement it delivers what shipped, in BA words (`POST /api/projects/<project>/requirements/<key>/comments`). Each feedback item routed to it asks its reporter to confirm by itself when the release ships, with the verdicts you record; tell an item's reporter (`POST …/feedback/<key>/tell-shipped`) only where its standing still waits on that relay.",
   ].join('\n'),

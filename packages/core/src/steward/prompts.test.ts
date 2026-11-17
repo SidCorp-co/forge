@@ -45,3 +45,29 @@ describe('a steward act is told a goal, not a script', () => {
     expect(actPrompt('stuck_diagnosis')).toContain('Every steward_decide carries `plain`');
   });
 });
+
+// ISS-1267 (FB-697, agenfold L-88): the follow-through wrote verdicts before it read the issue's
+// criteria, their design classes and judged-build, and each was refused for what that read showed
+describe('the release follow-through reads before it judges', () => {
+  const said = actPrompt('release_followthrough').replace(/\s+/g, ' ');
+
+  it('reads the criteria, their class and judge, then judged-build, before the first verdict', () => {
+    const first = said.indexOf('Read before your first verdict');
+    expect(first).toBeGreaterThan(-1);
+    expect(said.indexOf('GET /api/issues/<id>/criteria')).toBeGreaterThan(first);
+    expect(said.indexOf('GET /api/issues/<id>/judged-build')).toBeGreaterThan(
+      said.indexOf('GET /api/issues/<id>/criteria'),
+    );
+    expect(said.indexOf('POST /api/issues/<id>/verdicts')).toBeGreaterThan(
+      said.indexOf('GET /api/issues/<id>/judged-build'),
+    );
+    expect(said).toContain('each with its `class`, the `judge` it routes to');
+  });
+
+  it('names what each read rules out: an empty record, a review criterion, a version as a runtime', () => {
+    expect(said).toContain('An empty criteria record holds nothing to judge: record no verdict');
+    expect(said).toContain('`VERDICT_JUDGED_BY_REVIEW`');
+    expect(said).toContain('A version is never a runtime (`VERDICT_RUNTIME_NOT_FULL`)');
+    expect(said).toContain('record its verdict once');
+  });
+});
