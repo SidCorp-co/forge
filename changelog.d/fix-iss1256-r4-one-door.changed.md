@@ -1,1 +1,0 @@
-**Every search now goes through one find door.** Knowledge, memory, issue-list, assistant and room searches rank their hits the same way, and opening a hit counts as a read for anyone. Memory search no longer takes a ranking strategy.

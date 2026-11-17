@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.707] - 2026-11-17
+
+One find door ranks every search, and the Modules screen reads real links
+
+### Changed
+
+- **Every search now goes through one find door.** Knowledge, memory, issue-list, assistant and room searches rank their hits the same way, and opening a hit counts as a read for anyone. Memory search no longer takes a ranking strategy.
+
 ## [0.4.0-dev.706] - 2026-11-17
 
 Deploys no longer show callers a 502 for writes that landed
