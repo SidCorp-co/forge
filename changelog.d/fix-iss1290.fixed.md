@@ -1,0 +1,1 @@
+**A release counts a pass judged on a later build that still carries it.** Where nothing between them touches the issue's files, the release reads it proven; where Forge cannot tell, it says what to report so it can.
