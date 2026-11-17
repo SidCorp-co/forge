@@ -4,7 +4,8 @@
 // no new port, no tailnet) and proxies it server-side:
 // - view: watch-only, many viewers, each at its own rate. agent-browser's stream socket also takes
 //   input, so for a browser box core is the WebSocket client and forwards only frames, at most
-//   `fps` a second; scrcpy and VNC bytes are relayed as they come (the device opened them view-only).
+//   `fps` a second; scrcpy and VNC bytes are relayed as they come (the device opened them view-only); an RFB
+//   viewer's binary messages go back to x11vnc for its handshake, which `-viewonly` keeps watch-only.
 // - input: the holder's `BoxInput` lines, each validated and recorded before it is forwarded; the
 //   socket closes the moment the hold ends.
 
@@ -167,6 +168,22 @@ function followHold(
   ws.on('close', () => clearInterval(timer));
 }
 
+/**
+ * What a viewer's message carries on to the box over its view, or null when it is dropped. Only an RFB
+ * viewer's binary messages pass: noVNC must send its half of the handshake, and x11vnc runs `-viewonly`
+ * so no pointer or key it sends reaches the screen. A JPEG-frames viewer reaches agent-browser's socket,
+ * which takes input, and a scrcpy viewer has nothing to say, so theirs are dropped.
+ */
+export function viewerBytesFor(
+  codec: BoxViewCodec,
+  data: Buffer | ArrayBuffer | Buffer[],
+  isBinary: boolean,
+): Buffer | null {
+  if (codec !== 'rfb' || !isBinary) return null;
+  if (Array.isArray(data)) return Buffer.concat(data);
+  return Buffer.isBuffer(data) ? data : Buffer.from(data);
+}
+
 async function serveView(
   ws: WebSocket,
   boxId: string,
@@ -204,8 +221,10 @@ async function serveView(
   };
   followHold(ws, boxId, end);
   ws.on('close', () => stream.destroy());
-  // a viewer never writes to the box over its view: whatever it sends is dropped
-  ws.on('message', () => {});
+  ws.on('message', (data, isBinary) => {
+    const bytes = viewerBytesFor(codec, data, isBinary);
+    if (bytes) stream.write(bytes);
+  });
   if (codec !== 'jpeg-frames') {
     stream.on('data', (chunk: Buffer) => {
       if (ws.readyState === ws.OPEN) ws.send(chunk, { binary: true });
