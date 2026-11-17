@@ -116,7 +116,7 @@ describe('a release waiting on the Master is the master’s owed work (ISS-1278)
     const answer = await sweep('absent');
     expect(answer.verdict.act, answer.verdict.because).toBe('place');
     expect(answer.verdict.because).toContain(
-      `1 release(s) wait on the master: ${version}: open the promotion change request at a judged head`,
+      `1 act(s) wait on the master: ${version}: open the promotion change request at a judged head`,
     );
   });
 });

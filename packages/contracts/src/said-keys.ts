@@ -2934,9 +2934,9 @@ export const SAID = {
 		en: "{verdict}; {n} owed live verdict(s) wait on a pane to judge them",
 		vars: { verdict: "said", n: "count" },
 	},
-	"masters.verdict.releasesWait": {
-		en: "{verdict}; {n} release(s) wait on the master: {releases}",
-		vars: { verdict: "said", n: "count", releases: "text" },
+	"masters.verdict.actsWait": {
+		en: "{verdict}; {n} act(s) wait on the master: {acts}",
+		vars: { verdict: "said", n: "count", acts: "text" },
 	},
 	"masters.verdict.keptNudge": {
 		en: "{kept}; nudge: {nudge}",

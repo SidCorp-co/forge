@@ -128,7 +128,7 @@ function judged(liveChecks: number, over: Partial<MasterJudged> = {}): MasterJud
       admissible: 0,
       owed: liveChecks,
       liveChecks,
-      releaseWaits: [],
+      waits: [],
       poolWaits: false,
       jobPanes: 0,
     },

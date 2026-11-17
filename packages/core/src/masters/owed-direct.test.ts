@@ -20,6 +20,7 @@ const none = {
   releaseMerges: [],
   releaseApprovals: [],
   releaseActs: [],
+  standingActs: [],
   answers: [],
   stewardAsks: [],
   questions: [],

@@ -56,7 +56,7 @@ const holds = (live: string[], over: string[] = []): MasterJudged['holding'] => 
 });
 const alive = (over: Partial<MasterJudged> = {}) =>
   facts({ pane: 'alive', capability: 'current', ...over });
-const none = { owed: 0, liveChecks: 0, releaseWaits: [], poolWaits: false, jobPanes: 0 };
+const none = { owed: 0, liveChecks: 0, waits: [], poolWaits: false, jobPanes: 0 };
 const noWork = { admissible: 0, ...none };
 const quietHour = {
   noWorkForSeconds: HOUR,

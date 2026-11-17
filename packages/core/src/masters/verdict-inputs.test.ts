@@ -31,7 +31,7 @@ function alive(over: Partial<MasterJudged> = {}): MasterJudged {
       admissible: 1,
       owed: 0,
       liveChecks: 0,
-      releaseWaits: [],
+      waits: [],
       poolWaits: false,
       jobPanes: 0,
     },
@@ -59,7 +59,7 @@ const noWork = {
   admissible: 0,
   owed: 0,
   liveChecks: 0,
-  releaseWaits: [],
+  waits: [],
   poolWaits: false,
   jobPanes: 0,
 };

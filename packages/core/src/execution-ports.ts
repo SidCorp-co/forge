@@ -142,6 +142,7 @@ import {
   settleSessionFires,
 } from './schedules/index.js';
 import { recordSkillActivityEvent, resolveRegisteredEffectiveSkills } from './skills/index.js';
+import { standingActsOwed } from './standing/index.js';
 import { sendStatusReport } from './status-reports/index.js';
 import {
   breakdownsHeldBySteward,
@@ -434,6 +435,7 @@ export function provideExecutionPorts(): void {
     releaseMergesOwed,
     releaseApprovalsOwed,
     releaseActsOwed,
+    standingActsOwed,
     answersSince: async (projectId, after) =>
       (await answeredOnIssuesSince(projectId, after)).map((a) => ({
         issueKey: formatIssueRef(a.issuePrefix, a.issSeq),

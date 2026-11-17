@@ -21,6 +21,7 @@ const none: Parameters<typeof owedLine>[0] = {
   releaseMerges: [],
   releaseApprovals: [],
   releaseActs: [],
+  standingActs: [],
   answers: [],
   stewardAsks: [],
   questions: [],

@@ -23,7 +23,7 @@ function facts(over: Partial<MasterJudged> = {}): MasterJudged {
       admissible: 1,
       owed: 0,
       liveChecks: 0,
-      releaseWaits: [],
+      waits: [],
       poolWaits: false,
       jobPanes: 0,
     },
@@ -69,7 +69,7 @@ describe('archived: an archived project drives no master (ISS-353 soft archive)'
   const named = `project archived at ${at}; unarchive to drive it again`;
   /** A busy, current pane a live project keeps and nudges: owed work, never nudged. */
   const busy = alive({
-    work: { admissible: 2, owed: 1, liveChecks: 0, releaseWaits: [], poolWaits: true, jobPanes: 0 },
+    work: { admissible: 2, owed: 1, liveChecks: 0, waits: [], poolWaits: true, jobPanes: 0 },
   });
 
   it('retires a live pane however much work waits, and nudges nothing', () => {

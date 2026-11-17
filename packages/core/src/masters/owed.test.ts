@@ -33,16 +33,11 @@ const none = {
   releaseMerges: [] as ReleaseMergeOwed[],
   releaseApprovals: [] as { runId: string; version: string | null }[],
   releaseActs: [] as { version: string; key: string; act: string }[],
+  standingActs: [],
   answers: [],
   stewardAsks: [] as StewardAsk[],
   questions: [],
-  landedWork: [] as {
-    issueId: string;
-    key: string;
-    commit: string | null;
-    mergedAt: string;
-    status: 'in_progress' | 'open';
-  }[],
+  landedWork: [] as Parameters<typeof owedLine>[0]['landedWork'],
   wedgedWork: [] as { issueId: string; key: string; since: string }[],
   marks: [] as MarkOwed[],
   filings: [] as FilingOwed[],

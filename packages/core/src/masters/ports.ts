@@ -4,7 +4,7 @@ import type { MasterMode } from '@forge/contracts/master-mode';
 import type { AnswerResume } from '@forge/contracts/questions';
 import type { ReleaseNamer } from '@forge/contracts/release-naming';
 import type { ReleaseEndedRunHold } from '@forge/contracts/releases';
-import type { StandingSubjectKind } from '@forge/contracts/steward';
+import type { StandingSubject, StandingSubjectKind } from '@forge/contracts/steward';
 import { portSlot } from '../lib/port-slot.js';
 
 /** Member messages one room could not take, for one cause (ISS-1046). */
@@ -87,6 +87,18 @@ export interface ReleaseActOwed {
   /** The said key of the act its wait names: the act's identity. */
   key: string;
   /** The act as the release page says it. */
+  act: string;
+}
+
+/**
+ * An act an open issue's, requirement's, feedback item's or workflow's standing names the master for
+ * (`standing/master-owed.ts`, ISS-1278), read by the same test as a release's.
+ */
+export interface StandingActOwed {
+  subject: StandingSubject;
+  /** The said key of the act its wait names: the act's identity. */
+  key: string;
+  /** The act as the item's page says it. */
   act: string;
 }
 
@@ -216,6 +228,11 @@ interface MastersPorts {
    * landing, each routine and the master's whether or not one stands.
    */
   releaseActsOwed(projectId: string): Promise<ReleaseActOwed[]>;
+  /**
+   * The acts the project's open issues, requirements, feedback items and workflows wait on its master
+   * for, as the one standing read names them (`standing/master-owed.ts`, ISS-1278).
+   */
+  standingActsOwed(projectId: string): Promise<StandingActOwed[]>;
   /** Running releases the project requires approval for that have asked none (ISS-591). */
   releaseApprovalsOwed(projectId: string): Promise<{ runId: string; version: string | null }[]>;
   /** Questions on the project's issues answered after `after`, with what each answer did to its park. */

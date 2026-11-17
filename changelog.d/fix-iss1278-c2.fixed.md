@@ -1,0 +1,1 @@
+**A master stays for every item waiting on it.** When an issue, requirement, feedback item or workflow waits on the project's master, such as resuming a paused issue or proposing a draft, Forge keeps or starts one.

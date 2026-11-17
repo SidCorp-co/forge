@@ -31,6 +31,8 @@ import {
   releasesTheMasterNames,
 } from './owed-release-gate.js';
 import { reviewsLine } from './owed-reviews.js';
+import { standingActsLine, standingActsWork } from './owed-standings.js';
+import { stewardAsksLine } from './owed-steward-asks.js';
 import { type TriageOwed, triagesLine, triagesTheMasterTakes } from './owed-triages.js';
 import { DIRECT_NUDGE, DIRECT_ORDER, NUDGE } from './pass-order.js';
 import {
@@ -47,13 +49,15 @@ import {
   type ReleaseHoldOwed,
   type ReleaseMergeOwed,
   type ReviewOwed,
+  type StandingActOwed,
   type StewardAsk,
   type UnhandledRoomMessages,
   type WaitingRequest,
 } from './ports.js';
+import type { OwedWait } from './verdict.js';
 
-/** The work, beside the releases of it waiting on the master, which a placement names (ISS-1278). */
-type MasterRead = { work: MasterWork; releaseWaits: ReleaseActOwed[] };
+/** The work, beside every act of it a release or an item waits on the master for (ISS-1278). */
+type MasterRead = { work: MasterWork; waits: OwedWait[] };
 
 /** The edge kind that gates dispatch, the one whose blocker's state changes what a master can take. */
 const GATING_KIND = 'blocks';
@@ -85,6 +89,8 @@ interface Owed {
   releaseApprovals: { runId: string; version: string | null }[];
   /** Every act a release's standing names the master for, read from the release page (ISS-1058, ISS-1278). */
   releaseActs: ReleaseActOwed[];
+  /** Every act an open issue's, requirement's, feedback item's or workflow's standing names the master for (ISS-1278). */
+  standingActs: StandingActOwed[];
   /** Park questions answered since the master's last finished pass began, with what each did. */
   answers: { issueKey: string; questionId: string; outcome: AnswerResume | null }[];
   /** What the steward asked the master to act on, each standing until its item's standing moves. */
@@ -156,37 +162,6 @@ function outcomeOf(outcome: AnswerResume | null): string {
     case 'refused':
       return `still parked: the move back was refused ${outcome.code}`;
   }
-}
-
-/**
- * The door that records a decision on an item of each kind, as the nudge names it (ISS-654): an
- * issue's `decision` record, or the decision comment a feedback item or a requirement takes. The
- * issue door answers 404 for any other kind, so each ask names the door of its own item.
- */
-const DECISION_DOOR: Record<StewardAsk['subject']['kind'], (keys: string) => string> = {
-  issue: (keys) =>
-    `on an issue (${keys}), \`forge-runner api issues/<id>/events -X POST\` with the body \`{"kind":"decision","contract":1,"fields":[{"key":"decision","value":"…"},{"key":"why","value":"…"}]}\`, plus a field \`until\` only as an ISO 8601 date such as 2026-11-01`,
-  feedback: (keys) =>
-    `on a feedback item (${keys}), \`forge-runner api projects/<projectId>/feedback/<key>/comments -X POST\` with \`intent: decision\` and \`decision: { decision, reason }\`, plus \`reversedWhen\` only as an ISO 8601 date such as 2026-11-01`,
-  requirement: (keys) =>
-    `on a requirement (${keys}), \`forge-runner api projects/<projectId>/requirements/<key>/comments -X POST\` with \`intent: decision\` and \`decision: { decision, reason }\`, plus \`reversedWhen\` only as an ISO 8601 date such as 2026-11-01`,
-  workflow: (keys) =>
-    `on a workflow (${keys}), \`forge-runner api projects/<projectId>/workflows/<flow>/comments -X POST\` with \`intent: decision\` and \`decision: { decision, reason }\`, plus \`reversedWhen\` only as an ISO 8601 date such as 2026-11-01`,
-};
-
-/** What an ask says, with each item a decision on answers it (ISS-739: the stuck item, or the blocker it asks about). */
-const askWithItems = (a: StewardAsk) =>
-  `${a.ask} [a decision on ${a.answeredOn.map((i) => i.key).join(' or ')} answers it]`;
-
-/** REQ-48 BC-5: the durable half of a steward wake, so a wake the box missed is read on its next sweep. */
-function stewardAsksLine(asks: Owed['stewardAsks']): string {
-  if (asks.length === 0) return '';
-  const items = asks.flatMap((a) => a.answeredOn);
-  const kinds = (['issue', 'feedback', 'requirement', 'workflow'] as const).flatMap((kind) => {
-    const keys = [...new Set(items.filter((i) => i.kind === kind).map((i) => i.key))];
-    return keys.length > 0 ? [DECISION_DOOR[kind](keys.join(', '))] : [];
-  });
-  return ` The project's steward asks you to act on ${asks.length} item${agrees(asks.length, '', 's')} (${asks.map(askWithItems).join('; ')}): read each item's standing (\`forge-runner api projects/<projectId>/standings\`) and take the act it waits on, or record why it waits as a decision on an item that answers it, at its own door: ${kinds.join('; ')} (other text there is a condition, held until the standing moves); the ask stands until the item's standing moves or such a decision answers it, one with a date until that date.`;
 }
 
 /** REQ-79 BC-14: a decision outside strict is the master's, and no person's Needs you lists it. */
@@ -265,7 +240,8 @@ export function owedLine(owed: Owed): string {
     intakeFailuresLine(owed.intakeFailures) +
     unhandledRoomLine(owed.unhandledRoomMessages) +
     reviewsLine(owed.reviews) +
-    liveChecksLine(owed.liveChecks, owed.liveChecksWaiting);
+    liveChecksLine(owed.liveChecks, owed.liveChecksWaiting) +
+    standingActsLine(owed.standingActs);
   const {
     breakdowns,
     triages,
@@ -360,6 +336,7 @@ function workLines(admissible: Admissible[], owed: Owed): string[] {
     ...owed.releaseMerges.map((m) => `release-merge:${m.runId}|${m.next.number}`),
     ...owed.releaseApprovals.map((r) => `release-approval:${r.runId}`),
     ...owed.releaseActs.map((a) => `release-act:${a.version}|${a.key}`),
+    ...standingActsWork(owed.standingActs),
   ];
   return [...issues, ...ids].sort();
 }
@@ -432,6 +409,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     wedgedWork,
     merges,
     releaseActs,
+    standingActs,
   ] = await Promise.all([
     readAdmissibleIssues({ deviceId, projectId }),
     readOwedComments(projectId),
@@ -453,6 +431,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     ports.wedgedWorkOwed(projectId),
     ports.mergesOwed(projectId),
     ports.releaseActsOwed(projectId),
+    ports.standingActsOwed(projectId),
   ]);
   const held = new Set(await ports.breakdownsHeldBySteward(projectId));
   const carriers = await ports.draftCarriersWaiting(projectId);
@@ -491,6 +470,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
       releaseMerges,
       releaseApprovals,
       releaseActs,
+      standingActs,
       answers,
       stewardAsks,
       questions,
@@ -512,5 +492,9 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     },
     mode,
   );
-  return { work, releaseWaits: releaseActs };
+  const waits = [
+    ...releaseActs.map((r) => ({ on: r.version, act: r.act })),
+    ...standingActs.map((a) => ({ on: a.subject.key, act: a.act })),
+  ];
+  return { work, waits };
 }

@@ -8,9 +8,13 @@ import {
 import { type Said, say, sayEn, verbatim } from '@forge/contracts/said';
 import { subagentOver } from '../devices/index.js';
 
-/** A release whose standing waits on the master, with the act it names (ISS-1278); of `owed`. */
-export interface ReleaseWait {
-  version: string;
+/**
+ * An act a release's or an open item's standing waits on the master for, as a placement names it
+ * (ISS-1278); of `owed`.
+ */
+export interface OwedWait {
+  /** The release's version, or the item's key. */
+  on: string;
   act: string;
 }
 
@@ -19,12 +23,12 @@ export interface JudgedWork {
   admissible: number;
   owed: number;
   liveChecks: number;
-  releaseWaits: readonly ReleaseWait[];
+  waits: readonly OwedWait[];
 }
 
 /**
  * The box's facts with the work core read beside them: the admissible and owed counts in `work`,
- * the live verdicts of those owed (ISS-1200), the releases waiting on the master (ISS-1278), and the
+ * the live verdicts of those owed (ISS-1200), the acts releases and items wait on the master for (ISS-1278), and the
  * digest of that work in `nudge`, so every rule below reads one document.
  */
 export type MasterJudged = Omit<MasterFacts, 'work' | 'nudge'> & {
@@ -41,7 +45,7 @@ export function judged(facts: MasterFacts, work: JudgedWork & { digest: string }
       admissible: work.admissible,
       owed: work.owed,
       liveChecks: work.liveChecks,
-      releaseWaits: work.releaseWaits,
+      waits: work.waits,
     },
     nudge: { ...facts.nudge, digest: work.digest },
   };
@@ -423,7 +427,7 @@ function placeVerdict(facts: MasterJudged): MasterVerdict {
     resume,
     nudge: passAsked(facts),
     ...because(
-      releasesNamed(
+      waitsNamed(
         facts,
         resume !== null
           ? say('masters.verdict.placeResume', { id: resume })
@@ -435,12 +439,12 @@ function placeVerdict(facts: MasterJudged): MasterVerdict {
   };
 }
 
-/** A placement names each release waiting on the master, with its act, so the box's line says why (ISS-1278). */
-function releasesNamed(facts: MasterJudged, placed: Said): Said {
-  const waits = facts.work.releaseWaits;
+/** A placement names each release and item waiting on the master, with its act, so the box's line says why (ISS-1278). */
+function waitsNamed(facts: MasterJudged, placed: Said): Said {
+  const waits = facts.work.waits;
   if (waits.length === 0) return placed;
-  const releases = waits.map((w) => `${w.version}: ${w.act}`).join('; ');
-  return say('masters.verdict.releasesWait', { verdict: placed, n: waits.length, releases });
+  const acts = waits.map((w) => `${w.on}: ${w.act}`).join('; ');
+  return say('masters.verdict.actsWait', { verdict: placed, n: waits.length, acts });
 }
 
 /**
