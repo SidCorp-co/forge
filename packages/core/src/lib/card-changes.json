@@ -54,6 +54,11 @@
     "on": "2026-11-17",
     "by": "ISS-1251"
   },
+  "DELETE /api/projects/:projectId/integrations/coolify/env/:key": {
+    "hash": "b2514be16c714e88",
+    "on": "2026-11-17",
+    "by": "ISS-1251"
+  },
   "DELETE /api/skills/:id": {
     "hash": "8910533800930361",
     "on": "2026-11-17",
@@ -381,6 +386,11 @@
   },
   "POST /api/projects/:id/feedback/report": {
     "hash": "be3b370aa827f414",
+    "on": "2026-11-17",
+    "by": "ISS-1251"
+  },
+  "POST /api/projects/:id/feedback/server-keys": {
+    "hash": "20cb22b4559d0ec7",
     "on": "2026-11-17",
     "by": "ISS-1251"
   },

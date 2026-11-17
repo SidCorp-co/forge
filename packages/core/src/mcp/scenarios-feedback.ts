@@ -9,6 +9,16 @@ const USE = 'forge door use, 2026-08-19..11-17';
 
 export const FEEDBACK_SCENARIOS: readonly CardScenario[] = [
   {
+    name: 'the steward judging ISS-922 by its own refused mint',
+    card: 'POST /api/projects/:id/feedback/server-keys',
+    source:
+      'steward run ee7cbbec, ISS-922 release follow-through, 2026-11-16T22:49Z: 1 mint, refused PERMISSION_FORBIDDEN',
+    situation: 'ISS-922 c4 says minting is refused to an actor without project.admin',
+    bad: 'mint a real key on production to show the door works',
+    good: 'mint once with its own token, read the PERMISSION_FORBIDDEN as the evidence, mint nothing live',
+    teaches: [/its PERMISSION_FORBIDDEN is the evidence/i, /minting a live key to prove the door works/i],
+  },
+  {
     name: 'a claimed answer posted in the project channel by the session it was meant for',
     card: 'POST /api/forge/feedback/answers/claim',
     source: `${USE}: 12,316 claims, every one the forge-runner hook’s, none refused`,

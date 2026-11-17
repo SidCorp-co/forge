@@ -291,4 +291,31 @@ export const FEEDBACK_REST_CARDS = {
     audience: ['master'],
     scenarios: ['a relay sent to preview: relayed true has none'],
   },
+  // ISS-922 (`feedback/server-key-routes.ts`): project.admin mints, person or agent. Declared a
+  // person's door until the steward's ISS-922 follow-through probed it, 2026-11-16 (ISS-1251 c1)
+  'POST /api/projects/:id/feedback/server-keys': {
+    purpose:
+      'Mints a key a product’s own server files its users’ feedback with, into this project only; the secret is shown once.',
+    situations: [
+      {
+        when: 'a product’s server must file its users’ feedback here and you hold project.admin',
+        do: 'mint one key naming the product, and put the secret straight into that server’s secret store',
+        watch:
+          'without project.admin it is refused PERMISSION_FORBIDDEN naming who holds it: ask them, never retry',
+      },
+      {
+        when: 'you judge that minting is refused to an actor without the permission',
+        do: 'one mint with your own token is the probe: its PERMISSION_FORBIDDEN is the evidence',
+      },
+    ],
+    practice: [
+      'One key per product, named for the product whose server files with it: every filing names it as reporter.',
+    ],
+    example: { product: 'epod' },
+    redFlag:
+      'Minting a live key to prove the door works, or pasting its secret into a comment, a log or a verdict.',
+    family: 'project-feedback',
+    audience: ['master', 'run'],
+    scenarios: ['the steward judging ISS-922 by its own refused mint'],
+  },
 } satisfies Record<string, CapabilityCardBody>;

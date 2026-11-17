@@ -109,6 +109,30 @@ export const INTEGRATION_DOOR_REST_CARDS = {
     audience: ['master'],
     scenarios: ['an app variable set through core with redeploy'],
   },
+  // ISS-827 (`coolify-env-routes.ts`): deploys.run, with no actor-kind check. Declared a person's door
+  // until the steward's ISS-827 follow-through probed it, 2026-11-17 (ISS-1251 c1)
+  'DELETE /api/projects/:projectId/integrations/coolify/env/:key': {
+    purpose: 'Deletes one environment variable of a project’s Coolify app through core.',
+    situations: [
+      {
+        when: 'an app variable must go and you hold deploys.run on the project',
+        do: 'delete the key through core, with redeploy where the app must drop it now',
+        watch:
+          'without deploys.run it is refused PERMISSION_FORBIDDEN naming who holds it, nothing written',
+      },
+      {
+        when: 'you judge that the delete is refused to an actor without the permission',
+        do: 'one delete with your own token is the probe: its PERMISSION_FORBIDDEN is the evidence',
+      },
+    ],
+    practice: ['A key the app does not hold is refused by name: read the list first.'],
+    example: { redeploy: false },
+    redFlag:
+      'Deleting a live production variable to prove the door works, or redeploying production unasked.',
+    family: 'setup',
+    audience: ['master', 'run'],
+    scenarios: ['the steward judging ISS-827 by its own refused delete'],
+  },
   'POST /api/integration-connections/:id/bindings': {
     purpose: 'Binds projects to a connection with what each watches, deploys or reads through it.',
     situations: [
