@@ -43,6 +43,8 @@ export const INVENTORY = [
   { route: `${P}/agents/runs/$runId`, component: "RunItemScreen", feature: "agents", drawn: "run-detail" },
   { route: `${P}/agents/$sessionId`, component: "SessionScreen", feature: "session", drawn: "session-detail" },
   { route: `${P}/automation`, component: "AutomationScreen", feature: "automation", drawn: "automation" },
+  // drawn whole by its own witness, witness/boxes-page.witness.tsx, which logs its first view's words (ISS-1276)
+  { route: `${P}/boxes`, component: "BoxesScreen", feature: "boxes", files: ["features/boxes/components/boxes-screen.tsx"] },
   { route: `${P}/automation/schedules/$scheduleId`, component: "ScheduleItemScreen", feature: "automation", drawn: "schedule-detail" },
   { route: `${P}/automation/fires/$fireId`, component: "FireItemScreen", feature: "automation", drawn: "fire-detail" },
   { route: `${P}/approvals`, component: "ApprovalsScreen", feature: "approvals", drawn: "approvals" },

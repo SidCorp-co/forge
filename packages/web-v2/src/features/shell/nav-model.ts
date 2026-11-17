@@ -78,6 +78,8 @@ const PROJECT_MENU: ProjEntry[] = [
       { key: "proj-issues", label: en("nav.proj-issues"), icon: "list", sub: "/issues" },
       { key: "proj-modules", label: en("nav.proj-modules"), icon: "rows", sub: "/modules" },
       { key: "proj-agents", label: en("nav.proj-agents"), icon: "agent", sub: "/agents" },
+      // the screens agents test UI in, live, and a box to test by hand (ISS-1276)
+      { key: "proj-boxes", label: en("nav.proj-boxes"), icon: "monitor", sub: "/boxes" },
       { key: "proj-contracts", label: en("nav.proj-contracts"), icon: "link", sub: "/contracts" },
       { key: "proj-automation", label: en("nav.proj-automation"), icon: "calendar", sub: "/automation" },
     ],
