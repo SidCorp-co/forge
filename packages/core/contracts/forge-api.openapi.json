@@ -8901,6 +8901,37 @@
                     },
                     "type": "array"
                   },
+                  "permissionPrompt": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "promptId": {
+                        "anyOf": [
+                          {
+                            "maxLength": 200,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "session": {
+                        "maxLength": 200,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "tool": {
+                        "maxLength": 200,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "session",
+                      "tool"
+                    ],
+                    "type": "object"
+                  },
                   "plain": {
                     "description": "`plain`: at most three plain lines in the project's content language, for the person who decides: what changes for the user; why now (what waits on it); what you recommend. Name each choice by its outcome; never let an ISS-, REQ- or BC- key carry the meaning",
                     "maxLength": 1000,
@@ -9009,6 +9040,71 @@
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
+        ]
+      }
+    },
+    "/api/devices/me/questions/{questionId}/expire": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "questionId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "projectId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "runId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "waitedSeconds": {
+                    "maximum": 86400,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "runId",
+                  "projectId",
+                  "waitedSeconds"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireDevice"
+        ],
+        "x-forge-permission": {
+          "none": "a paired box’s device credential admits it; each read and write is selected by that device, which the service holds to the projects, sessions and requests it serves"
+        },
+        "x-forge-validated": [
+          "json"
         ]
       }
     },
