@@ -17,7 +17,7 @@ import { db } from '../../db/client.js';
 import { conversations } from '../../db/schema-conversations.js';
 import { supportActions } from '../../db/schema-support.js';
 import { supportReplyVerdicts } from '../../db/schema-support-verdicts.js';
-import { recordCorrection } from '../../lessons/index.js';
+import { auditCorrectionRef, recordCorrection } from '../../lessons/index.js';
 import { doorCatalog } from '../../lib/door-catalog.js';
 import { knownThread, no, type Outcome, threadUnknown } from '../outcome.js';
 import { roomLanguage } from '../report-thread.js';
@@ -158,7 +158,7 @@ export async function auditReply(
         ? await recordCorrection(tx, {
             projectId: room.projectId,
             source: 'room',
-            sourceRef: `audit:${room.id}:${input.message}`,
+            sourceRef: auditCorrectionRef(room.id, input.message),
             item: {
               kind: 'conversation',
               id: conversationId,

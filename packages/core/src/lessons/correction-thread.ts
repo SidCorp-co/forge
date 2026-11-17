@@ -9,6 +9,32 @@
 import { and, desc, eq, lte } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { conversationMessages } from '../db/schema-conversations.js';
+import { logger } from '../lib/logger.js';
+
+/**
+ * The message a correction's thread is read up to: a conversation message by its id (a person's
+ * reply, `consumers.ts:correctionFromReply`), or the reply a room agent audited, by the chat message
+ * id it was posted under (`support/reply-audit/audit.ts:auditReply`).
+ */
+export type ThreadMessage = { id: string } | { externalId: string };
+
+const AUDIT_REF = /^audit:([^:]+):(.+)$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The source ref a room agent's failed audit of its own reply is kept under: one per room and reply. */
+export const auditCorrectionRef = (roomId: string, chatMessageId: string): string =>
+  `audit:${roomId}:${chatMessageId}`;
+
+/**
+ * The message a chat or room correction's source ref names, or null where it is neither shape. An
+ * audit's ref is no message uuid: read as one, Postgres refused the cast and the steward's lessons
+ * pass failed on forge-dev at its first step from 2026-11-17 12:10Z on, every pass (ISS-1251 round 6).
+ */
+export function threadMessageOf(sourceRef: string): ThreadMessage | null {
+  const audit = AUDIT_REF.exec(sourceRef);
+  if (audit?.[2]) return { externalId: audit[2] };
+  return UUID.test(sourceRef) ? { id: sourceRef } : null;
+}
 
 /** The posts read before a reply: the reply itself and the ones just before it. */
 export const THREAD_POSTS = 6;
@@ -21,10 +47,10 @@ export interface ThreadPost {
   text: string;
 }
 
-/** The reply `messageId` and the posts before it in its conversation, oldest first; empty where it is gone. */
+/** The reply `message` names and the posts before it in its conversation, oldest first; empty where it is gone. */
 export async function threadBefore(
   conversationId: string,
-  messageId: string,
+  message: ThreadMessage,
   posts = THREAD_POSTS,
 ): Promise<ThreadPost[]> {
   const [reply] = await db
@@ -33,9 +59,12 @@ export async function threadBefore(
     .where(
       and(
         eq(conversationMessages.conversationId, conversationId),
-        eq(conversationMessages.id, messageId),
+        'id' in message
+          ? eq(conversationMessages.id, message.id)
+          : eq(conversationMessages.externalId, message.externalId),
       ),
-    );
+    )
+    .limit(1);
   if (!reply) return [];
   const rows = await db
     .select({
@@ -71,4 +100,24 @@ export function threadLines(
       return `${indent}${who}: ${p.text.slice(0, chars).replace(/\s+/g, ' ').trim()}`;
     })
     .join('\n');
+}
+
+/**
+ * The thread a chat or room correction was said in, read up to the message its source ref names. No
+ * writer keeps one under another ref; one that does is said and read alone, never cast into a query
+ * that fails the steward's whole pass (ISS-1251 round 6).
+ */
+export async function correctionThread(
+  correctionId: string,
+  conversationId: string,
+  sourceRef: string,
+  posts = THREAD_POSTS,
+): Promise<ThreadPost[]> {
+  const message = threadMessageOf(sourceRef);
+  if (message) return threadBefore(conversationId, message, posts);
+  logger.warn(
+    { correction: correctionId, sourceRef },
+    'lessons: a correction names no message its thread can be read up to; it is read alone',
+  );
+  return [];
 }

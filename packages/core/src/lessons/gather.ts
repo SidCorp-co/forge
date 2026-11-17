@@ -22,7 +22,7 @@ import { corrections, lessonConfusions, lessons } from '../db/schema-lessons.js'
 import { sqlTimestamp } from '../db/sql-timestamp.js';
 import { lessonEntrySlug } from '../knowledge/index.js';
 import { lastOpenedOf } from '../run-context/index.js';
-import { type ThreadPost, threadBefore } from './correction-thread.js';
+import { correctionThread, type ThreadPost } from './correction-thread.js';
 
 const DAY_MS = 86_400_000;
 /**
@@ -106,7 +106,7 @@ export async function gatherInput(
   const threaded = await Promise.all(
     open.reverse().map(async ({ itemId, sourceRef, ...c }) => {
       if (!THREADED_SOURCES.has(c.source)) return c;
-      const thread = await threadBefore(itemId, sourceRef, GATHER_THREAD_POSTS);
+      const thread = await correctionThread(c.id, itemId, sourceRef, GATHER_THREAD_POSTS);
       return thread.length > 0 ? { ...c, thread } : c;
     }),
   );

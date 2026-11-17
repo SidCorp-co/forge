@@ -28,7 +28,7 @@ export {
 export { LESSON_REST_CARDS } from './cards.js';
 export { type ConfusionSettlement, decideConfusion, raiseConfusion } from './confusions.js';
 export { registerLessonCorrections } from './consumers.js';
-export { type ThreadPost, threadLines } from './correction-thread.js';
+export { auditCorrectionRef, type ThreadPost, threadLines } from './correction-thread.js';
 export { type CorrectionInput, recordCorrection } from './corrections.js';
 export {
   anchorLesson,

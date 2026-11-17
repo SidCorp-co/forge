@@ -123,7 +123,7 @@ export async function correctionFromReply(
   const assistant = rows.find((r) => r.id === p.assistantMessageId && r.role === 'assistant');
   const person = rows.find((r) => r.id === p.personMessageId && r.role === 'user');
   if (!assistant || !person) return null;
-  const posts = await threadBefore(p.conversationId, p.personMessageId);
+  const posts = await threadBefore(p.conversationId, { id: p.personMessageId });
   const verdict = await classify(p.projectId, assistant.content, person.content, posts);
   if (!keepsCorrection(verdict)) return null;
   const [thread] = await db
