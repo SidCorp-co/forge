@@ -239,6 +239,11 @@ pub struct RunnerSettings {
     /// a box that cannot make the pane runs the session headless and says why.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub chat_panes: bool,
+    /// The Claude Code version this box runs its background sessions on (ISS-1268 C1): a
+    /// different installed version refuses every start with `CLAUDE_VERSION_UNPINNED`, and only a
+    /// passing `forge-runner claude canary <version>` moves it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claude_version: Option<String>,
 }
 
 impl Default for RunnerSettings {
@@ -249,6 +254,7 @@ impl Default for RunnerSettings {
             max_subagents: None,
             chat_egress_allow: Vec::new(),
             chat_panes: false,
+            claude_version: None,
         }
     }
 }

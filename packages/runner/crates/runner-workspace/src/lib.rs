@@ -1,5 +1,6 @@
 //! Local workspace management.
 //!
+//! - `bg_session` — masters and room agents as `claude --bg` sessions on the peer socket (ISS-1268)
 //! - `worktree`   — git worktree add/remove/list (M2)
 //! - `worktree_processes` — who is living in a checkout, ended before it is given
 //!   back or named where they cannot be (ISS-1271)
@@ -17,6 +18,7 @@
 //!   rather than inherited
 //! - `salvage`    — whether a released run's checkout holds work nothing else carries
 //! - `trust`      — pre-accept Claude Code's workspace-trust dialog for a checkout
+pub mod bg_session;
 pub mod close_loop;
 pub mod composer;
 pub mod git_cred;
