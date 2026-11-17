@@ -112,4 +112,13 @@ describe("the daily review brief's Sentry reads", () => {
     expect(links(briefWith(null))).toEqual([]);
     expect(briefWith(null)).not.toContain('/integrations/sentry');
   });
+
+  // ISS-1256 c9: a working day of landings left every module's terms and rules empty and the
+  // Unplaced row growing; the day's review is where the master reads the map whole
+  it('reads the module map, writes what the day named and places what it knows the home of', () => {
+    expect(brief).toContain('Module map (ISS-1256): read /api/projects/p-1/modules/map.');
+    expect(brief).toContain("that gained no term or rule, write what that work named (GET /api/guides/issue-flow.md, Land, mark, move, step 5)");
+    expect(brief).toContain('PUT /api/projects/p-1/modules/placements { type, ref, module }');
+    expect(brief).toContain('leave one you are unsure of');
+  });
 });
