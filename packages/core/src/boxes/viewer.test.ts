@@ -1,8 +1,14 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { BoxRow } from '../db/schema-boxes.js';
 import { recordPersonInput } from './acts.js';
-import { holderLine, viewerBytesFor } from './viewer.js';
+import { boxById } from './read.js';
+import { followHold, holderLine, viewerBytesFor } from './viewer.js';
 
 vi.mock('./acts.js', () => ({ recordPersonInput: vi.fn() }));
+vi.mock('./read.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./read.js')>()),
+  boxById: vi.fn(),
+}));
 
 describe('what a viewer sends over its view reaches the box only for RFB', () => {
   const bytes = Buffer.from('RFB 003.008\n');
@@ -55,5 +61,30 @@ describe('a holder’s input line is recorded before it is forwarded', () => {
     await holderLine('box-1', 'user-1', 'not json', to);
     expect(to.refuse).toHaveBeenCalledTimes(1);
     expect(to.forward).not.toHaveBeenCalled();
+  });
+});
+
+describe('a viewer follows the hold until the box stops running', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('keeps the socket through a read that failed, and closes once the box reads closed', async () => {
+    const ws = { readyState: 1, OPEN: 1, send: vi.fn(), on: vi.fn() } as const;
+    const onEnd = vi.fn();
+    vi.mocked(boxById)
+      .mockRejectedValueOnce(new Error('connection terminated'))
+      .mockResolvedValueOnce({ id: 'box-1', state: 'closed' } as BoxRow);
+    followHold(ws as never, 'box-1', onEnd);
+
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(onEnd).not.toHaveBeenCalled();
+    expect(ws.send).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(onEnd).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(ws.send.mock.calls[0]?.[0] as string)).toEqual({
+      type: 'closed',
+      why: 'the box is closed',
+    });
   });
 });

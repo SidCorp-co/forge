@@ -134,8 +134,11 @@ export async function acceptBoxUpgrade(
   });
 }
 
-/** Tell the socket each time the hold moves, and close it when the box stops running. */
-function followHold(
+/**
+ * Tell the socket each time the hold moves, and close it when the box stops running. A read that
+ * fails is logged and the next poll reads again: it is not the box gone.
+ */
+export function followHold(
   ws: WebSocket,
   boxId: string,
   onEnd: () => void,
@@ -143,7 +146,13 @@ function followHold(
 ) {
   let last: string | null = null;
   const timer = setInterval(async () => {
-    const row = await boxById(boxId).catch(() => null);
+    let row: Awaited<ReturnType<typeof boxById>>;
+    try {
+      row = await boxById(boxId);
+    } catch (err) {
+      logger.warn({ err, boxId }, 'box viewer: the box could not be read; the next poll reads again');
+      return;
+    }
     if (!row || (row.state !== 'agent' && row.state !== 'person')) {
       say(ws, { type: 'closed', why: row ? `the box is ${row.state}` : 'the box is gone' });
       clearInterval(timer);
