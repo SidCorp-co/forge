@@ -10,15 +10,16 @@
  * on its roster, or where the commit is the issue's own work commit. This is a read path, so it never
  * asks a source host or a box (`ancestry-source.ts` is for the write paths through `ancestryOf`):
  * what Forge's own rows cannot show falls back to the build the issue is known to be in, and `basis`
- * says why.
+ * says why. Where that build is not the one served, `served` says whether the served build carries the
+ * issue's change unchanged (ISS-1259), so a judge sent after a later deploy knows whether to judge it.
  */
 
 import { judgedOnOf } from '@forge/contracts/delivery-policy';
-import type { JudgedBuild } from '@forge/contracts/verdict-identity';
+import type { JudgedBuild, JudgedBuildIssue } from '@forge/contracts/verdict-identity';
 import { db } from '../db/client.js';
 import { type Carriage, carriageKey, shipsWithdrawnOf } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
-import { readProjectDocument } from '../project-config/index.js';
+import { productionOf, readProjectDocument } from '../project-config/index.js';
 import { ANCESTRY_PAIRS_MAX, type AncestryPair, pairKey } from '../runners/index.js';
 import { type AncestrySource, ancestrySourceFor } from './ancestry-source.js';
 import { resolveReleaseDeclaration } from './gate.js';
@@ -32,18 +33,13 @@ import {
   RECHECK_FOR_MS,
   servedBefore,
 } from './served-builds.js';
+import { servedOver } from './served-over.js';
 import { servedOnJudgedOn } from './serving-reading.js';
+import { type KeptRange, keptRangesOf } from './shipped-range.js';
 import { type ShippedReleaseRun, shippedReleaseRuns } from './shipped-releases.js';
 import { deploymentConfirms } from './verify.js';
 
 const WHOLE = /^[0-9a-f]{40}$/i;
-
-export interface JudgedBuildIssue {
-  id: string;
-  projectId: string;
-  mergedAt: Date | string | null;
-  mergedCommitSha: string | null;
-}
 
 export interface JudgedBuildDeps {
   served(projectId: string): Promise<Reading<string>>;
@@ -67,6 +63,11 @@ export interface JudgedBuildDeps {
   /** Keep that production was read serving a commit, where a read first reads it (`served-builds.ts:
    *  keepLiveBuild`); absent, a read keeps nothing. */
   keepServed?: typeof keepLiveBuild;
+  /** The name the project's document gives its production-tier environment; null where it declares
+   *  none. Absent, it is called production. */
+  environment?(projectId: string): Promise<string | null>;
+  /** Each release run's kept range reading (`shipped-range.ts:keptRangesOf`); absent, none is kept. */
+  ranges?(runIds: readonly string[]): Promise<Map<string, KeptRange>>;
 }
 
 const LIVE_DEPS: JudgedBuildDeps = {
@@ -79,6 +80,11 @@ const LIVE_DEPS: JudgedBuildDeps = {
   heldAncestry: persistedCarriage,
   servedBefore,
   keepServed: keepLiveBuild,
+  environment: async (projectId) => {
+    const held = await readProjectDocument(projectId);
+    return held ? (productionOf(held.document)?.name ?? null) : null;
+  },
+  ranges: keptRangesOf,
 };
 
 // Ancestry between two commits never changes, so an answer is kept for the process, bounded.
@@ -216,12 +222,16 @@ async function liveJudgedBuild(
   if (!served.ok) {
     return fallback(issue, shippedIn, `the live build could not be read: ${served.why}`);
   }
+  // named as the project's document names it: on forge-dev the production-tier environment is `dev`,
+  // and a judge told "production" there was told of an environment it does not have (ISS-1259)
+  const environment = (await deps.environment?.(issue.projectId)) ?? 'production';
+  const where = environment === 'production' ? 'production' : `\`${environment}\``;
   const live = liveCommitOf(served.value, releases);
   if (!live) {
     return fallback(
       issue,
       shippedIn,
-      `production answers \`${served.value}\`, which names no single release Forge verified`,
+      `${where} answers \`${served.value}\`, which names no single release Forge verified`,
     );
   }
   const liveRelease = releases.find((r) => r.commit === live) ?? null;
@@ -232,15 +242,18 @@ async function liveJudgedBuild(
     basis,
   });
   if (liveRelease?.issueIds.includes(issue.id)) {
-    return isLive(`production serves release ${liveRelease.version}, which shipped this issue`);
+    return isLive(`${where} serves release ${liveRelease.version}, which shipped this issue`);
   }
-  if (!work) return fallback(issue, null, `production serves \`${live}\``);
-  if (work === live) return isLive('production serves the commit this issue shipped at');
-  return fallback(
+  if (!work) return fallback(issue, null, `${where} serves \`${live}\``);
+  if (work === live) return isLive(`${where} serves the commit this issue shipped at`);
+  const built = fallback(
     issue,
     shippedIn,
-    `production serves \`${live}\`, and no release Forge verified there holds this issue`,
+    `${where} serves \`${live}\`, and no release Forge verified there holds this issue`,
   );
+  if (!built.sha) return built;
+  const over = await servedOver(issue, built.sha, live, releases, environment, deps);
+  return { ...built, basis: `${built.basis}; ${over.why}`, served: over };
 }
 
 /**

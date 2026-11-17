@@ -278,6 +278,7 @@ issueCriteriaRoutes.get(
         projectId: issue.projectId,
         mergedAt: issue.mergedAt,
         mergedCommitSha: issue.mergedCommitSha,
+        mergedPaths: issue.mergedPaths,
       }),
     );
   },

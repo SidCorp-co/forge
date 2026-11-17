@@ -4,6 +4,7 @@
 
 import { z } from "zod";
 import type { CriterionStanding } from "./issue-vocabulary.js";
+import type { ReadPaths } from "./landing-artifacts.js";
 
 const STOREFRONT_DRAFT_KIND = "storefront_draft" as const;
 
@@ -282,6 +283,16 @@ export const JUDGED_BUILD_SOURCES = [
 ] as const;
 export type JudgedBuildSource = (typeof JUDGED_BUILD_SOURCES)[number];
 
+/** The issue a judged build is read for (`GET /api/issues/:id/judged-build`). */
+export interface JudgedBuildIssue {
+	id: string;
+	projectId: string;
+	mergedAt: Date | string | null;
+	mergedCommitSha: string | null;
+	/** The files its merge mark's landing changed, as a box read them; absent or null where none were. */
+	mergedPaths?: ReadPaths | null;
+}
+
 export interface JudgedBuild {
 	sha: string | null;
 	source: JudgedBuildSource | null;
@@ -289,4 +300,37 @@ export interface JudgedBuild {
 	version: string | null;
 	/** How core knows, or why it could not say more, in one sentence. */
 	basis: string;
+	/**
+	 * Where the project's environment serves a build other than `sha` (a deploy after the release that
+	 * shipped the issue, ISS-1259): that build, and whether it carries the issue's change unchanged.
+	 * Absent where it serves `sha`, or where nothing names the build it serves.
+	 */
+	served?: ServedBuild;
+}
+
+/**
+ * Whether a served build carries the change at the judged build unchanged (ISS-1259):
+ * - `unchanged`: it descends from the judged build and the files its added commits change touch none
+ *   of the issue's changed files, so a verdict is judged on it and recorded at the judged build;
+ * - `touched`: it descends, and its added commits change `touched`, files of the issue's;
+ * - `not-descendant`: it does not descend from the judged build;
+ * - `unread`: Forge holds nothing that says which, and `why` names what is missing.
+ */
+export const SERVED_CARRIAGES = [
+	"unchanged",
+	"touched",
+	"not-descendant",
+	"unread",
+] as const;
+export type ServedCarriage = (typeof SERVED_CARRIAGES)[number];
+
+export interface ServedBuild {
+	/** The environment serving it, as the project's document names it. */
+	environment: string;
+	sha: string;
+	carries: ServedCarriage;
+	/** The issue's files the added commits change; empty unless `touched`. */
+	touched: string[];
+	/** How Forge knows, or what it could not read, in one sentence. */
+	why: string;
 }

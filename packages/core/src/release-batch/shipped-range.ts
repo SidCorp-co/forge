@@ -29,7 +29,7 @@ import type {
   ReleaseRangeReport,
   ReleaseShipped,
 } from '@forge/contracts/release-page';
-import { eq, sql } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
 import { writeRunMetadata } from '../pipeline/index.js';
@@ -498,4 +498,32 @@ export async function readRange(
     );
   }
   return { shipped: stored, changed: changedOf(row?.range) };
+}
+
+/** A release run's kept range: where it starts and ends, and the files it changed (null where the
+ *  reading was kept without them). */
+export interface KeptRange {
+  base: string;
+  head: string;
+  changed: RangeChange[] | null;
+}
+
+/**
+ * Each of `runIds`' kept range reading, where its run reported one read, in one statement: what a
+ * judged build reads of the files the releases after it changed (`judged-build.ts`, ISS-1259). A run
+ * that kept none, or kept it `unread`, is absent.
+ */
+export async function keptRangesOf(runIds: readonly string[]): Promise<Map<string, KeptRange>> {
+  const out = new Map<string, KeptRange>();
+  if (runIds.length === 0) return out;
+  const rows = await db
+    .select({ id: pipelineRuns.id, range: sql<unknown>`${pipelineRuns.metadata} -> ${KEY}` })
+    .from(pipelineRuns)
+    .where(inArray(pipelineRuns.id, [...new Set(runIds)]));
+  for (const row of rows) {
+    const stored = storedOf(row.range);
+    if (stored?.state !== 'read') continue;
+    out.set(row.id, { base: stored.base, head: stored.head, changed: changedOf(row.range) });
+  }
+  return out;
 }

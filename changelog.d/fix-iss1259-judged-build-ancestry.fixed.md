@@ -1,0 +1,1 @@
+**A judge sent after a later deploy is told whether the build it finds carries the release it judges.** The judged build names the environment as the project does, and says whether the served build changed the issue's files.

@@ -19,7 +19,7 @@ import type {
 } from '@forge/contracts/questions';
 import type { ReleaseHoldView } from '@forge/contracts/releases';
 import type { MasterServing } from '@forge/contracts/steward';
-import type { JudgedBuild } from '@forge/contracts/verdict-identity';
+import type { JudgedBuild, JudgedBuildIssue } from '@forge/contracts/verdict-identity';
 import type { VerifiedJudge } from '@forge/contracts/verified-rule';
 import type { SQL, SQLWrapper } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
@@ -251,12 +251,7 @@ interface IssuePorts {
     mergedCommitSha: string | null;
   }) => Promise<object | null>;
   /** The build a verdict on the issue defaults to (`release-batch/judged-build.ts`). */
-  judgedBuildOf: (issue: {
-    id: string;
-    projectId: string;
-    mergedAt: Date | string | null;
-    mergedCommitSha: string | null;
-  }) => Promise<JudgedBuild>;
+  judgedBuildOf: (issue: JudgedBuildIssue) => Promise<JudgedBuild>;
   /** Each criterion weighed as the gate that will decide the issue weighs it
    *  (`release-batch/criteria-weighing.ts`). */
   criteriaWeighingOf: (issue: { id: string; projectId: string }) => Promise<IssueCriteriaWeighing>;

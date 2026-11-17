@@ -64,6 +64,12 @@ Read these before judging anything, while whoever sent you can still equip you.
   environment serves, and in \`basis\` whether it holds the issue's landed commit. Where the project
   names its testing environment (\`delivery.judgedOn\`), that is the build that environment serves
   (\`source: judged-on\`), judged there as a \`runtime\` verdict at that commit.
+  Where the environment serves a later build than the one it names (a deploy after the release),
+  \`served\` names that build and whether it carries the issue's change unchanged. \`unchanged\`: it
+  descends and its added commits touch none of the issue's files, so judge what it serves and record a
+  \`commit\` verdict at \`sha\`, naming the served build and that ancestry in the reason. \`touched\`,
+  \`not-descendant\` or \`unread\`: what runs is not the build named, so judge nothing and report
+  \`served.why\`.
 - \`GET /api/projects/:id/config\` answers the project document: each environment's address and the
   testing profile its testers get in through, whose \`limits\` say what that environment does not have.
 - To act as an actor of the testing profile, run \`forge-runner judge-login <profile> <actor> --run <run>\`
