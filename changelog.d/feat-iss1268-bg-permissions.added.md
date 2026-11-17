@@ -1,0 +1,1 @@
+**A master never hangs silently on a permission prompt.** Forge asks you to allow or deny it; unanswered after 5 minutes it is denied and you are told. A dialog that slips past is answered and reported in seconds.
