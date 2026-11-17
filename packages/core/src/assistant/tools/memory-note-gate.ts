@@ -1,9 +1,14 @@
-import type { NoteRefusalCode } from '@forge/contracts/assistant';
+// What a memory note the assistant writes is read against before it is written (ISS-1064): one fact,
+// stated as the fact, asked for or a decision, kept once. A note that breaks one is written all the
+// same, and the rule it breaks is put before the tool's result, which the model reads and the
+// conversation's transcript shows beside the call (ISS-1251, `VISION: kernel-hard-policy-soft`): a
+// person reads the note on its page and corrects or retires it there. The note tool's description
+// teaches the same rules before the call.
+
+import type { NoteFindingCode } from '@forge/contracts/assistant';
 import type { ChatMessage } from '../../integrations/llm/index.js';
-import type { CallToolResult } from '../../lib/tool-result.js';
 import { NEAR_DUPLICATE_THRESHOLD } from '../../memory/index.js';
-import type { PreCall } from '../run-turn-core.js';
-import { toolError } from './mcp-adapter.js';
+import type { PreCall, PreCallNotice } from '../run-turn-core.js';
 
 /** The note tool's name as the chat model sees it (`forge_memory.note` sanitised by the adapter). */
 const NOTE_TOOL_CHAT_NAME = 'forge_memory_note';
@@ -12,7 +17,7 @@ export const NOTE_TEXT_MAX = 8192;
 const NOTE_TEXT_MIN = 12;
 /** The similarity at which an existing note is this note: the store's own near-duplicate threshold (D3). */
 const DUPLICATE_SCORE = NEAR_DUPLICATE_THRESHOLD;
-const REFUSAL_TEXT_MAX = 300;
+const FINDING_TEXT_MAX = 300;
 /** How many of the person's recent messages the restatement rule reads. */
 const RECENT_TURNS = 6;
 /** How many existing notes the duplicate rule reads, closest first. */
@@ -20,8 +25,8 @@ export const EXISTING_TOP_K = 3;
 /** The marker `turn-context.ts:applyTurnContext` puts between its prefix and the person's own text. */
 const CONTEXT_MARKER = '\n\n---\n\n';
 
-export interface NoteRefusal {
-  code: NoteRefusalCode;
+export interface NoteFinding {
+  code: NoteFindingCode;
   /** The rule broken, one sentence. */
   rule: string;
   /** One note that would pass, or what to do instead. */
@@ -39,7 +44,7 @@ export interface NoteJudgeInput {
   title?: string | undefined;
   /** The person's recent messages, oldest first, the newest last. */
   recentTurns: readonly string[];
-  /** Notes already kept in this turn (calls that were not refused). */
+  /** Notes already written in this turn (calls that were not refused). */
   notesThisTurn: number;
   /** The project's closest existing notes to `text`, with their similarity. */
   existingNotes: readonly ExistingNote[];
@@ -132,8 +137,8 @@ const firstLine = (s: string, max = 80): string => {
   return line.length > max ? `${line.slice(0, max - 1)}…` : line;
 };
 
-/** The rules, in the order they are read; the first one broken is the refusal. */
-function judgeNote(input: NoteJudgeInput): NoteRefusal | null {
+/** The rules, in the order they are read; the first one broken is the finding. */
+export function judgeNote(input: NoteJudgeInput): NoteFinding | null {
   const text = input.text.trim();
   if (text.length < NOTE_TEXT_MIN)
     return {
@@ -200,18 +205,18 @@ function judgeNote(input: NoteJudgeInput): NoteRefusal | null {
   return null;
 }
 
-/** The refusal as the model reads it: the rule, then one passing example; under {@link REFUSAL_TEXT_MAX}. */
-/** Codes a rewrite can clear in the same turn; the others say what to do instead (codex F2). */
-const REWRITABLE: ReadonlySet<NoteRefusalCode> = new Set([
+/** Codes a better wording answers; the others say what to do instead (codex F2). */
+const REWRITABLE: ReadonlySet<NoteFindingCode> = new Set([
   'restates_message',
   'too_short',
   'too_long',
   'about_the_conversation',
 ]);
 
-export function refusalText(r: NoteRefusal): string {
-  const head = `Not kept (${r.code}): ${r.rule} ${REWRITABLE.has(r.code) ? 'Write instead' : 'Do this'}: `;
-  const room = REFUSAL_TEXT_MAX - head.length - 2;
+/** The finding as the model reads it: the rule, then one passing example; under {@link FINDING_TEXT_MAX}. */
+export function findingText(r: NoteFinding): string {
+  const head = `Note finding (${r.code}): ${r.rule} ${REWRITABLE.has(r.code) ? 'Better written as' : 'Next time'}: `;
+  const room = FINDING_TEXT_MAX - head.length - 2;
   const example = r.howToWrite.length > room ? `${r.howToWrite.slice(0, room - 1)}…` : r.howToWrite;
   return `${head}"${example}"`;
 }
@@ -222,9 +227,9 @@ export interface MemoryNoteGateDeps {
   onSearchError?: ((err: unknown) => void) | undefined;
 }
 
-/** The pre-call hook for the turn loop: fires for the note tool alone, refuses through `toolError`, lets everything else through. */
+/** The pre-call hook for the turn loop: fires for the note tool alone, and answers a broken rule as a notice the note is written beside. */
 export function memoryNotePreCall(deps: MemoryNoteGateDeps): PreCall {
-  return async (call, ctx): Promise<CallToolResult | null> => {
+  return async (call, ctx): Promise<PreCallNotice | null> => {
     if (call.name !== NOTE_TOOL_CHAT_NAME) return null;
     let args: { text?: unknown; title?: unknown };
     try {
@@ -240,7 +245,7 @@ export function memoryNotePreCall(deps: MemoryNoteGateDeps): PreCall {
     } catch (err) {
       deps.onSearchError?.(err);
     }
-    const refusal = judgeNote({
+    const finding = judgeNote({
       text,
       title,
       recentTurns: recentPersonTurns(ctx.messages),
@@ -248,6 +253,6 @@ export function memoryNotePreCall(deps: MemoryNoteGateDeps): PreCall {
         .length,
       existingNotes,
     });
-    return refusal ? toolError(refusalText(refusal)) : null;
+    return finding ? { notice: findingText(finding) } : null;
   };
 }

@@ -18,7 +18,12 @@ in that batch:
 - the memory code-block refusal (now the `CODE_BLOCK_LONG` warning);
 - the debts door's refusal of a red rated high (now the `RED_RATED_HIGH` warning,
   `cleanup/rules.ts:debtWarnings`);
-- the stop gate's dirty-tree refusal (now journalled, `runner-core/src/stop_gate.rs:decide`).
+- the stop gate's dirty-tree refusal (now journalled, `runner-core/src/stop_gate.rs:decide`);
+- the assistant's memory-note gate (`assistant/tools/memory-note-gate.ts:memoryNotePreCall`, round 3):
+  a note that restates the person, was not asked for or repeats one the project holds is written,
+  and the rule it breaks is put before the tool's result (`run-turn-core.ts:PreCallNotice`), which
+  the transcript shows beside the call; the note tool's description teaches the rules.
+  `memory-note-gate.test.ts` goes red if the refusal comes back.
 
 This file holds every policy mechanism the batch did not convert, with why it waited and what
 converting it means. Paths are under `packages/core/src/` unless named.
@@ -86,7 +91,6 @@ lands, keeping their secret and leak half.
 | `requirements/room-settle.ts:roomSettleWriter`, `suggestions/kept-preview.ts:writeKeptPreview` | writes a revision, issue or criteria with fixed text | the agent writes them through the same doors, taught by their cards |
 | `onboarding/first-requirements.ts:registerFirstRequirementsCase` | starts a BA turn nobody asked for | offered to the person as the next step |
 | `feedback/loop-check.ts:sweepResolvedFeedback` | verifies feedback by its ship outside strict | borderline evidence: the reporter's confirm stays the verdict; the sweep proposes it |
-| `assistant/tools/memory-note-gate.ts:memoryNotePreCall` | refuses an assistant note that restates the person or duplicates one | warn and answer with `similar` (builder D may take this in ISS-1251) |
 
 ## Order
 

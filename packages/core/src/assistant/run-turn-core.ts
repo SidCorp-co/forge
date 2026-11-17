@@ -51,9 +51,16 @@ export interface TurnCoreArgs {
   signal?: AbortSignal | undefined;
   /**
    * Read before a tool call is executed; a result returned stands in for the call (recorded with
-   * its own `isError`) and the tool never runs. Null lets the call through (ISS-1064).
+   * its own `isError`) and the tool never runs. A notice lets the call run and is put before its
+   * result, so the model and the transcript read it beside what the call did. Null lets the call
+   * through (ISS-1064, ISS-1251).
    */
   preCall?: PreCall | undefined;
+}
+
+/** What a pre-call hook found that does not stop the call: read before the call's own result. */
+export interface PreCallNotice {
+  notice: string;
 }
 
 export interface PreCallContext {
@@ -66,7 +73,16 @@ export interface PreCallContext {
 export type PreCall = (
   call: { name: string; arguments: string },
   ctx: PreCallContext,
-) => Promise<CallToolResult | null>;
+) => Promise<CallToolResult | PreCallNotice | null>;
+
+const isNotice = (held: CallToolResult | PreCallNotice): held is PreCallNotice =>
+  typeof (held as PreCallNotice).notice === 'string';
+
+/** The call's own result with the notice put first, as its own text block. */
+const withNotice = (result: CallToolResult, notice: string): CallToolResult => ({
+  ...result,
+  content: [{ type: 'text', text: notice }, ...(result.content ?? [])],
+});
 
 /** One tool call as the turn records it; `name`/`arguments` are what the model emitted, the rest is what happened to it. */
 export interface ToolCallRecord {
@@ -132,7 +148,7 @@ async function executeToolRound(
   gate?: (
     call: CollectedToolCall,
     completed: readonly ToolCallRecord[],
-  ) => Promise<CallToolResult | null>,
+  ) => Promise<CallToolResult | PreCallNotice | null>,
 ): Promise<ExecutedCall[]> {
   const out: ExecutedCall[] = [];
   const completed = (): ToolCallRecord[] => out.flatMap((e) => (e ? [e.record] : []));
@@ -150,7 +166,12 @@ async function executeToolRound(
               ),
             )
           : null;
-        const result = held ?? (await safeExecute(toolset, call));
+        const result =
+          held === null
+            ? await safeExecute(toolset, call)
+            : isNotice(held)
+              ? withNotice(await safeExecute(toolset, call), held.notice)
+              : held;
         const text = toolResultText(result);
         out[i] = {
           id: call.id,

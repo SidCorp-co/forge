@@ -19,8 +19,11 @@ export const SPEAKER_REFUSAL_CODES = [
 
 export type SpeakerRefusalCode = (typeof SPEAKER_REFUSAL_CODES)[number];
 
-/** Why a memory note the assistant drafted was not kept; the model reads these lowercase names. */
-export const NOTE_REFUSAL_CODES = [
+/**
+ * What a memory note the assistant wrote is found to break; the model reads these lowercase names
+ * beside the note, which is kept all the same (ISS-1251).
+ */
+export const NOTE_FINDING_CODES = [
 	"unasked",
 	"restates_message",
 	"second_note_this_turn",
@@ -30,7 +33,7 @@ export const NOTE_REFUSAL_CODES = [
 	"about_the_conversation",
 ] as const;
 
-export type NoteRefusalCode = (typeof NOTE_REFUSAL_CODES)[number];
+export type NoteFindingCode = (typeof NOTE_FINDING_CODES)[number];
 
 /** The chat tool a room turn calls to hand a question to a runner. */
 export const ESCALATE_TOOL_NAME = "escalate";

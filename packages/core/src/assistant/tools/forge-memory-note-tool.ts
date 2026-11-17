@@ -34,6 +34,8 @@ const DESCRIPTION = [
   'Remember something from this conversation for the project — a fact, a decision, a preference the',
   'person stated — when they ask you to remember it or it is plainly worth keeping.',
   'Give the text and, if useful, a title; where it came from and who said it is stamped for you.',
+  'A note is one fact, stated as the fact rather than as the request to remember it or as what the person asked you, kept because they asked or because it settles how the project works, and kept once: what the project already holds needs no second note unless its value changed.',
+  'A note that breaks one of these is still written, and the result names the rule first so you can tell the person or correct it.',
   "Name another project's issue key with that project's slug, `<slug> ISS-n`: a bare key is read as this project's.",
   "A note naming a requirement, workflow or issue is listed on that record's page, and one naming none on the project's Dashboard, where a person with write access corrects or retires it with a reason.",
 ].join(' ');
