@@ -1,1 +1,1 @@
-**The steward's lessons pass runs again.** A room reply's failed audit no longer stops it on every project holding one, and each project's last pass, the step it stopped at and each judge that gave no answer show on the capabilities read.
+**The steward's lessons pass runs again.** A room reply's failed audit no longer stops it, and the capabilities read shows each project's last pass: where it stopped and which judges gave no answer.
