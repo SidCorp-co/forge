@@ -1,0 +1,130 @@
+// The scenarios of the issue and comment doors a master and its runs call over REST
+// (`issues/cards.ts`, `comments/cards.ts`), each from the use forge recorded (GET
+// /api/projects/forge/metrics/doors over the 90 days to 2026-11-17) or the record its card's comment
+// names: what the agent was handed, what it did and what the card teaches it to do instead.
+
+import type { CardScenario } from '../lessons/index.js';
+
+const USE = 'forge door use, 2026-08-19..11-17';
+
+export const ISSUE_SCENARIOS: readonly CardScenario[] = [
+  {
+    name: 'a run naming the catalogued pattern its change follows',
+    card: 'POST /api/issues/:id/patterns',
+    source: `${USE}: 72 patterns named by runs, 1 refused`,
+    situation: 'A run is about to build on a project that reads a pattern catalog',
+    good: 'read the catalog, then name the catalogued slug the change follows',
+    teaches: [/name the catalogued slug the change follows/i],
+  },
+  {
+    name: 'BC codes traced that the requirement’s head no longer holds',
+    card: 'POST /api/issues/:id/criteria/traces',
+    source: `${USE}: 43 traces, 4 refused, codes the requirement’s live head does not hold`,
+    situation: 'An issue must prove its requirement’s BCs and has no criterion tracing them',
+    bad: 'a trace named BC codes the requirement had since retired',
+    good: 'add them by code from the head, each worded as the BC’s current wording',
+    teaches: [/add them by code/i, /current wording/i],
+  },
+  {
+    name: 'a misworded criterion corrected in place, keeping its verdicts',
+    card: 'PATCH /api/issues/:id/criteria/:ref',
+    source: `${USE}: 20 patches by runs, 5 refused`,
+    situation: 'A criterion’s words are wrong but what it promises is not, after landing',
+    good: 'patch its statement with a reason; it keeps its id, trace and verdicts',
+    teaches: [/patch its statement with a reason/i, /keeps its id, trace and verdicts/i],
+  },
+  {
+    name: 'a comment’s intent sent unchanged: COMMENT_INTENT_UNCHANGED',
+    card: 'PATCH /api/comments/:id',
+    source: `${USE}: 19 edits, 7 refused, among them intents sent unchanged`,
+    situation: 'A note a master posted should have been a question',
+    bad: 'the edit sent the intent the comment already had',
+    good: 'send intent only to change it, or edit the body',
+    teaches: [/Send intent only to change it/i, /COMMENT_INTENT_UNCHANGED/],
+  },
+  {
+    name: 'a master’s own duplicate post deleted',
+    card: 'DELETE /api/comments/:id',
+    source: `${USE}: 15 deletes, each a master’s own duplicate post, none refused`,
+    situation: 'A master posted the same comment twice',
+    good: 'delete the stray one; a decision is kept and superseded instead',
+    teaches: [/delete the stray one/i, /COMMENT_RECORD_KEPT/],
+  },
+  {
+    name: 'a core act withdrawn as if it were a decision: EVENT_WITHDRAW_CORE_ACT',
+    card: 'POST /api/issues/:id/events/:eventId/withdraw',
+    source: `${USE}: 10 of 14 withdrawals refused (EVENT_WITHDRAW_CORE_ACT, EVENT_WITHDRAW_IN_COMMENT)`,
+    situation: 'A decision a master recorded turned out to be a probe',
+    bad: 'it withdrew a record core wrote, and a decision kept as a comment',
+    good: 'withdraw only its own decision, with a reason; it stays in history',
+    teaches: [/withdraw it with a reason/i, /a record core wrote/i],
+  },
+  {
+    name: 'the building run reviewing itself: REVIEW_BY_BUILDER',
+    card: 'POST /api/issues/:id/review',
+    source: `${USE}: 8 reviews, 7 refused (REVIEW_BY_BUILDER, REVIEW_RUN_UNNAMED)`,
+    situation: 'A project declares the merge check and the issue needs its review',
+    bad: 'the run that built it reviewed it, and a box call named no run',
+    good: 'review as another run, naming it in run, citing what is recorded at head',
+    teaches: [/Reviewing your own build/i, /Name your run in `run`/i],
+  },
+  {
+    name: 'a design’s wait sent to the issue events door, which answered 404: ISS-935',
+    card: 'POST /api/projects/:id/workflows/:workflow/comments',
+    source: `ISS-935; ${USE}: 8 calls, all refused`,
+    situation: 'A design waits on something and the steward asks about it',
+    bad: 'the wait was posted on the issue events door',
+    good: 'record why it waits as a decision on the design',
+    teaches: [/record why it waits as a decision on the design/i],
+  },
+  {
+    name: 'a closed issue unmarked and re-marked: ISS-1027, ISS-1226',
+    card: 'POST /api/issues/:id/merge/correction',
+    source: `ISS-1027, ISS-1226; ${USE}: 7 corrections, 6 refused`,
+    situation: 'A closed issue names the wrong landing commit',
+    bad: 'its mark was cleared to re-mark it, which a closed issue refuses',
+    good: 'correct it with the right commit and why; the issue stays closed',
+    teaches: [/correct it with the right commit and why/i],
+  },
+  {
+    name: 'a wrong upload deleted by its attachment id',
+    card: 'DELETE /api/attachments/:id',
+    source: `${USE}: 4 deletes, none refused`,
+    situation: 'A run uploaded the wrong file to an issue',
+    good: 'delete it by its attachment id, unless a standing verdict cites it',
+    teaches: [/delete it by its attachment id/i, /supersede the verdict first/i],
+  },
+  {
+    name: 'a master approving the pattern its own run named',
+    card: 'POST /api/issues/:id/patterns/:patternId/decision',
+    source: `${USE}: all 3 decisions forbidden, each the naming run’s master approving its own`,
+    situation: 'A new pattern named on an issue waits on approval',
+    bad: 'the master of the run that named it approved it',
+    good: 'leave it to another holder of patterns.approve',
+    teaches: [/another holder of patterns\.approve decides it/i],
+  },
+  {
+    name: 'a master’s own mistaken edge removed',
+    card: 'DELETE /api/issues/:id/dependencies/:edgeId',
+    source: `${USE}: both removals a master’s own mistaken edges, none refused`,
+    situation: 'A blocks edge names the wrong issue',
+    good: 'remove it by its edge id; an edge that held is retracted with validUntil',
+    teaches: [/remove it by its edge id/i, /retracted with validUntil/i],
+  },
+  {
+    name: 'a pattern retracted with the reason, then the right one named',
+    card: 'POST /api/issues/:id/patterns/:patternId/retract',
+    source: `${USE}: 2 retractions by runs, 1 refused`,
+    situation: 'A run named the wrong pattern for its change',
+    good: 'retract it with the reason, then name the pattern it does follow',
+    teaches: [/retract it with the reason/i, /name the pattern it does follow/i],
+  },
+  {
+    name: 'the steward’s note on a requirement turned into a decision',
+    card: 'PATCH /api/projects/:id/requirements/:req/comments/:comment',
+    source: `${USE}: the steward’s one edit`,
+    situation: 'A note the steward recorded on a requirement was a decision',
+    good: 'turn it into a decision with its fields; a changed decision is superseded',
+    teaches: [/turn it into a decision with its fields/i, /COMMENT_DECISION_REQUIRED/],
+  },
+];

@@ -49,6 +49,7 @@ export const DEVICE_REST_CARDS = {
       'Telling the owner in a pane or a comment and treating that as asked: only this records the ask.',
     family: 'issue-order',
     audience: ['master'],
+    scenarios: ['a person believed asked when nobody had been: ISS-1210'],
   },
   'POST /api/devices/me/run-sessions': {
     purpose: 'Declares a run a master starts in its own tree, so its slot and lease are held.',
@@ -69,6 +70,7 @@ export const DEVICE_REST_CARDS = {
     redFlag: 'Starting a builder without declaring its run: its tree and lease are nobody’s.',
     family: 'issue-work',
     audience: ['master'],
+    scenarios: ['a master’s batch tree reaped by a run it declared over it: ISS-1016 (FB-522)'],
   },
   'POST /api/devices/me/run-sessions/:sessionId/close': {
     purpose: 'Says a declared run is finished or never started, releasing its slot.',
@@ -87,5 +89,6 @@ export const DEVICE_REST_CARDS = {
     redFlag: 'Leaving a finished run open, so its slot and its tree stay held.',
     family: 'issue-work',
     audience: ['master'],
+    scenarios: ['a declared run closed once it reported: ISS-1016 (FB-522)'],
   },
 } satisfies Record<string, CapabilityCardBody>;

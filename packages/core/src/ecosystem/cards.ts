@@ -30,6 +30,7 @@ export const ECOSYSTEM_REST_CARDS = {
       'Re-pinning requirement baselines yourself on adopt, where whoever approves requirements does.',
     family: 'ecosystem',
     audience: ['master'],
+    scenarios: ['an adopt-only issue that could not land: ISS-742'],
   },
   'POST /api/issues/:id/contract-waits': {
     purpose:
@@ -53,6 +54,7 @@ export const ECOSYSTEM_REST_CARDS = {
       'Parking the issue on a person for a contract version, where a wait on the version wakes it itself.',
     family: 'issue-order',
     audience: ['master', 'run'],
+    scenarios: ['a cross-project breakdown filed with no contract wait: ISS-246'],
   },
   'POST /api/issues/:id/contract-waits/:waitId/retract': {
     purpose: 'Ends an issue’s wait on a contract version that it no longer needs, saying why.',
@@ -87,5 +89,6 @@ export const ECOSYSTEM_REST_CARDS = {
       'Leaving a link whose call sites are gone as unverified, so it reads as a live dependency.',
     family: 'ecosystem',
     audience: ['master'],
+    scenarios: ['a dead link left at unverified with a note: ISS-790'],
   },
 } satisfies Record<string, CapabilityCardBody>;

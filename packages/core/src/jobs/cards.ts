@@ -20,5 +20,6 @@ export const JOB_REST_CARDS = {
       'Cancelling a slow job that is still making progress, instead of reading its events first.',
     family: 'issue-work',
     audience: ['master'],
+    scenarios: ['a master’s onboarding job cancelled with the reason, 2026-11-01'],
   },
 } satisfies Record<string, CapabilityCardBody>;

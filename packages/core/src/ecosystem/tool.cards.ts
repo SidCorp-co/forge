@@ -68,6 +68,7 @@ export const CARDS = {
       'Leaving a consumption the code no longer calls standing in the interface: a builder run reports it as declaredWithoutCallSite, and the provider’s change notices keep reaching a project that does not use it.',
     family: 'ecosystem',
     audience: ['master'],
+    scenarios: ['a consumption left standing after its call site was deleted: ISS-790'],
   },
   links: {
     purpose:
@@ -88,6 +89,7 @@ export const CARDS = {
       'Creating a second link for a use a link already holds, instead of updating that one (LINK_DUPLICATE).',
     family: 'ecosystem',
     audience: ['master'],
+    scenarios: ['a provider’s new version moving a link this project calls'],
   },
   link_create: {
     purpose:
@@ -113,6 +115,7 @@ export const CARDS = {
       'Linking what another project uses of yours: a run maps only what this project’s own code calls.',
     family: 'ecosystem',
     audience: ['master'],
+    scenarios: ['a link created for a use the catalog-fe run found: ISS-790'],
   },
   link_update: {
     purpose:
@@ -183,6 +186,7 @@ export const CARDS = {
       'Mapping a run whose head is not the branch this project builds from, instead of superseding it.',
     family: 'ecosystem',
     audience: ['master'],
+    scenarios: ['the open builder run read before a step is started'],
   },
   builder_run_update: {
     purpose:
@@ -238,6 +242,7 @@ export const CARDS = {
       'Superseding a run to escape a step that failed, where the failure is written on the step with its detail.',
     family: 'ecosystem',
     audience: ['master'],
+    scenarios: ['a stale builder run superseded with a reason, the fresh one worked'],
   },
   bus: {
     purpose:
@@ -337,6 +342,7 @@ export const CARDS = {
       'Recording a version from a commit that has not landed: sourceRef is a commit on the base branch and the artifact that file byte for byte (CONTRACT_SOURCE_NOT_LANDED, CONTRACT_SOURCE_DIGEST_MISMATCH).',
     family: 'ecosystem',
     audience: ['master'],
+    scenarios: ['a contract version recorded from a commit on the base branch'],
   },
   contract_version_decide: {
     purpose:
@@ -366,6 +372,7 @@ export const CARDS = {
       'Approving a version that is not the artifact that landed, or returning one with no reason.',
     family: 'ecosystem',
     audience: ['master'],
+    scenarios: ['a master deciding its own contract version where a holder decides it'],
   },
   link: {
     purpose:
@@ -382,6 +389,7 @@ export const CARDS = {
       'Updating a link from the list’s line alone, so its call sites are rewritten from memory.',
     family: 'ecosystem',
     audience: ['master'],
+    scenarios: ['one link read for its revision before it is updated'],
   },
   builder_run_create: {
     purpose:

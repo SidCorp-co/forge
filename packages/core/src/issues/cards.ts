@@ -274,6 +274,7 @@ export const ISSUE_REST_CARDS = {
     redFlag: 'Reviewing your own build, or sending checks and tests in the review body.',
     family: 'issue-work',
     audience: ['run'],
+    scenarios: ['the building run reviewing itself: REVIEW_BY_BUILDER'],
   },
   'PATCH /api/issues/:id/criteria/:ref': {
     purpose: 'Corrects one criterion’s wording at any status, keeping its verdicts and trace.',
@@ -295,6 +296,7 @@ export const ISSUE_REST_CARDS = {
     redFlag: 'Relaxing a criterion to match what got built, rather than correcting its words.',
     family: 'issue-work',
     audience: ['run', 'master'],
+    scenarios: ['a misworded criterion corrected in place, keeping its verdicts'],
   },
   'POST /api/issues/:id/criteria/:ref/supersede': {
     purpose: 'Retires a landed issue’s criterion that your landed change alters on purpose.',
@@ -334,6 +336,7 @@ export const ISSUE_REST_CARDS = {
       'Tracing BC codes the requirement no longer holds, or writing the BC’s text by hand beside the trace.',
     family: 'issue-work',
     audience: ['run', 'master'],
+    scenarios: ['BC codes traced that the requirement’s head no longer holds'],
   },
   'POST /api/issues/:id/merge/correction': {
     purpose: 'Replaces a closed issue’s landing commit in place, moving no status.',
@@ -349,6 +352,7 @@ export const ISSUE_REST_CARDS = {
     redFlag: 'Clearing a closed issue’s mark to re-mark it: a closed issue takes the correction.',
     family: 'issue-landing',
     audience: ['master'],
+    scenarios: ['a closed issue unmarked and re-marked: ISS-1027, ISS-1226'],
   },
   'POST /api/issues/:id/attachments': {
     purpose: 'Uploads a file to an issue that a verdict, comment or post can name.',
@@ -385,6 +389,7 @@ export const ISSUE_REST_CARDS = {
       'Withdrawing a record core wrote, or a decision kept as a comment, which this door does not hold.',
     family: 'issue-work',
     audience: ['master', 'run'],
+    scenarios: ['a core act withdrawn as if it were a decision: EVENT_WITHDRAW_CORE_ACT'],
   },
   'POST /api/issues/:id/patterns': {
     purpose: 'Names the pattern a change builds to, from the project’s catalog or as a new one.',
@@ -407,6 +412,7 @@ export const ISSUE_REST_CARDS = {
       'Naming a new slug where a catalogued pattern fits, which holds the work until it is approved.',
     family: 'issue-work',
     audience: ['run'],
+    scenarios: ['a run naming the catalogued pattern its change follows'],
   },
   'POST /api/issues/:id/patterns/:patternId/retract': {
     purpose: 'Takes back the pattern a change named, saying why it no longer builds to it.',
@@ -422,6 +428,7 @@ export const ISSUE_REST_CARDS = {
     redFlag: 'Retracting a pattern a holder approved instead of asking them to return it.',
     family: 'issue-work',
     audience: ['run'],
+    scenarios: ['a pattern retracted with the reason, then the right one named'],
   },
   'POST /api/issues/:id/patterns/:patternId/decision': {
     purpose: 'Approves or returns a new pattern a change named, as a holder of patterns.approve.',
@@ -441,6 +448,7 @@ export const ISSUE_REST_CARDS = {
       'Approving a pattern your own run named: another holder of patterns.approve decides it.',
     family: 'issue-work',
     audience: ['person'],
+    scenarios: ['a master approving the pattern its own run named'],
   },
   'DELETE /api/issues/:id/dependencies/:edgeId': {
     purpose: 'Removes an edge between two issues that was recorded by mistake.',
@@ -458,6 +466,7 @@ export const ISSUE_REST_CARDS = {
     redFlag: 'Removing a blocks edge that once held, which erases why the work waited.',
     family: 'issue-order',
     audience: ['master', 'run'],
+    scenarios: ['a master’s own mistaken edge removed'],
   },
   'DELETE /api/attachments/:id': {
     purpose: 'Deletes a file uploaded to an issue by mistake, as its uploader or a project admin.',
@@ -473,5 +482,6 @@ export const ISSUE_REST_CARDS = {
     redFlag: 'Deleting a file a standing verdict cites as its evidence.',
     family: 'issue-work',
     audience: ['master', 'run'],
+    scenarios: ['a wrong upload deleted by its attachment id'],
   },
 } satisfies Record<string, CapabilityCardBody>;

@@ -37,6 +37,7 @@ export const SCHEDULE_REST_CARDS = {
       'Writing up, latency, error or disk monitoring as a script: that is the Prometheus integration’s.',
     family: 'setup',
     audience: ['master'],
+    scenarios: ['monitoring written as a watch script: ISS-1225'],
   },
   'PUT /api/schedules/:id': {
     purpose:
@@ -74,5 +75,6 @@ export const SCHEDULE_REST_CARDS = {
     redFlag: 'Leaving a planted breach in place after the run that proved it filed.',
     family: 'setup',
     audience: ['master'],
+    scenarios: ['a schedule turned on and run once to read its fire'],
   },
 } satisfies Record<string, CapabilityCardBody>;

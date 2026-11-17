@@ -64,6 +64,7 @@ export const COMMENT_REST_CARDS = {
       'Recording a design’s wait on an issue’s events door, which answers 404, instead of on the design.',
     family: 'design',
     audience: ['master'],
+    scenarios: ['a design’s wait sent to the issue events door, which answered 404: ISS-935'],
   },
   'POST /api/projects/:id/feedback/:fb/comments': {
     purpose: 'Records a decision, question or note on the feedback item it governs.',
@@ -110,6 +111,7 @@ export const COMMENT_REST_CARDS = {
       'Rewriting a comment so its record says something else than it did, where a new comment should correct it.',
     family: 'issue-work',
     audience: ['master', 'run'],
+    scenarios: ['a comment’s intent sent unchanged: COMMENT_INTENT_UNCHANGED'],
   },
   'DELETE /api/comments/:id': {
     purpose: 'Deletes a comment you posted on an issue by mistake.',
@@ -127,6 +129,7 @@ export const COMMENT_REST_CARDS = {
     redFlag: 'Deleting a decision or another person’s comment to change what the record says.',
     family: 'issue-work',
     audience: ['master', 'run'],
+    scenarios: ['a master’s own duplicate post deleted'],
   },
   'POST /api/comments/:commentId/attachments': {
     purpose: 'Attaches a file from disk to a comment, as one multipart upload.',
@@ -163,5 +166,6 @@ export const COMMENT_REST_CARDS = {
       'Rewriting what a recorded decision decided instead of posting one that supersedes it.',
     family: 'requirements',
     audience: ['master'],
+    scenarios: ['the steward’s note on a requirement turned into a decision'],
   },
 } satisfies Record<string, CapabilityCardBody>;

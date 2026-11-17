@@ -87,7 +87,7 @@ const CARDS = {
     redFlag: 'Telling a person a project does not exist because a fenced token does not list it.',
     family: 'product.status',
     audience: ['person'],
-    scenarios: ['a project matched by its slug before setting up another: FB-596'],
+    scenarios: ['a project matched by its slug before another is set up'],
   },
   get: {
     purpose: 'Reads one project: your role, its members, its labels and its base branch.',
@@ -105,7 +105,7 @@ const CARDS = {
       'Answering where a project deploys from get, which holds no environments: config.get reads them.',
     family: 'product.status',
     audience: ['person'],
-    scenarios: ['where a project deploys answered from get, which holds no environments: FB-596'],
+    scenarios: ['a person asking who works on a project and which branch it builds on'],
   },
   create: {
     purpose:

@@ -53,6 +53,7 @@ export const CARDS = {
       'Answering a non-binding change notice that owes nothing, ahead of what unanswered lists.',
     family: 'channel',
     audience: ['master', 'bot'],
+    scenarios: ['a nudged pass reading the inbox once the owed documents were worked'],
   },
   read: {
     purpose: 'Reads one channel document this project sends or receives, by its number or uuid.',
@@ -74,6 +75,7 @@ export const CARDS = {
       'Replying from the nudge’s line alone without reading the document and its contract page.',
     family: 'channel',
     audience: ['master', 'bot'],
+    scenarios: ['a channel document named by a person, read whole before answering'],
   },
   thread: {
     purpose: 'Reads a whole channel conversation, and any hold on it, from its opening number.',

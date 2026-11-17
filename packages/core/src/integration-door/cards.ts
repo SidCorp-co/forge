@@ -35,6 +35,7 @@ export const INTEGRATION_DOOR_REST_CARDS = {
       'Opening the request with a host token of your own, so core records nothing it opened.',
     family: 'issue-landing',
     audience: ['master', 'run'],
+    scenarios: ['a change request opened with no source host bound: SOURCE_HOST_UNAVAILABLE'],
   },
   'POST /api/issues/:id/merge-pull-request': {
     purpose: 'Merges an issue’s open change request through core, recording the landing it makes.',
@@ -59,6 +60,7 @@ export const INTEGRATION_DOOR_REST_CARDS = {
       'Treating a first conflict as final and rebasing, where the host’s first reading was stale.',
     family: 'issue-landing',
     audience: ['master', 'run'],
+    scenarios: ['a first merge refused as a conflict, merged by the same call 20 s later: ISS-852'],
   },
   'POST /api/projects/:projectId/integrations/coolify/deploy': {
     purpose:
@@ -104,6 +106,7 @@ export const INTEGRATION_DOOR_REST_CARDS = {
     redFlag: 'Pasting the value into a comment, a log or a commit to show what was set.',
     family: 'setup',
     audience: ['master'],
+    scenarios: ['an app variable set through core with redeploy'],
   },
   'POST /api/integration-connections/:id/bindings': {
     purpose: 'Binds projects to a connection with what each watches, deploys or reads through it.',
@@ -135,6 +138,7 @@ export const INTEGRATION_DOOR_REST_CARDS = {
       'Building a watch script or a metrics parser in the project instead of binding it here.',
     family: 'setup',
     audience: ['master'],
+    scenarios: ['production monitoring hand-rolled as watch scripts: ISS-1225'],
   },
   'POST /api/integration-connections/:id/monitoring/readiness': {
     purpose: 'Reads now what a Prometheus connection’s server can do, step by setup step.',
@@ -221,5 +225,6 @@ export const INTEGRATION_DOOR_REST_CARDS = {
     redFlag: 'An agent widening its own access to an integration.',
     family: 'setup',
     audience: ['person'],
+    scenarios: ['an agent widening its own access to an integration, forbidden'],
   },
 } satisfies Record<string, CapabilityCardBody>;

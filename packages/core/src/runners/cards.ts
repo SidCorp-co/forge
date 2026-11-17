@@ -24,5 +24,6 @@ export const RUNNER_REST_CARDS = {
     redFlag: 'An agent registering a runner for itself: a person adds a box’s runner.',
     family: 'setup',
     audience: ['person'],
+    scenarios: ['an agent registering a runner for itself, forbidden'],
   },
 } satisfies Record<string, CapabilityCardBody>;

@@ -30,6 +30,7 @@ export const CARDS = {
       'Guessing a host from another environment, or reading a secret:// reference as the credential.',
     family: 'setup',
     audience: ['person'],
+    scenarios: ['a person asking where the project deploys, answered from config'],
   },
   gates_get: {
     purpose:
@@ -52,6 +53,7 @@ export const CARDS = {
       'Saying why a gate is set from your reading of the profile, where its changes record who set it and why.',
     family: 'setup',
     audience: ['person'],
+    scenarios: ['a person asking why an act waited on a person'],
   },
   gates_write: {
     purpose: 'Sets the project’s gate profile and overrides, kept with who changed them and why.',
@@ -75,6 +77,7 @@ export const CARDS = {
       'Writing a profile the person did not decide, or overrides for gates their profile already sets as they want.',
     family: 'setup',
     audience: ['person'],
+    scenarios: ['a person deciding the project’s gate profile'],
   },
   gate_profiles: {
     purpose:
@@ -90,6 +93,7 @@ export const CARDS = {
     redFlag: 'Telling a person a profile turns a kernel rule off: no profile relaxes them.',
     family: 'setup',
     audience: ['person'],
+    scenarios: ['a person asking what each gate profile would change'],
   },
   // write's one card is its REST twin's, the orientation's (`mcp/twins.ts`)
 } satisfies Record<Exclude<ConfigAction, 'write'>, CapabilityCardBody>;
@@ -117,6 +121,7 @@ export const BINDINGS_CARDS = {
       'Looking for a credential here: a connection’s credential stays in core, and a binding names only its connection.',
     family: 'setup',
     audience: ['master'],
+    scenarios: ['a binding read before it is changed'],
   },
   write: {
     purpose: 'Rewrites one binding document whole: its target, instructions or connection.',
@@ -139,5 +144,6 @@ export const BINDINGS_CARDS = {
       'Writing a binding from memory: all 6 writes on forge (2026-10-17..11-16) were refused. Get it, change it, write it whole.',
     family: 'setup',
     audience: ['master'],
+    scenarios: ['a binding written from memory, all six refused'],
   },
 } satisfies Record<'get' | 'write', CapabilityCardBody>;

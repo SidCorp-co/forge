@@ -28,6 +28,7 @@ export const PROJECT_CONFIG_REST_CARDS = {
     redFlag: 'Asking a person to retype a secret’s whole value to add a sign-in route to it.',
     family: 'setup',
     audience: ['master'],
+    scenarios: ['a password asked again to add a sign-in route to a secret: ISS-1140'],
   },
   'PUT /api/projects/:id/testing-profiles/:profileId': {
     purpose:
@@ -57,6 +58,7 @@ export const PROJECT_CONFIG_REST_CARDS = {
     redFlag: 'Writing a password or token into the profile instead of a secret:// reference to it.',
     family: 'setup',
     audience: ['master'],
+    scenarios: ['a testing profile written under another id: TESTING_PROFILE_ID_MISMATCH'],
   },
   'POST /api/projects/:id/variables/proposals': {
     purpose: 'Proposes a change to a project variable that a holder of env.manage approves.',
@@ -82,6 +84,7 @@ export const PROJECT_CONFIG_REST_CARDS = {
       'Proposing a change with no issue that needs it, or a secret value in a plain variable.',
     family: 'setup',
     audience: ['master', 'run'],
+    scenarios: ['a variable proposal naming no issue: VARIABLE_PROPOSAL_ISSUE_UNKNOWN'],
   },
   'POST /api/projects/:id/variables': {
     purpose: 'Creates a project variable on an environment, as a holder of env.manage.',
@@ -104,6 +107,7 @@ export const PROJECT_CONFIG_REST_CARDS = {
       'An agent writing a variable directly: it is refused VARIABLE_AGENT_PROPOSES and proposes instead.',
     family: 'setup',
     audience: ['person'],
+    scenarios: ['agent credentials creating variables: VARIABLE_AGENT_PROPOSES'],
   },
   'PUT /api/projects/:id/variables/:variable': {
     purpose: 'Changes a project variable’s value or kind against the version read.',
@@ -120,6 +124,7 @@ export const PROJECT_CONFIG_REST_CARDS = {
       'An agent writing a variable directly: it is refused VARIABLE_AGENT_PROPOSES and proposes instead.',
     family: 'setup',
     audience: ['person'],
+    scenarios: ['the steward writing a variable’s value, forbidden'],
   },
   'DELETE /api/projects/:id/variables/:variable': {
     purpose: 'Removes a project variable.',
@@ -133,6 +138,7 @@ export const PROJECT_CONFIG_REST_CARDS = {
       'An agent writing a variable directly: it is refused VARIABLE_AGENT_PROPOSES and proposes instead.',
     family: 'setup',
     audience: ['person'],
+    scenarios: ['the steward deleting a variable, forbidden: a person decides'],
   },
   'POST /api/projects/:id/variables/:variable/reveal': {
     purpose: 'Shows a secret variable’s value to a holder of env.manage, audited.',
@@ -144,6 +150,7 @@ export const PROJECT_CONFIG_REST_CARDS = {
       'An agent revealing a secret to read it, where its job’s own variables read answers it.',
     family: 'setup',
     audience: ['person'],
+    scenarios: ['the steward revealing a secret to read it, forbidden'],
   },
   'POST /api/projects/:id/variables/proposals/:proposal/decision': {
     purpose: 'Approves or rejects an agent’s proposed variable change, as a holder of env.manage.',
@@ -159,6 +166,7 @@ export const PROJECT_CONFIG_REST_CARDS = {
     redFlag: 'An agent approving its own or another agent’s proposal: the decision is a person’s.',
     family: 'setup',
     audience: ['person'],
+    scenarios: ['the steward deciding variable proposals, forbidden: a person decides'],
   },
   'DELETE /api/projects/:id/bindings/:bindingId': {
     purpose: 'Removes a project binding to an integration, against the revision read.',
@@ -176,5 +184,6 @@ export const PROJECT_CONFIG_REST_CARDS = {
     redFlag: 'Removing a binding to rewrite it, where bindings.write changes its target in place.',
     family: 'setup',
     audience: ['person'],
+    scenarios: ['an agent credential removing a binding, forbidden'],
   },
 } satisfies Record<string, CapabilityCardBody>;
