@@ -930,7 +930,8 @@
         "corrections",
         "lessonApplications",
         "lessonConfusions",
-        "lessons"
+        "lessons",
+        "lessonsPassReports"
       ],
       "serves": ["REQ-50"]
     },
