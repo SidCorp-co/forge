@@ -39,6 +39,16 @@ const DIRECTIONS: readonly RegExp[] = [
     `${START}${NOT_SELF_VI}(?:vào|mở|sửa|đổi|chỉnh)\\s+(?:lại\\s+)?(?:trang\\s+|phần\\s+|mục\\s+|màn\\s+hình\\s+)?(?:cài\\s+đặt|thiết\\s+lập|settings?|giao\\s+diện)`, // i18n-allow: the Vietnamese phrasing being recorded
     'iu',
   ),
+  // making the record themselves in a section of a screen: "you create it in the Feedback section",
+  // as Babo told the owner on 17/11 at 05:55 and 05:58 (ISS-1251 c11)
+  new RegExp(
+    `${START}${NOT_SELF_VI}(?:tạo|ghi|thêm|gửi|nhập)\\s+(?:giúp\\s+|thẳng\\s+|trực\\s+tiếp\\s+|luôn\\s+)*(?:ở|trong|tại|vào)\\s+(?:mục|trang|phần|tab|màn\\s+hình)\\s`, // i18n-allow: the Vietnamese phrasing being recorded
+    'iu',
+  ),
+  new RegExp(
+    `${NOT_SELF_EN}\\b(?:create|file|add|submit)\\s+(?:it|them|this|one)?\\s*(?:yourself\\s+)?(?:in|under|from)\\s+(?:the\\s+)?[\\w-]+\\s+(?:section|page|screen|tab)\\b`,
+    'i',
+  ),
   /\b(?:click|press|tap)\s+(?:on\s+)?(?:the\s+)?["'“‘]/i,
   new RegExp(
     `${NOT_SELF_EN}\\b(?:go\\s+to|open|head\\s+to|change|edit)\\s+(?:the\\s+)?(?:[\\w-]+\\s+){0,3}?(?:settings|page|screen|tab)\\b`,

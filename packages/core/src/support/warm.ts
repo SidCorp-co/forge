@@ -6,27 +6,13 @@
 // (`jobs/park-deadline.ts:closeIdleResidents` never closes it).
 
 import { turnCredentialChatDevice } from '../agent-sessions/index.js';
-import { supportApisOf } from '../integrations/support-api/index.js';
+import { forgeReads } from '../integrations/index.js';
 import { logger } from '../lib/logger.js';
 import { RefusalError } from '../lib/refusal.js';
 import { deviceProjectIds } from '../runners/index.js';
+import { briefStale } from './brief-told.js';
 import { hasReady, roomsOfProjects, roomsToWarm } from './delivery.js';
-import {
-  deliverWaiting,
-  followedCheckouts,
-  handTurn,
-  noteRole,
-  noteTools,
-  noteTurn,
-  roleKey,
-  toldTools,
-  toolsKey,
-} from './dispatch.js';
-import { answersOfConfig, grantsOf, readersOfConfig, supportConfigOf } from './grants.js';
-import { operationsBrief } from './ops-prompt.js';
-import { roleOfRoom } from './ops-role.js';
-import { projectsInScope } from './ops-scope.js';
-import { followedLine, grantsLine, roomsLine, toolsLine } from './prompt.js';
+import { deliverWaiting, followedCheckouts, handTurn, noteTurn } from './dispatch.js';
 import { replayPlacedRooms } from './replay.js';
 import { roomWithSession, sessionToHand } from './room-session.js';
 import {
@@ -35,7 +21,7 @@ import {
   releaseUnboundRooms,
   roomIsBound,
 } from './rooms.js';
-import { type RoomRow, roomById, roomsOfSession } from './store.js';
+import { roomById } from './store.js';
 
 /** What the warm-up turn says: no member is waiting, so the session answers nothing. */
 export const WARM_UP_LINE =
@@ -102,13 +88,12 @@ async function warmOnce(roomId: string, why: WarmReason): Promise<WarmOutcome> {
   const box = { ...client, deviceId: client.deviceId };
   if (resident && why === 'sweep') return 'resident';
   if (resident && why === 'bindings') {
-    const retell = await retellOf(room, box.deviceId);
-    if (!retell) return 'resident';
+    // the warm-up carries the brief again, since a binding change may have changed it (`brief-told.ts`)
+    const [project] = await forgeReads().projectsByIds([room.projectId]);
+    const followed = await followedCheckouts(room, box.deviceId);
+    if (!project || !(await briefStale(room, session, project.name, followed))) return 'resident';
     noteTurn(room.id, new Date());
-    if (
-      await startedBeside(handTurn(room, session, box, { warmUp: `${retell}\n\n${WARM_UP_LINE}` }))
-    )
-      return 'busy';
+    if (await startedBeside(handTurn(room, session, box, { warmUp: WARM_UP_LINE }))) return 'busy';
     return 'retold';
   }
   lastTried.set(room.id, Date.now());
@@ -131,49 +116,6 @@ async function startedBeside(handOver: Promise<void>): Promise<boolean> {
       return true;
     throw err;
   }
-}
-
-/**
- * What a resident session is told after a binding or connection change, noted as told; null when
- * it already holds it. A support group is told its granted tools; an operations room, its role.
- */
-async function retellOf(room: RoomRow, deviceId: string): Promise<string | null> {
-  if (room.kind === 'operations') {
-    const role = await roleOfRoom(room);
-    if (!role.ok || toldTools(room.id) === roleKey(role.value)) return null;
-    noteRole(room.id, role.value);
-    return `Your role was changed; from now on:\n\n${operationsBrief({
-      role: role.value,
-      scope: room.scope ?? 'project',
-      reach: await projectsInScope(room),
-    })}`;
-  }
-  const { tools } = await supportApisOf(room.projectId);
-  const config = await supportConfigOf(room);
-  if (toldTools(room.id) === toolsKey(tools, config)) return null;
-  // a channel agent's rooms share one session: it is told once for all of them (REQ-77)
-  const told =
-    room.kind === 'agent' && room.sessionId ? await roomsOfSession(room.sessionId) : [room];
-  for (const r of told) noteTools(r.id, tools, config);
-  const followed = await followedCheckouts(room, deviceId);
-  return [
-    'This room was changed; from now on:',
-    ...(config?.persona ? [config.persona] : []),
-    ...(followed.length ? [followedLine(followed)] : []),
-    ...(config?.rooms
-      ? [
-          roomsLine(
-            told.map((r) => ({
-              rid: r.rid,
-              readers: readersOfConfig(r, config),
-              answers: answersOfConfig(r, config),
-            })),
-          ),
-        ]
-      : []),
-    toolsLine(tools),
-    grantsLine(grantsOf(config)),
-  ].join('\n\n');
 }
 
 /** Release the rooms a project's bindings no longer answer, and warm every room they do, as a binding is saved. */

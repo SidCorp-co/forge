@@ -246,9 +246,14 @@ describe('every room agent brief carries the room conduct', () => {
   // ISS-1250 (epod, 16/11): the operations room explained its grants and sent the owner to settings,
   // told its role's acts alone and to name who can grant the rest. Every brief now teaches it to read
   // who asks and the thread (asker), hand an act on with ask_master, and link the web app.
-  it('hands an act it cannot make to the master, and tells no thread who could grant it', () => {
+  it('hands an act it cannot make on, and tells no thread who could grant it', () => {
     expect(operations).toMatch(/Your acts: [^.]*\bask_master\b[^.]*\./);
-    expect(operations).toContain('you hand on and never explain');
+    // a missing grant is raised in the technical thread, any other act handed to the master (ISS-1251 c11)
+    expect(operations).toContain(
+      'An act your role is not granted, or one refused for a grant, is a need',
+    );
+    expect(operations).toContain('support.technical { thread, need: "permission", text }');
+    expect(operations).toContain('never what you or your role may not do');
     for (const text of [brief, channel, operations, grantsLine({ abilities: [] } as never)]) {
       expect(text).not.toContain('naming who can grant it');
       expect(text).not.toContain("say in the persona's words what you could not do");

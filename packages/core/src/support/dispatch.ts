@@ -11,8 +11,7 @@
 // never heard, as one cut off by a core restart, is read lost once it goes silent (`lost-turns.ts`,
 // ISS-850), and its messages are tried again the same way.
 
-import type { SupportDeliveryPath, SupportRoomConfig } from '@forge/contracts/support';
-import type { ChatRole } from '@forge/contracts/support-operations';
+import type { SupportDeliveryPath } from '@forge/contracts/support';
 import {
   type CheckoutView,
   checkoutMovedFrom,
@@ -24,14 +23,12 @@ import {
 } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import { forgeReads } from '../integrations/index.js';
-import { type BoundSupportTool, supportApisOf } from '../integrations/support-api/index.js';
-import { moduleMapLines } from '../labels/index.js';
 import { resolveSessionRepoPathForDevice } from '../lib/device-pool.js';
-import { moduleLinesText } from '../lib/door-catalog.js';
 import { logger } from '../lib/logger.js';
 import { RefusalError } from '../lib/refusal.js';
+import { briefNews, coldBrief } from './brief-told.js';
 import { buildBaseOf, buildKeyOf } from './build.js';
-import { briefChannel, channelNews } from './channel-read.js';
+import { channelNews } from './channel-read.js';
 import {
   claimUndelivered,
   endBackOff,
@@ -42,15 +39,13 @@ import {
   undeliveredThreads,
   waitingMessages,
 } from './delivery.js';
-import { answersOfConfig, grantsOf, readersOfConfig, supportConfigOf } from './grants.js';
+import { grantsOf, supportConfigOf } from './grants.js';
 import { leftToBoxProcess } from './hand-off.js';
 import { injectWaiting, settleInjects } from './inject.js';
 import { endRoomLastResortWait, tellLastResort } from './last-resort.js';
-import { operationsBrief } from './ops-prompt.js';
-import { roleOfRoom } from './ops-role.js';
 import { projectsInScope } from './ops-scope.js';
 import { ownViewOf } from './owner-git.js';
-import { agentOpening, coldThreads, roomMessages, supportBrief } from './prompt.js';
+import { coldThreads, roomMessages } from './prompt.js';
 import { roomLessonsNews } from './reply-audit/lessons-news.js';
 import { noteTurnCarried } from './room-reaches.js';
 import { roomWithSession, type SessionRow, sessionOf, sessionToHand } from './room-session.js';
@@ -79,119 +74,7 @@ export function noteTurn(roomId: string, at: Date): void {
   lastTurn.set(roomId, at);
 }
 
-/**
- * The tools each room's session was last told of. A session briefed once and kept warm is told
- * again when the project's grants change (`warm.ts:retellTools`); core restarting forgets, and the
- * next grant change tells it again.
- */
-const briefedTools = new Map<string, string>();
-/** What a support group's session was briefed with: its tools, and its room's persona, readers and grant. */
-export const toolsKey = (tools: readonly BoundSupportTool[], config: SupportRoomConfig | null) =>
-  JSON.stringify([
-    tools.map((t) => [t.name, t.kind, t.summary, t.binding]),
-    config?.persona ?? null,
-    config?.readers ?? null,
-    config?.answers ?? null,
-    config?.grants ?? null,
-    config?.projects ?? null,
-    config?.rooms ?? null,
-  ]);
-export function toldTools(roomId: string): string | undefined {
-  return briefedTools.get(roomId);
-}
-export function noteTools(
-  roomId: string,
-  tools: readonly BoundSupportTool[],
-  config: SupportRoomConfig | null,
-): void {
-  briefedTools.set(roomId, toolsKey(tools, config));
-}
-/** What an operations room's session was briefed with: its role, which a connection edit can change. */
-export const roleKey = (role: ChatRole) => JSON.stringify([role.name, role.persona, role.grants]);
-export function noteRole(roomId: string, role: ChatRole): void {
-  briefedTools.set(roomId, roleKey(role));
-}
-
 export type TurnClient = Awaited<ReturnType<typeof turnCredentialChatDevice>>;
-
-/**
- * A cold session's brief: a support group's (the product, its granted tools), or an operations
- * room's (its role's persona and grants, its reach). An operations room whose bot has no role it can
- * read is not briefed at all: the turn throws, naming why, and its messages wait.
- */
-async function briefOf(
-  room: RoomRow,
-  projectName: string,
-  followed: readonly FollowedCheckout[],
-): Promise<string> {
-  if (room.kind === 'operations') {
-    const role = await roleOfRoom(room);
-    if (!role.ok) throw new Error(`support: ${role.refusals[0]?.detail ?? 'no role'}`);
-    noteRole(room.id, role.value);
-    return [
-      operationsBrief({
-        role: role.value,
-        scope: room.scope ?? 'project',
-        reach: await projectsInScope(room),
-      }),
-      await briefChannel(room),
-    ].join('\n\n');
-  }
-  const { tools } = await supportApisOf(room.projectId);
-  const config = await supportConfigOf(room);
-  noteTools(room.id, tools, config);
-  if (room.kind === 'agent') {
-    return agentBriefOf(room, projectName, tools, config, followed);
-  }
-  return supportBrief({
-    projectName,
-    product: config?.product ?? null,
-    tools,
-    config,
-    channel: await briefChannel(room),
-    modules: moduleLinesText(await moduleMapLines(room.projectId), 'bot'),
-  });
-}
-
-/**
- * A channel agent's brief (REQ-77): one for every group its session answers, each group's channel
- * record after it. Every room of the session is noted told, so a grant change re-tells it once.
- */
-async function agentBriefOf(
-  room: RoomRow,
-  projectName: string,
-  tools: readonly BoundSupportTool[],
-  config: SupportRoomConfig | null,
-  followed: readonly FollowedCheckout[],
-): Promise<string> {
-  const rooms = room.sessionId ? await roomsOfSession(room.sessionId) : [room];
-  for (const r of rooms) noteTools(r.id, tools, config);
-  const records = (await Promise.all(rooms.map((r) => briefChannel(r)))).filter(Boolean);
-  return supportBrief({
-    projectName,
-    product: config?.product ?? null,
-    tools,
-    config,
-    channel: records.join('\n\n') || null,
-    modules: moduleLinesText(await moduleMapLines(room.projectId), 'bot'),
-    opening: agentOpening({
-      projectName,
-      product: config?.product ?? null,
-      channels: rooms.map((r) => r.rid),
-      ownerMode: Boolean(config?.grants?.abilities.includes('owner_mode')),
-      ownerRoom: config?.ownerRoom ?? null,
-      followed,
-      // each group's own readers and answers, where the binding sets them per group (ISS-874)
-      rooms: config?.rooms
-        ? rooms.map((r) => ({
-            rid: r.rid,
-            readers: readersOfConfig(r, config),
-            answers: answersOfConfig(r, config),
-          }))
-        : [],
-    }),
-  });
-}
 
 /** A project a channel agent follows besides its home (ISS-874), and its checkout on the turn's box. */
 export interface FollowedCheckout {
@@ -293,7 +176,7 @@ export async function handTurn(
   // the project's lessons about chat replies, on a cold turn and whenever they changed (ISS-1250)
   const lessons = 'warmUp' in body && !cold ? null : await roomLessonsNews(room, cold);
   if (cold) {
-    const brief = await briefOf(room, project.name, followed);
+    const brief = await coldBrief(room, session, project.name, followed);
     parts.push(brief);
     if (lessons) parts.push(lessons);
     // what the turn was given, kept as a run's is: the lessons and cards its brief carries (ISS-1251)
@@ -305,12 +188,15 @@ export async function handTurn(
       if (history) parts.push(rooms.length > 1 ? `In channel ${r.rid}:\n${history}` : history);
     }
     if ('messages' in body) parts.push('New messages:');
-  } else if (!('warmUp' in body)) {
-    // a warm session reads the channel record again when it changed since it was told (BC-41)
-    const news = await channelNews(room);
-    if (lessons) noteTurnCarried(room, session.id, lessons);
-    if (news || lessons) {
-      parts.push(...[news, lessons].filter((p): p is string => p !== null));
+  } else {
+    // a resident session is told its brief again once this build renders it otherwise (ISS-1251), and
+    // the channel record again when it changed since it was told (BC-41)
+    const retold = await briefNews(room, session, project.name, followed);
+    const news = 'warmUp' in body ? null : await channelNews(room);
+    const told = [retold, news, lessons].filter((p): p is string => p !== null);
+    if (retold || lessons) noteTurnCarried(room, session.id, [retold, lessons].join('\n\n'));
+    if (told.length > 0) {
+      parts.push(...told);
       if ('messages' in body) parts.push('New messages:');
     }
   }

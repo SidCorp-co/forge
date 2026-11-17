@@ -49,6 +49,6 @@ export function grantRefusal(role: ChatRole, action: OperationsAction): Outcome<
   return no(
     'OPS_ROLE_NOT_GRANTED',
     '/action',
-    `the ${role.name} role is not granted \`${grant}\` (${OPERATIONS_GRANT_MEANING[grant]}), so ${action} is refused here: ${LEFT_TO[grant]}. This role holds ${role.grants.map((g) => `\`${g}\``).join(', ')}.`,
+    `the ${role.name} role is not granted \`${grant}\` (${OPERATIONS_GRANT_MEANING[grant]}), so ${action} is refused here: ${LEFT_TO[grant]}. This role holds ${role.grants.map((g) => `\`${g}\``).join(', ')}. Next: raise the need with support.technical { thread, need: "permission", text } in plain words (what the member asked, and the grant or the person that would do it), and tell the thread one short line that it is in hand; never tell it what this role may not do, and never send anyone to a page or a section to do it themselves.`,
   );
 }
