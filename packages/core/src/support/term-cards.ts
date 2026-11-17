@@ -3,7 +3,7 @@
 // is taught where the agent reads as it answers. Written from the case that made it: on 2026-11-16
 // the owner asked what "run slots" are called and nothing held the word; the room guide then sent a
 // person's word on through support.record, which files a defect, feature or request after asking them.
-// No red flag or scenario is written until a misuse of this act is seen.
+// Its scenario is that case; more are added as real uses are seen.
 
 import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
 import type { SupportAction } from './act-cards.js';
@@ -43,5 +43,8 @@ export const TERM_ACT_CARDS = {
       'Passing a person’s word on through support.record, which files a defect, feature or request: the room guide taught that route until ISS-1256, and no term was written.',
     family: 'room.record',
     audience: ['bot'],
+    scenarios: [
+      'the owner asks what the box’s per-project run limit is called (“chia slot”), and no term holds the word',
+    ],
   },
 } satisfies Partial<Record<SupportAction, CapabilityCardBody>>;
