@@ -1,0 +1,1 @@
+**Every tool card is now checked against how agents really use it.** The Capabilities page shows each tool's real use scenarios and their replay results, counts masters and runs apart, and keeps lessons current when a file is only reformatted.
