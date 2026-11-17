@@ -62,6 +62,10 @@ enum Command {
     Runners(cmd::runners::Args),
     /// Look at, talk to, stand down and end this box's resident masters.
     Master(cmd::master::Args),
+    /// Open a channel's room agent live.
+    Chat(cmd::chat::Args),
+    /// The Claude Code version this box runs: install one, and adopt it only on a passing canary.
+    Claude(cmd::claude::Args),
     /// Ask a person on this box's pairing, and read the answer back.
     Question(cmd::question::Args),
     /// Report to Forge what a release's commit range ships, from the checkout that cut it.
@@ -132,6 +136,8 @@ async fn main() -> anyhow::Result<()> {
         Command::Run(a) => cmd::run::run(ctx, a).await,
         Command::Runners(a) => cmd::runners::run(ctx, a).await,
         Command::Master(a) => cmd::master::run(ctx, a).await,
+        Command::Chat(a) => cmd::chat::run(a).await,
+        Command::Claude(a) => cmd::claude::run(a).await,
         Command::Question(a) => cmd::question::run(ctx, a).await,
         Command::Release(a) => cmd::release::run(ctx, a).await,
         Command::Sync(a) => cmd::sync::run(ctx, a).await,

@@ -73,8 +73,13 @@ pub async fn run(_ctx: Ctx, args: Args) -> anyhow::Result<()> {
                 // which plugin checkout this runner's panes load, refused below before it is saved
                 "plugins.checkout" => cfg.plugins.checkout = Some(value).filter(|v| !v.is_empty()).map(Into::into),
                 "plugins.ref" => cfg.plugins.git_ref = Some(value).filter(|v| !v.is_empty()),
+                // The pin a passing `forge-runner claude canary` moves; set by hand only to name
+                // the version a canary already passed on this box (ISS-1268 C1).
+                "runner.claude-version" | "runner.claude_version" => {
+                    cfg.runner.claude_version = Some(value).filter(|v| !v.is_empty())
+                }
                 other => anyhow::bail!(
-                    "unknown key `{other}` (try: core-url | projects-root | update.auto | update.manifest-url | skills.auto_pull | plugins.enabled | plugins.marketplace-repo | plugins.plugin-names | plugins.checkout | plugins.ref)"
+                    "unknown key `{other}` (try: core-url | projects-root | update.auto | update.manifest-url | skills.auto_pull | plugins.enabled | plugins.marketplace-repo | plugins.plugin-names | plugins.checkout | plugins.ref | runner.claude-version)"
                 ),
             }
             runner_workspace::plugin_source::resolve(&cfg.plugins)

@@ -1,7 +1,9 @@
 pub mod answers;
 pub mod api;
 pub mod bind;
+pub mod chat;
 pub mod chat_pane_exec;
+pub mod claude;
 pub mod config;
 pub mod doctor;
 mod doctor_plugins;

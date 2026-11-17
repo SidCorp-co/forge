@@ -16,6 +16,7 @@
 //! so the socket is resolved by `sessionId` on every send; `crossSessionInbound: "accept"` is what
 //! lets a bypass session take a socket message without a dialog.
 
+pub mod canary;
 pub mod launch;
 pub mod peer;
 pub mod relay;

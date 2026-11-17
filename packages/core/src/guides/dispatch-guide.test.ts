@@ -197,4 +197,10 @@ describe('the dispatch guide gives the command that attaches to a channel agent'
   it('names the pane beside the master on the runner socket', () => {
     expect(DISPATCH_GUIDE.body).toContain('`tmux -S <runner socket> attach -t forge-chat-<slug>`');
   });
+
+  // ISS-1268: a master is a background session, opened by project rather than by pane
+  it('names the command that opens a master session live', () => {
+    expect(DISPATCH_GUIDE.body).toContain('`forge-runner master attach <slug>`');
+    expect(DISPATCH_GUIDE.body).not.toContain('attach -t forge-master-');
+  });
 });

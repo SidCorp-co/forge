@@ -18,3 +18,16 @@ pub fn relay_hooks() -> Option<serde_json::Value> {
 pub fn owner_word(text: &str) -> String {
     format!("Forge runner relaying the owner's instruction: {text}")
 }
+
+/// Canary checks 4 and 5 (ISS-1268 C1): a planted dangerous-rm relayed, allowed and denied, and a
+/// relay that times out answered loudly. Run in the canary's trusted scratch checkout `work` on
+/// `model`.
+///
+/// PLACEHOLDER until B3 lands them: both fail by name, so no canary passes without them.
+pub async fn canary_checks(work: &std::path::Path, model: &str) -> Vec<super::canary::Check> {
+    let _ = (work, model);
+    ["relay allow/deny", "relay timeout"]
+        .into_iter()
+        .map(|name| super::canary::Check::fail(name, "not supplied yet (ISS-1268 B3)"))
+        .collect()
+}

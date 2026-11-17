@@ -1,0 +1,1 @@
+**Masters run as Claude Code background sessions.** Messages reach them over the session's own socket and count as delivered only once the session records them; nothing is typed into a pane. Open one live with `forge-runner master attach <slug>`.
