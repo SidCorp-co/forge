@@ -1,0 +1,1 @@
+**A master refused a run for want of a slot is now next in line.** Its refused declare keeps a wait for ten minutes, renewed by each retry, so the box's next free slot goes to the master's next declare instead of an automatic job.

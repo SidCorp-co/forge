@@ -57,6 +57,7 @@ import { type GateCondition, RUN_GATE_METADATA_KEY } from './gate-report.js';
 import { projectAdmission, runnerNotAdmitted } from './pool-admission.js';
 import { devicesPorts } from './ports.js';
 import { requirementSubject } from './run-requirement.js';
+import { endSlotWait } from './run-slot-wait.js';
 import {
   type BoxRunSession,
   declarationLockKey,
@@ -278,6 +279,8 @@ export async function openRunSession(args: {
       }
       // under the box's slot lock, so two opens racing for its last free slot cannot both take it
       await refuseRunWithoutSlot({ deviceId: args.deviceId, projectId: args.projectId, tx });
+      // the slot is the master's now: a wait its refused declare left is over (ISS-1266)
+      if (masterSessionId) await endSlotWait(tx, masterSessionId);
       if (queued) {
         await promoteQueuedDeclaration(tx, queued, metadata);
         if (takes) {

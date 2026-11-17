@@ -24,9 +24,11 @@ import { db, type Tx } from '../db/client.js';
 import { memoizedRead } from '../db/read-memo.js';
 import { devices } from '../db/schema.js';
 import { lockXact } from '../lib/advisory-lock.js';
+import { isRefusal } from '../lib/refusal.js';
 import { readAdmissibleIssues } from './admissible.js';
 import { devicesPorts } from './ports.js';
 import { refuseDevice } from './refusals.js';
+import { freshSlotWait, recordSlotWait } from './run-slot-wait.js';
 import { type SlotDemand, slotsFor } from './run-slots.js';
 import { SESSION_SILENCE_TIMEOUT_S } from './session-silence.js';
 
@@ -184,13 +186,27 @@ async function slotWaiter(deviceId: string, projectId: string): Promise<string |
 }
 
 /**
+ * Who the next free slot of this project on this box is owed to, while one waits: a declaration the box
+ * queued and still re-sends (ISS-1260), or the master's own wait a preflight refused for a slot left
+ * (ISS-1266). Null where nobody waits.
+ */
+async function slotOwedTo(deviceId: string, projectId: string): Promise<string | null> {
+  const queued = await slotWaiter(deviceId, projectId);
+  if (queued) return `a run declaration queued for a slot on this box (run ${queued})`;
+  const wait = await freshSlotWait(deviceId, projectId);
+  if (!wait) return null;
+  const over = [...wait.issueKeys, ...(wait.requirement ? [wait.requirement] : [])].join(', ');
+  return `a master refused a slot on this box at ${wait.at}${over ? ` over ${over}` : ''}, waiting for its next declare`;
+}
+
+/**
  * Refuse a run this project has no free slot for on this box. Inside an open, `tx` serializes every
  * open on the box, so two declarations racing for the last slot cannot both take it.
  *
  * `yieldToQueued` is for work core starts on its own (the steward's jobs): a slot a master's
- * declaration is queued for goes to that declaration on the box's next re-send, so such work is
- * refused while one waits. A queued row holds no slot, and a tick that only asked whether one is free
- * took it first every time (ISS-1260).
+ * declaration waits for goes to that declaration, so such work is refused while one waits. A queued
+ * row holds no slot, and a tick that only asked whether one is free took it first every time
+ * (ISS-1260); a preflight refused for a slot leaves no queued row, only the master's wait (ISS-1266).
  */
 export async function refuseRunWithoutSlot(args: {
   deviceId: string;
@@ -199,12 +215,12 @@ export async function refuseRunWithoutSlot(args: {
   yieldToQueued?: boolean;
 }): Promise<void> {
   if (args.yieldToQueued) {
-    const waiter = await slotWaiter(args.deviceId, args.projectId);
-    if (waiter) {
+    const owed = await slotOwedTo(args.deviceId, args.projectId);
+    if (owed) {
       throw refuseDevice(
         'RUN_SLOT_UNAVAILABLE',
-        `project ${args.projectId} has a run declaration queued for a slot on this box (run ${waiter}), ` +
-          "so the next free slot is that run's: work core starts on its own waits until it binds or the box stops re-sending it.",
+        `project ${args.projectId} has ${owed}, so the next free slot is owed to it: ` +
+          'work core starts on its own waits until that run opens, or until its box or master stops asking for it.',
         '/projectId',
       );
     }
@@ -217,4 +233,23 @@ export async function refuseRunWithoutSlot(args: {
   const mine = box.projects.find((p) => p.projectId === args.projectId);
   if (!mine) throw new Error('refuseRunWithoutSlot: the declaring project was not allocated');
   if (mine.inUse >= mine.slots) throw slotRefusal(args.projectId, box, mine);
+}
+
+/**
+ * The declare-time ask (`POST /me/run-sessions/preflight`): refused for want of a slot, it keeps the
+ * master's wait (`run-slot-wait.ts`) and answers RUN_SLOT_UNAVAILABLE by name as before. The slot check
+ * stays here, so no box accepts a dispatch core will not open.
+ */
+export async function refuseDeclarationWithoutSlot(args: {
+  deviceId: string;
+  projectId: string;
+  issueKeys: readonly string[];
+  requirement?: string;
+}): Promise<void> {
+  try {
+    await refuseRunWithoutSlot({ deviceId: args.deviceId, projectId: args.projectId });
+  } catch (err) {
+    if (isRefusal(err, 'RUN_SLOT_UNAVAILABLE')) await recordSlotWait(args);
+    throw err;
+  }
 }

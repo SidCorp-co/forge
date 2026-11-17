@@ -4,6 +4,7 @@
  * session, so `run declare` claims one (its preflight and its open) and the run's close gives it back.
  *
  * @direct-test-of packages/core/src/devices/run-slots-read.ts
+ * @direct-test-of packages/core/src/devices/run-slot-wait.ts
  * @direct-test-of packages/core/src/devices/run-session.ts
  * @direct-test-of packages/core/src/devices/run-session-routes.ts
  * @direct-test-of packages/core/src/steward/dispatch.ts
@@ -38,6 +39,8 @@ let ownerId = '';
 let a = '';
 let b = '';
 let boxId = '';
+let c = '';
+let waitBox = '';
 
 async function issue(projectId: string, seq: number, priority = 'medium'): Promise<void> {
   await db.execute(sql`
@@ -60,12 +63,24 @@ beforeAll(async () => {
   for (const p of [a, b]) await bindTestRunner(p, boxId);
   await bindTestRunner(a, lone);
   for (const seq of [1, 2, 3, 4, 5]) await issue(a, seq, seq === 5 ? 'critical' : 'medium');
+  // ISS-1266's box: one slot, one project, three issues of which the third is held by a blocks edge
+  c = (await createTestProject(ownerId)).id;
+  waitBox = await createTestDevice(ownerId, { maxSubagents: null });
+  await bindTestRunner(c, waitBox);
+  for (const seq of [1, 2, 3]) await issue(c, seq);
+  await db.execute(sql`
+    INSERT INTO issue_dependencies (project_id, from_issue_id, to_issue_id, kind)
+    SELECT ${c}, blocker.id, held.id, 'blocks'
+      FROM issues held, issues blocker
+     WHERE held.project_id = ${c} AND held.iss_seq = 3
+       AND blocker.project_id = ${c} AND blocker.iss_seq = 2`);
   const mint = async (deviceId: string, name: string) =>
-    (await mintPat({ permissions: ['*'], userId: ownerId, name, deviceId, projectIds: [a, b] }))
+    (await mintPat({ permissions: ['*'], userId: ownerId, name, deviceId, projectIds: [a, b, c] }))
       .plaintext;
   say = requester(app, {
     box: await mint(boxId, 'box'),
     lone: await mint(lone, 'lone'),
+    waitBox: await mint(waitBox, 'waitBox'),
     person: await userToken(ownerId),
   }) as Say;
 }, 120_000);
@@ -90,8 +105,8 @@ async function open(who: string, projectId: string, key: string): Promise<Reply>
   });
 }
 
-const close = (sessionId: string) =>
-  say('box', 'POST', `/api/devices/me/run-sessions/${sessionId}/close`, { outcome: 'ended' });
+const close = (sessionId: string, who = 'box') =>
+  say(who, 'POST', `/api/devices/me/run-sessions/${sessionId}/close`, { outcome: 'ended' });
 
 const sessions: Record<string, string> = {};
 
@@ -247,5 +262,69 @@ describe('subagent slots at run declare', () => {
     }>;
     expect(lease?.session_id).toBe(second);
     expect(codes(await open('lone', a, 'ISS-6'))).toEqual(['ISSUE_LEASE_HELD']);
+  });
+
+  // ISS-1266: since the declare's preflight asks for a slot first, a refused declare writes no queued
+  // row, so the steward had nothing to yield to and took every slot that freed
+  it("keeps a master's declare refused for a slot as a wait the steward yields to, until it opens or lapses", async () => {
+    const { refuseRunWithoutSlot } = await import('../../src/devices/run-slots-read.js');
+    const steward = async (yieldToQueued = true): Promise<string> => {
+      try {
+        await refuseRunWithoutSlot({ deviceId: waitBox, projectId: c, yieldToQueued });
+        return 'admitted';
+      } catch (err) {
+        return String((err as Error).message ?? err);
+      }
+    };
+    const wait = async () => {
+      const [row] = (await db.execute(sql`
+        SELECT metadata -> 'slotWait' AS wait FROM agent_sessions
+         WHERE device_id = ${waitBox} AND project_id = ${c} AND kind = 'master'`)) as unknown as Array<{
+        wait: Doc | null;
+      }>;
+      return row?.wait ?? null;
+    };
+    const registered = await say('waitBox', 'POST', '/api/devices/me/master-session', {
+      projectId: c,
+      name: 'wait-master',
+      maxJobPanes: 1,
+      maxSubagents: 1,
+    });
+    expect(registered.status).toBe(200);
+    const first = await open('waitBox', c, 'ISS-1');
+    expect(first.status, detail(first)).toBe(200);
+    // a hold that is not a slot refuses first, by its own name, and leaves no wait
+    const blocked = await preflight('waitBox', c, 'ISS-3');
+    expect(codes(blocked)).toContain('ISSUE_BLOCKED');
+    expect(await wait()).toBeNull();
+    // refused only for a slot: the same answer by name, no queued row, and the master's wait kept
+    const refused = await preflight('waitBox', c, 'ISS-2');
+    expect(codes(refused)).toEqual(['RUN_SLOT_UNAVAILABLE']);
+    expect(detail(refused)).toContain('holds 1 subagent slot(s) on this box and 1 are in use');
+    const queued = (await db.execute(sql`
+      SELECT count(*)::int AS n FROM agent_sessions
+       WHERE device_id = ${waitBox} AND status = 'queued'`)) as unknown as Array<{ n: number }>;
+    expect(queued[0]?.n).toBe(0);
+    expect((await wait())?.issueKeys).toEqual(['ISS-2']);
+    // the slot frees: work core starts on its own yields it to the master's next declare
+    expect((await close((first.json as Doc).sessionId as string, 'waitBox')).status).toBe(200);
+    expect(await steward()).toContain('a master refused a slot on this box');
+    expect(await steward(false)).toBe('admitted');
+    // a wait its master stopped renewing holds the slot for nobody
+    await db.execute(sql`
+      UPDATE agent_sessions
+         SET metadata = jsonb_set(metadata, '{slotWait,at}', to_jsonb((now() - interval '11 minutes')::text))
+       WHERE device_id = ${waitBox} AND project_id = ${c} AND kind = 'master'`);
+    expect(await steward()).toBe('admitted');
+    // renewed, it holds again, and the master's own open takes the slot and ends it
+    await db.execute(sql`
+      UPDATE agent_sessions SET metadata = jsonb_set(metadata, '{slotWait,at}', to_jsonb(now()::text))
+       WHERE device_id = ${waitBox} AND project_id = ${c} AND kind = 'master'`);
+    expect(await steward()).toContain('a master refused a slot on this box');
+    const second = await open('waitBox', c, 'ISS-2');
+    expect(second.status, detail(second)).toBe(200);
+    expect(await wait()).toBeNull();
+    expect((await close((second.json as Doc).sessionId as string, 'waitBox')).status).toBe(200);
+    expect(await steward()).toBe('admitted');
   });
 });
