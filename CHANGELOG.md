@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.710] - 2026-11-17
+
+Judges see every changed file, module maps at landing, open questions uncapped
+
+### Fixed
+
+- **Agents are told what a module holds at the moment their work lands, so terms and rules get written.** On a phone, a tapped node's detail opens under it and the bar keeps the module's name; re-check counts agree.
+- **A judge is no longer told a later build leaves an issue unchanged when it changed a file the issue's earlier commits touched.** Every commit naming the issue now counts; a release reported before this reads "not known".
+- **A master told to file an issue for an unnamed merge is given the route that files one.** The wake line named `POST /api/issues`, which does not exist; it now names the project's issues route.
+- **A landing on a project with no modules asks for an admin, not a placement.** The merge mark no longer asks an agent to place its issue in a missing module; it says an admin creates modules first.
+- **A step or a requirement can leave open every question it needs.** A pipeline step's handoff is no longer limited to ten open questions, and a requirement's spec to fifty; only the list's overall size is bounded.
+
 ## [0.4.0-dev.709] - 2026-11-17
 
 Every tool card is checked against how agents really use it

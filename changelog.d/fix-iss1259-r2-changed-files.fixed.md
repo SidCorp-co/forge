@@ -1,1 +1,0 @@
-**A judge is no longer told a later build leaves an issue unchanged when it changed a file the issue's earlier commits touched.** Every commit naming the issue now counts; a release reported before this reads "not known".

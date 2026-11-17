@@ -1,1 +1,0 @@
-**A step or a requirement can leave open every question it needs.** A pipeline step's handoff is no longer limited to ten open questions, and a requirement's spec to fifty; only the list's overall size is bounded.
