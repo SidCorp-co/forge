@@ -1766,7 +1766,7 @@ export const SAID = {
 		vars: { environment: "name", proven: "count", total: "count" },
 	},
 	"releases.rule.allSkipped": {
-		en: "Every open criterion is recorded skipped, with no route to judge it on {environment}: {missing}",
+		en: "Every open criterion skipped, no route on {environment}: {missing}",
 		vars: { environment: "name", missing: "text" },
 	},
 	"releases.rule.mergedAwaitsRecord": {

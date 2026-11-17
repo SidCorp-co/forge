@@ -102,7 +102,7 @@ describe('a landed release whose every open criterion is recorded skipped', () =
     expect(turn.waitingOn).toMatchObject({
       kind: 'person',
       act: 'add what the skips on 0.11.0 name missing',
-      rule: 'Every open criterion is recorded skipped, with no route to judge it on stg: stg serves 1.23.0, not 03b88cbcb8f2',
+      rule: 'Every open criterion skipped, no route on stg: stg serves 1.23.0, not 03b88cbcb8f2',
     });
     expect(turn.waitingOn.who).toContain('Ada');
   });

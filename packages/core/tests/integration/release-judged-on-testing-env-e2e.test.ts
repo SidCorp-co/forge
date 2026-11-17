@@ -155,7 +155,7 @@ describe('a project that names dev as its testing environment (BC-18, BC-19)', (
     expect((await release(version)).waitingOn).toMatchObject({
       kind: 'you',
       act: `add what the skips on ${version} name missing`,
-      rule: `Every open criterion is recorded skipped, with no route to judge it on dev: No route: dev no longer serves ${F4.slice(0, 12)}.`,
+      rule: `Every open criterion skipped, no route on dev: No route: dev no longer serves ${F4.slice(0, 12)}.`,
     });
   });
 
