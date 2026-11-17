@@ -52120,7 +52120,7 @@
                     "type": "string"
                   },
                   "decision": {
-                    "description": "answer it, gather more on your own first, ask the person one short question, or stay silent",
+                    "description": "answer it, gather more on your own first, ask the person what you still need (each question with the answer you recommend), or stay silent",
                     "enum": [
                       "answer",
                       "gather",
