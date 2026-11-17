@@ -1,1 +1,0 @@
-**The feedback widget speaks your visitors' language.** A page that passes `locale: 'vi'` gets the chat, its buttons and its own Vietnamese greeting in Vietnamese; other languages show English. On a phone the close button is larger.

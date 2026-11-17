@@ -9,6 +9,22 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.716] - 2026-11-17
+
+Modules search opens the right term; module pages fit a phone; channel handoffs between projects
+
+### Fixed
+
+- **The steward reads before it judges a shipped issue.** Its follow-through reads the issue's criteria, their design classes and the judged build first, so it no longer writes verdicts the record refuses.
+- **Every issue route takes the issue's key, not only its uuid.** `/api/issues/ISS-56/transition`, `/events` and `/criteria` answer as the issue read does; a reference naming no issue is refused saying what was read.
+- **A master is no longer told to accept a triage it cannot accept.** Its wake offers the accept only where its account can, says to route the item where it can only route, and otherwise leaves it out.
+- **A master's wake no longer lists steward asks about dropped or closed issues.** An ask is listed only while the item it names still stands, read against the project's standings, without waiting for the steward's sweep.
+- **A support room's promise no longer reads FB-76 as issue 76.** A feedback key is told the issue its triage carries it on, or that none exists yet; a key of another prefix is refused naming the prefixes expected.
+- **Search opens the result you picked on the module map.** Picking a term such as Run slots now shows that term, not the first one listed, and a module page fits a phone screen without scrolling sideways.
+- **The feedback widget speaks your visitors' language.** A page that passes `locale: 'vi'` gets the chat, its buttons and its own Vietnamese greeting in Vietnamese; other languages show English. On a phone the close button is larger.
+- **A master stays for every item waiting on it.** When an issue, requirement, feedback item or workflow waits on the project's master, such as resuming a paused issue or proposing a draft, Forge keeps or starts one.
+- **A master can hand another project its part of an issue.** When its credential cannot write there, the refusal names the change request to send through the shared ecosystem, or who can link the two projects.
+
 ## [0.4.0-dev.715] - 2026-11-17
 
 Agents' UI tests run in watchable boxes; lessons attach to the guidance they describe
