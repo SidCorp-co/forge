@@ -53,9 +53,10 @@ export function useRerunSession() {
   });
 }
 
-export function useAbortSession() {
-  return useSessionMutation((sessionId: string) => sessionsApi.abort(sessionId), {
-    successMessage: (_d, t) => t("sessions.toast.aborted"),
+/** Stop a session's running turn (ISS-1268): the next message continues the same session. */
+export function useInterruptSession() {
+  return useSessionMutation((sessionId: string) => sessionsApi.interrupt(sessionId), {
+    successMessage: (_d, t) => t("sessions.toast.stopped"),
   });
 }
 

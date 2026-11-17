@@ -8,7 +8,8 @@ import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { useDisclosure } from "../disclosure";
 import { formatResultBody, summarizeResult } from "../result-summary";
 import { buildFileDiff, splitHunk, type FileDiff } from "../derive";
-import { getToolLabel, toolKind, type ToolCallData } from "../types";
+import { getToolLabel, type RenderBlock, toolKind, type ToolCallData } from "../types";
+import { ThinkingLine } from "./thinking-line";
 
 const KIND_ICON: Record<ReturnType<typeof toolKind>, IconName> = {
   edit: "branch",
@@ -128,11 +129,57 @@ function ToolRun({ tool, live, blockKey }: { tool: ToolCallData; live?: boolean;
   );
 }
 
+/** Each block with a key of its own: a call by its id, words by what they say and which time. */
+function keyedBlocks(blocks: RenderBlock[]): { block: RenderBlock; key: string }[] {
+  const seen = new Map<string, number>();
+  return blocks.map((block) => {
+    const base = block.type === "tool" ? block.tool.id : `${block.type}:${"text" in block ? (block.text ?? "") : ""}`;
+    const nth = (seen.get(base) ?? 0) + 1;
+    seen.set(base, nth);
+    return { block, key: nth === 1 ? base : `${base}#${nth}` };
+  });
+}
+
+/** What an `Agent` call's subagent said and called, under the call, opened on demand (ISS-1268). */
+function Subagent({ blocks, live, blockKey }: { blocks: RenderBlock[]; live?: boolean; blockKey?: string }) {
+  const [open, toggle] = useDisclosure(blockKey ? `${blockKey}:subagent` : undefined);
+  const t = useCopy();
+  const calls = blocks.length;
+  return (
+    <div data-testid="subagent" className="ml-3 flex flex-col gap-1.5">
+      <button type="button" aria-expanded={open} onClick={toggle} className="flex w-fit items-center gap-1.5 rounded-sm text-12 text-subtle hover:text-fg">
+        <Icon name={open ? "chevronDown" : "chevronRight"} size={12} className="flex-none" />
+        <span>{t(calls === 1 ? "session.subagent.step" : "session.subagent.steps", { n: calls })}</span>
+      </button>
+      {open && (
+        <div className="flex flex-col gap-1.5 border-l border-line-subtle pl-2">
+          {keyedBlocks(blocks).map(({ block: b, key }) =>
+            b.type === "tool" ? (
+              <ToolCall key={key} tool={b.tool} live={live} {...(blockKey ? { blockKey: `${blockKey}:${key}` } : {})} />
+            ) : b.type === "text" ? (
+              // a subagent's words are its report to the call, read as the session's working
+              <p key={key} className="fg-body-sm whitespace-pre-wrap text-muted">{b.text}</p>
+            ) : b.type === "thinking" ? (
+              <ThinkingLine key={key} text={b.text} durationMs={b.durationMs} count={b.count} />
+            ) : null,
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /**
- * One tool call.
+ * One tool call; an `Agent` call's subagent nests under it.
  */
 export function ToolCall({ tool, live, blockKey }: { tool: ToolCallData; live?: boolean; blockKey?: string }) {
   const diff = buildFileDiff(tool);
   if (diff && diff.hunks.length > 0) return <ToolEdit diff={diff} blockKey={blockKey} />;
-  return <ToolRun tool={tool} live={live} blockKey={blockKey} />;
+  if (!tool.subagent?.length) return <ToolRun tool={tool} live={live} blockKey={blockKey} />;
+  return (
+    <div className="flex flex-col gap-1">
+      <ToolRun tool={tool} live={live} blockKey={blockKey} />
+      <Subagent blocks={tool.subagent} live={live} {...(blockKey ? { blockKey } : {})} />
+    </div>
+  );
 }

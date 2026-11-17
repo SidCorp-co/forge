@@ -61,7 +61,16 @@ interface ChatComposerProps {
   /** A stop is in flight. */
   stopping?: boolean;
   initialValue?: string;
+  /**
+   * While `busy`, a message goes into the running turn: `now` steers it, `next` waits for it to end
+   * (ISS-1268). Given, the composer takes a send while busy and offers the one control that picks.
+   */
+  steer?: { priority: SteerPriority; onPriority: (p: SteerPriority) => void };
+  /** The next prompt the agent suggests, offered under the box after a turn; tapping fills the box. */
+  suggestion?: string | null;
 }
+
+export type SteerPriority = "now" | "next";
 
 function bandClass(sticky: boolean, pad: string): string {
   return sticky
@@ -118,8 +127,9 @@ export function ChatComposer(props: ChatComposerProps) {
   const { files } = staged;
   const { getRootProps, getInputProps, open: openPicker, isDragActive } = staged.dropzone;
 
+  const steering = Boolean(busy && props.steer);
   const canSend =
-    !disabled && (queueWhileBusy || !busy) && (value.trim().length > 0 || files.length > 0);
+    !disabled && (queueWhileBusy || steering || !busy) && (value.trim().length > 0 || (!steering && files.length > 0));
 
   const submit = async () => {
     if (!canSend) return;
@@ -171,17 +181,21 @@ export function ChatComposer(props: ChatComposerProps) {
             <ComposerFooter
               attachments={attachments}
               locked={Boolean(disabled || busy)}
-              busy={busy}
+              busy={busy && !steering}
               onAttach={openPicker}
               onSketch={() => setSketching(true)}
-              control={props.footerControl}
+              control={steering && props.steer ? <SteerControl {...props.steer} /> : props.footerControl}
               onStop={props.onStop}
               stopping={props.stopping}
               canSend={canSend}
+              alsoSend={steering && value.trim().length > 0}
               onSend={() => void submit()}
             />
           </div>
 
+          {props.suggestion && !busy && value === "" && (
+            <SuggestionChip text={props.suggestion} onPick={() => setValue(props.suggestion ?? "")} />
+          )}
           {hint && (
             <p className="fg-caption px-1 text-right text-disabled" data-testid="composer-hint">
               {hint}
@@ -233,6 +247,8 @@ function ComposerFooter(p: {
   onStop: (() => void) | undefined;
   stopping: boolean | undefined;
   canSend: boolean;
+  /** A message typed into a running turn: Send is offered beside Stop. */
+  alsoSend?: boolean;
   onSend: () => void;
 }) {
   const ghost = "h-11 w-11 flex-none";
@@ -248,12 +264,51 @@ function ComposerFooter(p: {
       {p.control}
       <div className="ml-auto flex flex-none items-center gap-2.5">
         {/* Stop is offered on the turn, not on this browser's send: `onStop` is given only while there is a turn to end. */}
-        {p.onStop ? (
+        {p.onStop && (
           <Button variant="secondary" size="md" icon="stop" aria-label={t("shell.composer.stop")} className="h-11 w-11 flex-none rounded-pill p-0" loading={p.stopping} onClick={p.onStop} />
-        ) : (
+        )}
+        {(!p.onStop || p.alsoSend) && (
           <Button variant="primary" size="md" icon="arrowRight" aria-label={t("shell.composer.send")} title={t("shell.composer.sendTitle", { keys: t("shell.composer.keys") })} className="h-11 w-11 flex-none rounded-pill p-0" loading={p.busy} disabled={!p.canSend} onClick={p.onSend} />
         )}
       </div>
+    </div>
+  );
+}
+
+/** The one control a message for a running turn takes: steer it now, or answer after it. */
+function SteerControl({ priority, onPriority }: { priority: SteerPriority; onPriority: (p: SteerPriority) => void }) {
+  const t = useCopy();
+  const next: SteerPriority = priority === "now" ? "next" : "now";
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      data-testid="steer-control"
+      aria-label={t("shell.composer.steer.pick")}
+      title={t(priority === "now" ? "shell.composer.steer.nowTitle" : "shell.composer.steer.nextTitle")}
+      className="min-h-11"
+      icon={priority === "now" ? "play" : "clock"}
+      onClick={() => onPriority(next)}
+    >
+      {t(priority === "now" ? "shell.composer.steer.now" : "shell.composer.steer.next")}
+    </Button>
+  );
+}
+
+/** The agent's suggested next prompt, as a chip; tapping it puts it in the box to edit or send. */
+function SuggestionChip({ text, onPick }: { text: string; onPick: () => void }) {
+  return (
+    <div className="flex">
+      <button
+        type="button"
+        data-testid="suggestion-chip"
+        onClick={onPick}
+        className="fg-body-sm max-w-full truncate rounded-pill border border-line bg-surface px-3 py-1.5 text-left text-muted hover:border-line-strong hover:text-fg min-h-11"
+        title={text}
+      >
+        {text}
+      </button>
     </div>
   );
 }

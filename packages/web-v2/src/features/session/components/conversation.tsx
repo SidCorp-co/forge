@@ -2,10 +2,9 @@
 // The shared conversation thread — renders flattened `ConversationItem[]`.
 // Reused by the run thread (session-screen) and the /agent Chat surface.
 // Prompt turns are editable + regen/fork anchors; agent turns render ordered
-// thinking / text / tool / todos blocks with a streaming caret on the live tail.
+// thinking / text / tool blocks with a streaming caret on the live tail.
 import { useEffect, useRef, useState } from "react";
 import { Button, Icon, StreamingText, Textarea } from "@/design";
-import { cn } from "@/lib/utils/cn";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { AttachmentList } from "@/features/attachments";
 import { UnsupportedBlock, VisualBlockView } from "@/features/visual-blocks";
@@ -14,7 +13,7 @@ import { readProseInstants } from "@/lib/i18n/instants";
 import { disclosureKeys, useThreadDisclosures } from "../disclosure";
 import { foldTurn } from "../fold";
 import { AGENT_COLUMN, USER_BUBBLE } from "../layout";
-import type { AgentTodo, ConversationItem, RenderBlock } from "../types";
+import type { ConversationItem, RenderBlock } from "../types";
 import { ThinkingLine } from "./thinking-line";
 import { ToolCall } from "./tool-call";
 
@@ -39,13 +38,13 @@ interface ConversationProps extends ConversationActions {
   readOnly?: boolean;
   newestAgentId?: string;
   /**
-   * Draw the agent's own working — tool calls, thinking lines, task lists (REQ-43 BC-7). Off, an agent
+   * Draw the agent's own working — tool calls and thinking lines (REQ-43 BC-7). Off, an agent
    * turn reads only what it said and showed; a turn that said nothing is not drawn. On by default.
    */
   agentText?: boolean;
 }
 
-/** What an agent turn said and showed, with its tool calls, thinking and task lists left out. */
+/** What an agent turn said and showed, with its tool calls and thinking left out. */
 const SAID_BLOCKS = new Set<RenderBlock["type"]>(["text", "visual", "unsupported"]);
 function saidOnly(items: ConversationItem[]): ConversationItem[] {
   return items.flatMap((it) => {
@@ -53,44 +52,6 @@ function saidOnly(items: ConversationItem[]): ConversationItem[] {
     const blocks = it.blocks.filter((b) => SAID_BLOCKS.has(b.type));
     return blocks.length ? [{ ...it, blocks }] : [];
   });
-}
-
-const TODO_ICON: Record<AgentTodo["status"], { name: "check" | "play" | "dot"; tone: string }> = {
-  completed: { name: "check", tone: "text-ok-11" },
-  in_progress: { name: "play", tone: "text-accent" },
-  pending: { name: "dot", tone: "text-subtle" },
-};
-
-function TodoList({ todos }: { todos: AgentTodo[] }) {
-  const t = useCopy();
-  if (todos.length === 0) return null;
-  // the agent rewrites the whole list each turn and two todos may share a content, so a todo is
-  // its content and which time that content appears
-  const seen = new Map<string, number>();
-  const keyed = todos.map((todo) => {
-    const nth = (seen.get(todo.content) ?? 0) + 1;
-    seen.set(todo.content, nth);
-    return { todo, key: `${todo.content}#${nth}` };
-  });
-  return (
-    <div className="border-l-2 border-line px-3 py-1.5">
-      <p className="fg-caption mb-1.5">{t("sessions.thread.taskList")}</p>
-      <ul className="space-y-1">
-        {keyed.map(({ todo, key }) => {
-          const ic = TODO_ICON[todo.status];
-          const done = todo.status === "completed";
-          return (
-            <li key={key} className="flex items-start gap-2">
-              <Icon name={ic.name} size={13} className={cn("mt-0.5 flex-none", ic.tone)} />
-              <span className={cn("fg-body-sm", done && "text-subtle line-through")}>
-                {todo.status === "in_progress" && todo.activeForm ? todo.activeForm : todo.content}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
 }
 
 function TurnActions({ item, busy, onRegenerate, onFork }: { item: ConversationItem; busy?: boolean } & Pick<ConversationActions, "onRegenerate" | "onFork">) {
@@ -227,7 +188,6 @@ function AgentTurn({ item, streamingTail, folded, busy, readOnly, onRegenerate, 
     if (block.type === "text") {
       return <StreamingText key={i} text={readProseInstants(block.text, instants)} streaming={streamingTail && i === caretIdx} />;
     }
-    if (block.type === "todos") return <TodoList key={i} todos={block.todos} />;
     if (block.type === "visual") return <VisualBlockView key={i} block={block.block} />;
     if (block.type === "unsupported") return <UnsupportedBlock key={i} kind={block.name} />;
     if (block.type === "thinking") {

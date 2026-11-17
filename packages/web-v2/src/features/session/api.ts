@@ -13,6 +13,8 @@ export interface SendOpts {
   message: string;
   claudeSessionId?: string | null;
   attachmentIds?: string[];
+  /** For a running turn: `now` steers it, `next` answers after it (ISS-1268). */
+  priority?: "now" | "next";
 }
 
 export interface ForkOpts {
@@ -39,7 +41,7 @@ export const sessionApi = {
   },
 
   /** `POST /api/agent-sessions/send` — queue a new user message to the device. */
-  send: ({ sessionId, message, claudeSessionId, attachmentIds }: SendOpts) =>
+  send: ({ sessionId, message, claudeSessionId, attachmentIds, priority }: SendOpts) =>
     apiClient<SessionRow>("/agent-sessions/send", {
       method: "POST",
       body: JSON.stringify({
@@ -47,6 +49,7 @@ export const sessionApi = {
         message,
         ...(claudeSessionId ? { claudeSessionId } : {}),
         ...(attachmentIds?.length ? { attachmentIds } : {}),
+        ...(priority ? { priority } : {}),
       }),
     }),
 

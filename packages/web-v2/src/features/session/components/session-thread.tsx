@@ -1,11 +1,14 @@
 
 // An interactive session's body: the conversation thread with its composer, beside the context rail
 // (a sticky rail from 1024px, a slide-over below it).
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { EmptyState, FactsRail, ProjectLoader, SlideOver, useElapsed } from "@/design";
-import { useCopy } from "@/lib/i18n/interface-language";
+import { useInterruptSession } from "@/features/sessions";
+import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
+import type { SteerPriority } from "@/features/chat";
 import { DisclosureScope } from "../disclosure";
 import { useEditTurn, useRegenerateTurn, useSendMessage, type useSession, type useSessionTurnPages } from "../hooks";
+import { contextShare, liveItem, liveStatus, useLiveTurn } from "../live";
 import type { ConversationItem } from "../types";
 import { ContextRail } from "./context-rail";
 import { Conversation } from "./conversation";
@@ -52,8 +55,17 @@ export function SessionThread({
   turnsTruncated,
 }: SessionThreadProps) {
   const t = useCopy();
+  const time = useTimeFormat();
   const sessionId = session.id;
   const send = useSendMessage(sessionId);
+  const interrupt = useInterruptSession();
+  const [priority, setPriority] = useState<SteerPriority>("now");
+  // what the running turn produces now, streamed until the transcript holds it (ISS-1268)
+  const liveTurn = useLiveTurn(sessionId);
+  const streamed = liveItem(liveTurn, turnsQ.dataUpdatedAt);
+  const shown = streamed ? [...items, streamed] : items;
+  const held = live ? liveStatus(liveTurn, t, (s) => time.clock(s * 1000)) : null;
+  const context = contextShare(liveTurn);
   const regenerate = useRegenerateTurn(sessionId);
   const editTurn = useEditTurn(sessionId);
   const streaming = live && !truncated;
@@ -62,16 +74,16 @@ export function SessionThread({
 
   // What this turn is doing, in the one line that replaced the `AgentWorking` card below the
   // thread (ISS-1083). Which statuses draw which stage is `sessionTurnStage`'s.
-  const stage = sessionTurnStage({ live, display, truncated, ...(items.length ? { tail: items[items.length - 1] } : {}) });
+  const stage = sessionTurnStage({ live, display, truncated, ...(shown.length ? { tail: shown[shown.length - 1] } : {}) });
 
   // Auto-scroll the thread to the newest message (ISS-728).
   const { scrollRef, onScroll, atBottom, newOutput, toBottom } = useStickToBottom({
     conversationKey: sessionId,
     ready: turnsQ.isSuccess,
-    itemCount: items.length,
+    itemCount: shown.length,
     live,
     streaming,
-    streamedChars: tailOutputSize(items),
+    streamedChars: tailOutputSize(shown),
   });
 
   return (
@@ -83,15 +95,15 @@ export function SessionThread({
             <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6 xl:max-w-5xl">
               {turnsQ.isLoading ? (
                 <ProjectLoader label={t("sessions.detail.loadingTurns")} size={110} />
-              ) : items.length === 0 && turnsError ? (
+              ) : shown.length === 0 && turnsError ? (
                 turnsError
-              ) : items.length === 0 ? (
+              ) : shown.length === 0 ? (
                 live ? null : (
                   <EmptyState message={t("sessions.detail.noMessages")} />
                 )
               ) : (
                 <Conversation
-                  items={items}
+                  items={shown}
                   agentText={developer}
                   streaming={streaming}
                   busy={
@@ -111,7 +123,7 @@ export function SessionThread({
               {turnsTruncated}
               {stage && (
                 <div className="mt-3">
-                  <TurnStage stage={stage} {...(elapsed ? { elapsed } : {})} />
+                  <TurnStage stage={stage} status={held} context={live ? context : null} {...(elapsed ? { elapsed } : {})} />
                 </div>
               )}
               {newOutput && <NewOutput onGo={toBottom} />}
@@ -120,10 +132,14 @@ export function SessionThread({
           <SessionComposer
             projectId={session.projectId}
             onSend={async (message, files) => {
-              await send.mutateAsync({ sessionId, message, files });
+              // a message for the running turn steers it or waits for it (ISS-1268)
+              await send.mutateAsync({ sessionId, message, files, ...(live ? { priority } : {}) });
             }}
             busy={live || send.isPending}
             disabled={!session.deviceId}
+            steer={{ priority, onPriority: setPriority }}
+            {...(live && session.status === "running" ? { onStop: () => interrupt.mutate(sessionId), stopping: interrupt.isPending } : {})}
+            suggestion={live ? null : (liveTurn?.suggestion ?? null)}
           />
         </div>
 

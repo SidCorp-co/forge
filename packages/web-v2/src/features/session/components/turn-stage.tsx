@@ -67,11 +67,17 @@ export function TurnStage({
   stage,
   elapsed,
   detail,
+  status,
+  context,
 }: {
   stage: TurnStage;
   elapsed?: string;
   /** What a working turn is doing right now, said in place of the bare stage. */
   detail?: string | null;
+  /** What holds a live turn up — a retry, a compaction, a rate limit — said in place of either (ISS-1268). */
+  status?: string | null;
+  /** How full the session's context is, a whole percent. */
+  context?: number | null;
 }) {
   const t = useCopy();
   return (
@@ -89,8 +95,18 @@ export function TurnStage({
           <Spinner size={12} />
         )}
       </span>
-      <span>{stage === "working" && detail ? `${detail}…` : t(LABEL[stage])}</span>
+      <span data-testid="turn-status">
+        {stage !== "failed" && status ? status : stage === "working" && detail ? `${detail}…` : t(LABEL[stage])}
+      </span>
       {elapsed && <span className="font-mono">· {elapsed}</span>}
+      {context != null && stage !== "failed" && (
+        <span data-testid="context-meter" className="ml-auto flex items-center gap-1.5" title={t("session.live.context", { n: context })}>
+          <span className="block h-1 w-12 overflow-hidden rounded-pill bg-sunken" aria-hidden>
+            <span className="block h-full bg-link" style={{ width: `${context}%` }} />
+          </span>
+          <span className="font-mono">{t("session.live.context", { n: context })}</span>
+        </span>
+      )}
     </div>
   );
 }

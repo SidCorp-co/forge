@@ -68,21 +68,14 @@ export function useProjectConversations(projectId: string | null) {
 }
 
 /**
- * How often a room with a live Agent turn in it re-reads itself.
+ * A room, read again when a frame says it moved: a message, a settled turn, or an Agent turn's
+ * session starting or ending a reply (`agent-session.live`, ISS-1268). Nothing polls it.
  */
-const AGENT_TURN_POLL_MS = 4000;
-
 export function useConversation(id: string | undefined) {
   return useQuery({
     queryKey: ["conversations", id],
     queryFn: () => conversationsApi.detail(id as string),
     enabled: !!id,
-    refetchInterval: (query) => {
-      const live = query.state.data?.agentTurns?.some(
-        (t) => t.state === "dispatched" || t.state === "running",
-      );
-      return live ? AGENT_TURN_POLL_MS : false;
-    },
   });
 }
 

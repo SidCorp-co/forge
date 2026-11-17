@@ -4,7 +4,7 @@
 import { useRouter } from "@/lib/navigation/router";
 import { type ReactNode, useState } from "react";
 import { Badge, Button, IconButton, Menu, type MenuItem, MonoTag, PageTitle, type RecordView, RecordViewSwitch, StatusBadge } from "@/design";
-import { type deriveSessionDisplayStatus, sessionStep, statusToChip, useCancelSession, useRerunSession } from "@/features/sessions";
+import { type deriveSessionDisplayStatus, isJobDriven, sessionStep, statusToChip, useCancelSession, useInterruptSession, useRerunSession } from "@/features/sessions";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { copyShareLink } from "@/lib/navigation/copy-share-link";
 import type { useSession } from "../hooks";
@@ -154,7 +154,10 @@ function SessionActs({
 }) {
   const router = useRouter();
   const t = useCopy();
+  // a run is cancelled; a chat's running turn is stopped and the next message continues it (ISS-1268)
   const cancel = useCancelSession();
+  const interrupt = useInterruptSession();
+  const stop = isJobDriven(session) ? cancel : interrupt;
   const rerun = useRerunSession();
   const issueId = session.metadata?.issueId;
   return (
@@ -166,8 +169,8 @@ function SessionActs({
               size="sm"
               icon="stop"
               className="min-h-11"
-              loading={cancel.isPending}
-              onClick={() => cancel.mutate(session.id)}
+              loading={stop.isPending}
+              onClick={() => stop.mutate(session.id)}
             >
               {t("sessions.detail.stop")}
             </Button>

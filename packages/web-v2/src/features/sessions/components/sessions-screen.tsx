@@ -22,7 +22,7 @@ import { useRoom } from "@/lib/ws/use-room";
 import { SESSIONS_PAGE_SIZE } from "../api";
 import { FleetStrip } from "./fleet-strip";
 import {
-  useAbortSession,
+  useInterruptSession,
   useCancelSession,
   useRerunSession,
   useRetrySession,
@@ -86,7 +86,7 @@ export function SessionsScreen({
   const cancel = useCancelSession();
   const retry = useRetrySession();
   const rerun = useRerunSession();
-  const abort = useAbortSession();
+  const interrupt = useInterruptSession();
   const sweep = useSweepZombies();
 
   // ISS-465 — kind counts come from the page before the kind filter.
@@ -121,7 +121,7 @@ export function SessionsScreen({
     label: `${t(KIND_KEY[k])} ${time.number(kindTotals[k])}`,
   }));
 
-  const actions = { cancel, retry, rerun, abort };
+  const actions = { cancel, retry, rerun, interrupt };
 
   return (
     <PageContainer className="min-h-dvh">

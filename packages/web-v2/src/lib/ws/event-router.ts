@@ -3,6 +3,7 @@ import type { WsFrame } from "@forge/contracts/ws-frames";
 import type { QueryClient } from "@tanstack/react-query";
 import { invalidateThroughInFlight } from "./invalidate-through-inflight";
 import { scheduleInvalidation } from "./invalidation-coalescer";
+import { foldLive, type LiveTurn, liveTurnKey } from "./live-turn";
 
 /** The Agents run list's root key (agents `RUNS_STANDING_ROOT`); a job or run move invalidates it. */
 const RUNS_STANDING_ROOT = "runs-standing";
@@ -164,6 +165,15 @@ function routeRunFrame(env: WsFrame, qc: QueryClient): boolean {
 		// what runs on the project moved where no other frame says so (REQ-15 BC-10)
 		case "project.now.changed": {
 			scheduleInvalidation(qc, data.source === "rooms" ? [SUPPORT_TURNS_ROOT, data.projectId] : [RUNS_STANDING_ROOT, data.projectId]);
+			return true;
+		}
+		// what a running turn produces now, never stored (ISS-1268): folded into the session's live turn;
+		// a room turn's start and end also make its room read the turn's state again
+		case "agent-session.live": {
+			qc.setQueryData(liveTurnKey(data.sessionId), (prev: LiveTurn | null | undefined) => foldLive(prev ?? undefined, data.items));
+			if (data.conversationId && data.items.some((i) => i.kind === "message" || i.kind === "ended")) {
+				scheduleInvalidation(qc, ["conversations", data.conversationId]);
+			}
 			return true;
 		}
 		case "agent-session.turn.appended":

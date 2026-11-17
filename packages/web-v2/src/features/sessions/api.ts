@@ -55,10 +55,7 @@ export const sessionsApi = {
   rerun: (id: string) =>
     apiClient<{ id: string }>(`/agent-sessions/${id}/rerun`, { method: "POST" }),
 
-  /** `POST /abort` — body { sessionId } → status idle. */
-  abort: (sessionId: string) =>
-    apiClient<{ ok: boolean }>("/agent-sessions/abort", {
-      method: "POST",
-      body: JSON.stringify({ sessionId }),
-    }),
+  /** `POST /:id/interrupt` — stop the running turn; the session keeps its process (ISS-1268). */
+  interrupt: (id: string) =>
+    apiClient<{ ok: boolean }>(`/agent-sessions/${id}/interrupt`, { method: "POST" }),
 };

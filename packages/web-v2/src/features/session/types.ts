@@ -13,12 +13,8 @@ export interface ToolCallData {
   isError?: boolean;
   /** Its input and output were the asker's and were not sent to this reader. */
   withheld?: true;
-}
-
-export interface AgentTodo {
-  content: string;
-  status: "pending" | "in_progress" | "completed";
-  activeForm?: string;
+  /** What the subagent an `Agent` call spawned said and called, in order (ISS-1268). */
+  subagent?: RenderBlock[];
 }
 
 /**
@@ -39,6 +35,8 @@ interface CanonicalToolCall {
    * theirs (`packages/core/src/conversations/tool-content.ts`).
    */
   withheld?: true;
+  /** The subagent's blocks under an `Agent` call (`packages/core/src/lib/subagent-nest.ts`). */
+  subagent?: CanonicalBlock[];
 }
 
 /**
@@ -48,7 +46,6 @@ interface CanonicalToolCall {
 export type CanonicalBlock =
   | { type: "text"; text?: string }
   | { type: "tool"; toolCall?: CanonicalToolCall }
-  | { type: "todos"; todos?: AgentTodo[] }
   | { type: "thinking"; thinking?: string; durationMs?: number }
   // Structured messages a service writes (ISS-63), drawn by features/onboarding, never by the session renderer.
   | { type: "questionnaire" | "questionnaire_answers"; batchId?: string }
@@ -75,6 +72,10 @@ export interface RunTotals {
   permissionDenials?: number;
   stopReason?: string;
   isError?: boolean;
+  /** Why the turn ended: `completed`, or `aborted_streaming` where it was stopped (ISS-1268). */
+  terminalReason?: string;
+  /** Each model's share of the turn, from the result's `modelUsage`. */
+  models?: Record<string, { contextWindow?: number; costUsd?: number }>;
 }
 
 /**
@@ -123,7 +124,6 @@ export interface TurnsResponse {
 export type RenderBlock =
   | { type: "text"; text: string }
   | { type: "tool"; tool: ToolCallData }
-  | { type: "todos"; todos: AgentTodo[] }
   | { type: "thinking"; text?: string; durationMs?: number; count?: number }
   | { type: "visual"; block: unknown }
   | { type: "unsupported"; name: string };
@@ -161,7 +161,8 @@ export function toolKind(name: string): ToolKind {
   if (name === "Read") return "read";
   if (name === "Grep" || name === "Glob") return "search";
   if (name === "Bash") return "run";
-  if (name === "Task" || name === "Skill") return "task";
+  // `Agent` is the subagent tool's name since Claude Code renamed `Task`; old transcripts keep `Task`
+  if (name === "Agent" || name === "Task" || name === "Skill") return "task";
   return "generic";
 }
 
@@ -211,6 +212,7 @@ export function getToolLabel(tc: ToolCallData, t: Copy = productCopy()): string 
       return t("sessions.tool.found", { pattern: (input.pattern as string) ?? "" });
     case "TodoWrite":
       return t("sessions.tool.taskList");
+    case "Agent":
     case "Task":
       return t("sessions.tool.agent", { what: (input.description as string) ?? (input.subagent_type as string) ?? t("sessions.tool.subtask") });
     case "Skill":
@@ -221,28 +223,6 @@ export function getToolLabel(tc: ToolCallData, t: Copy = productCopy()): string 
 }
 
 /* --------------------------- block derivation --------------------------- */
-
-function todoWriteToTodos(input: Record<string, unknown> | undefined): RenderBlock {
-  const raw = (input?.todos as AgentTodo[] | undefined) ?? [];
-  return {
-    type: "todos",
-    todos: raw.map((t) => ({
-      content: t.content,
-      status: (t.status) ?? "pending",
-      activeForm: t.activeForm,
-    })),
-  };
-}
-
-/** Keep only the last todos block (the runner re-emits the full list each time). */
-function dedupeTodos(blocks: RenderBlock[]): RenderBlock[] {
-  let lastIdx = -1;
-  blocks.forEach((b, i) => {
-    if (b.type === "todos") lastIdx = i;
-  });
-  if (lastIdx < 0) return blocks;
-  return blocks.filter((b, i) => b.type !== "todos" || i === lastIdx);
-}
 
 function entryText(content: unknown): string {
   if (typeof content === "string") return content;
@@ -273,6 +253,7 @@ function toToolCallData(tc: CanonicalToolCall): ToolCallData {
     durationMs: tc.durationMs,
     isError: tc.isError,
     ...(tc.withheld ? { withheld: true as const } : {}),
+    ...(tc.subagent?.length ? { subagent: tc.subagent.map(renderBlock).filter((b): b is RenderBlock => b !== null) } : {}),
   };
 }
 
@@ -284,12 +265,8 @@ type StoredBlock = NonNullable<MessageEntry["blocks"]>[number];
 function renderBlock(b: StoredBlock): RenderBlock | null {
   switch (b.type) {
     case "tool": {
-      if (!b.toolCall) return null;
-      const tool = toToolCallData(b.toolCall);
-      return tool.name === "TodoWrite" ? todoWriteToTodos(tool.input) : { type: "tool", tool };
+      return b.toolCall ? { type: "tool", tool: toToolCallData(b.toolCall) } : null;
     }
-    case "todos":
-      return { type: "todos", todos: b.todos ?? [] };
     case "thinking":
       return {
         type: "thinking",
@@ -312,21 +289,19 @@ function renderBlock(b: StoredBlock): RenderBlock | null {
 
 /** The older flat shape: tool calls, then the entry's text. */
 function flatBlocks(entry: MessageEntry): RenderBlock[] {
-  const out: RenderBlock[] = (entry.toolCalls ?? []).map((tc) =>
-    tc.name === "TodoWrite" ? todoWriteToTodos(tc.input) : { type: "tool", tool: toToolCallData(tc) },
-  );
+  const out: RenderBlock[] = (entry.toolCalls ?? []).map((tc) => ({ type: "tool", tool: toToolCallData(tc) }));
   const text = entryText(entry.content);
   if (text) out.push({ type: "text", text });
   return out;
 }
 
 function assistantBlocks(entry: MessageEntry): RenderBlock[] {
-  // Canonical CLI-runner shape: ordered text/tool/todos blocks. Preserving
+  // Canonical CLI-runner shape: ordered text/tool blocks. Preserving
   // order keeps assistant text interleaved between tool calls (ISS-348).
   const out = entry.blocks?.length
     ? entry.blocks.map(renderBlock).filter((b): b is RenderBlock => b !== null)
     : flatBlocks(entry);
-  return withPauseCount(entry, dedupeTodos(out));
+  return withPauseCount(entry, out);
 }
 
 /**

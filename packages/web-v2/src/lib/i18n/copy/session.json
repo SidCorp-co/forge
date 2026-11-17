@@ -1,6 +1,13 @@
 {
   "en": {
+    "session.live.compacting": "Compacting context",
+    "session.live.context": "{n}% context",
+    "session.live.limited": "Rate limited",
+    "session.live.limitedUntil": "Rate limited until {at}",
+    "session.live.retrying": "Retrying {n}/{of}",
     "session.report.cost": "Cost",
+    "session.subagent.step": "{n} step",
+    "session.subagent.steps": "{n} steps",
     "session.tool.ms": "{n}ms",
     "session.tool.seconds": "{n}s"
   }

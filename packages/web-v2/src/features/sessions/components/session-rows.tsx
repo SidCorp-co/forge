@@ -76,7 +76,7 @@ export interface RowActions {
   cancel: MutationLike;
   retry: MutationLike;
   rerun: MutationLike;
-  abort: MutationLike;
+  interrupt: MutationLike;
 }
 
 function buildMenuItems(row: SessionRow, display: AgentSessionDisplayStatus, a: RowActions, t: Copy): MenuItem[] {
@@ -93,8 +93,8 @@ function buildMenuItems(row: SessionRow, display: AgentSessionDisplayStatus, a: 
   if (isLive || isQueued) {
     items.push({ label: t("sessions.action.cancel"), icon: "x", danger: true, onSelect: () => a.cancel.mutate(row.id) });
   }
-  if (isLive || display === "idle") {
-    items.push({ label: t("sessions.action.abort"), icon: "stop", onSelect: () => a.abort.mutate(row.id) });
+  if (row.status === "running") {
+    items.push({ label: t("sessions.action.stop"), icon: "stop", onSelect: () => a.interrupt.mutate(row.id) });
   }
   if ((display === "failed" || display === "cancelled_stale") && isRetryable(row)) {
     items.push({ label: t("sessions.action.retry"), icon: "rerun", onSelect: () => a.retry.mutate(row.id) });
