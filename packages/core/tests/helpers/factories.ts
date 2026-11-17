@@ -120,6 +120,10 @@ export interface TestProject {
 }
 
 /** A project in a fresh org its creator owns, at `DEFAULT_POLICY` revision 1 unless `policy` says. */
+/** Hex spelled in the letters g to v, none of them a hex digit. */
+const lettersOf = (hex: string) =>
+  hex.replace(/[0-9a-f]/g, (c) => 'ghijklmnopqrstuv'.charAt(Number.parseInt(c, 16)));
+
 export async function createTestProject(
   createdBy: string,
   opts: {
@@ -128,7 +132,11 @@ export async function createTestProject(
     orgId?: string;
     agentConfig?: Record<string, unknown>;
     policy?: Record<string, unknown> | null;
-    /** The name its people know it by; the default carries a hex run a room's screen reads as a commit sha. */
+    /**
+     * The name its people know it by. The default spells the id's first eight hex digits in the
+     * letters g to v, so it is unique per project and holds no hex run a room's screen reads as a
+     * commit sha (`messaging/internal-codes.ts`).
+     */
     name?: string;
   } = {},
 ): Promise<TestProject> {
@@ -137,7 +145,7 @@ export async function createTestProject(
   const slug = `test-${id.slice(0, 8)}`;
   await db.execute(sql`
     INSERT INTO projects (id, slug, name, org_id, created_by, agent_config)
-    VALUES (${id}, ${slug}, ${opts.name ?? `Project ${id.slice(0, 8)}`}, ${orgId}, ${createdBy},
+    VALUES (${id}, ${slug}, ${opts.name ?? `Project ${lettersOf(id.slice(0, 8))}`}, ${orgId}, ${createdBy},
             ${JSON.stringify(opts.agentConfig ?? {})}::jsonb)
   `);
   const policy = opts.policy === undefined ? DEFAULT_POLICY : opts.policy;
