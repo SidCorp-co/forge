@@ -98,13 +98,7 @@ export async function resolveIssueRouteRef(
 
   requireDeclaredOr(await loadProjectAccess(projectId, userId), 'project.read');
 
-  const parsed = parseIssueRef(
-    rawId,
-    issueRefNeedsHeldPrefixes(rawId) ? await heldIssuePrefixes(projectId) : [],
-  );
-  if (!parsed.ok) throw badRequest(malformedRefMessage(parsed));
-
-  const issue = await findIssueByDisplaySeq(projectId, parsed.issSeq);
+  const issue = await issueOfKeyInProject(rawId, projectId);
   if (!issue) throw notFound(`\`${rawId}\` names no issue in this project`);
   return issue;
 }
@@ -122,14 +116,19 @@ function onlyFencedProject(): string | undefined {
 // Layer A: caller already asserted its own `projectId` (e.g. `issue-step-contexts`).
 export async function resolveIssueKeyInProject(rawId: string, projectId: string): Promise<string> {
   if (isUuid(rawId)) return rawId;
+  const issue = await issueOfKeyInProject(rawId, projectId);
+  if (!issue) throw notFound(`\`${rawId}\` names no issue in this project`);
+  return issue.id;
+}
+
+/** The issue a display key names in a project, or null; a reference of no key's shape is refused. */
+async function issueOfKeyInProject(rawId: string, projectId: string): Promise<IssueRow | null> {
   const parsed = parseIssueRef(
     rawId,
     issueRefNeedsHeldPrefixes(rawId) ? await heldIssuePrefixes(projectId) : [],
   );
   if (!parsed.ok) throw badRequest(malformedRefMessage(parsed));
-  const issue = await findIssueByDisplaySeq(projectId, parsed.issSeq);
-  if (!issue) throw notFound(`\`${rawId}\` names no issue in this project`);
-  return issue.id;
+  return findIssueByDisplaySeq(projectId, parsed.issSeq);
 }
 
 /** The uuid a display key names in a project, or `null` where it names none or is not a key it answers to. */
@@ -147,10 +146,15 @@ export async function issueExists(issueId: string): Promise<boolean> {
   return (await issueScopeOf(issueId)) !== null;
 }
 
+const TAKES_KEY_OR_UUID =
+  "An issue route takes the issue's uuid or its display key, like `ISS-42` (with " +
+  '`?projectId=<project uuid>` unless your token is fenced to one project).';
+
 const noIssueOfUuidMessage = (raw: string): string =>
-  `\`${raw}\` names no issue: no issue carries this uuid. An issue route takes the issue's uuid or ` +
-  'its display key, like `ISS-42` (with `?projectId=<project uuid>` unless your token is fenced ' +
-  'to one project).';
+  `\`${raw}\` names no issue: no issue carries this uuid. ${TAKES_KEY_OR_UUID}`;
+
+const noIssueOfKeyMessage = (raw: string): string =>
+  `\`${raw}\` names no issue in this project: no issue there carries this key. ${TAKES_KEY_OR_UUID}`;
 
 /**
  * Why an issue route's reference named no issue (ISS-1272): a key that names none in `projectId`,
@@ -164,7 +168,7 @@ export async function refuseUnresolvedIssueKey(
 ): Promise<void> {
   if (projectId) {
     requireHeld(await loadProjectAccess(projectId, userId), 'project.read');
-    await resolveIssueKeyInProject(rawId, projectId);
+    if (!(await issueOfKeyInProject(rawId, projectId))) throw notFound(noIssueOfKeyMessage(rawId));
     return;
   }
   if (isUuid(rawId)) throw notFound(noIssueOfUuidMessage(rawId));

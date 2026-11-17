@@ -3,7 +3,7 @@ import { verifyPat } from '../credentials/pat.js';
 import { isPatLike } from '../credentials/pat-format.js';
 import { tokenFence } from '../credentials/token-fence.js';
 import { refuser } from '../lib/refusal.js';
-import { type AuthVars, requireUserOrDevice } from './auth.js';
+import { type AuthVars, requireAuth, requireUserOrDevice } from './auth.js';
 import { bearerOfHeader, parseBearerHeader } from './bearer.js';
 import { type NamedProject, refuseOutsideFence } from './pat-fence.js';
 
@@ -265,16 +265,21 @@ async function refuseUnresolvedOutsideFence(c: Context, unresolved: Unresolved):
 }
 
 /**
- * Refuses a request whose reference named nothing: the caller is authenticated as any route would
- * (so a stranger learns nothing a 401 does not say), a fenced credential is held to its fence, then
- * the caller is told which reference failed and why.
+ * Refuses a request whose reference named nothing: the caller is authenticated as the route it
+ * addressed would (so a stranger learns nothing a 401 does not say), a fenced credential is held to
+ * its fence, then the caller is told which reference failed and why. Every route under
+ * `/api/issues/` mounts `requireAuth`, which admits a box's credential as the token it is, its
+ * holder under its fence, so an issue key is refused to the reader the route would have answered:
+ * `requireUserOrDevice` admits that credential as a bare device holding no project (ISS-1272 c2).
  */
 export function refuseUnresolvedRefs(): MiddlewareHandler<{ Variables: AuthVars }> {
-  const authenticate = requireUserOrDevice();
+  const asAnyRoute = requireUserOrDevice();
+  const asIssueRoute = requireAuth();
   return async (c, next) => {
     const raw = c.req.header(UNRESOLVED_HEADER);
     if (!raw) return next();
     const unresolved = JSON.parse(raw) as Unresolved;
+    const authenticate = unresolved.kind === 'issue' ? asIssueRoute : asAnyRoute;
     let refusal: unknown = null;
     await authenticate(c, async () => {
       try {

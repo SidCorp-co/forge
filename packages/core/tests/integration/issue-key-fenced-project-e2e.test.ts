@@ -18,6 +18,7 @@ import {
   createTestProject,
   createTestUser,
 } from '../helpers/factories.js';
+import { pairTestBox } from '../helpers/paired-box.js';
 
 let userId = '';
 let home = '';
@@ -145,6 +146,43 @@ describe('a display key on the routes under the issue read (ISS-1272)', () => {
     expect(said).toContain('`not_a_ref` is not an issue reference');
     expect(said).toContain('Or a uuid');
     expect(said).not.toContain('Invalid UUID');
+  });
+
+  // ISS-1272 c2 (dev.717): the box's checkout credential, which reads the project's issues, was
+  // told it was no member of the project for a key naming none, as the refusal read access off a
+  // person the device credential does not carry
+  it("refuses a key naming no issue by name on a box's checkout credential, as on a person's session", async () => {
+    const { paneToken } = await pairTestBox(home, { pairedBy: userId, actsAs: userId });
+    const outsider = (await createTestUser({ kind: 'agent' })).id;
+    const { paneToken: strangerBox } = await pairTestBox(home, {
+      pairedBy: outsider,
+      actsAs: outsider,
+    });
+    for (const [token, query] of [
+      [paneToken, ''],
+      [paneToken, `?projectId=${home}`],
+      [await userToken(userId), `?projectId=${home}`],
+    ] as const) {
+      for (const [method, sub] of [
+        ['GET', ''],
+        ['GET', '/criteria'],
+        ['POST', '/transition'],
+      ] as const) {
+        const body = method === 'POST' ? { toStatus: 'dropped' } : undefined;
+        const res = await api(token, method, `/api/issues/ISS-999999${sub}${query}`, body);
+        const said = JSON.stringify(res.body);
+        expect(res.status, `${method} ${sub}${query} ${said}`).toBe(404);
+        expect(said).toContain('`ISS-999999` names no issue in this project');
+        expect(said).toContain('uuid or its display key');
+        expect(said).not.toContain('not a member');
+      }
+    }
+    // a box fenced to the project whose credential's holder may not read it is still refused that
+    for (const ref of ['ISS-999999', 'ISS-7']) {
+      const refused = await api(strangerBox, 'GET', `/api/issues/${ref}/criteria`);
+      expect(refused.status, JSON.stringify(refused.body)).toBe(403);
+      expect(JSON.stringify(refused.body)).toContain('not a member');
+    }
   });
 
   it('says nothing about a reference to a caller who is not signed in', async () => {
