@@ -423,7 +423,7 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     situations: [
       {
         when: 'A defect your fix needs, to bound its impact or prove itself',
-        do: 'fix it there, and say so under `Extra fixes:`; out of reach, a comment on the issue that owns it, a `blocks` edge or `needs_info`',
+        do: 'fix it there, and say so under `Extra fixes:`; out of reach, a comment on the issue that owns it, a `blocks` edge or `needs_info`; a part another project builds, a change request to it through the ecosystem channel (`channel.draft`), never a person carrying it',
         watch: 'a defect nobody owns',
       },
     ],
@@ -439,7 +439,10 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
       'Mentioning a standalone defect only in a comment, where it belongs on the debt ledger.',
     family: 'issue-work',
     audience: ['master', 'run'],
-    scenarios: ['a standalone defect left in an issue comment, recorded nowhere'],
+    scenarios: [
+      'a standalone defect left in an issue comment, recorded nowhere',
+      "another project's part handed to a person while a channel links the two: ISS-1279",
+    ],
   }),
 ];
 

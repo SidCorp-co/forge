@@ -245,10 +245,17 @@ export const CARDS = {
         when: 'this project changes a contract others consume, or needs something from another project',
         do: 'draft the document to that project with its type and subject, then submit it once confirmed',
       },
+      {
+        when: "an issue of this project owes a part another project builds (the API's screen on its front end), and a write there is refused PAT_PROJECT_OUTSIDE_FENCE",
+        do: 'send that project a change request through the channel, as this project: the contract the two share, the need and its urgency, then submit; its master owes it a decision and files its own issue',
+        watch:
+          'handing the part to a person, or filing it on the other project, while a channel links the two',
+      },
     ],
     practice: [
       'An answer to a document is reply, not draft: it carries inReplyTo.',
       'The author is the token; a body naming an author is refused.',
+      'A fence refusal on a counterparty names the change request to send; where none links you, it names who links you.',
     ],
     example: {
       projectId: '<project uuid>',
@@ -261,7 +268,10 @@ export const CARDS = {
       'Drafting a new document to answer one, which leaves the parent owed: reply carries inReplyTo.',
     family: 'channel',
     audience: ['master'],
-    scenarios: ['an RFI answered with reply, a new draft kept for a new document'],
+    scenarios: [
+      'an RFI answered with reply, a new draft kept for a new document',
+      "an API issue's UI part sent to its sibling as a change request, never left to a person: ISS-1279",
+    ],
   },
   hold: {
     purpose: 'Holds a conversation for a person, so nothing is owed on it until they release it.',

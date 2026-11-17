@@ -12,6 +12,10 @@ import type { CardScenario } from '../lessons/index.js';
 const NONE = 'forge door use, 2026-08-19..11-17: no call';
 const ROUND = 'the ePOD/Catalog contract round (ISS-246, ISS-742)';
 const CATALOG = 'ISS-790 (FB-372, catalog-fe builder run 966a1da8)';
+/** adminhub-api ISS-243 (FB-76), its master's comment at 09:45Z on 2026-11-17, quoted in ISS-1279. */
+export const SIBLING = 'adminhub-api ISS-243, 2026-11-17 09:45Z (ISS-1279)';
+export const SIBLING_BAD =
+  'could not send it: the adminhub-api token is refused PAT_PROJECT_OUTSIDE_FENCE on adminhub-fe; a person’s act: the adminhub-fe master or the owner carries this note into adminhub-fe';
 
 export const CHANNEL_SCENARIOS: readonly CardScenario[] = [
   {
@@ -45,6 +49,19 @@ export const CHANNEL_SCENARIOS: readonly CardScenario[] = [
     situation: 'A master decided how to answer an RFI another project sent',
     good: 'answer with reply carrying inReplyTo; draft only a new notice, RFI or request',
     teaches: [/An answer to a document is reply, not draft/i],
+  },
+  {
+    name: "an API issue's UI part sent to its sibling as a change request, never left to a person: ISS-1279",
+    card: 'channel.draft',
+    source: SIBLING,
+    situation:
+      'An API master shipped its half of an issue; the screen is the front end’s, and filing it there was refused PAT_PROJECT_OUTSIDE_FENCE',
+    bad: SIBLING_BAD,
+    good: 'send the front end a change request through the channel, as this project, and let its master decide it',
+    teaches: [
+      /send that project a change request through the channel/i,
+      /handing the part to a person/i,
+    ],
   },
   {
     name: 'a change notice answered with the type it owes, never refused REPLY_TYPE_NOT_ALLOWED',

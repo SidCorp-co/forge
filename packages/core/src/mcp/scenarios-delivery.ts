@@ -4,6 +4,7 @@
 // names it. Times are UTC.
 
 import type { CardScenario } from '../lessons/index.js';
+import { SIBLING, SIBLING_BAD } from './scenarios-channel.js';
 
 const WINDOW = 'forge door use, 2026-10-17..11-16';
 
@@ -16,6 +17,19 @@ export const DELIVERY_SCENARIOS: readonly CardScenario[] = [
     bad: 'the defect was named in a comment on the issue and nowhere else',
     good: 'fix what the fix needs under Extra fixes:, and record a standalone defect on the debt ledger',
     teaches: [/Extra fixes:/, /debt ledger/i],
+  },
+  {
+    name: "another project's part handed to a person while a channel links the two: ISS-1279",
+    card: 'POST /api/issues/:id/comments',
+    source: SIBLING,
+    situation:
+      'A run’s issue owes a part another project builds, and its credential cannot write there',
+    bad: SIBLING_BAD,
+    good: 'send that project a change request through the ecosystem channel; no person carries it',
+    teaches: [
+      /a change request to it through the ecosystem channel/i,
+      /never a person carrying it/i,
+    ],
   },
   {
     name: 'a steward note saying more than the item’s standing: STEWARD_NOTE_CONTRADICTS',

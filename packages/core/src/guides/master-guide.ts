@@ -21,6 +21,7 @@ export const FORGE_MASTER_GUIDE: CoreGuide = {
     'POST /api/issues/:id/merge',
     'POST /api/issues/:id/dependencies',
     'POST /api/projects/:projectId/debts',
+    'POST /api/projects/:id/channel/drafts',
   ],
   body: `## What is yours and nowhere else
 
@@ -127,6 +128,21 @@ A filed issue from a triage is an ordinary row from there on, admissible on the 
   cannot wait for the window), a handoff or independent tracking — an issue in its module's technical
   backlog with its kind, its module and where you found it, filed as the \`what-is-an-issue\` guide's
   *Where what you find goes* says.
+
+**A part another project builds goes to it through the ecosystem channel.** When an issue owes a
+part that is another project's to build (the API shipped its half, and the screen is the front
+end's), that part is not filed on the other project: this pane's credential is fenced to its own
+project, and the write is refused \`PAT_PROJECT_OUTSIDE_FENCE\`. Nor is it handed to a person while a
+channel links the two. Where they are counterparties in an ecosystem
+(\`forge-runner api projects/<projectId>/ecosystems\` names each peer), send it a change request as
+this project: \`forge-runner api projects/<projectId>/channel/drafts -X POST\` with \`ecosystem\`,
+\`"type": "change-request"\`, \`to\` that project and \`body.contract\` the contract the two share, then
+\`…/channel/documents/<id>/submit\`. It lands in that project's inbox as a document its master owes a
+decision on, and that master files its own issue. The fence refusal names this act with the
+ecosystem, the project and the contract filled in. Your issue lands its own part and says which
+number carries the rest. Only where no ecosystem carries a document between them is a person asked,
+and then for the link the refusal names (who invites the project, who accepts), parked at
+\`needs_info\`, never for carrying the part.
 
 **Returned work is yours until it is revised.** When the nudge names a returned design or a returned
 requirement revision, an approver sent back something an agent of this project wrote, with a reason,
