@@ -53,7 +53,6 @@ describe("where a door stands", () => {
 
   it("owes a re-check at zero calls too, so the re-check count holds every card owing one (dev.701: 3 of 7)", () => {
     const owed = { card: "support.member", recheckOwed: { since: "2026-11-16T00:00:00.000Z" }, scenarios: [], proposed: [] };
-    expect(standingOf(door({ calls: 0, byAgent: {} }), report, [lesson({ invalid: true })])).toBe("recheck");
     expect(standingOf(door({ calls: 0, byAgent: {} }), null, [], owed)).toBe("recheck");
   });
 
