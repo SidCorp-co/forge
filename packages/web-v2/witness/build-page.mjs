@@ -63,9 +63,23 @@ export function publicPictures() {
   };
 }
 
+/** noVNC (a desktop box's view, ISS-1276) awaits at its top level, which the page's one script (an
+ *  IIFE) cannot hold, and the app loads it only when a desktop box is watched. No witness watches one:
+ *  here it is a module that refuses by name, so a page that did reach for it fails loudly. */
+export function noVnc() {
+  const id = "\0witness-novnc";
+  return {
+    name: "witness-novnc",
+    enforce: "pre",
+    resolveId: (source) => (source === "@novnc/novnc" ? id : null),
+    load: (loaded) =>
+      loaded === id ? 'export default class RFB { constructor() { throw new Error("noVNC is not bundled into a witness page: it awaits at its top level"); } }\n' : null,
+  };
+}
+
 export async function buildPage(entry, out) {
   const { vite, shared, plugins: app } = await viteFor("production");
-  const plugins = [...app, keepEntry(entry), publicPictures()];
+  const plugins = [...app, keepEntry(entry), publicPictures(), noVnc()];
   // the entry and the app's stylesheet are bundled as one page: the stylesheets components import
   // themselves (the workflow canvas, the board) land in the same app.css, so a canvas is drawn as the
   // app draws it; nothing an earlier run left in `<out>` is read as this one's
