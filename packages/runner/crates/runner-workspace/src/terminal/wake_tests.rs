@@ -105,14 +105,6 @@ while True:
     draw()
 "#;
 
-/// The wake a master is handed: long and many lines, as a real brief is.
-fn wake() -> String {
-    (1..=20)
-        .map(|i| format!("Line {i} of the wake, long enough that the text is a real paste."))
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
 /// A tmux server of the test's own, with one pane running the stand-in. Dropping it ends that
 /// server by its socket and removes its directory.
 struct Pane {
@@ -215,70 +207,6 @@ fn logged(pane: &Pane, want: &str, within: Duration) -> String {
         }
         std::thread::sleep(Duration::from_millis(50));
     }
-}
-
-/// The live failure: a resumed pane takes longer than the old fixed delay to draw its composer.
-/// The wake typed before the program reads lands in a canonical tty, which turns its Enter into an
-/// LF, a newline in the draft, so the wake sat at the prompt while the box read it delivered.
-#[tokio::test(flavor = "current_thread")]
-async fn a_wake_typed_while_the_pane_is_still_starting_is_submitted_once_it_draws_its_composer() {
-    let test =
-        "a_wake_typed_while_the_pane_is_still_starting_is_submitted_once_it_draws_its_composer";
-    let Some(pane) = stand_in(test, "--startup 7") else {
-        return;
-    };
-    let typed = super::brief_new_pane(&pane.name, &wake()).await;
-    let log = logged(&pane, "SUBMITTED", Duration::from_secs(10));
-    assert!(
-        log.contains("SUBMITTED on enter 1"),
-        "the wake was left unsubmitted at the prompt of a pane still starting (typed: {typed:?}); the stand-in logged: {log:?}"
-    );
-    assert!(
-        typed.is_ok(),
-        "a submitted wake was said not delivered: {typed:?}"
-    );
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn a_wake_whose_first_enter_is_swallowed_is_pressed_again_and_submits() {
-    let test = "a_wake_whose_first_enter_is_swallowed_is_pressed_again_and_submits";
-    let Some(pane) = stand_in(test, "--swallow 1") else {
-        return;
-    };
-    let typed = super::brief_new_pane(&pane.name, &wake()).await;
-    let log = logged(&pane, "SUBMITTED", Duration::from_secs(5));
-    assert!(
-        log.contains("SUBMITTED on enter 2"),
-        "a wake whose first Enter was swallowed was not pressed again (typed: {typed:?}); the stand-in logged: {log:?}"
-    );
-    assert!(
-        typed.is_ok(),
-        "a submitted wake was said not delivered: {typed:?}"
-    );
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn a_wake_that_never_submits_is_said_unsent_naming_the_pane() {
-    let test = "a_wake_that_never_submits_is_said_unsent_naming_the_pane";
-    let Some(pane) = stand_in(test, "--never") else {
-        return;
-    };
-    let typed = super::brief_new_pane(&pane.name, &wake()).await;
-    let log = logged(&pane, "swallowed 3", Duration::from_secs(5));
-    let said = match &typed {
-        Err(e) => e.to_string(),
-        Ok(_) => {
-            panic!("a wake the pane never took was said delivered; the stand-in logged: {log:?}")
-        }
-    };
-    assert!(
-        said.contains(&pane.name) && said.contains("unsent"),
-        "the refusal does not name the pane and the wake sitting unsent: {said}"
-    );
-    assert!(
-        !log.contains("SUBMITTED"),
-        "the stand-in submitted, so this plants nothing: {log:?}"
-    );
 }
 
 /// Wait for the stand-in to draw its composer, as a pane that has long been up has.

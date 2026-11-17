@@ -11,7 +11,7 @@ mod chat_checkout_test_repo;
 mod chat_live;
 pub mod chat_turns;
 pub mod claude_code;
-pub mod pane_launch;
+pub mod room_launch;
 pub mod support_build;
 
 use std::path::PathBuf;

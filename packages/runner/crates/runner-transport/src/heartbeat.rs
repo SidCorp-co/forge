@@ -81,10 +81,10 @@ pub struct Conditions {
     /// sends no `disk` key, which core reads as "changes nothing": a box that
     /// has not read yet says nothing rather than an empty picture.
     pub disk: Option<Vec<runner_proto::disk::Root>>,
-    /// A channel agent's panes (ISS-946), as `capabilities.chatPanes`: the tmux socket, each live
-    /// pane by the session it serves, and why none can be made where that is so. `None` where this
-    /// box runs no chat panes, which says nothing.
-    pub chat_panes: Option<serde_json::Value>,
+    /// A channel agent's rooms (ISS-946, ISS-1268 BR), as `capabilities.chatRooms`: each live
+    /// room's project by the session it serves, and why none can be made where that is so. `None`
+    /// where this box runs no room agents as background sessions, which says nothing.
+    pub chat_rooms: Option<serde_json::Value>,
 }
 
 /// What core answered a beat with.
@@ -191,8 +191,8 @@ pub(crate) fn heartbeat_body(
     if let Some(roots) = &conditions.disk {
         body["disk"] = serde_json::json!({ "roots": roots });
     }
-    if let Some(panes) = &conditions.chat_panes {
-        body["capabilities"]["chatPanes"] = panes.clone();
+    if let Some(rooms) = &conditions.chat_rooms {
+        body["capabilities"]["chatRooms"] = rooms.clone();
     }
     body
 }
@@ -353,21 +353,20 @@ mod tests {
         }
     }
 
-    /// ISS-946: core prints a channel agent's attach command from what the box says here, so the
-    /// socket and the pane's name ride on the beat, and a box running no panes says nothing.
+    /// ISS-946, ISS-1268 BR: core prints a channel agent's attach command from what the box says
+    /// here, so each room's project rides on the beat, and a box running no rooms says nothing.
     #[test]
-    fn a_box_s_chat_panes_ride_in_its_capabilities_and_a_box_without_says_nothing() {
-        let panes =
-            serde_json::json!({ "socket": "/r/tmux.sock", "sessions": { "s1": "forge-chat-p" } });
+    fn a_box_s_chat_rooms_ride_in_its_capabilities_and_a_box_without_says_nothing() {
+        let rooms = serde_json::json!({ "sessions": { "s1": "p" } });
         let conditions = Conditions {
-            chat_panes: Some(panes.clone()),
+            chat_rooms: Some(rooms.clone()),
             ..Conditions::default()
         };
         let body = heartbeat_body("1.0.0", None, &conditions);
-        assert_eq!(body["capabilities"]["chatPanes"], panes, "{body}");
+        assert_eq!(body["capabilities"]["chatRooms"], rooms, "{body}");
         assert!(body["capabilities"]["confinedChat"].is_boolean(), "{body}");
         let none = heartbeat_body("1.0.0", None, &Conditions::default());
-        assert!(none["capabilities"].get("chatPanes").is_none(), "{none}");
+        assert!(none["capabilities"].get("chatRooms").is_none(), "{none}");
     }
 
     #[test]

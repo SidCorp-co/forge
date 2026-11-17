@@ -11,9 +11,9 @@ pub use control::Priority;
 mod outcome;
 #[doc(hidden)]
 pub mod own_testkit;
-pub mod pane;
-mod pane_first_turn;
-mod pane_turn;
+pub mod room;
+mod room_first_turn;
+mod room_turn;
 use outcome::*;
 mod permits;
 mod stream;
@@ -121,8 +121,9 @@ pub struct ClaudeCodeRunner {
     close_grace: Duration,
     /// Each chat session's one running turn and the seqs its turns numbered (ISS-977).
     chat_turns: crate::chat_turns::ChatTurns,
-    /// Channel agents' sessions running in a pane their owner attaches to (ISS-946).
-    panes: pane::Panes,
+    /// Channel agents' sessions running as background sessions in rooms their owner attaches to
+    /// (ISS-946, ISS-1268 BR).
+    rooms: room::Rooms,
 }
 
 /// A turn core handed this box for a session, held from the moment its frame is read until the
@@ -165,7 +166,7 @@ impl ClaudeCodeRunner {
             placing: Arc::new(std::sync::Mutex::new(HashMap::new())),
             close_grace: CLOSE_GRACE,
             chat_turns: crate::chat_turns::ChatTurns::default(),
-            panes: Arc::default(),
+            rooms: Arc::default(),
         }
     }
 
@@ -324,7 +325,7 @@ pub(crate) fn args_with_plugins(spec: &JobSpec, plugins: &PluginLaunch) -> Vec<S
 impl ClaudeCodeRunner {
     /// What the live duplex session for `id` was spawned with, if there is one.
     pub async fn resident(&self, id: &SessionId) -> Option<Resident> {
-        if let Some(r) = self.pane_resident(id).await {
+        if let Some(r) = self.room_resident(id).await {
             return Some(r);
         }
         let map = self.sessions.lock().await;
@@ -342,7 +343,7 @@ impl ClaudeCodeRunner {
 
     /// Hand a resident session the token of the turn about to be written into it.
     pub async fn refresh_bearer(&self, id: &SessionId, credential: &str) -> Result<()> {
-        let dir = match self.pane_bearer_dir(id).await {
+        let dir = match self.room_bearer_dir(id).await {
             Some(dir) => dir,
             None => {
                 let map = self.sessions.lock().await;
@@ -370,8 +371,8 @@ impl ClaudeCodeRunner {
         pending: (String, u64),
     ) -> Result<()> {
         self.placed(id).await;
-        if self.holds_pane(id).await {
-            return self.pane_inject(id, message, pending).await;
+        if self.holds_room(id).await {
+            return self.room_inject(id, message, pending).await;
         }
         {
             let map = self.sessions.lock().await;
@@ -394,7 +395,7 @@ impl ClaudeCodeRunner {
     /// say nothing about, which is not the same as one that ended.
     pub async fn holds(&self, id: &SessionId) -> bool {
         self.placing_turn(id)
-            || self.holds_pane(id).await
+            || self.holds_room(id).await
             || self.sessions.lock().await.contains_key(id)
     }
 
@@ -421,7 +422,7 @@ impl ClaudeCodeRunner {
 
     /// Record the checkout the session has just been told about.
     pub async fn note_head(&self, id: &SessionId, head_sha: Option<String>) {
-        if self.pane_note_head(id, head_sha.clone()).await {
+        if self.room_note_head(id, head_sha.clone()).await {
             return;
         }
         if let Some(s) = self.sessions.lock().await.get_mut(id) {
@@ -462,7 +463,7 @@ impl ClaudeCodeRunner {
     /// each spawn its own handle is also what keeps two processes off one Claude session: the
     /// replacement resumes the same transcript the closed one would otherwise still be writing.
     pub(crate) async fn retire(&self, id: &str) -> Result<()> {
-        self.close_pane(id, "closed between turns").await;
+        self.close_room(id, "closed between turns").await;
         let ended = {
             let mut map = self.sessions.lock().await;
             let Some(s) = map.get_mut(id) else {
@@ -560,7 +561,7 @@ impl ClaudeCodeRunner {
     }
 
     pub async fn close_all_resident(&self) -> Vec<SessionId> {
-        let mut closed = self.close_all_panes().await;
+        let mut closed = self.close_all_rooms().await;
         let mut map = self.sessions.lock().await;
         for (id, s) in map.iter_mut() {
             if s.stdin.take().is_some() {
@@ -841,8 +842,8 @@ impl Runner for ClaudeCodeRunner {
         message: String,
         tx: mpsc::Sender<RunnerEvent>,
     ) -> Result<()> {
-        if self.holds_pane(session).await {
-            return self.pane_send(session, &message, tx, None).await;
+        if self.holds_room(session).await {
+            return self.room_send(session, &message, tx, None).await;
         }
         let mut map = self.sessions.lock().await;
         let sess = map
@@ -873,7 +874,7 @@ impl Runner for ClaudeCodeRunner {
     }
 
     async fn abort(&self, session: &SessionId) -> Result<()> {
-        if self.close_pane(session, "aborted").await {
+        if self.close_room(session, "aborted").await {
             return Ok(());
         }
         let mut s = self.sessions.lock().await;
@@ -1001,6 +1002,16 @@ impl SessionCommand<'_> {
         &self,
         view: Option<confine::BoxView>,
     ) -> Result<(tokio::process::Command, Option<EgressGuard>)> {
+        self.build_with(view, None).await
+    }
+
+    /// [`SessionCommand::build`] for a room agent's sandbox, which holds the room's own
+    /// directories in place of the box's Claude Code config (ISS-1268 BR).
+    pub(crate) async fn build_with(
+        &self,
+        view: Option<confine::BoxView>,
+        room: Option<&runner_workspace::bg_session::room::RoomDirs>,
+    ) -> Result<(tokio::process::Command, Option<EgressGuard>)> {
         let Self {
             spec,
             program,
@@ -1057,13 +1068,16 @@ impl SessionCommand<'_> {
             needs_auth_cache: confine::needs_auth_cache_for(bearer_dir, &egress_socket),
             egress_socket,
             gh_shim_dir: gh_shim.as_deref(),
+            room,
         };
         let allow = confine::egress_allow(&view, &handed)?;
         let upstream = confine::upstream(&view)?;
         let mut cmd = confine::chat_sandbox(&view, &handed)?.command(program, args)?;
         own_session(&mut cmd);
         let egress = start_egress(&handed.egress_socket, allow, upstream)?;
-        confine::own_needs_auth_cache(&view, &handed)?;
+        if room.is_none() {
+            confine::own_needs_auth_cache(&view, &handed)?;
+        }
         Ok((cmd, Some(egress)))
     }
 }

@@ -234,9 +234,10 @@ pub struct RunnerSettings {
     /// can send what it reads, so the default is none.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub chat_egress_allow: Vec<String>,
-    /// Whether a channel agent's resident session runs interactive in a tmux pane its owner
-    /// attaches to (`forge-chat-<slug>`, ISS-946) rather than headless. Off unless a box says so;
-    /// a box that cannot make the pane runs the session headless and says why.
+    /// Whether a channel agent's resident session runs as a Claude Code background session in a
+    /// sandbox of its own, which its owner attaches to (`forge-runner chat attach <slug>`, ISS-946,
+    /// ISS-1268 BR), rather than headless. Off unless a box says so; a box that cannot make the
+    /// room runs the session headless and says why.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub chat_panes: bool,
     /// The Claude Code version this box runs its background sessions on (ISS-1268 C1): a

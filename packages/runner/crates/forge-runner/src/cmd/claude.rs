@@ -138,5 +138,17 @@ async fn respawn_ours() -> anyhow::Result<Vec<(String, String)>> {
             out.push((name.to_string(), said));
         }
     }
+    // a room agent's session is listed and respawned only inside its room (ISS-1268 BR)
+    for host in bg_session::room::Host::all() {
+        for s in host.roster().await? {
+            let (Some(id), Some(name)) = (s.id.as_deref(), s.name.as_deref()) else {
+                continue;
+            };
+            if s.is_background() && s.is_live() && ours(name) {
+                let said = host.respawn(id).await.map_err(anyhow::Error::msg)?;
+                out.push((name.to_string(), said));
+            }
+        }
+    }
     Ok(out)
 }

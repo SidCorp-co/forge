@@ -4,53 +4,11 @@
 //! is `submit.rs`.
 
 use std::process::Stdio;
-use std::time::Duration;
 
 use runner_platform::error::Error;
 
-use super::{alive, has_session, pane_target, socket_args, submit, tmux, tmux_command, Presence};
+use super::{has_session, pane_target, socket_args, submit, tmux, tmux_command, Presence};
 use crate::composer;
-
-/// How long a pane just started may take to draw its composer before its
-/// brief is typed regardless, and how often it is looked at meanwhile.
-pub const PANE_READY_WITHIN: Duration = Duration::from_secs(60);
-const PANE_READY_POLL: Duration = Duration::from_millis(250);
-
-/// Hand a pane just started its brief, once its program draws something to
-/// take it.
-///
-/// This used to sleep five seconds and type. A resumed Claude Code takes
-/// longer than that to draw its composer, and until it makes its tty raw what
-/// is typed lands in the line discipline, which turns Enter's CR into an LF:
-/// a newline in the draft, not a submit. Every master resumed on 2026-11-07
-/// was typed at blind, and five sat with their brief unsent until somebody
-/// pressed Enter (ISS-1081). So the pane is read until it shows a composer or
-/// a dialog, and only then typed into. One that shows neither within
-/// [`PANE_READY_WITHIN`] is typed into regardless and said so, since a brief
-/// never typed is lost; `send_line` reads that pane back once its composer
-/// shows the message, and answers `Unsubmitted`, pressing no Enter, where it
-/// never does.
-pub async fn brief_new_pane(name: &str, text: &str) -> std::result::Result<Prompt, NotTyped> {
-    if !alive(name).await {
-        return Err(NotTyped::Gone(name.to_string()));
-    }
-    let target = pane_target(name);
-    let polls = (PANE_READY_WITHIN.as_millis() / PANE_READY_POLL.as_millis()) as usize;
-    let drawn = submit::until_read(
-        &mut || read_prompt(&target),
-        |c| *c != composer::Composer::Unrecognised,
-        PANE_READY_POLL,
-        polls,
-    )
-    .await;
-    if drawn.is_none() {
-        tracing::warn!(
-            "[terminal] {name}: drew no Claude Code composer within {PANE_READY_WITHIN:?} of \
-starting, so its brief is typed into a program that may not be reading yet"
-        );
-    }
-    send_line(name, text).await
-}
 
 /// What `send_line` knew about the prompt it typed at.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

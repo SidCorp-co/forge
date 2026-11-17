@@ -281,7 +281,7 @@ async fn heartbeat(
     while ticks.next().await.is_some() {
         let conditions = heartbeat::Conditions {
             disk: disk.borrow().clone(),
-            chat_panes: runner_agent::claude_code::pane::chat_pane_facts(),
+            chat_rooms: runner_agent::claude_code::room::chat_room_facts(),
             ..heartbeat_conditions(
                 runner_platform::config::config_dir().as_deref(),
                 agent_activity::now_ms(),
@@ -795,7 +795,7 @@ fn heartbeat_conditions(
         binaries,
         dialogs: runner_core::dialog_answer::report(dir),
         disk: None,
-        chat_panes: None,
+        chat_rooms: None,
     }
 }
 

@@ -59,10 +59,11 @@ pub struct Args {
     pub relay: bool,
 }
 
-/// What a chat pane's hook prints: the status line a person attached to the pane reads, or `{}`.
+/// What a room agent's hook prints: the status line a person attached to the session reads, or
+/// `{}`.
 pub fn chat_pane_said(event: &str) -> &'static str {
     if event == runner_core::chat_pane_events::STATUS_LINE {
-        "forge chat pane"
+        "forge room agent"
     } else {
         "{}"
     }

@@ -17,19 +17,21 @@ use std::time::Duration;
 
 use tokio::process::Command;
 
-pub mod chat_pane;
 mod launch;
 mod pane_env;
 mod submit;
 mod typing;
-pub use chat_pane::{chat_pane, ChatPane, ChatPaneRefused, CHAT_PREFIX};
 pub use launch::*;
 pub use pane_env::{missing_binaries, pane_env, pane_env_in, pane_env_read};
 use runner_platform::error::{Error, Result};
 use typing::read_prompt;
-pub use typing::{brief_new_pane, pane_prompt, send_line, NotTyped, Prompt, PANE_READY_WITHIN};
+pub use typing::{pane_prompt, send_line, NotTyped, Prompt};
 
 pub const MASTER_PREFIX: &str = "forge-master";
+
+/// The name a channel's room agent runs under (`forge-chat-<slug>`, ISS-946): a background
+/// session's since ISS-1268 BR, no pane's.
+pub const CHAT_PREFIX: &str = "forge-chat";
 
 pub const JOB_PREFIX: &str = "forge-job";
 

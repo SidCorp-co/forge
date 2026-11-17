@@ -126,6 +126,9 @@ pub(crate) struct Handed<'a> {
     /// The session's own needs-auth cache, bound over Claude Code's (ISS-1201): see
     /// [`needs_auth_cache_for`].
     pub needs_auth_cache: PathBuf,
+    /// A room agent's own directories (ISS-1268 BR): its sandbox holds Claude Code's background
+    /// service, so it gets a config dir, `/tmp` and runtime dir of its own in place of the box's.
+    pub room: Option<&'a runner_workspace::bg_session::room::RoomDirs>,
 }
 
 /// Variables a session inherits by name: locale, terminal, proxies and trust roots, and Claude
@@ -240,19 +243,9 @@ pub(crate) fn chat_sandbox(view: &BoxView, handed: &Handed<'_>) -> Result<Sandbo
             mounts.push(Mount::Read(file.to_path_buf()));
         }
     }
-    let claude_dir = claude_dir(view);
-    let mut writable = vec![claude_dir.clone()];
-    if view.var("CLAUDE_CONFIG_DIR").is_none() {
-        writable.push(view.home.join(".claude.json"));
-    }
-    for path in writable.into_iter().filter(|p| p.exists()) {
-        mounts.push(Mount::Write(path));
-    }
-    if claude_dir.is_dir() {
-        mounts.push(Mount::Bind {
-            source: handed.needs_auth_cache.clone(),
-            target: claude_dir.join(NEEDS_AUTH_CACHE),
-        });
+    match handed.room {
+        Some(room) => mounts.extend(room_mounts(view, room)),
+        None => mounts.extend(claude_mounts(view, handed)),
     }
     if let Some(shim) = handed.gh_shim_dir.filter(|d| d.is_dir()) {
         mounts.push(Mount::Read(shim.to_path_buf()));
@@ -269,6 +262,51 @@ pub(crate) fn chat_sandbox(view: &BoxView, handed: &Handed<'_>) -> Result<Sandbo
             bridge,
         }),
     })
+}
+
+/// The box's Claude Code config writable, with the session's own needs-auth cache over its one.
+fn claude_mounts(view: &BoxView, handed: &Handed<'_>) -> Vec<Mount> {
+    let claude_dir = claude_dir(view);
+    let mut mounts = Vec::new();
+    let mut writable = vec![claude_dir.clone()];
+    if view.var("CLAUDE_CONFIG_DIR").is_none() {
+        writable.push(view.home.join(".claude.json"));
+    }
+    for path in writable.into_iter().filter(|p| p.exists()) {
+        mounts.push(Mount::Write(path));
+    }
+    if claude_dir.is_dir() {
+        mounts.push(Mount::Bind {
+            source: handed.needs_auth_cache.clone(),
+            target: claude_dir.join(NEEDS_AUTH_CACHE),
+        });
+    }
+    mounts
+}
+
+/// A room's own directories in place of the box's Claude Code config (ISS-1268 BR): its root
+/// writable, its `tmp` as `/tmp`, and the box's Claude login alone bound into its config dir. The
+/// box's config dir, where every master's session records, keys and transcripts are, is not in
+/// view, and neither is the box's runtime dir, where their peer sockets are.
+fn room_mounts(view: &BoxView, room: &runner_workspace::bg_session::room::RoomDirs) -> Vec<Mount> {
+    let mut mounts = vec![
+        Mount::Write(room.root.clone()),
+        Mount::Bind {
+            source: room.tmp.clone(),
+            target: PathBuf::from("/tmp"),
+        },
+    ];
+    if room.settings.is_file() {
+        mounts.push(Mount::Read(room.settings.clone()));
+    }
+    let login = claude_dir(view).join(".credentials.json");
+    if login.is_file() {
+        mounts.push(Mount::Bind {
+            source: login,
+            target: room.claude.join(".credentials.json"),
+        });
+    }
+    mounts
 }
 
 /// Claude Code's config directory as the session sees it: `$CLAUDE_CONFIG_DIR`, else `~/.claude`.
@@ -480,6 +518,10 @@ fn chat_env(view: &BoxView, handed: &Handed<'_>) -> Vec<(OsString, OsString)> {
     set("GCM_INTERACTIVE", OsStr::new("never"));
     // The install is bound read-only, so an update could only fail.
     set("DISABLE_AUTOUPDATER", OsStr::new("1"));
+    if let Some(room) = handed.room {
+        set("CLAUDE_CONFIG_DIR", room.claude.as_os_str());
+        set("XDG_RUNTIME_DIR", room.run.as_os_str());
+    }
     if let Some((name, email)) = &handed.git_identity {
         for k in ["GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"] {
             set(k, OsStr::new(name));

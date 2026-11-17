@@ -474,6 +474,7 @@ fn each_checkout_view_mounts_the_checkout_as_its_room_was_granted() {
             egress_socket: p.root.join("s"),
             gh_shim_dir: None,
             needs_auth_cache: p.root.join("mcp-needs-auth-cache.json"),
+            room: None,
         })
     };
     let repo = p.repo.clone();
@@ -659,3 +660,6 @@ async fn a_followed_projects_checkout_is_read_and_never_written_inside_the_sandb
 
 #[path = "confine_needs_auth_tests.rs"]
 mod needs_auth;
+
+#[path = "room_confine_tests.rs"]
+mod room;

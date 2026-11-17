@@ -68,9 +68,9 @@ impl ClaudeCodeRunner {
     /// box holds no headless process for `id`, or holds one with no turn running: there is nothing
     /// a control request could reach, and a kill is not what was asked.
     pub async fn interrupt(&self, id: &SessionId) -> Result<()> {
-        if self.holds_pane(id).await {
+        if self.holds_room(id).await {
             return Err(Error::Other(format!(
-                "[INTERRUPT_NOT_HEADLESS] session {id} runs in a terminal pane, which reads no control request"
+                "[INTERRUPT_NOT_HEADLESS] session {id} runs as a room agent's background session, which reads no control request"
             )));
         }
         let mut map = self.sessions.lock().await;

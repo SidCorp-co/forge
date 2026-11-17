@@ -35,7 +35,7 @@ use crate::chat_attachments::{
 };
 use crate::chat_checkout;
 use crate::chat_live::{self, LiveBatch, LiveSender};
-use crate::claude_code::{pane, ClaudeCodeRunner, Priority, Resident, TurnPlacing};
+use crate::claude_code::{room, ClaudeCodeRunner, Priority, Resident, TurnPlacing};
 use crate::CheckoutView;
 use crate::Confinement;
 use crate::JobSpec;
@@ -537,9 +537,9 @@ async fn run_turn(
     Ok(())
 }
 
-/// Spawn the session a turn runs in: in its pane where this box runs a channel agent's resident
-/// session in one (ISS-946), else headless. A pane that cannot be made is said in the log and on
-/// the heartbeat, and the turn runs headless.
+/// Spawn the session a turn runs in: as a background session in its room where this box runs a
+/// channel agent's resident session in one (ISS-946, ISS-1268 BR), else headless. A room that
+/// cannot be made is said in the log and on the heartbeat, and the turn runs headless.
 async fn spawn_turn(
     runner: &ClaudeCodeRunner,
     spec: JobSpec,
@@ -547,7 +547,7 @@ async fn spawn_turn(
     tx: mpsc::Sender<RunnerEvent>,
 ) -> Result<()> {
     let on = runner_platform::config::Config::load().is_ok_and(|c| c.runner.chat_panes);
-    let placed = pane::pane_for(
+    let placed = room::room_for(
         on,
         turn.keep_resident,
         turn.confined,
@@ -556,15 +556,15 @@ async fn spawn_turn(
     );
     match placed {
         None => runner.start(spec, tx).await.map(|_| ()),
-        Some(Ok(at)) => match runner.start_in_pane(spec.clone(), at, tx.clone()).await {
+        Some(Ok(slug)) => match runner.start_in_room(spec.clone(), slug, tx.clone()).await {
             Ok(()) => Ok(()),
             Err(e) => {
-                pane::pane_refused(&turn.session_id, &e.to_string());
+                room::room_refused(&turn.session_id, &e.to_string());
                 runner.start(spec, tx).await.map(|_| ())
             }
         },
         Some(Err(why)) => {
-            pane::pane_refused(&turn.session_id, &why);
+            room::room_refused(&turn.session_id, &why);
             runner.start(spec, tx).await.map(|_| ())
         }
     }
@@ -1495,7 +1495,7 @@ mod tests {
         let transcript = dir.join("t.jsonl");
         let runner = ClaudeCodeRunner::new("http://127.0.0.1:9", "t", 1);
         let (tx, rx) = mpsc::channel(64);
-        pane::test_turn(
+        room::test_turn(
             &runner,
             "sess",
             "s1",
