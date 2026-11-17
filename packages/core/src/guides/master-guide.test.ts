@@ -105,6 +105,12 @@ describe('the master skill is a map, its method served by core (ISS-1251)', () =
       '**An issue of its own**: only where a technical finding needs its own priority',
       'declared under `Extra fixes:`',
       'parked at `needs_info` with that act as the question',
+      // another project's part goes through the channel, never to a person (ISS-1279)
+      '**A part another project builds goes to it through the ecosystem channel.**',
+      'Nor is it handed to a person while a channel links the two.',
+      '`"type": "change-request"`',
+      'The fence refusal names this act',
+      'send that project a change request through the channel',
     ]) {
       expect(MASTER).toContain(word);
     }
@@ -137,6 +143,7 @@ describe('the master skill is a map, its method served by core (ISS-1251)', () =
       'a close only with each unmet criterion moved out on the record',
       '`forge-runner run declare',
       '`forge-runner run brief <run id>`',
+      'A part another project builds is handed to it as a change request through the ecosystem channel',
     ]) {
       expect(DISPATCH).toContain(word);
     }
