@@ -7,6 +7,9 @@
 // Driven through the real app, outbox and steward runtime on a throwaway Postgres, the gateway a
 // scripted provider and the standing read a scripted one, as steward-subject-decision-e2e does.
 //
+// ISS-1274 (FB-702): an ask about an issue then dropped stood in every wake while the project's
+// standings read empty, the wake reading the ask ledger alone and leaving the rest to the sweep.
+//
 // @direct-test-of packages/core/src/steward/asks.ts
 // @direct-test-of packages/core/src/steward/sweep.ts
 // @direct-test-of packages/core/src/steward/ask-addressee.ts
@@ -402,5 +405,29 @@ describe('a routine act a wait names a person for is asked of the master (ISS-10
       );
     });
     standings = [];
+  });
+});
+
+// ISS-1274 (FB-702, orvio): four asks about issues since dropped stood in the master's wake while
+// `GET projects/<id>/standings` read empty. The wake read the ask ledger (steward_acts) and dropped
+// only an ask a decision answered, leaving a gone standing to the steward's sweep, which runs every
+// five minutes and only where the project's steward is on. The wake reads the standings itself now.
+describe('an ask whose issue is dropped leaves the wake at once (ISS-1274)', () => {
+  it('lists the ask while its standing stands, and not once the issue is dropped, before any sweep', async () => {
+    const item = await issue();
+    standings = [standingOf(item, 'iss-1274', MASTER_WAIT)];
+    await askRun(item, item);
+    expect(await nudge()).toContain(`${item.key}: Take the act`);
+    ok(
+      await say('owner', 'POST', `/api/issues/${item.id}/transition`, {
+        toStatus: 'dropped',
+        reason: 'not work: planted to drop under a standing ask',
+      }),
+    );
+    // a dropped issue stands nowhere: the standings read as GET projects/<id>/standings answers
+    standings = [];
+    expect(await openAbout(item.key)).toEqual([]);
+    expect(await nudge()).not.toContain(`${item.key}: Take the act`);
+    expect((await masterAsksAbout(item.key)).map((a) => a.settled)).toEqual([null]);
   });
 });

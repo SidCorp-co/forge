@@ -15,8 +15,9 @@
 // ended them. Forge REQ-45 was diagnosed every 5 minutes on one basis, each run ending on a note
 // alone because its standing's decision forbade an ask, and spent the sweep's day by 02:00Z.
 // An ask of the master stands until its item's basis moves, its item waits on a person, or a reasoned
-// decision on the item, or on the item whose run asked, answers it; one answered since it was made
-// leaves the master's nudge at once, and the sweep settles it. It raises stuck items oldest stuck
+// decision on the item, or on the item whose run asked, answers it; one answered since it was made,
+// or whose standing is gone (its issue dropped or closed), leaves the master's nudge at once, read
+// against the same standings the sweep settles by (ISS-1274), and the sweep settles it. It raises stuck items oldest stuck
 // first, then the oldest note; the dispatch takes a handoff's run ahead of all of them
 // (`runs-store.ts:claimDueRuns`), and a job one of them owes waits for its project's slot like any
 // run on the box (ISS-1255). Before any of it, an agreed requirement whose check ended without
@@ -31,7 +32,6 @@ import { logger } from '../lib/logger.js';
 import { emitEvent } from '../outbox/index.js';
 import {
   type AnsweredOn,
-  answeredAsks,
   answeredOnOf,
   askedAlready,
   askItemOf,
@@ -223,13 +223,18 @@ interface StewardAsk {
 /**
  * The asks of the master still standing on a project, oldest first (`masters/owed.ts` stewardAsks),
  * each with the items whose decision answers it, so the nudge names those items' own doors (ISS-654,
- * ISS-739). One a decision answered since it was made is left out now, before the sweep settles it.
+ * ISS-739). One the sweep would settle is left out now, read against the project's standings
+ * (`GET /api/projects/:id/standings`) as the sweep reads them (ISS-1274): its standing moved or is
+ * gone, its item waits on a person, or a decision answered it. The ledger alone kept an ask on a
+ * dropped issue in every wake until a sweep settled it, and a project whose steward sweep does not
+ * run (its steward off, its read failing) never had it settled.
  */
 export async function openStewardAsks(projectId: string, now = new Date()): Promise<StewardAsk[]> {
   const open = await openMasterAsks(projectId);
-  const answered = await answeredAsks(projectId, open, now);
+  if (open.length === 0) return [];
+  const settled = new Set(await asksToSettle(projectId, open, await openStandings(projectId), now));
   return open
-    .filter((r) => !answered.has(r.id))
+    .filter((r) => !settled.has(r.id))
     .map((r) => ({
       actId: r.id,
       ask: r.masterAsk ?? '',
