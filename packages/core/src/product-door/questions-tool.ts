@@ -163,6 +163,7 @@ const CARDS = {
       'Asking on an issue a doubt about what is wanted (the requirement’s) or a problem a user hit (Feedback’s).',
     family: 'product.ask',
     audience: ['person'],
+    scenarios: ['a person’s question on an issue raised for the agent building it'],
   },
 } satisfies Record<(typeof QUESTIONS_TOOL_ACTIONS)[number], CapabilityCardBody>;
 

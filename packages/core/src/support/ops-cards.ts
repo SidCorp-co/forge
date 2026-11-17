@@ -133,6 +133,7 @@ export const OPS_ACT_CARDS = {
       'Building onto a branch production deploys from: a build from chat pushes a branch of its own.',
     family: 'room.consent',
     audience: ['bot'],
+    scenarios: ['a build from chat pushed on a branch of its own after a confirmer’s go'],
   },
   deploy: {
     purpose:
@@ -150,6 +151,7 @@ export const OPS_ACT_CARDS = {
     redFlag: 'Saying a deploy is done when it was proposed, before support.deployment reads it.',
     family: 'room.consent',
     audience: ['bot'],
+    scenarios: ['a deploy said live only once the deployment reads it'],
   },
   command: {
     purpose:
@@ -279,6 +281,7 @@ export const OPS_ACT_CARDS = {
       'Naming a message someone else wrote: the act runs as the asker, never as another writer in the thread.',
     family: 'room.work',
     audience: ['bot'],
+    scenarios: ['an issue moved for a member only once the act answers it moved'],
   },
   draft_requirement: {
     purpose:
@@ -326,6 +329,7 @@ export const OPS_ACT_CARDS = {
       'Drafting a second item for what the member’s thread already filed: read support.feedback first.',
     family: 'room.work',
     audience: ['bot'],
+    scenarios: ['the owner’s two ePOD wishes drafted by a role not granted draft (FB-699)'],
   },
   research: {
     purpose:

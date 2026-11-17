@@ -395,7 +395,7 @@ export const REFERENCE_CARDS = {
 			"Rewriting why in your own words where the owner gave his: it is what the next agent reads.",
 		family: "references",
 		audience: ["master", "person"],
-		scenarios: [],
+		scenarios: ["a source the owner changed, updated with his areas and why"],
 	},
 	remove: {
 		purpose:
@@ -419,7 +419,7 @@ export const REFERENCE_CARDS = {
 			"Removing a flagged source on the flag alone, before a person decided keep, replace or remove.",
 		family: "references",
 		audience: ["master", "person"],
-		scenarios: [],
+		scenarios: ["a flagged source removed only on the owner’s decision"],
 	},
 	signals: {
 		purpose:
@@ -438,7 +438,7 @@ export const REFERENCE_CARDS = {
 			"Reading a source with no recent citation as useless without its taken and rejected counts.",
 		family: "references",
 		audience: ["master"],
-		scenarios: [],
+		scenarios: ["each flagged source put to the owner with its citations"],
 	},
 	timeline: {
 		purpose:
@@ -458,7 +458,7 @@ export const REFERENCE_CARDS = {
 		redFlag: "Taking a release from its timeline line without opening it.",
 		family: "references",
 		audience: ["master", "run"],
-		scenarios: [],
+		scenarios: ["a followed source’s release opened before it is cited"],
 	},
 } satisfies Record<string, CapabilityCardBody>;
 
@@ -483,5 +483,7 @@ export const REFERENCE_REST_CARD = {
 	redFlag: REFERENCE_CARDS.search.redFlag,
 	family: "references",
 	audience: ["master", "run"],
-	scenarios: [],
+	scenarios: [
+		"a project’s reference sources read before researching from zero",
+	],
 } satisfies CapabilityCardBody;

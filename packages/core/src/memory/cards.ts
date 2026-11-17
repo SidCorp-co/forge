@@ -64,6 +64,7 @@ export const MEMORY_REST_CARDS = {
     redFlag: 'Stamping memories verified without reading the code they describe.',
     family: 'memory',
     audience: ['master', 'run'],
+    scenarios: ['memories read against the code before they are stamped verified'],
   },
   'POST /api/memory/retire': {
     purpose: 'Retires many memories in one call under one reason, or deletes them for good.',

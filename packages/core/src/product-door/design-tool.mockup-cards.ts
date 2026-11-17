@@ -22,6 +22,7 @@ export const MOCKUP_CARDS = {
     redFlag: 'Proposing a mockup without reading the ones already proposed on the item.',
     family: 'design',
     audience: ['person'],
+    scenarios: ['a requirement’s mockups listed before another is proposed'],
   },
   mockup_get: {
     purpose: 'Reads one mockup (MK-n): its kind, caption, status and content url.',
@@ -135,6 +136,7 @@ export const MOCKUP_CARDS = {
     redFlag: 'Accepting a mockup the person has not tried.',
     family: 'design',
     audience: ['person'],
+    scenarios: ['a mockup accepted once the person tried it and agreed'],
   },
   mockup_return: {
     purpose: 'Returns a proposed mockup with the reason its next revision must answer.',

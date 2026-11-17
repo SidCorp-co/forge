@@ -21,5 +21,6 @@ export const MONITORING_REST_CARDS = {
     redFlag: 'Putting the minted token in a file other users on the host can read, or in the repo.',
     family: 'setup',
     audience: ['master'],
+    scenarios: ['a project host’s agent token kept in a file only the agent reads'],
   },
 } satisfies Record<string, CapabilityCardBody>;

@@ -63,6 +63,7 @@ export const MODULE_CARDS = {
     redFlag:
       'Acting on a term or rule flagged for re-check without opening the code it is anchored at.',
     family: 'knowledge',
+    scenarios: ['a module’s tree read before work starts in it'],
   },
   pillar: {
     purpose:
@@ -82,6 +83,7 @@ export const MODULE_CARDS = {
     redFlag: 'Answering what a module holds from its counts, where module.get reads its tree.',
     audience: ['master', 'run', 'person'],
     family: 'knowledge',
+    scenarios: ['the module map read in rows before placing a record'],
   },
   place: {
     purpose:
@@ -169,5 +171,6 @@ export const MODULE_CARDS = {
     redFlag:
       'Removing a relation to clear a re-check flag: a stale term or rule is rewritten to match its code.',
     family: 'knowledge',
+    scenarios: ['a wrong relation removed by its id and the right one written'],
   },
 } satisfies Record<string, CapabilityCardBody>;

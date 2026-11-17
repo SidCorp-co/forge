@@ -20,6 +20,7 @@ export const PIPELINE_REST_CARDS = {
     redFlag: 'Working through a phase without declaring it, so the journal reads the run idle.',
     family: 'issue-work',
     audience: ['run'],
+    scenarios: ['a drive run’s phase declared on its running pipeline run'],
   },
   'POST /api/pipeline-runs/:id/phases/end': {
     purpose: 'Ends a declared phase with its outcome and a note.',
@@ -39,6 +40,7 @@ export const PIPELINE_REST_CARDS = {
     redFlag: 'Ending a failed phase as ok to move on.',
     family: 'issue-work',
     audience: ['run'],
+    scenarios: ['a failed phase ended as failed, never ok'],
   },
   'POST /api/issue-step-contexts': {
     purpose:
@@ -69,5 +71,6 @@ export const PIPELINE_REST_CARDS = {
       'Ending a step with its findings only in your session, where no later step reads them.',
     family: 'issue-work',
     audience: ['run'],
+    scenarios: ['a drive step’s handoff refused BAD_REQUEST on forge'],
   },
 } satisfies Record<string, CapabilityCardBody>;

@@ -148,6 +148,9 @@ export const COMMENT_REST_CARDS = {
     redFlag: 'Pasting a file’s bytes as base64 into a comment body instead of uploading it here.',
     family: 'issue-work',
     audience: ['master', 'run'],
+    scenarios: [
+      'a screenshot inlined as base64 in a comment body, where the upload takes the file',
+    ],
   },
   'PATCH /api/projects/:id/requirements/:req/comments/:comment': {
     purpose: 'Corrects a comment or decision you wrote on a requirement.',

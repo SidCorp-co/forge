@@ -154,6 +154,7 @@ export const INTEGRATION_DOOR_REST_CARDS = {
     redFlag: 'Reading a null step as done and binding a project before the server can do it.',
     family: 'setup',
     audience: ['master'],
+    scenarios: ['a monitoring server’s readiness read before a project is bound to it'],
   },
   'POST /api/integration-connections': {
     purpose:
@@ -178,6 +179,7 @@ export const INTEGRATION_DOOR_REST_CARDS = {
       'Pointing Forge at an open endpoint, or standing up a watch stack in the project instead.',
     family: 'setup',
     audience: ['master'],
+    scenarios: ['a project’s production watched through a Prometheus connection Forge holds'],
   },
   'POST /api/integration-connections/:id/monitoring/tokens/:kind': {
     purpose:
@@ -195,6 +197,7 @@ export const INTEGRATION_DOOR_REST_CARDS = {
       'Pasting a minted token into a comment or the setup list instead of the server’s file.',
     family: 'setup',
     audience: ['master'],
+    scenarios: ['a monitoring token minted into the server’s file, never a comment'],
   },
   'POST /api/projects/:projectId/integrations/coolify/cancel': {
     purpose: 'Cancels a Coolify deployment through core’s binding.',
@@ -209,6 +212,7 @@ export const INTEGRATION_DOOR_REST_CARDS = {
     redFlag: 'Cancelling a deploy that is still progressing because its poll was slow.',
     family: 'issue-landing',
     audience: ['master', 'run'],
+    scenarios: ['a hung Coolify deploy cancelled after reading the deployment'],
   },
   'PATCH /api/projects/:projectId/integrations/:id': {
     purpose:

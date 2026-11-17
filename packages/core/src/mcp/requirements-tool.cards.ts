@@ -299,5 +299,6 @@ export const CARDS = {
       'Answering on your own reading of the question, the spec or the code, where the person has not said.',
     family: 'product.requirement',
     audience: ['person'],
+    scenarios: ['a requirement’s open question answered in the person’s words'],
   },
 } satisfies Partial<Record<(typeof ACTIONS)[number], CapabilityCardBody>>;

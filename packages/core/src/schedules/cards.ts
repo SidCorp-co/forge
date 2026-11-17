@@ -55,6 +55,7 @@ export const SCHEDULE_REST_CARDS = {
     redFlag: 'Deleting a schedule to pause it, losing its state, where enabled false stops it.',
     family: 'setup',
     audience: ['master'],
+    scenarios: ['a schedule paused with enabled false, its state kept'],
   },
   'POST /api/schedules/:id/run': {
     purpose: 'Fires a schedule once now, outside its cron, and records the fire like any other.',

@@ -89,6 +89,7 @@ export const SUPPORT_REST_CARDS = {
     redFlag: 'Posting your answer in the room yourself beside the agent that asked.',
     family: 'rooms',
     audience: ['master'],
+    scenarios: ['a room agent’s ask answered first while a person waits in its thread'],
   },
   'PUT /api/projects/:id/support/rooms/:roomId/report-thread': {
     purpose: 'Names the thread a room’s reports go to, for a person’s own report thread.',

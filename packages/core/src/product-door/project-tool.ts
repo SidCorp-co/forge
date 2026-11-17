@@ -97,6 +97,7 @@ const CARDS = {
       'Deciding again what decisions holds in force, or quoting your reading of it in place of its recorded reason.',
     family: 'product.status',
     audience: ['person'],
+    scenarios: ['a person asking why something was decided answered from the record'],
   },
 } satisfies Record<(typeof PROJECT_TOOL_READS)[number], CapabilityCardBody>;
 

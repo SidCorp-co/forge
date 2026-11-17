@@ -34,6 +34,7 @@ export const CARDS = {
     redFlag: 'Ending a pass with the inbox it was nudged about untouched and no word on why.',
     family: 'channel',
     audience: ['master', 'bot'],
+    scenarios: ['a pass nudged with channel documents owed, each worked before it ends'],
   },
   inbox: {
     purpose: 'Lists the channel documents published to this project, owed or not.',
@@ -95,6 +96,9 @@ export const CARDS = {
       'Replying without reading the thread, so a held or already answered conversation is answered again.',
     family: 'channel',
     audience: ['master', 'bot'],
+    scenarios: [
+      'a change notice’s thread read before replying, a hold or a later answer respected',
+    ],
   },
   contracts: {
     purpose:
@@ -118,6 +122,7 @@ export const CARDS = {
       'Prescribing how the other side should build its contract, where the reply says what this project decided.',
     family: 'channel',
     audience: ['master', 'bot'],
+    scenarios: ['an RFI about a provider’s contract answered after reading its API page'],
   },
   reply: {
     purpose: 'Drafts this project’s answer to a published document, addressed to its sender.',
@@ -148,6 +153,9 @@ export const CARDS = {
       'Replying with the wrong type for what the parent owes, or to a withdrawn or superseded document.',
     family: 'channel',
     audience: ['master'],
+    scenarios: [
+      'a change notice answered with the type it owes, never refused REPLY_TYPE_NOT_ALLOWED',
+    ],
   },
   edit: {
     purpose: 'Rewrites a draft, or a document the approve gate returned, before it is submitted.',
@@ -175,6 +183,7 @@ export const CARDS = {
     redFlag: 'Sending only the changed field: the edit takes the whole content.',
     family: 'channel',
     audience: ['master'],
+    scenarios: ['a document the gate returned edited whole and submitted again'],
   },
   submit: {
     purpose:
@@ -194,6 +203,7 @@ export const CARDS = {
       'Submitting a draft the person has not confirmed, or reading the gate’s wait as published.',
     family: 'channel',
     audience: ['master'],
+    scenarios: ['a submitted reply said to wait at the gate until an admin approves'],
   },
   register: {
     purpose:
@@ -209,6 +219,7 @@ export const CARDS = {
     redFlag: 'Working the inbox from the register, where unanswered lists exactly what is owed.',
     family: 'channel',
     audience: ['master', 'bot'],
+    scenarios: ['a person’s question about the ecosystem answered from the register'],
   },
   outbox: {
     purpose: 'Lists the documents this project sent, with where each stands.',
@@ -224,6 +235,7 @@ export const CARDS = {
       'Sending a second document because the first has no answer yet, instead of reading its thread.',
     family: 'channel',
     audience: ['master', 'bot'],
+    scenarios: ['a sent change request followed in the outbox, never sent twice'],
   },
   draft: {
     purpose:
@@ -249,6 +261,7 @@ export const CARDS = {
       'Drafting a new document to answer one, which leaves the parent owed: reply carries inReplyTo.',
     family: 'channel',
     audience: ['master'],
+    scenarios: ['an RFI answered with reply, a new draft kept for a new document'],
   },
   hold: {
     purpose: 'Holds a conversation for a person, so nothing is owed on it until they release it.',
@@ -268,6 +281,7 @@ export const CARDS = {
       'Holding a thread to clear it from your inbox, where only a person taking it over holds it.',
     family: 'channel',
     audience: ['person'],
+    scenarios: ['a thread held only for a person taking the conversation over'],
   },
   release: {
     purpose: 'Releases a held conversation, so it is owed again where its document owes a reply.',
@@ -283,6 +297,7 @@ export const CARDS = {
     redFlag: 'Releasing a person’s hold to get your reply through.',
     family: 'channel',
     audience: ['person'],
+    scenarios: ['a reply refused THREAD_HELD stopped until the person releases the hold'],
   },
   withdraw: {
     purpose:
@@ -302,6 +317,7 @@ export const CARDS = {
     redFlag: 'Withdrawing a document a newer one replaces, where supersede names the replacement.',
     family: 'channel',
     audience: ['master'],
+    scenarios: ['a notice that no longer stands withdrawn, a replaced one superseded'],
   },
   supersede: {
     purpose: 'Replaces a document this project published with a newer one, naming it and why.',
@@ -323,6 +339,7 @@ export const CARDS = {
     redFlag: 'Superseding with no reason, or by a document that is not its replacement.',
     family: 'channel',
     audience: ['master'],
+    scenarios: ['a corrected notice superseding the one it replaces, with the reason'],
   },
   gate: {
     purpose: 'Approves or returns a document waiting at the approve gate, as an admin.',
@@ -344,5 +361,6 @@ export const CARDS = {
     redFlag: 'An agent approving its own document at the gate: an admin decides it.',
     family: 'channel',
     audience: ['person'],
+    scenarios: ['a document at the approve gate decided by an admin, never its author'],
   },
 } satisfies Partial<Record<ChannelAction, CapabilityCardBody>>;

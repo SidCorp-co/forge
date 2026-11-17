@@ -16,6 +16,7 @@ export const PROJECT_REST_CARDS = {
     redFlag: 'An agent archiving a project to quiet its board: archiving is an owner’s decision.',
     family: 'setup',
     audience: ['person'],
+    scenarios: ['a project archived only on its owner’s decision'],
   },
   'POST /api/projects/:id/unarchive': {
     purpose: 'Brings an archived project back, as an org admin.',
@@ -25,5 +26,6 @@ export const PROJECT_REST_CARDS = {
     redFlag: 'An agent unarchiving a project to file work on it without the owner’s word.',
     family: 'setup',
     audience: ['person'],
+    scenarios: ['an archived project brought back on its owner’s word'],
   },
 } satisfies Record<string, CapabilityCardBody>;

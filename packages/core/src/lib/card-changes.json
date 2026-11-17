@@ -105,8 +105,8 @@
     "by": "ISS-1251"
   },
   "POST /api/comments/:commentId/attachments": {
-    "hash": "01d1844c50ac5bfe",
-    "on": "2026-11-16",
+    "hash": "8b9ad0601d296277",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "POST /api/devices/me/questions": {
@@ -130,8 +130,8 @@
     "by": "ISS-1251"
   },
   "POST /api/integration-connections": {
-    "hash": "ff77b3e108b540b1",
-    "on": "2026-11-16",
+    "hash": "eef3b9a8b6298d04",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "POST /api/integration-connections/:id/bindings": {
@@ -140,18 +140,18 @@
     "by": "ISS-1251"
   },
   "POST /api/integration-connections/:id/monitoring/readiness": {
-    "hash": "789040029c8c69f7",
-    "on": "2026-11-16",
+    "hash": "a7db76aabd5fdf5d",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "POST /api/integration-connections/:id/monitoring/tokens/:kind": {
-    "hash": "b59b9247d3c6876f",
-    "on": "2026-11-16",
+    "hash": "6b3b25774d34aa5b",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "POST /api/issue-step-contexts": {
-    "hash": "ed4d022468cbd0f4",
-    "on": "2026-11-16",
+    "hash": "7b1fdf8c081d50db",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "POST /api/issues/:id/attachments": {
@@ -175,8 +175,8 @@
     "by": "ISS-1251"
   },
   "POST /api/issues/:id/contract-waits/:waitId/retract": {
-    "hash": "87f2b42395aaef85",
-    "on": "2026-11-16",
+    "hash": "0653052ecd98b1d1",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "POST /api/issues/:id/criteria/:ref/supersede": {
@@ -290,28 +290,28 @@
     "by": "ISS-1256"
   },
   "POST /api/memory/verify": {
-    "hash": "5b2289940736ee96",
-    "on": "2026-11-16",
+    "hash": "82b41377ef795a5c",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "POST /api/pipeline-runs/:id/phases": {
-    "hash": "bc3cd08a2050c460",
-    "on": "2026-11-16",
+    "hash": "86fd24ba39d1e2e2",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "POST /api/pipeline-runs/:id/phases/end": {
-    "hash": "cb8bc4e05cf6752d",
-    "on": "2026-11-16",
+    "hash": "51dc666904b30405",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "POST /api/projects/:id/archive": {
-    "hash": "d13a77dd472f72c7",
-    "on": "2026-11-16",
+    "hash": "f9a5e619c40d3d0c",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "POST /api/projects/:id/contract-requests": {
-    "hash": "ef39bec112de3509",
-    "on": "2026-11-16",
+    "hash": "119b156983c38298",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "POST /api/projects/:id/executions": {
@@ -430,8 +430,8 @@
     "by": "ISS-1251"
   },
   "POST /api/projects/:id/monitoring/agent-token": {
-    "hash": "6fec86d9119ffdb7",
-    "on": "2026-11-16",
+    "hash": "29e9492f933d2d65",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "POST /api/projects/:id/onboarding/done": {
@@ -475,8 +475,8 @@
     "by": "ISS-1251"
   },
   "POST /api/projects/:id/reference-sources/:source/citations": {
-    "hash": "4a403712e5c26c1e",
-    "on": "2026-11-16",
+    "hash": "252e21c9f1d41115",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "POST /api/projects/:id/report-templates/:templateId/runs": {
@@ -575,8 +575,8 @@
     "by": "ISS-1251"
   },
   "POST /api/projects/:id/support/master-asks/:askId/answer": {
-    "hash": "de8ac5b5fa94a69f",
-    "on": "2026-11-16",
+    "hash": "1b52c0f9d1dec956",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "POST /api/projects/:id/support/master-posts": {
@@ -585,8 +585,8 @@
     "by": "ISS-1251"
   },
   "POST /api/projects/:id/unarchive": {
-    "hash": "926f2a99af9fc597",
-    "on": "2026-11-16",
+    "hash": "a53de8b88d1bb254",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "POST /api/projects/:id/variables": {
@@ -655,8 +655,8 @@
     "by": "ISS-1251"
   },
   "POST /api/projects/:projectId/integrations/coolify/cancel": {
-    "hash": "03c6a8ed90c6dea0",
-    "on": "2026-11-16",
+    "hash": "00d172c13f32f124",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "POST /api/projects/:projectId/integrations/coolify/deploy": {
@@ -680,8 +680,8 @@
     "by": "ISS-1251"
   },
   "POST /api/projects/:projectId/release-batches/:runId/approvals": {
-    "hash": "60caf4a1575c05e2",
-    "on": "2026-11-16",
+    "hash": "fa6cbba42a19a11c",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "POST /api/projects/:projectId/release-batches/:runId/carried": {
@@ -825,8 +825,8 @@
     "by": "ISS-1251"
   },
   "PUT /api/schedules/:id": {
-    "hash": "2bccc21a06a206a9",
-    "on": "2026-11-16",
+    "hash": "72aa22db75edced4",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "audit.self": {
@@ -845,8 +845,8 @@
     "by": "ISS-1251"
   },
   "bot.cancel": {
-    "hash": "9f98dd467f64bec6",
-    "on": "2026-11-16",
+    "hash": "47e4abd881816bdc",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "bot.open": {
@@ -855,8 +855,8 @@
     "by": "ISS-1251"
   },
   "bot.read": {
-    "hash": "df4c29a58b45c79a",
-    "on": "2026-11-16",
+    "hash": "037fa534599b1cfe",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "bot.send": {
@@ -870,28 +870,28 @@
     "by": "ISS-1251"
   },
   "channel.contracts": {
-    "hash": "910292938ef14896",
-    "on": "2026-11-16",
+    "hash": "c06a11ebf39482e2",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "channel.draft": {
-    "hash": "074e208d97d7fe22",
-    "on": "2026-11-16",
+    "hash": "1eb61e9cda6d46f2",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "channel.edit": {
-    "hash": "060f925467cb340c",
-    "on": "2026-11-16",
+    "hash": "ef688d5a5814d05c",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "channel.gate": {
-    "hash": "ba8120d8e4047049",
-    "on": "2026-11-16",
+    "hash": "e47af147a29ac46a",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "channel.hold": {
-    "hash": "fa7e15e5ff22d623",
-    "on": "2026-11-16",
+    "hash": "39d229b4f5120a1f",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "channel.inbox": {
@@ -900,8 +900,8 @@
     "by": "ISS-1251"
   },
   "channel.outbox": {
-    "hash": "8355ba20ab5a8cdd",
-    "on": "2026-11-16",
+    "hash": "3008e4b4a48dc0d0",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "channel.read": {
@@ -910,43 +910,43 @@
     "by": "ISS-1251"
   },
   "channel.register": {
-    "hash": "bbd6866548fe0282",
-    "on": "2026-11-16",
+    "hash": "f0357491fd979e9d",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "channel.release": {
-    "hash": "de552eb62cc51618",
-    "on": "2026-11-16",
+    "hash": "615019877ddcc84e",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "channel.reply": {
-    "hash": "c0c32c8037cdaf26",
-    "on": "2026-11-16",
+    "hash": "037333fbacde91d6",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "channel.submit": {
-    "hash": "1ee7a42c37be37ee",
-    "on": "2026-11-16",
+    "hash": "8bfc5edba7a2280b",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "channel.supersede": {
-    "hash": "3d9669487c3f87a2",
-    "on": "2026-11-16",
+    "hash": "50b2bdbacc7de4fe",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "channel.thread": {
-    "hash": "a9e0b0c13966c46b",
-    "on": "2026-11-16",
+    "hash": "66b06469e1069e98",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "channel.unanswered": {
-    "hash": "1fbc3458e1544020",
-    "on": "2026-11-16",
+    "hash": "139e2722a633566f",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "channel.withdraw": {
-    "hash": "dbe09370b91af086",
-    "on": "2026-11-16",
+    "hash": "74d14d1dbf9690eb",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "config.gate_profiles": {
@@ -1000,8 +1000,8 @@
     "by": "ISS-1251"
   },
   "design.mockup_accept": {
-    "hash": "4b0343995221a3ba",
-    "on": "2026-11-16",
+    "hash": "1f24c5f2d1124146",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "design.mockup_comment": {
@@ -1020,8 +1020,8 @@
     "by": "ISS-1251"
   },
   "design.mockup_list": {
-    "hash": "5f95e4edca77b426",
-    "on": "2026-11-16",
+    "hash": "200bbf505abadb13",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "design.mockup_propose": {
@@ -1080,8 +1080,8 @@
     "by": "ISS-1251"
   },
   "ecosystem.builder_run_create": {
-    "hash": "daf084070ba5d256",
-    "on": "2026-11-16",
+    "hash": "275b5219413371fc",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "ecosystem.builder_run_supersede": {
@@ -1095,18 +1095,18 @@
     "by": "ISS-1251"
   },
   "ecosystem.builder_runs": {
-    "hash": "46a4251f24e9011e",
-    "on": "2026-11-16",
+    "hash": "c52bd5b4ae8af01b",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "ecosystem.bus": {
-    "hash": "11ed4005f320f6e1",
-    "on": "2026-11-16",
+    "hash": "8e8735d28095b284",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "ecosystem.context": {
-    "hash": "fa7be0d0f6e08d13",
-    "on": "2026-11-16",
+    "hash": "630434c709b552fc",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "ecosystem.contract_version_decide": {
@@ -1120,8 +1120,8 @@
     "by": "ISS-1251"
   },
   "ecosystem.interface": {
-    "hash": "502ed5f8026c9de9",
-    "on": "2026-11-16",
+    "hash": "938ba4fe938533cb",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "ecosystem.interface_write": {
@@ -1205,13 +1205,13 @@
     "by": "ISS-1251"
   },
   "module.get": {
-    "hash": "132ed5afb91a779d",
-    "on": "2026-11-16",
+    "hash": "a25ef0f5560c9c34",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "module.pillar": {
-    "hash": "c496f7963728ec13",
-    "on": "2026-11-16",
+    "hash": "8e5e3a465c641c06",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "module.place": {
@@ -1225,13 +1225,13 @@
     "by": "ISS-1251"
   },
   "module.unrelate": {
-    "hash": "1715fa6bb21aa712",
-    "on": "2026-11-16",
+    "hash": "f9cb3720f41812c0",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "project.decisions": {
-    "hash": "6db4a82e96c6d716",
-    "on": "2026-11-16",
+    "hash": "0c122cb0607137db",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "project.needs_you": {
@@ -1295,8 +1295,8 @@
     "by": "ISS-1251"
   },
   "questions.ask": {
-    "hash": "5b2135348bb984c0",
-    "on": "2026-11-16",
+    "hash": "a7a70be7f34c0d27",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "questions.get": {
@@ -1325,8 +1325,8 @@
     "by": "ISS-1251"
   },
   "references.remove": {
-    "hash": "8ceb0d190da6bdad",
-    "on": "2026-11-16",
+    "hash": "b9d73324155fa72e",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "references.search": {
@@ -1335,18 +1335,18 @@
     "by": "ISS-1251"
   },
   "references.signals": {
-    "hash": "9c43d367dca1d00a",
-    "on": "2026-11-16",
+    "hash": "fe242799418b544b",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "references.timeline": {
-    "hash": "f67ea0b74a04e630",
-    "on": "2026-11-16",
+    "hash": "51901856658c289b",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "references.update": {
-    "hash": "38a257f5d2df85f6",
-    "on": "2026-11-16",
+    "hash": "c799b094fe49cd71",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "releases.decide": {
@@ -1375,8 +1375,8 @@
     "by": "ISS-1251"
   },
   "requirements.answer": {
-    "hash": "b50509020d4ad582",
-    "on": "2026-11-16",
+    "hash": "000acc38039b4f59",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "requirements.create": {
@@ -1475,8 +1475,8 @@
     "by": "ISS-1251"
   },
   "support.build": {
-    "hash": "1d23d61720f05355",
-    "on": "2026-11-16",
+    "hash": "e5d44f1f668912d9",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "support.channel": {
@@ -1505,8 +1505,8 @@
     "by": "ISS-904"
   },
   "support.deploy": {
-    "hash": "4b67b79c432a2568",
-    "on": "2026-11-16",
+    "hash": "23f994d8a0991f0b",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "support.deployment": {
@@ -1515,8 +1515,8 @@
     "by": "ISS-1251"
   },
   "support.draft_feedback": {
-    "hash": "1e1c727b2a17b80f",
-    "on": "2026-11-16",
+    "hash": "76eae8bcfd3ad113",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "support.draft_requirement": {
@@ -1560,8 +1560,8 @@
     "by": "ISS-1251"
   },
   "support.move": {
-    "hash": "6897c7cf2fbf629a",
-    "on": "2026-11-16",
+    "hash": "6bf84e4fbae75d88",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "support.move_issue": {
@@ -1625,23 +1625,23 @@
     "by": "ISS-1251"
   },
   "support.reference_add": {
-    "hash": "aea9017297d4e3d4",
-    "on": "2026-11-16",
+    "hash": "4258d56c81b3aacd",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "support.reference_cite": {
-    "hash": "e88dff7b797e62fd",
-    "on": "2026-11-16",
+    "hash": "a5f8e1f902b2c1e8",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "support.reference_propose": {
-    "hash": "5ee4ead7cdef8afe",
-    "on": "2026-11-16",
+    "hash": "91d53c25d6bbda38",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "support.references": {
-    "hash": "ee6b25a02ac2a71a",
-    "on": "2026-11-16",
+    "hash": "89699e5d66b287c7",
+    "on": "2026-11-17",
     "by": "ISS-1251"
   },
   "support.release_decision": {

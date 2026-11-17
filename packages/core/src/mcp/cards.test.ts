@@ -397,12 +397,17 @@ describe('every agent-facing door is carded whole', () => {
     expect(wrong, 'a declared door that is carded, twinned, gone or declared twice').toEqual([]);
   });
 
-  it('gives every card a red flag and a worked example', () => {
+  it('gives every card a red flag, a worked example and a scenario, naming the card that lacks one', () => {
+    // ISS-1251 c1: on dev.709, 60 of 343 cards carried no scenario, so nothing replayed their teaching
     const thin = doors
-      .filter((d) => d.card && (!d.card.redFlag || d.card.example === undefined))
+      .filter(
+        (d) =>
+          d.card &&
+          (!d.card.redFlag || d.card.example === undefined || d.card.scenarios.length === 0),
+      )
       .map(
         (d) =>
-          `${d.id}${d.card?.redFlag ? '' : ' redFlag'}${d.card?.example === undefined ? ' example' : ''}`,
+          `${d.id}${d.card?.redFlag ? '' : ' redFlag'}${d.card?.example === undefined ? ' example' : ''}${d.card?.scenarios.length ? '' : ' scenarios'}`,
       );
     expect(thin).toEqual([]);
   });

@@ -28,6 +28,7 @@ export const REFERENCE_ACT_CARDS = {
       'Researching the open web from zero while the project names sources it trusts for that area.',
     family: 'references',
     audience: ['bot'],
+    scenarios: ['a room’s reference sources read before researching a defect'],
   },
   reference_add: {
     purpose:
@@ -56,6 +57,7 @@ export const REFERENCE_ACT_CARDS = {
     redFlag: 'Sending the owner to a screen to add the source himself.',
     family: 'references',
     audience: ['bot'],
+    scenarios: ['a source the owner named added for him, never sent to a screen'],
   },
   reference_cite: {
     purpose:
@@ -81,6 +83,7 @@ export const REFERENCE_ACT_CARDS = {
       'A citation with no reason for its take or reject: it counts as use and teaches nothing.',
     family: 'references',
     audience: ['bot'],
+    scenarios: ['a reference used in an answer cited with its take and why'],
   },
   reference_propose: {
     purpose:
@@ -103,5 +106,6 @@ export const REFERENCE_ACT_CARDS = {
     redFlag: 'Proposing a page read once: a source earns its place by repeated use.',
     family: 'references',
     audience: ['bot'],
+    scenarios: ['a source used across several answers proposed with what it helped'],
   },
 } satisfies Partial<Record<SupportAction, CapabilityCardBody>>;

@@ -30,6 +30,7 @@ export const CARDS = {
       'Writing the interface from memory without reading it, so its revision is stale and its commitments are dropped.',
     family: 'ecosystem',
     audience: ['master'],
+    scenarios: ['the interface read before a contract is published, its revision sent back'],
   },
   interface_write: {
     purpose:
@@ -166,6 +167,7 @@ export const CARDS = {
     redFlag: 'Opening a run beside the open one (BUILDER_RUN_ALREADY_OPEN): work the open one.',
     family: 'ecosystem',
     audience: ['master'],
+    scenarios: ['a nudged pass working the open builder run, never one beside it'],
   },
   builder_run: {
     purpose:
@@ -266,6 +268,7 @@ export const CARDS = {
       'Passing a projectId to bus: it names an ecosystem by its uuid, and a projectId beside it is refused.',
     family: 'ecosystem',
     audience: ['master'],
+    scenarios: ['the bus read by the ecosystem’s uuid while working a builder run'],
   },
   context: {
     purpose:
@@ -293,6 +296,7 @@ export const CARDS = {
       'Editing code that calls another project’s contract without loading context first, so the diff since the pinned version goes unread.',
     family: 'ecosystem',
     audience: ['master', 'run'],
+    scenarios: ['context loaded for the paths a run will touch before editing a caller'],
   },
   contract_version_publish: {
     purpose:
@@ -413,5 +417,6 @@ export const CARDS = {
       'Opening a run beside the open one, or to replace a stale one, which builder_run_supersede does.',
     family: 'ecosystem',
     audience: ['master'],
+    scenarios: ['a builder run opened by hand only where none is open'],
   },
 } satisfies Partial<Record<Action, CapabilityCardBody>>;

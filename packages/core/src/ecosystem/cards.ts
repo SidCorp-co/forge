@@ -69,6 +69,7 @@ export const ECOSYSTEM_REST_CARDS = {
     redFlag: 'Retracting a wait to dispatch the issue early while it still needs that version.',
     family: 'issue-order',
     audience: ['master'],
+    scenarios: ['an issue’s wait on a contract version it no longer needs, retracted with why'],
   },
   'DELETE /api/projects/:id/links/:link': {
     purpose:

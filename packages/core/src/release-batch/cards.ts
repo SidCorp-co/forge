@@ -152,6 +152,7 @@ export const RELEASE_REST_CARDS = {
     redFlag: 'Opening the request with evidence not read on the environment the approval rests on.',
     family: 'release',
     audience: ['run'],
+    scenarios: ['a production release’s approval opened with what was read on its environment'],
   },
   'POST /api/projects/:projectId/release-batches/:runId/method': {
     purpose: 'Says which method a release run works from, before it records anything else.',

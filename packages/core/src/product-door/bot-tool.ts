@@ -173,6 +173,7 @@ const CARDS = {
     redFlag: 'Sending the message again while its turn is processing, where read follows it.',
     family: 'product.bot',
     audience: ['person'],
+    scenarios: ['a bot turn still processing followed with read, never sent again'],
   },
   cancel: {
     purpose: 'Ends the turn a bot thread is running, where this server runs it.',
@@ -192,6 +193,7 @@ const CARDS = {
       'Reading a cancel as undoing the turn: what it already wrote stays, so read the thread.',
     family: 'product.bot',
     audience: ['person'],
+    scenarios: ['a bot turn working on a changed ask cancelled, then the new ask sent'],
   },
 } satisfies Record<(typeof BOT_TOOL_ACTIONS)[number], CapabilityCardBody>;
 

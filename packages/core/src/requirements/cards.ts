@@ -281,5 +281,6 @@ export const REQUIREMENT_REST_CARDS = {
       'Filing it in the provider’s project, or for your own contract: it is sent from the consumer.',
     family: 'requirements',
     audience: ['master'],
+    scenarios: ['a contract change asked from the consumer’s project'],
   },
 } satisfies Record<string, CapabilityCardBody>;
