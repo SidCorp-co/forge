@@ -3,8 +3,10 @@
 //! that fixes it.
 
 use super::*;
+#[cfg(unix)]
 use crate::testkit::Scratch;
 
+#[cfg(unix)]
 fn env_in(root: &Scratch) -> Env {
     Env {
         path: vec![root.path().join("bin")],
@@ -17,6 +19,7 @@ fn env_in(root: &Scratch) -> Env {
     }
 }
 
+#[cfg(unix)]
 fn settings(root: &Scratch) -> BoxSettings {
     BoxSettings {
         chrome: root.path().join("bin/google-chrome"),

@@ -424,6 +424,7 @@ fn read_from(path: &Path, from: u64) -> Option<String> {
 
 /// The `peerToken` for `pid`, read from its one key file; never logged, never returned past the
 /// frame it goes into.
+#[cfg(unix)]
 fn token_for(sessions: &Path, pid: u32) -> Result<String, Refused> {
     let prefix = format!("{pid}.");
     let keys: Vec<PathBuf> = std::fs::read_dir(sessions)

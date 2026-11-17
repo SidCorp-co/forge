@@ -316,12 +316,11 @@ pub async fn user_space(env: &Env, s: &BoxSettings) -> Vec<Step> {
     steps
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use crate::testkit::Scratch;
 
-    #[cfg(unix)]
     #[test]
     fn the_root_plan_lists_only_what_is_missing() {
         let root = Scratch::new("setup");

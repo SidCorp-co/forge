@@ -72,7 +72,25 @@ pub trait Screens {
 /// The box's own pty, one attach per session read.
 #[derive(Default)]
 pub struct Pty {
+    #[cfg(unix)]
     open: HashMap<String, prompt::Attached>,
+}
+
+/// No pseudo-terminal to attach on: every read is refused naming that, so a pass tells core it
+/// could not read the prompt rather than pressing anything.
+#[cfg(not(unix))]
+impl Screens for Pty {
+    async fn read(&mut self, id: &str) -> Result<String, String> {
+        Err(format!(
+            "{id}: a prompt is read on a pseudo-terminal, which this platform has no attach for"
+        ))
+    }
+
+    async fn press(&mut self, id: &str, _: Keys) -> Result<String, String> {
+        Err(format!("{id} is not attached"))
+    }
+
+    fn done(&mut self, _: &str) {}
 }
 
 #[cfg(unix)]

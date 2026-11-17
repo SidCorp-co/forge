@@ -7,10 +7,14 @@
 //! pinned version, else the safe way: Escape, which closes a Claude Code dialog without accepting
 //! it. It never presses Enter on a dialog it has not read.
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
+#[cfg(unix)]
+use std::time::Instant;
 
 /// The screen the runner attaches with: wide enough that a dialog's lines do not wrap.
+#[cfg(unix)]
 const ROWS: u16 = 50;
+#[cfg(unix)]
 const COLS: u16 = 200;
 
 /// How long an attach is read for before the screen is taken as drawn.
