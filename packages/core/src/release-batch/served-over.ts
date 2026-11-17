@@ -10,6 +10,18 @@ function names(subject: string, key: string): boolean {
   return new RegExp(`(?<![A-Za-z0-9-])${escaped}(?![0-9])`, 'i').test(subject);
 }
 
+/** What a reading of whether a later build carries an issue's change asks of Forge's rows. */
+export type ServedOverDeps = Pick<JudgedBuildDeps, 'heldAncestry' | 'ranges' | 'keyOf'>;
+
+/**
+ * The act that reads what `partial`'s ranges did not keep (ISS-1290): each reported again, with its
+ * commits, by a runner at ISS-1259 or later, from a checkout holding the release's commit.
+ */
+function reportAgain(projectId: string, partial: readonly ShippedReleaseRun[]): string {
+  const runs = partial.map((r) => `\`--run ${r.runId} --head ${r.commit}\` (${r.version})`);
+  return `report ${partial.length === 1 ? 'that range' : 'each range'} again from a checkout holding its commit, with a \`forge-runner\` at ISS-1259 or later: \`forge-runner release range --project-id ${projectId}\` with ${runs.join(', ')}`;
+}
+
 /**
  * Whether `live`, served where a later deploy put it, carries the change at `head` unchanged
  * (ISS-1259): it descends from `head`, and the files the commits it adds change touch none of the
@@ -23,7 +35,11 @@ function names(subject: string, key: string): boolean {
  * a fold, a round after a reopen) changed more than its mark commit did. A carrying release whose range
  * kept no commits leaves that set partial, so an untouched answer there is `unread`, never
  * `unchanged`; a file it does hold that an added commit changes is `touched` either way. What none of
- * these holds is `unread`, named, never guessed.
+ * these holds is `unread`, named, never guessed, with the act that reads what is missing (ISS-1290:
+ * dev.716's range, reported by a runner older than ISS-1259, kept no commits, and its nine issues read
+ * `unread` at dev.717 saying only that).
+ *
+ * The release read weighs a pass judged at a later build by this same reading (`served-carriage.ts`).
  */
 export async function servedOver(
   issue: JudgedBuildIssue,
@@ -31,7 +47,7 @@ export async function servedOver(
   live: string,
   releases: readonly ShippedReleaseRun[],
   environment: string,
-  deps: JudgedBuildDeps,
+  deps: ServedOverDeps,
 ): Promise<ServedBuild> {
   const answer = (carries: ServedBuild['carries'], why: string, touched: string[] = []) => ({
     environment,
@@ -86,19 +102,21 @@ export async function servedOver(
   const key = (await deps.keyOf?.(issue.id)) ?? null;
   const own = new Set((issue.mergedPaths?.changes ?? []).map((c) => c.path));
   // releases whose range names no commits: this issue's files there are not known
-  const partial: string[] = [];
+  const partial: ShippedReleaseRun[] = [];
   for (const r of carrying) {
     const commits = ranges.get(r.runId)?.commits;
     if (!key || !commits) {
-      partial.push(r.version);
+      partial.push(r);
       continue;
     }
     for (const c of commits) if (names(c.subject, key)) for (const p of c.paths) own.add(p);
   }
   const files = [...own];
+  // where a carrying range kept no commits and the issue has a key, re-reporting it reads its files
+  const act = key && partial.length > 0 ? `; ${reportAgain(issue.projectId, partial)}` : '';
   if (files.length === 0) {
     return unread(
-      `this issue's merge mark names none of the files its landing changed, and no commit of ${carrying.length > 0 ? `the release${carrying.length === 1 ? '' : 's'} that carried it (${carrying.map((r) => r.version).join(', ')})` : 'a release that carried it'} is read naming it, so none can be weighed`,
+      `this issue's merge mark names none of the files its landing changed, and no commit of ${carrying.length > 0 ? `the release${carrying.length === 1 ? '' : 's'} that carried it (${carrying.map((r) => r.version).join(', ')})` : 'a release that carried it'} is read naming it, so none can be weighed${act}`,
     );
   }
   const changed = new Set<string>();
@@ -107,12 +125,12 @@ export async function servedOver(
     const range = ranges.get(r.runId);
     if (!range?.changed) {
       return unread(
-        `release ${r.version} kept no reading of the files its range changes (\`forge-runner release range\`)`,
+        `release ${r.version} kept no reading of the files its range changes; ${reportAgain(issue.projectId, [r])}`,
       );
     }
     if (range.base.toLowerCase() !== at || range.head.toLowerCase() !== r.commit) {
       return unread(
-        `release ${r.version} kept the range \`${range.base.slice(0, 7)}..${range.head.slice(0, 7)}\`, not \`${at.slice(0, 7)}..${r.commit.slice(0, 7)}\``,
+        `release ${r.version} kept the range \`${range.base.slice(0, 7)}..${range.head.slice(0, 7)}\`, not \`${at.slice(0, 7)}..${r.commit.slice(0, 7)}\`; ${reportAgain(issue.projectId, [r])}`,
       );
     }
     for (const c of range.changed) changed.add(c.path);
@@ -129,7 +147,7 @@ export async function servedOver(
   }
   if (partial.length > 0) {
     return unread(
-      `it descends from \`${head}\` (${descent}) and the commits it adds (${versions}) change none of the ${files.length} file${files.length === 1 ? '' : 's'} Forge holds of this issue, but ${key ? `the range of release ${partial.join(', ')}, which carried it, kept no commits (a \`forge-runner release range\` older than ISS-1259 reported it)` : 'this issue has no key a commit subject could name'}, so the files of its whole landing are not all known`,
+      `it descends from \`${head}\` (${descent}) and the commits it adds (${versions}) change none of the ${files.length} file${files.length === 1 ? '' : 's'} Forge holds of this issue, but ${key ? `the range of release ${partial.map((r) => r.version).join(', ')}, which carried it, kept no commits (a \`forge-runner release range\` older than ISS-1259 reported it)` : 'this issue has no key a commit subject could name'}, so the files of its whole landing are not all known${act}`,
     );
   }
   return answer(

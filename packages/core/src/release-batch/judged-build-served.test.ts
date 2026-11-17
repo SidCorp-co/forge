@@ -245,6 +245,10 @@ describe('a served build other than the release head (ISS-1259)', () => {
     );
     expect(built.served).toMatchObject({ carries: 'unread' });
     expect(built.served?.why).toContain('release 0.4.0-dev.702');
+    // ISS-1290: it names the act that reads what is missing, never only that it is unread
+    expect(built.served?.why).toContain(
+      `\`forge-runner release range --project-id forge\` with \`--run run-0.4.0-dev.702 --head ${HEAD}\``,
+    );
     const touched = await judgedBuildOf(
       ISSUE,
       deps({ ranges: { ...old, 'run-0.4.0-dev.703': range([FILE]) } }),
