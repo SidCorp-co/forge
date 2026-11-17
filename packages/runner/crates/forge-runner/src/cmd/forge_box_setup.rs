@@ -114,7 +114,7 @@ impl Exec for Sudo {
 }
 
 fn env_of(cfg: &Config) -> (runner_box::modes::Env, PathBuf) {
-    let data = cfg.boxes.data_dir().unwrap_or_default();
+    let data = cfg.boxes.data_dir();
     (runner_box::modes::Env::of_host(&cfg.boxes, &data), data)
 }
 
@@ -178,7 +178,6 @@ pub async fn canary(tool: &str, version: &str, dry_run: bool) -> anyhow::Result<
     let scratch = cfg
         .boxes
         .data_dir()
-        .unwrap_or_default()
         .join("canary")
         .join(format!("{tool}-{version}-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&scratch)?;

@@ -44,10 +44,7 @@ pub async fn run(base: &BoxSettings, tool: &str, version: &str, scratch: &Path) 
     s.set_pin(tool, version);
     s.data_dir = Some(scratch.to_path_buf());
     let ctx = Ctx {
-        env: modes::Env::of_host(
-            &s,
-            &base.data_dir().unwrap_or_else(|| scratch.to_path_buf()),
-        ),
+        env: modes::Env::of_host(&s, &base.data_dir()),
         settings: s,
         data_dir: scratch.to_path_buf(),
         x: display::XDirs::default(),

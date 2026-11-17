@@ -56,9 +56,7 @@ impl Boxes {
     /// The boxes of a runner whose `[box]` is `settings`, recording what it holds at `record`;
     /// anything an earlier image recorded there and left running is reaped first.
     pub fn start(core: Arc<dyn Core>, settings: BoxSettings, record: Option<PathBuf>) -> Self {
-        let data_dir = settings
-            .data_dir()
-            .unwrap_or_else(|| std::env::temp_dir().join("forge-runner-box"));
+        let data_dir = settings.data_dir();
         let env = modes::Env::of_host(&settings, &data_dir);
         let ctx = Ctx {
             settings,

@@ -71,11 +71,7 @@ fn boxes() -> (Boxes, Arc<Said>) {
         "the live test runs only against a scratch config"
     );
     let said = Arc::new(Said::default());
-    let record = cfg
-        .boxes
-        .data_dir()
-        .expect("a data dir")
-        .join("live-held.json");
+    let record = cfg.boxes.data_dir().join("live-held.json");
     (Boxes::start(said.clone(), cfg.boxes, Some(record)), said)
 }
 

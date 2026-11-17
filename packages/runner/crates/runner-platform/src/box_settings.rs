@@ -73,11 +73,14 @@ impl Default for BoxSettings {
 }
 
 impl BoxSettings {
-    /// The data directory: the one named, else `<data dir>/forge-runner/box`.
-    pub fn data_dir(&self) -> Option<PathBuf> {
+    /// The data directory: the one named, else `<data dir>/forge-runner/box`, else (a user with no
+    /// data dir) `<temp>/forge-runner-box`. One answer for the daemon, setup, doctor and the canary,
+    /// so the tools setup installs are the ones a box runs.
+    pub fn data_dir(&self) -> PathBuf {
         self.data_dir
             .clone()
             .or_else(|| dirs_next::data_local_dir().map(|d| d.join("forge-runner").join("box")))
+            .unwrap_or_else(|| std::env::temp_dir().join("forge-runner-box"))
     }
 
     /// The SDK this device's android boxes run from.

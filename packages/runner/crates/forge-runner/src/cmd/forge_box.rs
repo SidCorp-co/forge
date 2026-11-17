@@ -97,7 +97,7 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
 /// Print each mode as doctor reads it; the count of modes served.
 pub fn doctor_rows(cfg: &Config) -> usize {
     let s = &cfg.boxes;
-    let data = s.data_dir().unwrap_or_default();
+    let data = s.data_dir();
     let env = runner_box::modes::Env::of_host(s, &data);
     println!("Boxes");
     let mut served = 0;
