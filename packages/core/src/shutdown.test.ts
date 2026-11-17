@@ -102,35 +102,38 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** One request on `agent`, answered as status, headers and body, or why it got no answer. */
 const viaAgent = (url: string, method: string, agent: Agent) =>
-  new Promise<{ status: number | string; connection?: string; retryAfter?: string; body?: unknown }>(
-    (resolve) => {
-      const req = request(url, { method, agent }, (res) => {
-        let text = '';
-        res.setEncoding('utf8');
-        res.on('data', (chunk) => {
-          text += chunk;
-        });
-        res.on('end', () => {
-          let body: unknown = text;
-          try {
-            body = JSON.parse(text);
-          } catch {}
-          resolve({
-            status: res.statusCode ?? 0,
-            connection: res.headers.connection,
-            retryAfter: res.headers['retry-after'],
-            body,
-          });
+  new Promise<{
+    status: number | string;
+    connection?: string | undefined;
+    retryAfter?: string | undefined;
+    body?: unknown;
+  }>((resolve) => {
+    const req = request(url, { method, agent }, (res) => {
+      let text = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk) => {
+        text += chunk;
+      });
+      res.on('end', () => {
+        let body: unknown = text;
+        try {
+          body = JSON.parse(text);
+        } catch {}
+        resolve({
+          status: res.statusCode ?? 0,
+          connection: res.headers.connection,
+          retryAfter: res.headers['retry-after'],
+          body,
         });
       });
-      req.on('error', (err) =>
-        resolve({
-          status: `no answer: the socket was refused or closed (${(err as { code?: string }).code ?? String(err)})`,
-        }),
-      );
-      req.end();
-    },
-  );
+    });
+    req.on('error', (err) =>
+      resolve({
+        status: `no answer: the socket was refused or closed (${(err as { code?: string }).code ?? String(err)})`,
+      }),
+    );
+    req.end();
+  });
 
 // a socket refused or closed under the request throws instead of answering; name it so the diff reads it
 const statusOf = async (url: string, init?: RequestInit) => {
@@ -265,7 +268,7 @@ describe('core answers until the proxy has stopped routing to it (ISS-930)', () 
     expect((await statusOf(`${harness.base}/health`)).status).toMatch(/^no answer/);
   });
 
-  it('does not wait for a proxy on SIGINT, a terminal\'s stop with none in front', async () => {
+  it("does not wait for a proxy on SIGINT, a terminal's stop with none in front", async () => {
     const started = Date.now();
     expect(await shutdown(harness, { deregisterMs: 5_000 }, 'SIGINT')).toBe(0);
     expect(Date.now() - started).toBeLessThan(1_000);

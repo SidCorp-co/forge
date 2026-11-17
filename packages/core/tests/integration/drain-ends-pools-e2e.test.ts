@@ -66,7 +66,9 @@ describe('core shutting down', () => {
     expect(before.session).toBe(1);
 
     const listener = { close: (cb?: (err?: Error) => void) => cb?.() };
+    // no proxy routes to this listener, so nothing to wait out before it closes
     const code = await runShutdown('SIGTERM', listener, coreShutdownSteps, {
+      deregisterMs: 0,
       httpDrainMs: 1_000,
       timeoutMs: 20_000,
     });

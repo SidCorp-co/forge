@@ -53,7 +53,8 @@ function coreUnhealthyAfterMs(compose: string): number | string {
   const block = coreBlock(compose);
   if (typeof block === 'string') return block;
   const at = block.findIndex((l) => /^ {4}healthcheck:/.test(l));
-  if (at < 0) return 'the `core` service has no healthcheck, so the proxy routes to it until it dies';
+  if (at < 0)
+    return 'the `core` service has no healthcheck, so the proxy routes to it until it dies';
   const end = block.findIndex((l, i) => i > at && /^ {0,4}\S/.test(l));
   const health = block.slice(at + 1, end < 0 ? undefined : end);
   const field = (key: string) => {
