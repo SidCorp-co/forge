@@ -99,6 +99,7 @@ export function publicConfigOf(binding: WidgetBinding): WidgetPublicConfig {
   return {
     title: binding.config.title ?? DEFAULT_WIDGET_TITLE,
     greeting: binding.config.greeting ?? null,
+    greetings: binding.config.greetings ?? {},
     accent: binding.config.accent ?? null,
     identity: { mode: binding.config.identity.mode },
     messageMaxChars: limitsOf(binding.config).messageMaxChars,

@@ -137,7 +137,10 @@ describe('a widget binding (the integrations door)', () => {
 
 describe('the public config', () => {
   it('answers the frame and a page of an allowed origin, sealed, with the binding’s CORS', async () => {
-    const widget = await bindWidget(owner, { limits: { messageMaxChars: 500 } });
+    const widget = await bindWidget(owner, {
+      limits: { messageMaxChars: 500 },
+      greetings: { vi: 'Chào bạn! Có gì chưa ổn?' },
+    });
     const res = await api(
       null,
       'GET',
@@ -149,6 +152,7 @@ describe('the public config', () => {
     expect(res.body).toEqual({
       title: 'Catalog help',
       greeting: 'Hi! What went wrong?',
+      greetings: { vi: 'Chào bạn! Có gì chưa ổn?' },
       accent: null,
       identity: { mode: 'anonymous' },
       messageMaxChars: 500,

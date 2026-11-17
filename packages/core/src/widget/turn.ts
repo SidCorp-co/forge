@@ -9,7 +9,12 @@
  * screen. A window a stopped core left behind is answered by the drain timer.
  */
 
-import { type WidgetPageContext, widgetPageContextSchema } from '@forge/contracts/widget';
+import {
+  type WidgetPageContext,
+  widgetGreetingOf,
+  widgetLanguageOf,
+  widgetPageContextSchema,
+} from '@forge/contracts/widget';
 import { runWidgetTurn, type WidgetTurnLine } from '../assistant/index.js';
 import {
   type ClaimedWindow,
@@ -104,7 +109,11 @@ export async function routeWidgetWindow(
       const turn = await runWidgetTurn({
         projectId: session.projectId,
         conversationId: window.conversationId,
-        site: { title, greeting: binding.config.greeting ?? null },
+        // the greeting the visitor was shown, in the language their page named
+        site: {
+          title,
+          greeting: widgetGreetingOf(binding.config, widgetLanguageOf(page?.locale) ?? 'en'),
+        },
         lines,
         pageContext: page,
         pending: pending

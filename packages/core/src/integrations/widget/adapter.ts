@@ -30,6 +30,7 @@ export const WIDGET_BINDING_CONFIG_KEYS = [
   'identity',
   'title',
   'greeting',
+  'greetings',
   'accent',
   'limits',
 ] as const;

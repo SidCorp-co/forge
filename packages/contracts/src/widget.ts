@@ -71,6 +71,34 @@ export const widgetOriginSchema = z
 		"an origin: scheme://host[:port], lower case, no path",
 	);
 
+/**
+ * The languages the widget writes its own words in. The host page names its visitor's `locale`
+ * (`ForgeWidget.setContext`, else the browser's), and the widget speaks the language of its base
+ * (`vi-VN` reads `vi`): English where none is named, and English where the widget writes none of it.
+ */
+export const WIDGET_LANGUAGES = ["en", "vi"] as const;
+export type WidgetLanguage = (typeof WIDGET_LANGUAGES)[number];
+
+/** The widget language a locale names by its base language; English for none, null for one the widget does not write. */
+export function widgetLanguageOf(
+	locale: string | null | undefined,
+): WidgetLanguage | null {
+	const base = (locale ?? "").trim().toLowerCase().split(/[-_]/)[0];
+	if (!base) return "en";
+	return WIDGET_LANGUAGES.find((language) => language === base) ?? null;
+}
+
+/** The greeting a visitor in `language` is shown: the site's own for that language, else its one greeting. */
+export function widgetGreetingOf(
+	site: {
+		greeting?: string | null | undefined;
+		greetings?: Partial<Record<WidgetLanguage, string>> | null | undefined;
+	},
+	language: WidgetLanguage,
+): string | null {
+	return site.greetings?.[language] ?? site.greeting ?? null;
+}
+
 /** The binding's config, as Settings → Integrations writes it. The signing secret is a secret, not here. */
 export const widgetBindingConfigSchema = z.strictObject({
 	siteKey: z.string().regex(WIDGET_SITE_KEY_PATTERN),
@@ -78,6 +106,10 @@ export const widgetBindingConfigSchema = z.strictObject({
 	identity: z.strictObject({ mode: z.enum(WIDGET_IDENTITY_MODES) }),
 	title: z.string().min(1).max(60).optional(),
 	greeting: z.string().min(1).max(400).optional(),
+	/** The greeting in a widget language, for a visitor whose page names it; `greeting` greets every other. */
+	greetings: z
+		.partialRecord(z.enum(WIDGET_LANGUAGES), z.string().min(1).max(400))
+		.optional(),
 	/** A CSS colour the frame accents with, `#rrggbb`. */
 	accent: z
 		.string()
@@ -107,6 +139,8 @@ export type WidgetPageContext = z.infer<typeof widgetPageContextSchema>;
 export interface WidgetPublicConfig {
 	title: string;
 	greeting: string | null;
+	/** The greeting per widget language the site wrote one in (`widgetGreetingOf`). */
+	greetings: Partial<Record<WidgetLanguage, string>>;
 	accent: string | null;
 	identity: { mode: WidgetIdentityMode };
 	messageMaxChars: number;
