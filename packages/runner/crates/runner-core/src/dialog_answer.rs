@@ -53,6 +53,11 @@ pub enum Via {
     Hook,
     /// The daemon's sweep, which found the dialog already standing on the pane.
     Sweep,
+    /// A resident session's relay hook: asked of a person on Forge (`permission_relay`, ISS-1268).
+    Relay,
+    /// The runner's watcher, which read a prompt standing on a resident session and answered it
+    /// from the dialog catalog or the safe way (ISS-1268 C2).
+    Watcher,
 }
 
 impl Via {
@@ -60,6 +65,8 @@ impl Via {
         match self {
             Via::Hook => "hook",
             Via::Sweep => "sweep",
+            Via::Relay => "relay",
+            Via::Watcher => "watcher",
         }
     }
 }
@@ -147,7 +154,19 @@ pub fn answers_path(config_dir: &Path) -> PathBuf {
 
 /// Record one answer. `project` is the pane's own `$FORGE_PROJECT_ID`.
 pub fn record(config_dir: &Path, at: i64, project: Option<&str>, a: &Asked, via: Via) {
-    let mut line = serde_json::json!({ "at": at, "reason": reason(a), "via": via.wire() });
+    record_line(config_dir, at, project, a, &reason(a), via);
+}
+
+/// Record one answer as `said` reads it: `allowed from Forge Bash: ...` (ISS-1268).
+pub fn record_line(
+    config_dir: &Path,
+    at: i64,
+    project: Option<&str>,
+    a: &Asked,
+    said: &str,
+    via: Via,
+) {
+    let mut line = serde_json::json!({ "at": at, "reason": clip(said), "via": via.wire() });
     for (key, value) in [
         ("project", project),
         ("tool", a.tool.as_deref()),

@@ -216,7 +216,7 @@ fn run_identity(run: Option<&str>) -> anyhow::Result<String> {
     }
 }
 
-fn client_for(ctx: &Ctx, cfg: &Config) -> anyhow::Result<CoreClient> {
+pub(super) fn client_for(ctx: &Ctx, cfg: &Config) -> anyhow::Result<CoreClient> {
     let Some(core_url) = ctx.resolve_core_url(cfg) else {
         anyhow::bail!(
             "no core url on this box, so there is nowhere to ask — set one with \
@@ -262,6 +262,8 @@ async fn send_ask(
             cost: None,
             sensitive: Some(a.sensitive),
             about: about_of(a),
+            permission_prompt: None,
+            plain: None,
         },
     )
     .await

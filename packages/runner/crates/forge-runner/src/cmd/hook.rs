@@ -10,6 +10,12 @@
 //! reported as a question standing; a pane this box did not place, or one it
 //! cannot tell, is left to its person and reported as today.
 //!
+//! A resident session (a master or room agent run as `claude --bg`, ISS-1268 B3)
+//! answers it differently: its own settings carry `hook --relay`, which asks a
+//! person on Forge and prints their answer (`hook/relay.rs`). Its environment
+//! names the relay (`permission_relay::RELAY_ENV`), so the checkout-wide hook
+//! this file also serves there answers nothing and the relay's is the decision.
+//!
 //! One more is answered since ISS-297: `SubagentStop` for a subagent this box
 //! bound to a declared run goes through the stop gate (`hook/stop.rs`,
 //! deciding in `runner_core::stop_gate`), and is refused while the run holds an
@@ -35,6 +41,7 @@ use runner_platform::config::{config_dir, Config};
 use super::gate::{tokenless_here, Tokenless};
 use super::Ctx;
 
+mod relay;
 mod stop;
 
 #[derive(ClapArgs)]
@@ -46,6 +53,10 @@ pub struct Args {
     /// pane's sandbox holds no door into the daemon, so the box reads its turns' ends here.
     #[arg(long)]
     pub chat_pane_events: Option<std::path::PathBuf>,
+    /// A resident session's `PermissionRequest`: ask a person on Forge and print their answer
+    /// (ISS-1268 B3). Set by the hook block `permission_relay::hooks_block` writes.
+    #[arg(long)]
+    pub relay: bool,
 }
 
 /// What a chat pane's hook prints: the status line a person attached to the pane reads, or `{}`.
@@ -114,13 +125,21 @@ pub fn placed(
     }
 }
 
-/// What this hook prints for `event`, or `None` where it only reports.
+/// Whether this session's own relay hook answers its permission prompts (ISS-1268 B3).
+pub fn relayed() -> bool {
+    let (key, on) = runner_core::permission_relay::RELAY_ENV;
+    std::env::var(key).is_ok_and(|v| v == on)
+}
+
+/// What this hook prints for `event`, or `None` where it only reports. A session whose relay
+/// answers is never answered here: two decisions on one prompt would be a guess at which wins.
 pub fn answer(
     event: &str,
     payload: &[u8],
     placed: &Placed,
+    relayed: bool,
 ) -> Option<(String, dialog_answer::Asked)> {
-    if event != Event::PermissionRequested.wire() || *placed == Placed::No {
+    if event != Event::PermissionRequested.wire() || *placed == Placed::No || relayed {
         return None;
     }
     Some((
@@ -153,6 +172,10 @@ pub async fn run(ctx: Ctx, args: Args) {
         println!("{}", chat_pane_said(&args.event));
         return;
     }
+    if args.relay && args.event == Event::PermissionRequested.wire() {
+        println!("{}", relay::run(&ctx, &payload).await);
+        return;
+    }
     let token = session_tokens::token_from_env().ok();
     if args.event == Event::PermissionRequested.wire() {
         let project = std::env::var("FORGE_PROJECT_ID")
@@ -167,7 +190,7 @@ pub async fn run(ctx: Ctx, args: Args) {
         let placed = placed(token.is_some(), project, || {
             tokenless.unwrap_or(Tokenless::NotOurs)
         });
-        if let Some((out, asked)) = answer(&args.event, &payload, &placed) {
+        if let Some((out, asked)) = answer(&args.event, &payload, &placed, relayed()) {
             println!("{out}");
             if let (Some(dir), Placed::Yes { project }) = (dir.as_deref(), &placed) {
                 dialog_answer::record(
@@ -224,7 +247,7 @@ mod tests {
         let here = Placed::Yes {
             project: Some("p".into()),
         };
-        let (out, asked) = answer("PermissionRequest", ASKED, &here).expect("answered");
+        let (out, asked) = answer("PermissionRequest", ASKED, &here, false).expect("answered");
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         assert_eq!(
             v["hookSpecificOutput"]["hookEventName"],
@@ -240,11 +263,15 @@ mod tests {
 
     #[test]
     fn a_pane_this_box_did_not_place_is_left_to_its_person() {
-        assert!(answer("PermissionRequest", ASKED, &Placed::No).is_none());
+        assert!(answer("PermissionRequest", ASKED, &Placed::No, false).is_none());
         let here = Placed::Yes { project: None };
         assert!(
-            answer("Stop", b"{}", &here).is_none(),
+            answer("Stop", b"{}", &here, false).is_none(),
             "only a dialog is answered"
+        );
+        assert!(
+            answer("PermissionRequest", ASKED, &here, true).is_none(),
+            "a relayed session's prompt was denied by the checkout-wide hook beside its relay"
         );
     }
 

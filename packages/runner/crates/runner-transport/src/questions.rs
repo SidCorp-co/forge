@@ -24,6 +24,10 @@ pub struct Answer {
     pub answered_at: Option<String>,
     pub answered_by: Option<String>,
     pub round: Option<i64>,
+    /// What the person said with it; a relayed permission prompt's deny reaches the session as its
+    /// reason (ISS-1268 B3).
+    #[serde(default)]
+    pub note: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -61,6 +65,11 @@ pub struct Ask<'a> {
     /// `{"contract": "<project>/<contract>"}`. With no `issue_id` it is what the question stands
     /// on, listed on that requirement and answered from Needs you (FB-149).
     pub about: Option<serde_json::Value>,
+    /// The Claude Code permission prompt this relays for a person to allow or deny (ISS-1268 B3):
+    /// `{"session", "tool", "promptId"}`. Asked on no issue.
+    pub permission_prompt: Option<serde_json::Value>,
+    /// The asker's own plain text a person decides from.
+    pub plain: Option<&'a str>,
 }
 
 pub async fn ask(client: &CoreClient, req: Ask<'_>) -> Result<String> {
@@ -113,7 +122,34 @@ fn ask_body(req: Ask<'_>) -> serde_json::Value {
     if let Some(v) = req.about {
         body["about"] = v;
     }
+    if let Some(v) = req.permission_prompt {
+        body["permissionPrompt"] = v;
+    }
+    if let Some(v) = req.plain {
+        body["plain"] = serde_json::json!(v);
+    }
     body
+}
+
+/// End the relayed permission prompt `question_id` this box asked for `run_id`: nobody answered
+/// within `waited_seconds`, and the box denied the call (ISS-1268 B3). Core tells the project's
+/// admins.
+pub async fn expire(
+    client: &CoreClient,
+    question_id: &str,
+    run_id: &str,
+    project_id: &str,
+    waited_seconds: u64,
+) -> Result<()> {
+    let path = format!("/api/devices/me/questions/{question_id}/expire");
+    let body = serde_json::json!({
+        "runId": run_id,
+        "projectId": project_id,
+        "waitedSeconds": waited_seconds,
+    });
+    let resp = status::sent(client.post(&path).json(&body), "question expire").await?;
+    status::checked(resp, "question expire").await?;
+    Ok(())
 }
 
 /// `run_id` goes through the client's own query serializer rather than into the
@@ -162,6 +198,8 @@ mod tests {
             cost: None,
             sensitive: None,
             about,
+            permission_prompt: None,
+            plain: None,
         }
     }
 

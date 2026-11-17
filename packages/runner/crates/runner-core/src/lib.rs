@@ -13,6 +13,7 @@ pub mod job_unheard;
 pub mod judge_dir;
 pub mod ledger;
 pub mod pane_exit;
+pub mod permission_relay;
 pub mod stop_gate;
 pub mod subagent_end;
 pub mod transcript_age;
