@@ -22,7 +22,7 @@ export const DISPATCH_GUIDE: CoreGuide = {
   title: "Running a wave: a master's dispatch and fold",
   summary:
     "The method a project's master follows for one wave: read the order, triage each candidate, batch by files, give each run its tree and a brief, declare and record each dispatch, and fold what comes back — over REST and `forge-runner`; on a project that runs direct (not strict, fast delivery on), build, land, release and judge a whole batch at once instead.",
-  version: 10,
+  version: 11,
   body: `## Running a wave
 
 A wave is the set of runs one master pass sends out, and the fold is the reading of what came back.
@@ -266,7 +266,8 @@ It works in batches, as §4 splits them:
 4. Record each issue. Rate its impact (${guideRef('fast-delivery')}) and mark it,
    \`POST /api/issues/:id/merge\` \`{ commit: <landing sha>, target: <the branch it landed on> }\`. Move it,
    \`POST /api/issues/:id/transition\` \`{ toStatus: 'awaiting_release', reason: <landing sha> }\`.
-   Comment what landed, then hand the lease back.
+   Record the terms and rules the work named under its module, as the mark's \`moduleMap\` says
+   (${guideRef('issue-flow')}, Land, mark, move). Comment what landed, then hand the lease back.
 5. Release the batch once, on the minimum bar: it builds and the app answers its health check. Then
    one live judge pass over the batch: a criterion's or a requirement BC's verdict is recorded only
    once it was checked on the running build, and a screen is checked at the widths the qa guide

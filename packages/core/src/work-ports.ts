@@ -68,6 +68,7 @@ import {
   provideCommitPlacement,
   provideFailReturnPort,
   provideIssueFindPort,
+  provideIssueModuleMapPort,
   provideIssuePorts,
   provideReleasedLineReads,
   provideRequestHeadPort,
@@ -84,7 +85,7 @@ import {
   parkedOnAHuman,
   requestJobKill,
 } from './jobs/index.js';
-import { provideLabelPorts, refreshModuleKnowledgeForIssue } from './labels/index.js';
+import { landingMapOf, provideLabelPorts, refreshModuleKnowledgeForIssue } from './labels/index.js';
 import { recordCorrection } from './lessons/index.js';
 import { masterAccountsOf } from './master-accounts.js';
 import { masterServingOf } from './masters/index.js';
@@ -280,6 +281,7 @@ function provideIssueSidePorts(): void {
   });
   provideBetaPortPorts({ createFeedback, triageOutcomesOf, feedbackIdOfSeq });
   provideIssueFindPort({ issueIdsFound: issueIdsThroughFind });
+  provideIssueModuleMapPort({ landingMapOf });
   provideRequestHeadPort({
     requestHeadOf: (projectId, head, landing) =>
       readMergedHead(

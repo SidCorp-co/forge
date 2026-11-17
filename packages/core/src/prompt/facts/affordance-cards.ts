@@ -244,6 +244,7 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     practice: [
       'Verify the commit is on the target branch on the remote before you name it: after a squash merge that is the squash commit; work outside git names `landing` and no commit.',
       'Name what you have (commit and target, landing, artifacts, a liveReading {url,status}); it is recorded as given with who said it, and a named commit is read against the repository as a reading, never a refusal.',
+      'The answer’s `moduleMap` says what the issue’s module holds and the call that records a term or rule there: write each the work named before you hand it on.',
     ],
     example: { target: 'base', commit: 'c82e7d7c3a339c5035efea3bcbb8b6f45c9510ee' },
     // issues/merge-correction.ts: MR 5162's merge stamped a closed issue with a commit over its real

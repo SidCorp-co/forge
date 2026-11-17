@@ -33,6 +33,7 @@ import {
 import { MERGE_CHECK_SHAPE, mergeCheckReportSchema } from '@forge/contracts/merge-check';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod';
+import { logger } from '../lib/logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { idParamSchema } from '../middleware/route-errors.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
@@ -44,6 +45,7 @@ import { recordMergeCheck } from './merge-check.js';
 import { warningsOf } from './merge-check-rules.js';
 import { correctClosedMerge } from './merge-correction.js';
 import { applyMergeMarker, mergedCommitShaSchema } from './merge-marker.js';
+import { landingMapOf } from './module-map-port.js';
 import { settleReleaseOnMark } from './owed-merges.js';
 import { issueReviewOf, recordReview } from './review.js';
 
@@ -126,14 +128,32 @@ async function runMergeMarker(
   // and never reached the one party that could act on it.
   // ISS-1017 — what the call named, as named, who named it, and what the repository said of a commit
   // it named: the mark takes the agent's word, so the answer shows the word it took.
+  // ISS-1256 r5: a landing is where work finishes, so the mark shows what the issue's module holds
+  // and the call that records a term or rule there; a day of landings wrote none while the step sat
+  // only in cards nobody opened at this moment. A read: it writes, infers and refuses nothing.
   return c.json({
     id: issueId,
     action,
     mark,
     detail: markDetail,
     artifacts,
-    ...(op === 'mark' ? { said, by, commitReading } : {}),
+    ...(op === 'mark'
+      ? { said, by, commitReading, moduleMap: await moduleMapOfMark(scope.projectId, issueId) }
+      : {}),
   });
+}
+
+/**
+ * The mark's module map, read after the mark is written: a failed read never turns a written mark into
+ * an error the caller would retry, so it answers null and is logged by name.
+ */
+async function moduleMapOfMark(projectId: string, issueId: string) {
+  try {
+    return await landingMapOf(projectId, issueId);
+  } catch (err) {
+    logger.warn({ err, projectId, issueId }, 'merge mark: the module map read failed');
+    return null;
+  }
 }
 
 const mergeMarkerValidators = [

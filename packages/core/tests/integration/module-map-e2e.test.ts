@@ -10,6 +10,8 @@
  * kind, or between ends its kind does not join, is refused by name (c1). A landing that changes the
  * anchored file flags the term owing a re-check, by the knowledge re-check every entry is weighed by,
  * and a change elsewhere does not (c8). The capabilities read narrows to one module's cards (c7).
+ * The merge mark, where work finishes, answers what the issue's module holds as its tree reads it and
+ * the call that records a term or rule there, or that the issue sits in no module (ISS-1256 r5).
  *
  * @direct-test-of packages/core/src/labels/module-map-read.ts
  * @direct-test-of packages/core/src/labels/module-map-write.ts
@@ -21,6 +23,8 @@
  * @direct-test-of packages/core/src/issues/module-field.ts
  * @direct-test-of packages/core/src/requirements/module-field.ts
  * @direct-test-of packages/core/src/metrics/capabilities.ts
+ * @direct-test-of packages/core/src/issues/merge-routes.ts
+ * @direct-test-of packages/core/src/issues/module-map-port.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -36,9 +40,11 @@ import {
   createTestUser,
   type TestProject,
 } from '../helpers/factories.js';
+import { seedProjectDocument } from '../helpers/release-world.js';
 
 let project: TestProject;
 let jwt: string;
+const issues: Record<number, { id: string; key: string }> = {};
 const base = () => `/api/projects/${project.id}`;
 const codeOf = (b: Body) =>
   ((b.error as { refusals?: { code: string }[]; code?: string } | undefined)?.refusals?.[0]?.code ??
@@ -60,6 +66,11 @@ beforeAll(async () => {
   const owner = await createTestUser({ verified: true });
   project = await createTestProject(owner.id);
   jwt = await userToken(owner.id);
+  // a mark reads how the project's work lands from its document
+  await seedProjectDocument(project.id, owner.id, {
+    environments: { live: { tier: 'production', deployment: { mode: 'external' } } },
+    defaultBranch: 'dev',
+  });
   const execution = await moduleLabel('Execution', 'execution', null);
   await moduleLabel('devices', 'devices', execution);
   // the module map's MCP door lives in `product-door`, so its cards sit under Execution here
@@ -67,8 +78,12 @@ beforeAll(async () => {
   await moduleLabel('Knowledge', 'knowledge-2', null);
   await createTestRequirement(project.id, 48, 'An agent stands at every handoff');
   await createTestRequirement(project.id, 2, 'Nobody placed this one');
-  await createTestIssue(project.id, owner.id, 12, { status: 'open', createdAt: new Date() });
-  await createTestIssue(project.id, owner.id, 13, { status: 'open', createdAt: new Date() });
+  for (const n of [12, 13]) {
+    issues[n] = await createTestIssue(project.id, owner.id, n, {
+      status: 'open',
+      createdAt: new Date(),
+    });
+  }
 }, 120_000);
 
 describe('a term written with its module, aliases, provenance and anchor (c1, c6)', () => {
@@ -324,5 +339,50 @@ describe('freshness: a change to the anchored code owes the term a re-check (c8)
       by: 'ISS-77',
       matched: ['packages/core/src/devices/run-slots.ts'],
     });
+  });
+});
+
+describe("the merge mark shows what the landing's module holds (ISS-1256 r5)", () => {
+  const mark = (n: number) =>
+    api(jwt, 'POST', `/api/issues/${issues[n]?.id}/merge`, { target: 'dev', note: 'landed' });
+
+  it("answers the issue's module as its tree counts it, re-checks owed included, with the call that records a term", async () => {
+    const res = await mark(12);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const tree = await api(jwt, 'GET', `${base()}/modules/devices/map`);
+    const branches = tree.body.branches as Record<string, { recheck: unknown }[]>;
+    const terms = branches.term ?? [];
+    const rules = branches.rule ?? [];
+    expect(rules.length).toBeGreaterThan(0);
+    expect(res.body.moduleMap).toEqual({
+      module: {
+        slug: 'devices',
+        name: 'devices',
+        path: 'execution/devices',
+        terms: terms.length,
+        rules: rules.length,
+        recheckOwed: [...terms, ...rules].filter((n) => n.recheck).length,
+      },
+      modules: { total: 2, empty: 1 },
+      said: expect.stringContaining(`PUT /api/projects/${project.id}/knowledge/<slug>`),
+    });
+    expect((res.body.moduleMap as Body).said).toContain("module: 'devices'");
+  });
+
+  it('answers an issue in no module with how many modules are empty and the placement call, placing nothing', async () => {
+    const res = await mark(13);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const map = res.body.moduleMap as Body;
+    expect(map.module).toBeNull();
+    expect(map.modules).toEqual({ total: 2, empty: 1 });
+    expect(map.said).toContain(
+      'This issue sits in no module, and 1 of 2 modules hold no term or rule',
+    );
+    expect(map.said).toContain(`PUT /api/projects/${project.id}/modules/placements`);
+    const pillar = await api(jwt, 'GET', `${base()}/modules/map`);
+    const unplaced = pillar.body.unplaced as { items: { type: string; ref: string }[] };
+    expect(unplaced.items).toContainEqual(
+      expect.objectContaining({ type: 'issue', ref: issues[13]?.key }),
+    );
   });
 });

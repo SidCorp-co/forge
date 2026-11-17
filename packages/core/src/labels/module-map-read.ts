@@ -9,6 +9,7 @@ import {
   MODULE_MAP_BRANCHES,
   MODULE_MAP_READS_WINDOW_DAYS,
   MODULE_MAP_UNPLACED_SHOWN,
+  type ModuleLandingMap,
   type ModuleMapBranch,
   type ModuleMapCounts,
   type ModuleMapLine,
@@ -482,4 +483,58 @@ export async function moduleMapLines(projectId: string): Promise<ModuleMapLine[]
       openIssues: tally.get(r.id)?.open ?? 0,
     }))
     .sort((a, b) => b.openIssues - a.openIssues || a.name.localeCompare(b.name));
+}
+
+/**
+ * Where a landing's work sits on the map, for the merge mark's answer (ISS-1256 r5): the module the
+ * issue is placed in with its terms, rules and re-checks owed, how many business modules hold none,
+ * and the call that records a term or rule. The landing is the moment work finishes, where the
+ * teaching has to sit: the cards that said "when work finishes, add terms" were never open then.
+ * Read only: the issue's module is the one an agent or person placed it in, never one derived here.
+ */
+export async function landingMapOf(projectId: string, issueId: string): Promise<ModuleLandingMap> {
+  const [modules, entries, placed] = await Promise.all([
+    mapModules(projectId),
+    knowledgeItems(projectId),
+    db.execute(sql`
+      SELECT l.id FROM issue_labels il JOIN labels l ON l.id = il.label_id
+       WHERE il.issue_id = ${issueId} AND l.kind = 'module'
+       ORDER BY il.is_primary DESC, l.name LIMIT 1`),
+  ]);
+  const roots = modules.list.filter((m) => m.parentId === null);
+  const named = entries.filter((e) => e.type === 'term' || e.type === 'rule');
+  const holding = new Set(
+    named.map((e) => (e.moduleId ? modules.byId.get(e.moduleId)?.rootId : undefined)),
+  );
+  const empty = roots.filter((r) => !holding.has(r.id)).length;
+  const id = rowsOf<{ id: string }>(placed)[0]?.id;
+  const module = id ? modules.byId.get(id) : undefined;
+  const base = `/api/projects/${projectId}`;
+  const write = (slug: string) =>
+    `PUT ${base}/knowledge/<slug> { kind: 'glossary', module: '${slug}', title, body, term: { aliases, namedBy }, anchor: 'file.ts:symbol' }, a rule with kind 'rule' and its source, scope and recheckWhen`;
+  const counts = { total: roots.length, empty };
+  if (!module) {
+    return {
+      module: null,
+      modules: counts,
+      said: `This issue sits in no module, and ${empty} of ${roots.length} modules hold no term or rule. Place it (PUT ${base}/modules/placements { type: 'issue', ref: '${issueId}', module }), then record each term a person named and each rule this work settled under that module: ${write('<module>')}.`,
+    };
+  }
+  const within = (e: Item) => {
+    const path = e.moduleId ? modules.byId.get(e.moduleId)?.path : undefined;
+    return path !== undefined && (path === module.path || path.startsWith(`${module.path}/`));
+  };
+  const here = named.filter(within);
+  const terms = here.filter((e) => e.type === 'term').length;
+  const rules = here.length - terms;
+  const recheckOwed = here.filter((e) => e.recheck).length;
+  const owes =
+    recheckOwed > 0
+      ? `, ${recheckOwed} owing a re-check (fix each: GET ${base}/modules/${module.slug}/map)`
+      : '';
+  return {
+    module: { slug: module.slug, name: module.name, path: module.path, terms, rules, recheckOwed },
+    modules: counts,
+    said: `${module.name} holds ${terms} ${terms === 1 ? 'term' : 'terms'} and ${rules} ${rules === 1 ? 'rule' : 'rules'}${owes}. Record each term a person named and each rule this work settled there: ${write(module.slug)}.`,
+  };
 }

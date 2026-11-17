@@ -326,6 +326,28 @@ export interface ModuleRelationResult {
 	created: boolean;
 }
 
+/**
+ * Where a landing's work sits on the module map, as the merge mark answers it (ISS-1256): the issue's
+ * own module with what its tree holds, or none, and the call that records a term or rule there. A
+ * shown result and a tool: nothing is written, inferred or refused by it.
+ */
+export interface ModuleLandingMap {
+	/** The module the issue is placed in (its primary module label), or null where it is in none. */
+	module: {
+		slug: string;
+		name: string;
+		path: string;
+		terms: number;
+		rules: number;
+		/** Its terms and rules a change flagged as owing a re-check. */
+		recheckOwed: number;
+	} | null;
+	/** The project's business modules, and how many hold no term and no rule. */
+	modules: { total: number; empty: number };
+	/** One sentence: what the tree holds and the call that records what this work named. */
+	said: string;
+}
+
 /** One module's line on a Tier-0 map. */
 export interface ModuleMapLine {
 	slug: string;

@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { DIRECT_ORDER } from '../masters/pass-order.js';
+import { DISPATCH_GUIDE } from './dispatch-guide.js';
 import { ISSUE_FLOW_GUIDE } from './issue-flow-guide.js';
 
 // read as prose, wherever a line wraps
@@ -84,5 +86,23 @@ describe('the issue-flow guide states goals, with the gates a project turns on',
     expect(prose).toContain('**The run holding the issue closes it:**');
     expect(prose).not.toContain("**Today the kernel still makes the close a release's act:**");
     expect(prose).not.toContain('CLOSE_ONLY_BY_RELEASE');
+  });
+});
+
+// ISS-1256 r5: a working day of landings wrote no term or rule while "when work finishes, add terms"
+// sat only in module cards no agent opened then; the step is taught where landing work is done.
+describe('the landing teaches recording what the work named, at the mark', () => {
+  const flat = (text: string) => text.split(/\s+/).join(' ');
+  it('names the step, the mark answer it reads and the write, in the guide, the direct method and the nudge', () => {
+    expect(prose).toContain(
+      '5. Record what the work named, before you hand it on: the mark answers `moduleMap`',
+    );
+    expect(prose).toContain('(`PUT /api/projects/:id/knowledge/<slug>`)');
+    expect(flat(DISPATCH_GUIDE.body)).toContain(
+      "Record the terms and rules the work named under its module, as the mark's `moduleMap` says",
+    );
+    expect(DIRECT_ORDER).toContain(
+      'Each mark answers `moduleMap`: write there every term and rule a landing named.',
+    );
   });
 });

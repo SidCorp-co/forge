@@ -24,7 +24,7 @@ export const ISSUE_FLOW_GUIDE: CoreGuide = {
   title: 'Taking one issue from open to awaiting_release',
   summary:
     'The method a run follows for one issue or a batch, every tracker act a REST call: read it whole, take it, write criteria (a plan where the work needs one), build in its own tree, prove it, land, mark the merge, move it to `awaiting_release`, and close it once its criteria are met in scope.',
-  version: 18,
+  version: 19,
   doors: [
     'POST /api/questions',
     'POST /api/issues/:id/transition',
@@ -444,6 +444,11 @@ landing and moved, its key in its own commit subject so the mark reads the commi
 4. \`POST /api/issues/:id/transition\` \`{ toStatus: 'awaiting_release' }\`. It is refused
    \`MERGE_NOT_RECORDED\` while the merge is not recorded; it asks no verdict, since verdicts are
    judged on the release that carries the work.
+5. Record what the work named, before you hand it on: the mark answers \`moduleMap\`, what the
+   issue's module holds and the call. Each term a person used for a thing is a glossary entry in
+   their words, each rule the work settled a rule entry, both under that module
+   (\`PUT /api/projects/:id/knowledge/<slug>\`), and each one flagged for re-check is fixed. Met none,
+   write none.
 
 **An issue closes when its criteria are met in scope**; released, and confirmed on the target
 environment, are marks on the release, never issue statuses. A criterion this issue cannot meet is

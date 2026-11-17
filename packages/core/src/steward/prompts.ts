@@ -77,6 +77,7 @@ const METHODS: Record<StewardAct, string> = {
     'Try to reproduce it, against the codebase in your checkout and a reproduce preview, and find the cause, citing the file and line. The triage answers `reproduced` with what you tried and what you saw (the recording, a command and its output, the steps), or why it could not be reproduced; a bare yes or no is refused (`FEEDBACK_REPRODUCTION_EMPTY`).',
     "Propose the triage (`POST /api/projects/<project>/suggestions` kind `feedback_triage`, with `diagnosis` {recording, cause, fix} and the route), or revise the assistant's draft (`POST …/suggestions/<id>/revise`). A duplicate is `duplicateOf` the original.",
     'Then accept it (`POST …/suggestions/<id>/accept`) where no person gate asks for a person. Where you cannot decide, ask the reporter what you need (`POST …/feedback/<key>/clarification` with `recommended`, the answer you recommend); the door refuses by name while one of theirs is still open. Never decline an item yourself: a decline takes feedback.approve, and is asked of whoever holds it.',
+    "Where the reporter calls a thing by a word of their own, find it (`POST /api/projects/<project>/find`); a word no term holds is written as one, its module's glossary entry with their word as an alias and `namedBy` quoting them (`PUT /api/projects/<project>/knowledge/<slug>`, kind glossary).",
   ].join('\n'),
   release_followthrough: [
     'Act: release follow-through (BC-10). The issue shipped. Read what it carried and the running build (`GET /api/issues/<id>/judged-build`).',

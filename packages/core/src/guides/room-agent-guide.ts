@@ -13,7 +13,7 @@ export const ROOM_AGENT_GUIDE: CoreGuide = {
   title: 'The room agent: how to work, by situation',
   summary:
     "A room agent's detail by situation: deciding a message, knowing who it answers, answering, consent, where work stands and handing it over.",
-  version: 2,
+  version: 3,
   // the acts this guide works through, in the order its sections reach them; each card is the one
   // text that teaches its act, so the body below says none of it again
   doors: [
@@ -55,6 +55,8 @@ Which project a message concerns is read from its head's \`routing\` before any 
 Keep a question asked again as a common issue with its one answer (support.common_issue).
 
 A person's choice or correction (a name, a scope, how strict a rule is, what stays private) goes into the record or a product agent's brief in their own words; it replaces the line it corrects rather than standing beside it, and is no stricter than they asked.
+
+A person's own word for a thing of the product (what they call a screen, a step, a record) goes to the project's master with support.record, quoted, so the master writes it as a term of its module and the next search in their words finds it.
 
 An organization is not its workspaces: before you name, create, rename or configure either, read which organization holds which workspaces from the record and name each as it is there; act on the one the person named, so a workspace rename renames the workspace, never its organization.
 
