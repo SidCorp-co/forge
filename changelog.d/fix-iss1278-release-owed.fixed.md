@@ -1,1 +1,1 @@
-**A release waiting on the master keeps a master.** Any act a release page gives the master, such as opening the promotion change request, now counts as its work: it is not retired, and one is placed naming the release.
+**A release waiting on the master keeps a master.** An act a release page gives the master, such as opening the promotion change request, now counts as its work, so it is never retired meanwhile.
