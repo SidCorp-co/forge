@@ -50,6 +50,13 @@ few words) and a two-to-three-sentence \`summary\`:
 \`forge-runner api projects/<projectId>/releases/<version>/naming -X PUT\` names the draft or a release
 already cut.
 
+**A release post is a card.** Once a release is live, read its page
+(\`forge-runner api 'projects/<projectId>/releases/<version>/page'\`): its \`card\` names the cover (a
+clip's still or a shot), the three leading lines, the criteria count, up to three more shots and the
+page's link, and \`visualsOwed\` (developer view) the screen lines no judge marked. Post it in the
+project's thread with \`support/master-posts\`, \`attachments: card.attachments\`, in your own words and
+the owner's language: the cover's line first, the three lines, the count, the link.
+
 **A mark names what landed.** On an outside-git project, the mark (\`forge-runner api issues/<id>/merge\`)
 carries \`landing\` and \`artifacts\` \`[{surface, ref, change}]\` — Autoflow workflows are \`logic\`, routes \`api\`,
 tables \`data\`, storefront pages and themes \`ui\`, a \`forge-workflow:\` revision \`design\` — so its release says what

@@ -384,6 +384,14 @@ describes, opening on the still. A \`pass\`, \`short\` or \`fail\` on an observa
 without a clip says why in \`withoutClip\` (a \`without-clip\` line in a record), never in
 \`reason\`, which says what was found; one with neither is refused \`VERDICT_CLIP_REQUIRED\`.
 
+Mark the release visual on the pass whose clip or shots show the issue's line best:
+\`releaseVisual: { desktop, phone, still, seconds }\`, each an attachment of this issue by its id or
+download URL (\`desktop\` shown at 16:10, \`phone\` at 9:19.5, \`still\` the picture a clip opens on,
+\`seconds\` its length). Every New and Fixed line of the release page shows what its judge marked;
+core never picks a file. A line whose landing touched \`ui\` and shows none reads "visual owed" on the
+developer view until you mark one or say why in \`withoutClip\`. Refused by name, nothing written:
+\`VERDICT_RELEASE_VISUAL_FOREIGN\` (a file of another issue), \`VERDICT_RELEASE_VISUAL_SHAPE\`.
+
 A server-side check shows on no screen, so it owes no clip (REQ-36 BC-21): its \`pass\`, \`short\` or
 \`fail\` cites the capture of what was run inside the running server — the command, its output and
 the build it ran against, attached to the issue — in \`evidence\`, and one citing no attachment is

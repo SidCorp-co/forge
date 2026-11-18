@@ -161,6 +161,14 @@ recorded as that commit pass with \`acceptedOn: <the decision's event id>\`: the
 accepted, never proven, and no judging run is owed on it. Refused by name, nothing written:
 \`VERDICT_ACCEPTANCE_NOT_DECISION\`, \`VERDICT_ACCEPTANCE_NOT_PASS\`, \`VERDICT_ACCEPTANCE_NOT_COMMIT\`.
 
+### Marking the release visual
+A screen change is shown on its release page by what you mark, and by nothing else. On the pass whose
+capture shows the change best, send \`releaseVisual: { desktop, phone, still, seconds }\`: the desktop
+clip or shot (1440x900), the phone shot (390x844), the still the clip opens on and the clip's length,
+each an attachment of this issue by its id or download URL, never its name. A line whose landing
+touched \`ui\` with no mark reads "visual owed" until you mark one or say why in \`withoutClip\`.
+Refused by name: \`VERDICT_RELEASE_VISUAL_FOREIGN\`, \`VERDICT_RELEASE_VISUAL_SHAPE\`.
+
 ### A design issue
 A criterion judged against a design is written with
 \`identity: { kind: 'design', workflow, revision }\`, \`workflow\` being the design's flow name or

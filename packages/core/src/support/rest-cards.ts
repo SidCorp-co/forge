@@ -18,6 +18,11 @@ export const SUPPORT_REST_CARDS = {
         watch: 'a users’ room takes it only in a thread, never at its top level',
       },
       {
+        when: 'a release you watched go live is to be told in the project’s thread',
+        do: 'post its page’s `card`: your own words in the owner’s language, `attachments: card.attachments`',
+        watch: 'the cover and shots are the judges’ marks; pick no file of your own',
+      },
+      {
         when: 'that thread was already told the item’s result',
         do: 'post only what it did not say, as a follow-up naming the message (`followsUp`)',
       },

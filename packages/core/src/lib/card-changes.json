@@ -260,9 +260,9 @@
     "by": "ISS-1251"
   },
   "POST /api/issues/:id/verdicts": {
-    "hash": "0ff7a7691359265c",
-    "on": "2026-11-16",
-    "by": "ISS-1251"
+    "hash": "cf084919be8bea61",
+    "on": "2026-11-18",
+    "by": "ISS-1308"
   },
   "POST /api/jobs/:id/cancel": {
     "hash": "4d79adfe28402c0b",
@@ -595,9 +595,9 @@
     "by": "ISS-1251"
   },
   "POST /api/projects/:id/support/master-posts": {
-    "hash": "5c6cf8331cd93c86",
-    "on": "2026-11-16",
-    "by": "ISS-1251"
+    "hash": "86774b8b66a99804",
+    "on": "2026-11-18",
+    "by": "ISS-1308"
   },
   "POST /api/projects/:id/unarchive": {
     "hash": "a53de8b88d1bb254",

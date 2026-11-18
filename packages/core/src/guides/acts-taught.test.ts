@@ -6,7 +6,7 @@
 // through (ISS-1251), with the refusals that hold it, and every refusal the method names is one core
 // can return: a misspelt code teaches a refusal no reader will meet.
 
-import { MERGE_REFUSAL_CODES } from '@forge/contracts/issues';
+import { MERGE_REFUSAL_CODES, VERDICT_REFUSAL_CODES } from '@forge/contracts/issues';
 import { QUESTION_REFUSAL_CODES } from '@forge/contracts/questions';
 import { RELEASE_CLIP_MAX_BYTES, RELEASE_CLIP_MAX_SECONDS } from '@forge/contracts/release-page';
 import { DESIGN_REFUSAL_CODES } from '@forge/contracts/workflows';
@@ -214,6 +214,36 @@ describe('a judge records a clip of each observable criterion it judges (REQ-40 
       `at most ${RELEASE_CLIP_MAX_SECONDS} seconds and ${RELEASE_CLIP_MAX_BYTES / (1024 * 1024)} MiB`,
     );
   });
+});
+
+describe('a judge marks the release visual and a master posts the card (ISS-1308)', () => {
+  // the last six releases of every project on dev showed no picture although judges had attached
+  // clips and shots: nothing a judge read asked which of them shows a line, and no master posted one
+  const prose = (slug: string) => body(slug).split(/\s+/).join(' ');
+
+  it.each(['issue-flow', 'qa'])(
+    '%s teaches the mark, its owed line and its refusals as core returns them',
+    (slug) => {
+      const text = prose(slug);
+      expect(text).toContain('`releaseVisual: { desktop, phone, still, seconds }`');
+      expect(text).toContain('"visual owed"');
+      expect(text).toContain('`withoutClip`');
+      const codes = [...new Set(text.match(/VERDICT_RELEASE_VISUAL_[A-Z_]+/g) ?? [])];
+      expect(codes.sort()).toEqual(['VERDICT_RELEASE_VISUAL_FOREIGN', 'VERDICT_RELEASE_VISUAL_SHAPE']);
+      for (const code of codes) expect(VERDICT_REFUSAL_CODES).toContain(code);
+    },
+  );
+
+  it.each(['forge-master', 'dispatch'])(
+    "%s teaches posting the release page's card with its attachments, in the owner's language",
+    (slug) => {
+      const text = prose(slug);
+      expect(text).toMatch(/release post(?: is a card|\.\*\* Post a release as a card)/i);
+      expect(text).toContain('`card`');
+      expect(text).toMatch(/attachments(: card\.attachments)?/);
+      expect(text).toContain("owner's language");
+    },
+  );
 });
 
 describe('the trace route is taught where a trace is written (FB-209)', () => {

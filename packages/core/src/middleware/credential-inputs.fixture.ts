@@ -197,7 +197,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
   'a command a support room runs on a host its grant names, and what the box answers it ran; core checks the grant before the box is asked, and the output is scrubbed before anyone reads it': words`
     field:json:command field:json:stdout field:json:stderr`,
   'a structured part of a record core validates and stores; it admits nobody': words`
-    field:json:other field:json:output field:json:answers field:json:artifact field:json:attachments
+    field:json:releaseVisual field:json:other field:json:output field:json:answers field:json:artifact field:json:attachments
     field:json:duties field:json:outsideBot
     field:json:awaitsDesign field:json:awaitsMerge field:json:bindings field:json:block field:json:blocker
     field:json:build field:json:capabilities field:json:carried field:json:carry field:json:category field:json:shippedIn

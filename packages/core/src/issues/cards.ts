@@ -60,6 +60,11 @@ export const ISSUE_REST_CARDS = {
         do: 'send the probe you ran with it, and a clip or `withoutClip` saying why none',
       },
       {
+        when: 'the pass shows a screen change its release line should carry',
+        do: 'mark its clip or shots in `releaseVisual` ({ desktop, phone, still, seconds }), each by attachment id',
+        watch: 'a file of another issue is refused VERDICT_RELEASE_VISUAL_FOREIGN; a name, never',
+      },
+      {
         when: 'you review a change you did not build and judge a code-property criterion',
         do: 'post it with `judge: "review"` and the reviewing run in `run`',
       },

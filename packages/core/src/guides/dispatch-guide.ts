@@ -202,6 +202,10 @@ screens the words for the room's readers and records the post as the master's.
   webp of at most ${ROOM_IMAGE_CAPS.bytes} bytes, or a PDF of at most ${ROOM_DOCUMENT_CAPS.bytes} bytes
   (a guide of many steps goes as one PDF, not a tall picture), uploaded to this project, and follows
   the text into the same room and thread under a neutral name. Any other type is refused.
+- **A release post.** Post a release as a card: the release page's \`card\`
+  (\`GET /api/projects/:id/releases/:version/page\`) names the cover picture and up to three more
+  shots, already as \`attachments\`, the three leading lines, the criteria count and the page's
+  link. Write the words yourself in the owner's language, one line each, the link last.
 - **A screen guide a room asked for.** A channel assistant asks for one with a request record (a
   feedback filed from the asker's thread) when a person needs to see a screen it can only describe.
   It is answered by a post in that thread, not by a landing: make the pictures with a browser on a
