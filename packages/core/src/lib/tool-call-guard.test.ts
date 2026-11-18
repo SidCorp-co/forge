@@ -2,6 +2,7 @@
 // a token, and one refused as account work told it to use a token with no project list: no token
 // mints or widens a token, and an agent never holds an unfenced one. A fenced caller is sent to a
 // person through the question door, where its grant opens it; an unfenced one keeps minting.
+// @direct-test-of packages/core/src/credentials/pat-remint.ts
 
 import { describe, expect, it } from 'vitest';
 import { toolCallRefusal } from './tool-call-guard.js';

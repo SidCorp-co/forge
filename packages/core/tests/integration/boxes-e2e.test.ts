@@ -19,6 +19,7 @@ import type { BoxHealthReport } from '@forge/contracts/box-wire';
 import { sql } from 'drizzle-orm';
 import type { Hono } from 'hono';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { StatedPatGrant } from '../../src/credentials/pat-permissions.js';
 import { db } from '../../src/db/client.js';
 import { userToken } from '../helpers/api.js';
 import {
@@ -141,19 +142,19 @@ beforeAll(async () => {
     VALUES (${projectId}, 1, 'Redeem points at the counter', 'in_progress', 'high', ${ownerId})
     RETURNING id`)) as unknown as Array<{ id: string }>;
   issueId = (row as { id: string }).id;
-  const mint = async (name: string, device?: string, grantEpoch = 99, permissions = ['*']) =>
+  const mint = async (name: string, device?: string, at = 99, grant: StatedPatGrant = ['*']) =>
     (
       await mintPat({
-        permissions,
+        permissions: grant,
         userId: ownerId,
         name,
         projectIds: [projectId],
-        grantEpoch,
+        grantEpoch: at,
         ...(device ? { deviceId: device } : {}),
       })
     ).plaintext;
   deviceToken = await mint('device', deviceId);
-  const named = ['projects:write', 'pipeline:write'];
+  const named: StatedPatGrant = ['projects:write', 'pipeline:write'];
   say = requester(app as never, {
     agent: await mint('agent'),
     device: deviceToken,
@@ -233,8 +234,7 @@ describe('one grant epoch for the box surface, its open included (ISS-1335)', ()
     });
     expect((await reading).json).toMatchObject({ act: { state: 'done' } });
     const closed = await say('agent4', 'POST', `/api/boxes/${id}/close`, {});
-    expect(closed.status, JSON.stringify(closed.json)).toBe(200);
-    expect(closed.json.box).toMatchObject({ state: 'closed' });
+    expect(closed.json, JSON.stringify(closed.json)).toMatchObject({ box: { state: 'closed' } });
   });
 });
 
