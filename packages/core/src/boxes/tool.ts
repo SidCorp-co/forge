@@ -162,7 +162,7 @@ export const BOX_CARDS = {
   },
   close: {
     purpose:
-      'Closes a box: the device reaps every process it started; the recording stays until the issue ends.',
+      'Closes a box: the device reaps every process it started; a recording someone asked for is sent to the issue, the rest stays on the device until the issue ends.',
     situations: [
       {
         when: 'the criteria you opened a box for are shown',

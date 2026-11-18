@@ -96,8 +96,10 @@ Forge already has three parts the box can reuse:
 
 - **The cut runs on the device, at core's order.** The recording stays on the machine that holds
   ffmpeg (installed there for the boxes), and only the clip and still cross the network. Core holds
-  no ffmpeg and never downloads a whole session. Core still chooses the span's bounds and the ceiling,
-  and refuses a clip over the ceiling.
+  no ffmpeg. Core still chooses the span's bounds and the ceiling, and refuses a clip over the
+  ceiling. A whole session crosses only where a person or the open asked for the recording: once the
+  box ends, the device encodes it within `BOX_LIMITS.sessionMaxBytes` and sends it through the same
+  clip upload, or the box says why it could not (ISS-1338).
 - **An agent's every act goes through core**, one HTTP round trip and one control frame. That is the
   price of a lock no tool has. Reads stay cheap, since they never wait on a hold.
 - **iOS is a mode the contract names and refuses.** A device that can serve it later (a remote Mac, a

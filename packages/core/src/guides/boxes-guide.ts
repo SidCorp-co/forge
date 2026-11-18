@@ -121,5 +121,8 @@ short.
 
 ### 6. Close it
 \`POST /api/boxes/:id/close\` once the criteria are shown: the device reaps every process it started
-and the room goes to the next request. What it recorded stays on the device until the issue ends.`,
+and the room goes to the next request. A recording you or a person asked for is sent to the issue
+once it closes, as \`box-<box>-session.mp4\` and \`.png\` within
+${BOX_LIMITS.sessionMaxBytes / 1024 / 1024} MB, and \`recording.session\` on the box says where it
+is or why it could not come; the rest stays on the device until the issue ends.`,
 };
