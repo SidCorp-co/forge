@@ -121,10 +121,9 @@ verdict since its issue's last reopen (`release-facts.ts:criteriaAt`) and claims
 
 - QA records one clip per observable criterion it judges, webm, at most `RELEASE_CLIP_MAX_SECONDS`
   and `RELEASE_CLIP_MAX_BYTES`; the served method (`guides/issue-flow.md`, verdict section) asks
-  for it. Against the running build the recorder is `pnpm --filter web-v2 clip <url> --out <dir>`
-  (`packages/web-v2/witness/clip.mjs`): Playwright's own `page.screencast`, started once the page
-  has loaded and signed in outside the recording, writing `<name>.webm` and its last frame as
-  `<name>.png`. Over a stubbed core the
+  for it. Against the running build the recorder is a criterion's span on a Forge Box
+  (`packages/core/src/guides/boxes-guide.ts:BOXES_GUIDE`), which cuts the clip and its opening
+  still and attaches both to the issue (ISS-1321). Over a stubbed core the
   screen witness records one (`pnpm --filter web-v2 witness <entry> --out <dir> --clip`). One over
   either ceiling fails by name, and the ceiling is never raised.
 - It is uploaded as an issue attachment and cited in the verdict's `evidence` by its name, its id

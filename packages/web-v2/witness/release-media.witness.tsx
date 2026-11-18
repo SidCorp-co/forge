@@ -4,7 +4,7 @@
 // approved report since ISS-1001 and draws no highlight; What's new is where a clip plays.
 //
 // The clip is a real one, never a stand-in: put a judge's recording and its still beside the page as
-// `<out>/release-clip.webm` and `<out>/release-clip.png` (what `pnpm --filter web-v2 clip` writes), then
+// `<out>/release-clip.webm` and `<out>/release-clip.png` (a judge's WebM and the still it opens on), then
 //
 //   pnpm --filter web-v2 witness witness/release-media.witness.tsx --out <dir>
 //

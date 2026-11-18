@@ -67,5 +67,6 @@ before the run (`witness/feedback-evidence.witness.tsx` names the two it reads).
 bundles the entry: this package declares every module but its stylesheets free of side effects, so
 the entry alone is marked as having them, and a bundle that comes out empty is refused by name, as is
 an entry that never says it is ready, with what the page threw. Chrome is `WITNESS_CHROME`,
-else `google-chrome`. No CI job runs it: a screen change that can break at a width runs it and
-attaches what it printed.
+else `google-chrome`. No CI job runs it, and it is not a screen's proof: a screen is proven by its
+builder using it in a Forge Box on this package's dev server, at desktop and 390×844, with each
+criterion's span marked (the `boxes` guide). A witness entry pins a layout rule over stubbed reads.

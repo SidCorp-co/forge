@@ -5,8 +5,8 @@ ADR 0009 to UI test boxes
 
 ## Context
 
-Agents test UI with nothing Forge can show. A judge records a clip by hand (`pnpm --filter web-v2
-clip`), and a person cannot watch an agent's session, take it over or hand it back. The owner asked on
+Agents test UI with nothing Forge can show. A judge records a clip by hand with a Playwright
+recorder of the repo's own, and a person cannot watch an agent's session, take it over or hand it back. The owner asked on
 2026-11-17 for a "Forge Box": a screen agents test in, which he can open in Forge, watch live, take
 and hand back. He also asked that boxes scale with the work and the machine's health, with no fixed
 ceiling. Requests wait at the limit. iOS is out of scope for now.
