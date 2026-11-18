@@ -86,6 +86,14 @@
     "boxes.screen.closed": "Box closed",
     "boxes.screen.failed": "Box failed",
     "boxes.screen.noClip": "No clip",
+    "boxes.session.label": "Session",
+    "boxes.session.sending": "Sending",
+    "boxes.session.fault.TOO_LARGE": "Too large",
+    "boxes.session.fault.DEVICE_GONE": "Device gone",
+    "boxes.session.fault.NO_ANSWER": "No answer",
+    "boxes.session.fault.CUT_FAILED": "Encode failed",
+    "boxes.session.fault.SEND_FAILED": "Upload failed",
+    "boxes.session.fault.NO_ISSUE": "No issue",
     "boxes.screen.refused": "Can't open box"
   }
 }

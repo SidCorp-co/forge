@@ -1,14 +1,15 @@
 // A box's screen alone (ISS-1325) witnessed as drawn, at desktop width and on a phone (390×844), light
 // and dark: the Boxes page with its Full screen control, the box in full screen (headless Chrome grants
 // no full screen to a scripted press, so this is the fallback that fills the viewport), the box's own
-// address with an android box upright, a closed box playing its clip, and a box the reader may not
-// see refused by name. The records are `src/test/boxes.ts`; core and the view socket are stood in for,
+// address with an android box upright, a closed box playing its clip, a closed box playing the whole
+// session a person asked to record beside its span clips and one whose session was too large to
+// send (ISS-1338), and a box the reader may not see refused by name. The records are `src/test/boxes.ts`; core and the view socket are stood in for,
 // and each view's one frame is drawn here, so the shots show the screens, never a box. Each stage logs
 // its words on the first view; the page stage logs them with and without the Full screen control.
 //
 //   pnpm --filter web-v2 witness witness/box-screen.witness.tsx --out <dir>
 
-import { BOX_ROUTES, type BoxRecord, type BoxSpanRecord } from "@forge/contracts/boxes";
+import { BOX_ROUTES, type BoxRecord, type BoxSessionRecording, type BoxSpanRecord } from "@forge/contracts/boxes";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -22,9 +23,23 @@ import { InRouter } from "./router";
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 const route = (r: string, id: string) => r.replace(":id", id).replace(/^\/api/, "");
 const MISSING = "b0c09999-0000-4000-8000-000000000099";
+const SESSION_BOX = "b0c09999-0000-4000-8000-000000000081";
+const LARGE_BOX = "b0c09999-0000-4000-8000-000000000082";
+const TOO_LARGE = "the recording is 31457280 bytes at its smallest, over the 10485760 a box sends to Forge";
 
 /** The project's boxes, the held one this reader's own; the android box shows its screen as frames here. */
-const boxes: BoxRecord[] = projectBoxes(Date.now(), true).map((b) => (b.id === BOX.android ? { ...b, view: { codec: "jpeg-frames", width: 1080, height: 2400 } } : b));
+const listed: BoxRecord[] = projectBoxes(Date.now(), true).map((b) => (b.id === BOX.android ? { ...b, view: { codec: "jpeg-frames", width: 1080, height: 2400 } } : b));
+const done = listed.find((b) => b.id === BOX.done) as BoxRecord;
+const sessionOf = (box: string, session: Omit<BoxSessionRecording, "at">): BoxRecord => ({
+  ...done,
+  id: box,
+  recording: { state: "kept", why: null, startedAt: done.recording?.startedAt ?? null, session: { ...session, at: new Date().toISOString() } },
+});
+const boxes: BoxRecord[] = [
+  ...listed,
+  sessionOf(SESSION_BOX, { state: "attached", clipAttachmentId: "5e55c11p-0000-4000-8000-000000000041", stillAttachmentId: null, fault: null, detail: null }),
+  sessionOf(LARGE_BOX, { state: "failed", clipAttachmentId: null, stillAttachmentId: null, fault: "TOO_LARGE", detail: TOO_LARGE }),
+];
 const doneSpans: BoxSpanRecord[] = [1, 2].map((n) => ({
   id: `5a${n}00000-0000-4000-8000-000000000021`,
   boxId: BOX.done,
@@ -85,7 +100,7 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const issue = /^\/issues\/([^/]+)$/.exec(path)?.[1];
   if (issue && ISSUE_LABELS[issue]) return json(ISSUE_LABELS[issue]);
   if (path.endsWith("/acts")) return json({ acts: [] });
-  if (path === route(BOX_ROUTES.spans, BOX.done)) return json({ spans: doneSpans });
+  if (path === route(BOX_ROUTES.spans, BOX.done) || path === route(BOX_ROUTES.spans, SESSION_BOX)) return json({ spans: doneSpans });
   if (path.endsWith("/spans")) return json({ spans: [] });
   if (path.startsWith("/attachments/")) return new Response(await clip, { headers: { "content-type": "video/webm" } });
   const ticket = /^\/boxes\/([^/]+)\/ticket$/.exec(path)?.[1];
@@ -225,6 +240,29 @@ window.__witness = {
       if (!q("[data-testid=box-ended]")) await alone(BOX.done, () => !!q("[data-testid=box-clip]"));
       words("a closed box", q("[data-testid=box-screen]"));
       return q("[data-testid=box-clip]") ? fits() : ["the closed box plays no clip"];
+    }),
+    ...both("session", async () => {
+      const playsSession = () => !!q("[data-testid=box-clip]")?.getAttribute("aria-label")?.endsWith("Session");
+      if (!playsSession()) await alone(SESSION_BOX, playsSession);
+      words("a closed box with its session recording", q("[data-testid=box-screen]"));
+      const played = q("[data-testid=box-clip]")?.getAttribute("aria-label") ?? "";
+      const options = [...document.querySelectorAll<HTMLElement>("[data-testid=box-ended] button")].map((b) => b.textContent);
+      return [
+        ...fits(),
+        ...(played.endsWith("· Session") ? [] : [`the closed box plays ${played || "nothing"}, not its session`]),
+        ...(options.join(",") === "Session,C2,C1" ? [] : [`the switch offers ${options.join(",")}`]),
+      ];
+    }),
+    ...both("too-large", async () => {
+      if (!q("[data-testid=box-session]")) await alone(LARGE_BOX, () => !!q("[data-testid=box-session]"));
+      words("a closed box whose session was too large", q("[data-testid=box-screen]"));
+      const line = q("[data-testid=box-session]");
+      return [
+        ...fits(),
+        ...(line?.textContent === "Session · Too large" ? [] : [`the session reads ${line?.textContent ?? "nothing"}`]),
+        ...(line?.title === TOO_LARGE ? [] : ["the why is not on hover"]),
+        ...(document.body.textContent?.includes("No clip") ? ["it reads No clip"] : []),
+      ];
     }),
     ...both("refused", async () => {
       if (!q("[data-testid=box-alone-refused]")) await alone(MISSING, () => !!q("[data-testid=box-alone-refusal]"));

@@ -1,4 +1,4 @@
-// ISS-1276 c5, c7, ISS-1321 c2, c4: a project's Boxes page as a person reads and drives it. Core is stood in for over
+// ISS-1276 c5, c7, ISS-1321 c2, c4, ISS-1338 c1: a project's Boxes page as a person reads and drives it. Core is stood in for over
 // `fetch` with the contracts' own `BOX_ROUTES`; the view and input sockets are stood in for, so no
 // test reaches a box.
 
@@ -6,7 +6,7 @@ import { BOX_ROUTES } from "@forge/contracts/boxes";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { androidActs, androidSpans, BOX, heldActs, ISSUE_LABELS, ME, PROJECT_ID, projectBoxes } from "@/test/boxes";
-import { type Call, fakeCore, renderWithQuery } from "@/test/render";
+import { fakeCore, renderWithQuery } from "@/test/render";
 import { BoxList } from "./box-list";
 import { BoxesScreen } from "./boxes-screen";
 
@@ -42,7 +42,7 @@ export class FakeDecoder {
   }
 }
 
-function core(boxes = projectBoxes(), extra: (c: Call) => { status?: number; body: unknown } | undefined = () => undefined) {
+function core(boxes = projectBoxes(), extra: Parameters<typeof fakeCore>[0] = () => undefined) {
   return fakeCore((c) => {
     const hit = extra(c);
     if (hit) return hit;
@@ -97,6 +97,24 @@ describe("the Boxes page", () => {
     const [closedIdle, closedDone] = screen.getAllByTestId("box-row");
     expect(closedIdle?.textContent).toContain("Closed idle");
     expect(closedDone?.textContent).not.toContain("Closed idle");
+  });
+
+  it("plays a closed box's session recording where it is selected, beside its span clips", async () => {
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: () => "blob:session", revokeObjectURL: () => undefined }));
+    const SESSION_CLIP = "5e55c11p-0000-4000-8000-000000000041";
+    const boxes = projectBoxes().map((b) =>
+      b.id === BOX.done && b.recording
+        ? { ...b, recording: { ...b.recording, session: { state: "attached" as const, clipAttachmentId: SESSION_CLIP, stillAttachmentId: null, fault: null, detail: null, at: new Date().toISOString() } } }
+        : b,
+    );
+    const calls = core(boxes, (c) => (c.path.startsWith("/attachments/") ? { file: "webm", headers: { "content-type": "video/webm" } } : undefined));
+    selectBox(BOX.done);
+    renderWithQuery(<BoxesScreen projectId={PROJECT_ID} canWrite />);
+    const live = await screen.findByTestId("box-live");
+    const clip = await within(live).findByTestId("box-clip");
+    expect(clip.getAttribute("aria-label")).toMatch(/· Session$/);
+    expect(calls.some((c) => c.path === `/attachments/${SESSION_CLIP}/download`)).toBe(true);
+    expect(within(live).queryByText("Not running")).toBeNull();
   });
 
   it("names who holds a held box and since when, and counts its idle hold down", async () => {

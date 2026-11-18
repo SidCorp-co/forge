@@ -57,7 +57,7 @@ export function projectBoxes(now = Date.now(), heldByMe = false): BoxRecord[] {
       issueId: ISSUE.rewards,
       criterion: 2,
       view: { codec: "scrcpy-h264", width: 1080, height: 2400 },
-      recording: { state: "recording", why: "span", startedAt: ago(now, 12_000) },
+      recording: { state: "recording", why: "span", startedAt: ago(now, 12_000), session: null },
     }),
     box(now, {
       id: BOX.held,
@@ -66,12 +66,12 @@ export function projectBoxes(now = Date.now(), heldByMe = false): BoxRecord[] {
       issueId: ISSUE.order,
       holder: heldByMe ? { kind: "person", userId: ME, name: "Me" } : { kind: "person", userId: OWNER, name: "Chuong" },
       heldSince: ago(now, 100_000),
-      recording: { state: "recording", why: "person", startedAt: ago(now, 95_000) },
+      recording: { state: "recording", why: "person", startedAt: ago(now, 95_000), session: null },
       viewport: { width: 390, height: 844 },
       view: { codec: "jpeg-frames", width: 390, height: 844 },
     }),
     box(now, { id: BOX.admin, mode: "browser", state: "agent", issueId: ISSUE.report, criterion: 1, viewport: { width: 1440, height: 900 }, view: { codec: "jpeg-frames", width: 1440, height: 900 } }),
-    box(now, { id: BOX.done, mode: "android", state: "closed", issueId: ISSUE.login, recording: { state: "kept", why: null, startedAt: ago(now, 3_600_000) }, closedAt: ago(now, 1_800_000), closedWhy: "done" }),
+    box(now, { id: BOX.done, mode: "android", state: "closed", issueId: ISSUE.login, recording: { state: "kept", why: null, startedAt: ago(now, 3_600_000), session: null }, closedAt: ago(now, 1_800_000), closedWhy: "done" }),
     box(now, { id: BOX.waitB, mode: "browser", state: "waiting", issueId: ISSUE.menu, queue: { position: 2, reason: "CPU pressure 82% is over the 70% ceiling" } }),
     box(now, { id: BOX.waitA, mode: "android", state: "waiting", issueId: ISSUE.print, queue: { position: 1, reason: "available memory 12 GB is under the 16 GB reserve" } }),
   ];

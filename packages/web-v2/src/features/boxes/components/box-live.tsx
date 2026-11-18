@@ -2,7 +2,8 @@
 // person has on it now (Take control, or Hand back while they hold it, with the idle countdown that
 // hands it back for them), the live view beside the agent's command feed, and the criteria it is
 // demonstrating in the footer with whether it records, why, and its clock (ISS-1321), beside the
-// toggle that starts or stops it. Full screen opens the screen alone over everything (ISS-1325).
+// toggle that starts or stops it. Full screen opens the screen alone over everything (ISS-1325). A box
+// that ended plays its session recording and its spans' clips there, as its own address does (ISS-1338).
 
 import { BOX_LIMITS, type BoxRecord, type BoxSpanRecord } from "@forge/contracts/boxes";
 import { useState } from "react";
@@ -12,6 +13,7 @@ import { useCopy } from "@/lib/i18n/interface-language";
 import { useBoxSpans, useCloseBox, useStartRecording, useStopRecording } from "../hooks";
 import { clock, heldBy, isEnded, isLive, sizeOf, STATE_TONE } from "../labels";
 import { FpsSelect, HoldLine, HoldMove } from "./box-controls";
+import { BoxEnded } from "./box-ended";
 import { BoxFeed } from "./box-feed";
 import { BoxInputLayer } from "./box-input";
 import { BoxScreen } from "./box-screen";
@@ -127,6 +129,8 @@ export function BoxLive(props: LiveProps) {
             <BoxScreen {...props} fps={fps} onFps={setFps} enter onExit={() => setFull(false)} />
           ) : isLive(box) ? (
             <BoxView box={box} label={label} fps={fps} overlay={mine ? <BoxInputLayer box={box} label={label} onInput={() => setLocalInput(Date.now())} /> : undefined} />
+          ) : isEnded(box) ? (
+            <BoxEnded box={box} label={label} />
           ) : (
             <p className="py-8 text-center text-13 text-muted">{t("boxes.live.notRunning")}</p>
           )}
