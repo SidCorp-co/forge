@@ -225,6 +225,10 @@ export const RELEASE_REST_CARDS = {
         when: 'a production site was deployed outside Forge in this release',
         do: 'name every production site in `sites` with what it serves, or the release holds as not shipped',
       },
+      {
+        when: 'you have an account of the release to give: the tag, what you read, what you did',
+        do: 'send it as `note` on this finish; the release page shows it, and a comment on each roster issue is not where it goes',
+      },
     ],
     practice: [
       'It answers accepted at once; the outcome is finish.state on the run’s state read.',

@@ -705,9 +705,9 @@
     "by": "ISS-1251"
   },
   "POST /api/projects/:projectId/release-batches/:runId/finish": {
-    "hash": "f934a6cb24a31455",
-    "on": "2026-11-17",
-    "by": "ISS-1251"
+    "hash": "189deeb4a6e854f7",
+    "on": "2026-11-18",
+    "by": "ISS-1334"
   },
   "POST /api/projects/:projectId/release-batches/:runId/method": {
     "hash": "fa58a8c2d72248ee",
