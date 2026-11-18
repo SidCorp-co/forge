@@ -228,16 +228,28 @@ export function mergeStepsOf(metadata: unknown): ReleaseMergeStep[] | null {
 }
 
 /**
- * The steps of a declared merge order whose request is not merged yet, as the links a release page
- * reads hold each request's state (ISS-1207): a step whose request no link reads merged is still
- * owed, and the steps the host merged are not (`change-request-settle.ts` reads the same).
+ * The steps of a declared merge order whose request is not merged yet, read from each step's own
+ * request row (ISS-1207), as `change-request-settle.ts` and `merges-owed.ts` read it. Never through
+ * a roster issue's link: a promotion request names no issue, and read that way it stayed owed after
+ * it merged (ISS-1333, gwork 0.61.0). A step whose row is gone is still owed.
  */
 export function unmergedSteps(
   steps: readonly ReleaseMergeStep[],
-  links: readonly Pick<ChangeRequestLinkRow, 'pullRequestId' | 'state'>[],
+  states: ReadonlyMap<string, ChangeRequestState>,
 ): ReleaseMergeStep[] {
-  const merged = new Set(links.filter((l) => l.state === 'merged').map((l) => l.pullRequestId));
-  return steps.filter((s) => !merged.has(s.pullRequestId));
+  return steps.filter((s) => states.get(s.pullRequestId) !== 'merged');
+}
+
+/** The state of each of these stored change requests, by row id; a row Forge no longer holds is absent. */
+export async function changeRequestStates(
+  pullRequestIds: readonly string[],
+): Promise<Map<string, ChangeRequestState>> {
+  if (pullRequestIds.length === 0) return new Map();
+  const rows = await db
+    .select({ id: repoPullRequests.id, state: repoPullRequests.state })
+    .from(repoPullRequests)
+    .where(inArray(repoPullRequests.id, [...new Set(pullRequestIds)]));
+  return new Map(rows.map((r) => [r.id, r.state]));
 }
 
 /**

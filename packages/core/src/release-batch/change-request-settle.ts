@@ -10,10 +10,10 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, pipelineRuns } from '../db/schema.js';
 import { repoPullRequests } from '../db/schema-repo-projection.js';
-import type { TransitionActor } from '../issues/index.js';
+import { issueDisplayIds, type TransitionActor } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { closeRunIfOneShot, stampReleaseShipped, writeRunMetadata } from '../pipeline/index.js';
-import { mergeStepsOf } from './change-request-roster.js';
+import { label, mergeStepsOf, type ReleaseMergeStep } from './change-request-roster.js';
 import { closeRoster } from './close-roster.js';
 import { oweReleaseTag } from './release-tag.js';
 import { recoverStrandedReleasing } from './releasing-recovery.js';
@@ -23,6 +23,30 @@ import { recoverStrandedReleasing } from './releasing-recovery.js';
  * a promotion merged whose deploy the operator has still to record (REQ-63 BC-12).
  */
 type SettlePending = 'merges' | 'stamps' | 'settling' | 'record';
+
+/** What a settle that closed nothing says: what it waits on, and `waits`, that wait by name. */
+type SettleOutcome =
+  | { settled: true; pending: null; waits: null }
+  | { settled: false; pending: SettlePending | null; waits: string | null };
+
+const waiting = (pending: SettlePending, waits: string): SettleOutcome => ({
+  settled: false,
+  pending,
+  waits,
+});
+
+/** The steps not merged yet, each by its label and place, and the door that merges the first. */
+function mergesSentence(steps: readonly ReleaseMergeStep[], open: ReleaseMergeStep[]): string {
+  const next = open[0] as ReleaseMergeStep;
+  const named = open.map((s) => `${label(s)} (step ${steps.indexOf(s) + 1} of ${steps.length})`);
+  return `${named.join(', ')} ${open.length === 1 ? 'is' : 'are'} not merged yet, as Forge's record of each request reads it: merge ${label(next)} with \`POST /api/issues/${next.issueIds[0] ?? '<issueId>'}/merge-pull-request\` \`{"pullRequest":${next.number}}\`, which reads the host and records a merge already made there.`;
+}
+
+/** The promotion merged: the record of its production deploy closes the release, at that door. */
+function recordSentence(projectId: string, step: ReleaseMergeStep | undefined, at: string | null) {
+  const merged = step ? `${label(step)} merged${at ? ` at ${at}` : ''}` : 'Its promotion merged';
+  return `${merged}, and a promotion release closes on the record of its production deploy, never on its merge: once production serves it, record it with \`POST /api/projects/${projectId}/release-records\` \`{"issueIds":[…],"version":"<version>","account":"<how it was deployed>"}\`.`;
+}
 
 /** How long one settle holds its release before another may take it over. */
 const SETTLE_LEASE = sql`interval '5 minutes'`;
@@ -49,14 +73,18 @@ function takeSettleLease(runId: string): Promise<boolean> {
 export async function settleChangeRequestRelease(
   runId: string,
   actor: TransitionActor,
-): Promise<{ settled: boolean; pending: SettlePending | null }> {
+): Promise<SettleOutcome> {
   const [run] = await db
-    .select({ status: pipelineRuns.status, metadata: pipelineRuns.metadata })
+    .select({
+      status: pipelineRuns.status,
+      metadata: pipelineRuns.metadata,
+      projectId: pipelineRuns.projectId,
+    })
     .from(pipelineRuns)
     .where(eq(pipelineRuns.id, runId))
     .limit(1);
   const steps = run ? mergeStepsOf(run.metadata) : null;
-  if (run?.status !== 'running' || !steps) return { settled: false, pending: null };
+  if (run?.status !== 'running' || !steps) return { settled: false, pending: null, waits: null };
   const states =
     steps.length === 0
       ? []
@@ -73,9 +101,9 @@ export async function settleChangeRequestRelease(
               steps.map((s) => s.pullRequestId),
             ),
           );
-  if (states.length < steps.length || states.some((s) => s.state !== 'merged')) {
-    return { settled: false, pending: 'merges' };
-  }
+  const merged = new Set(states.filter((s) => s.state === 'merged').map((s) => s.id));
+  const open = steps.filter((s) => !merged.has(s.pullRequestId));
+  if (open.length > 0) return waiting('merges', mergesSentence(steps, open));
   // the commit the release's version names is its last merge, known now and before any deploy:
   // its tag is owed there, once (REQ-63 BC-13); a roster that merged nothing names none
   const lastMerge =
@@ -86,7 +114,7 @@ export async function settleChangeRequestRelease(
     await oweReleaseTag(runId, lastMerge, promotion ? 'promotion' : 'merge');
   }
   // a promotion release is closed by the record of its deploy, never by its merge
-  if (promotion) return { settled: false, pending: 'record' };
+  if (promotion) return waiting('record', recordSentence(run.projectId, steps.at(-1), lastMerge));
   const claimed = await db
     .select({
       id: issues.id,
@@ -98,8 +126,14 @@ export async function settleChangeRequestRelease(
     .from(issues)
     .where(eq(issues.releaseBatchRunId, runId));
   // a roster issue with no mark is not landed yet: its agent owes the mark first
-  if (claimed.some((c) => c.mergedAt === null)) return { settled: false, pending: 'stamps' };
-  if (!(await takeSettleLease(runId))) return { settled: false, pending: 'settling' };
+  const unmarked = claimed.filter((c) => c.mergedAt === null).map((c) => c.id);
+  if (unmarked.length > 0) return waiting('stamps', await stampsSentence(unmarked));
+  if (!(await takeSettleLease(runId))) {
+    return waiting(
+      'settling',
+      'Every request merged and every issue holds its mark; another settle is closing this release now, and its lease lapses in five minutes if it stops.',
+    );
+  }
   const { failed } = await closeRoster(claimed, runId, actor, undefined);
   await stampReleaseShipped(runId);
   await recoverStrandedReleasing(runId, {
@@ -109,5 +143,12 @@ export async function settleChangeRequestRelease(
   });
   await closeRunIfOneShot(runId, 'completed');
   if (failed.length > 0) logger.warn({ runId, failed }, 'change-request release: issues left open');
-  return { settled: true, pending: null };
+  return { settled: true, pending: null, waits: null };
+}
+
+/** The roster issues holding no merge mark, by key, and the mark each owes. */
+async function stampsSentence(unmarked: string[]): Promise<string> {
+  const keys = await issueDisplayIds(unmarked);
+  const named = unmarked.map((id) => `${keys.get(id) ?? id} (${id})`);
+  return `Every request merged, and ${named.join(', ')} ${unmarked.length === 1 ? 'holds' : 'hold'} no merge mark: a merge marks only an issue its commit answers for, and the answer's \`linkedIssues\` and \`refusedStamps\` say why each was not. Mark each with \`POST /api/issues/<id>/merge\` naming the commit that landed it; the last mark closes the release.`;
 }

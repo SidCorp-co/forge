@@ -1022,6 +1022,7 @@ export const SAID = {
 	"standing.act.declareTarget": { en: "declare where releases land" },
 	"standing.act.recordLanding": { en: "record the landing" },
 	"standing.act.recordRelease": { en: "record the release production serves" },
+	"standing.act.markRosterMerged": { en: "mark its issues merged" },
 	"standing.act.deploying": { en: "deploying" },
 	"standing.act.confirmProdDeploy": {
 		en: "confirm the production deploy of {v}",
@@ -1780,6 +1781,10 @@ export const SAID = {
 	"releases.rule.noRequest": {
 		en: "approval required, none asked: the master asks with {route}",
 		vars: { route: "code" },
+	},
+	"releases.rule.mergedAwaitsMarks": {
+		en: "every request merged; {issues} hold no merge mark, and the last mark closes it",
+		vars: { issues: "text" },
 	},
 	"releases.rule.acceptedMerges": {
 		en: "accepted: the agent merges its {n} {requests} in order",

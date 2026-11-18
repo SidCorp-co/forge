@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { isRefusal } from '../../lib/refusal.js';
 import type { GitHubAgentClient } from './agent-client.js';
 import { githubChangeRequestVerbs } from './change-requests.js';
-import type { GitHubRepoClient } from './client.js';
+import { GitHubReadError, type GitHubRepoClient } from './client.js';
 
 const HEAD = 'a'.repeat(40);
 const MERGE = 'm'.repeat(40);
@@ -219,6 +219,35 @@ describe('github readChecks for one check by name', () => {
   it('reads both, as before, where no check is named', async () => {
     const { verbs } = doubles({ [RUNS]: gateRun('success'), [STATUS]: forbidden });
     await expect(verbs.readChecks(HEAD)).rejects.toThrow('HTTP 403');
+  });
+
+  // ISS-1333 (FB-743, gwork 0.61.0): the check read after a merge said only "returned HTTP 403" on
+  // commits/b0ff8041/status; a refused status read names the permission it needs
+  it('names the grant a commit-status read GitHub refuses 403 needs', async () => {
+    const refused = () => {
+      throw new GitHubReadError(
+        403,
+        `GET /repos/acme/shop/commits/${HEAD}/status on acme/shop returned HTTP 403`,
+      );
+    };
+    const { verbs } = doubles({ [RUNS]: gateRun('success'), [STATUS]: refused });
+    const read = verbs.readChangeRequestChecks({ number: 7, headSha: HEAD });
+    await expect(read).rejects.toThrow('HTTP 403');
+    await expect(read).rejects.toThrow('"Commit statuses" permission at read (`statuses: read`)');
+    await expect(read).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('carries any other refusal of the status read as it came', async () => {
+    const missing = () => {
+      throw new GitHubReadError(
+        404,
+        `GET /repos/acme/shop/commits/${HEAD}/status returned HTTP 404`,
+      );
+    };
+    const { verbs } = doubles({ [RUNS]: gateRun('success'), [STATUS]: missing });
+    const read = verbs.readChecks(HEAD);
+    await expect(read).rejects.toThrow('HTTP 404');
+    await expect(read).rejects.not.toThrow('statuses: read');
   });
 });
 

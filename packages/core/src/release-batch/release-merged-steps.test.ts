@@ -112,8 +112,16 @@ const accepted = (n: number, promotion: boolean): Part => ({
     : {},
 });
 
+/** The state of each step's request as its own row reads it. */
+const states = (...read: Array<[number, ChangeRequestLinkRow['state']]>) =>
+  new Map(read.map(([n, state]) => [`pr${n}`, state]));
+
 /** The release as its master reads it, on a project that requires a person's release approval. */
-const masterReads = (n: number, links: ChangeRequestLinkRow[]): Shared => ({
+const masterReads = (
+  n: number,
+  links: ChangeRequestLinkRow[],
+  mergeStates: ReadonlyMap<string, ChangeRequestLinkRow['state']>,
+): Shared => ({
   projectId: 'p1',
   ownerDeploys: true,
   current: null,
@@ -139,6 +147,7 @@ const masterReads = (n: number, links: ChangeRequestLinkRow[]): Shared => ({
   contentLanguage: 'en',
   provider: null,
   changeRequestLinks: links,
+  mergeStates,
 });
 
 const waitingOf = (p: Part, s: Shared) => {
@@ -152,18 +161,47 @@ describe('the merges an accepted change-request release still waits on (ISS-1207
   beforeAll(() => registerAllIntegrations());
 
   it('asks for the merge in order while one of two requests is open, counting only that one', () => {
-    const w = waitingOf(accepted(2, false), masterReads(2, [link(1, 'merged'), link(2, 'open')]));
+    const w = waitingOf(
+      accepted(2, false),
+      masterReads(2, [link(1, 'merged'), link(2, 'open')], states([1, 'merged'], [2, 'open'])),
+    );
     expect(w.says.act.key).toBe('standing.act.mergeInOrder');
     expect(w.says.rule).toMatchObject({ vars: { n: 1 } });
   });
 
-  it('counts a request no link reads merged as still owed', () => {
-    const w = waitingOf(accepted(2, false), masterReads(2, [link(1, 'merged')]));
+  it('counts a step whose request row Forge no longer holds as still owed', () => {
+    const w = waitingOf(
+      accepted(2, false),
+      masterReads(2, [link(1, 'merged')], states([1, 'merged'])),
+    );
     expect(w.says.rule).toMatchObject({ vars: { n: 1 } });
   });
 
+  // ISS-1333 (gwork 0.61.0): the promotion merged, and no roster issue links it, so read through the
+  // links it stayed "merge the requests in order" (n=1); a step's request row says it merged
+  it('reads a merged request no roster issue links as merged, from its own row', () => {
+    const w = waitingOf(accepted(1, true), masterReads(1, [], states([1, 'merged'])));
+    expect(w.says.act.key).not.toBe('standing.act.mergeInOrder');
+    expect(w.says.act.key).toBe('standing.act.recordRelease');
+  });
+
+  // ISS-1333: every request merged and an issue holds no mark, the settle waits on that mark, and the
+  // release read "release run starting" with no run to start; it names the issue the mark is owed on
+  it('names the roster issue holding no merge mark once every request merged', () => {
+    const read = masterReads(2, [], states([1, 'merged'], [2, 'merged']));
+    const unmarked = read.facts.issues.get('i2');
+    if (unmarked) unmarked.merged.at = null;
+    const w = waitingOf(accepted(2, false), read);
+    expect(w.says.act.key).toBe('standing.act.markRosterMerged');
+    expect(w.says.rule).toMatchObject({ vars: { issues: 'ISS-2' } });
+    expect(w.says.who.key).toBe('standing.who.master');
+  });
+
   it('asks for no merge once every request merged: a promotion waits on its record, the master’s once approved', () => {
-    const w = waitingOf(accepted(1, true), masterReads(1, [link(1, 'merged')]));
+    const w = waitingOf(
+      accepted(1, true),
+      masterReads(1, [link(1, 'merged')], states([1, 'merged'])),
+    );
     expect(w.says.act.key).not.toBe('standing.act.mergeInOrder');
     expect(w.says.act.key).toBe('standing.act.recordRelease');
     expect(w.kind).toBe('agent');

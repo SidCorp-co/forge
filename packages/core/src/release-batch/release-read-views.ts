@@ -1,6 +1,7 @@
 import type { ReleaseNaming } from '@forge/contracts/release-notes';
 import { releaseBuildOf } from '@forge/contracts/release-page';
 import {
+  type ChangeRequestState,
   type IssueLandingReading,
   RELEASE_ROSTER_LIMIT,
   type ReleaseApprovalView,
@@ -31,22 +32,21 @@ import {
   type ChangeRequestLinkRow,
   changeRequestViews,
   type ReleaseMergeStep,
-  unmergedSteps,
 } from './change-request-roster.js';
 import type { RecordedVerification } from './channel.js';
 import { type CriterionReading, criterionReadingsAt } from './criterion-reading.js';
 import { gapOf, releaseChangesOf, surfacesOf } from './landing-surfaces.js';
 import type { IssueFact, ReleaseFacts } from './release-facts.js';
 import { noteSections } from './release-notes-view.js';
-import { irreversibleOf, releaseOwesOf } from './release-owes.js';
+import { releaseOwesOf } from './release-owes.js';
 import { releaseOwnerOf } from './release-owner.js';
 import { releaseSitesOf, type SiteChannel } from './release-sites.js';
+import { approvalFacts, irreversibleIn, turnFor } from './release-turn-facts.js';
 import {
   completionOf,
   proofOf,
   sumTotals,
   totalsOf,
-  turnOf,
   unreachedOf,
   type ViewerFacts,
   viewerDecides,
@@ -115,6 +115,8 @@ export interface Shared {
   provider: string | null;
   /** Every change request linked to an issue these releases carry (REQ-63 BC-5). */
   changeRequestLinks: readonly ChangeRequestLinkRow[];
+  /** The state of each request these releases merge as steps, from its own row (ISS-1333); absent, none reads merged. */
+  mergeStates?: ReadonlyMap<string, ChangeRequestState>;
   /** Production deploys on request through Coolify, so its deploy waits on a person's confirm (ISS-1096). */
   confirmsProduction?: boolean;
   /** Each production site production declares now, its own first (ISS-1077); absent, none is read. */
@@ -131,68 +133,6 @@ export function reworkedIn(
   return p.issueIds.filter((id) => {
     const i = facts.issues.get(id);
     return i !== undefined && reworkedSince(p, i);
-  });
-}
-
-function inFlightStage(attempts: readonly ReleaseAttemptRow[]) {
-  return [...attempts].reverse().find((a) => a.settledAt === null)?.stage ?? null;
-}
-
-function approvalFacts(p: Part) {
-  const latest = p.approvals[0];
-  return latest
-    ? {
-        decision: latest.decision,
-        requestedBy: latest.requestedBy,
-        reason: latest.reason,
-        decidedBy: latest.decidedBy,
-      }
-    : null;
-}
-
-/** What the release's issues do that cannot be undone, as their notes say it. */
-const irreversibleIn = (p: Part, s: Shared): string[] =>
-  irreversibleOf(p.issueIds.map((id) => s.facts.issues.get(id)?.releaseNotes));
-
-/** How many carried criteria a release proves of how many, and what its skips name (`unreachedOf`). */
-type Weighed = { proven: number; total: number; unreached: readonly string[] | null };
-
-function turnFor(p: Part, s: Shared, criteria: Weighed) {
-  return turnOf({
-    state: p.state,
-    version: p.version,
-    projectId: s.projectId,
-    runId: p.runId,
-    // only a request not merged yet is a merge owed (ISS-1207); at none the settle's own wait reads
-    merges: p.mergeSteps ? unmergedSteps(p.mergeSteps, s.changeRequestLinks).length : null,
-    promotion: Boolean((p.runMetadata as { promotion?: unknown } | null | undefined)?.promotion),
-    landedOn: p.landedOn,
-    released: s.facts.released,
-    required: s.required,
-    production: s.production === true,
-    approval: approvalFacts(p),
-    approvers: s.approvers,
-    admins: s.admins,
-    // a required approval that stands, on the draft or on the cut run, frees what waited on it
-    owes: releaseOwesOf(
-      s.policy,
-      irreversibleIn(p, s),
-      p.draftApproval?.decision === 'approved' || approvalFacts(p)?.decision === 'approved',
-    ),
-    viewer: s.viewer,
-    gates: p.gates.filter((g) => g.kind === 'blocker'),
-    inFlight: inFlightStage(p.attempts),
-    prodConfirm: p.prodConfirm ?? null,
-    confirmsProduction: s.confirmsProduction === true,
-    testing: s.facts.judgedOn
-      ? {
-          environment: s.facts.judgedOn,
-          judge: s.facts.judge,
-          proven: criteria.proven,
-          total: criteria.total,
-          unreached: criteria.unreached,
-        }
-      : null,
   });
 }
 

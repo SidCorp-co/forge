@@ -19,7 +19,11 @@ import {
 } from '../project-config/index.js';
 import { type ApprovalView, approvalsOfRuns, approvalViews } from './approvals.js';
 import { collectReleaseBlockers } from './blockers.js';
-import { mergeStepsOf, readChangeRequestLinks } from './change-request-roster.js';
+import {
+  changeRequestStates,
+  mergeStepsOf,
+  readChangeRequestLinks,
+} from './change-request-roster.js';
 import {
   productionProviderOf,
   type RecordedVerification,
@@ -271,6 +275,7 @@ export async function sharedFor(
     language,
     channels,
     changeRequestLinks,
+    mergeStates,
     doc,
     deploysFrom,
     sites,
@@ -288,6 +293,7 @@ export async function sharedFor(
       projectId,
       parts.flatMap((p) => p.issueIds),
     ),
+    changeRequestStates(parts.flatMap((p) => (p.mergeSteps ?? []).map((s) => s.pullRequestId))),
     readProjectDocument(projectId),
     deploysFromOf(projectId),
     resolveReleaseSites(projectId),
@@ -306,6 +312,7 @@ export async function sharedFor(
     contentLanguage: language.contentLanguage,
     provider: productionProviderOf(channels),
     changeRequestLinks,
+    mergeStates,
     confirmsProduction: productionAsksConfirm(channels, doc?.document),
     sites,
   };

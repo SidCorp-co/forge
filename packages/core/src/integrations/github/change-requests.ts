@@ -1,7 +1,20 @@
 import type { HostCheck, ReadChangeRequest, SourceHost } from '../source-host/index.js';
-import { refuseSourceHostInput } from '../source-host/index.js';
+import { refuseSourceHostInput, SourceHostCallError } from '../source-host/index.js';
 import type { GitHubAgentClient } from './agent-client.js';
-import type { GitHubRepoClient } from './client.js';
+import { GitHubReadError, type GitHubRepoClient } from './client.js';
+
+/**
+ * A commit-status read GitHub refused 403, saying the grant it needs (ISS-1333, gwork 0.61.0: the
+ * check read after a merge answered only "returned HTTP 403"). Any other failure is thrown as it came.
+ */
+function statusesRefused(err: unknown, fullName: string): unknown {
+  if (!(err instanceof SourceHostCallError) || err.status !== 403) return err;
+  return new GitHubReadError(
+    403,
+    `${err.message}: reading a commit's statuses needs the GitHub App's "Commit statuses" permission at read (\`statuses: read\`), which its installation on ${fullName} does not grant. Add it to the App's permissions and accept it on the installation; check runs are read with \`checks: read\` and need no more`,
+    err.phase,
+  );
+}
 
 /** Check runs past this many pages of a hundred are not read: GitHub lists a commit's newest first. */
 const CHECK_RUN_MAX_PAGES = 10;
@@ -146,9 +159,13 @@ export function githubChangeRequestVerbs(
   };
 
   const statusesOf = async (sha: string): Promise<HostCheck[]> => {
-    const combined = await client.get<CombinedStatus>(
-      `/repos/${client.fullName}/commits/${encodeURIComponent(sha)}/status?per_page=100`,
-    );
+    const combined = await client
+      .get<CombinedStatus>(
+        `/repos/${client.fullName}/commits/${encodeURIComponent(sha)}/status?per_page=100`,
+      )
+      .catch((err: unknown) => {
+        throw statusesRefused(err, client.fullName);
+      });
     return (combined.statuses ?? []).flatMap((s) =>
       typeof s.id === 'number' ? [checkOfStatus(sha, { ...s, id: s.id })] : [],
     );

@@ -368,6 +368,7 @@ const RELEASE_SAID: Readonly<Record<string, OwedActKind>> = {
 	"standing.act.releaseItByHand": "release.record",
 	"standing.act.splitRelease": "release.split",
 	"standing.act.mergeInOrder": "release.merge",
+	"standing.act.markRosterMerged": "release.merge",
 	"standing.act.cutWaiting": "release.settleClaim",
 	"standing.act.cutAndApprove": "release.cutAndApprove",
 	"standing.act.cutThenApprove": "release.cutAndApprove",

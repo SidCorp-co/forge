@@ -246,7 +246,7 @@ describe('a promotion release tags the promotion merge the moment Forge sees it 
     ]);
 
     // the master records it through the merge route, whose settle owes the tag on the merge
-    expect(await settle(runId)).toEqual({ settled: false, pending: 'record' });
+    expect(await settle(runId)).toMatchObject({ settled: false, pending: 'record' });
     await settleOutbox();
 
     expect(planted.writes).toEqual([{ name: `v${version}`, sha: MERGE }]);
@@ -276,7 +276,7 @@ describe('a promotion release tags the promotion merge the moment Forge sees it 
 
     // Forge's merge of the release step went through, and the route settles the release
     await mergedInProjection(5054);
-    expect(await settle(runId)).toEqual({ settled: false, pending: 'record' });
+    expect(await settle(runId)).toMatchObject({ settled: false, pending: 'record' });
     await settleOutbox();
 
     expect(planted.writes).toEqual([{ name: `v${version}`, sha: MERGE }]);

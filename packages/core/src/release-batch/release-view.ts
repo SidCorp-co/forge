@@ -8,11 +8,9 @@ import type {
   ReleaseGateOwner,
   ReleasePerson,
   ReleaseProof,
-  ReleaseRequirementView,
   ReleaseState,
   ReleaseWaitingKind,
 } from '@forge/contracts/releases';
-import { type BcVerdict, criteriaCoverageOf, isAgreedStatus } from '@forge/contracts/requirements';
 import { type Said, say } from '@forge/contracts/said';
 import {
   holdersWho,
@@ -25,6 +23,8 @@ import {
 import type { VerifiedJudge } from '@forge/contracts/verified-rule';
 import { agrees } from '../lib/plural.js';
 import type { ReleaseOwes } from './release-owes.js';
+
+export { type CompletionFacts, completionOf } from './release-completion.js';
 
 export interface ViewerFacts {
   userId: string;
@@ -61,6 +61,11 @@ interface TurnFacts {
   merges: number | null;
   /** A promotion release: once its request merged, the record of its production deploy closes it (REQ-63 BC-12). */
   promotion?: boolean;
+  /**
+   * The keys of the roster issues holding no merge mark on a change-request release (ISS-1333): with
+   * every request merged, its settle waits on their marks, and the release names them.
+   */
+  unmarked?: readonly string[];
   /** The branch a recorded landing put it on, off production's branch; null on any other release. */
   landedOn: string | null;
   /** The release line, which says whether production serves it through a later release (ISS-1288). */
@@ -467,6 +472,14 @@ export function turnOf(f: TurnFacts): Turn {
       if (f.prodConfirm) return confirmTurn(f, f.prodConfirm.bindingId);
       // every request merged: a promotion waits on the record of its deploy (ISS-1207)
       if (f.merges === 0 && f.promotion) return recordTurn(f);
+      // every request merged, and an issue holds no mark: its settle waits on that mark (ISS-1333)
+      if (f.merges === 0 && f.unmarked && f.unmarked.length > 0) {
+        return turn('waiting', 'agent', {
+          who: MASTER,
+          act: say('standing.act.markRosterMerged'),
+          rule: say('releases.rule.mergedAwaitsMarks', { issues: f.unmarked.join(', ') }),
+        });
+      }
       return turn('moving', 'agent', {
         who: RELEASE_RUN,
         act: f.inFlight ? IN_FLIGHT_ACT[f.inFlight] : say('standing.act.starting'),
@@ -539,40 +552,4 @@ export function proofOf(t: ReleaseCriteriaTotals): ReleaseProof {
   if (t.failing > 0) return 'failing';
   if (t.open > 0) return 'open';
   return t.unproven > 0 ? 'unproven' : 'proven';
-}
-
-export interface CompletionFacts {
-  key: string;
-  title: string;
-  status: string;
-  state: ReleaseRequirementView['state'];
-  coverage: readonly {
-    code: string;
-    verdict: BcVerdict;
-    issues: readonly { issueId: string; criterion: number; stale: boolean }[];
-  }[];
-  live: readonly { id: string; key: string; status: string }[];
-}
-
-export function completionOf(
-  req: CompletionFacts,
-  inRelease: ReadonlySet<string>,
-): ReleaseRequirementView {
-  const advances = req.coverage
-    .filter((c) => c.issues.some((l) => !l.stale && inRelease.has(l.issueId)))
-    .map((c) => ({ code: c.code, verdict: c.verdict }));
-  const issues = req.live
-    .filter((i) => !inRelease.has(i.id) && i.status !== 'closed')
-    .map((i) => i.key);
-  const criteria = req.coverage.filter((c) => c.verdict !== 'passing').map((c) => c.code);
-  const agreed = isAgreedStatus(req.status);
-  return {
-    key: req.key,
-    title: req.title,
-    state: req.state,
-    completes: agreed && req.coverage.length > 0 && issues.length === 0 && criteria.length === 0,
-    advances,
-    remaining: { issues, criteria },
-    coverage: criteriaCoverageOf(req.coverage),
-  };
 }
