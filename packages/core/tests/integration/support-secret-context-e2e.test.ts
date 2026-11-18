@@ -34,6 +34,7 @@ const w = new ChannelWorld();
 const KEY = 'a1b2c3d4e5f60718'.repeat(2);
 const KEY_TWO = '0f1e2d3c4b5a6978'.repeat(2);
 const SHA = '3f2a9c1b'.repeat(5);
+const DECLINED = 'không cần xóa'; // i18n-allow: the owner's words on 18/11, "no need to delete"
 
 beforeAll(async () => {
   await w.open();
@@ -93,6 +94,10 @@ describe('ISS-1326: a key sent alone is a secret where its thread says so', () =
     const first = await say(w.chat.bob, `Secret: ${KEY}`);
     expect(await kept(first)).not.toContain(KEY);
     await expect.poll(() => notesIn(first).length, { timeout: 15_000 }).toBe(1);
+    // the owner declines the deletion, as on 18/11: core adds no note and asks nothing more
+    const declined = await say(w.chat.bob, DECLINED, first);
+    expect(await kept(declined)).toBe(DECLINED);
+    expect(notesIn(first)).toHaveLength(1);
 
     const bare = await say(w.chat.bob, KEY, first);
     // planted on today's code: the bare key is kept as written and no note follows
