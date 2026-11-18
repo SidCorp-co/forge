@@ -177,7 +177,8 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:actId field:json:spanId field:param:spanId
     field:json:fire field:json:covers field:json:profile field:param:debt
     field:param:n field:param:environment field:param:proposal field:param:variable field:json:environment
-    field:param:keyId field:param:messageId field:json:module field:param:relationId`,
+    field:param:keyId field:param:messageId field:json:module field:param:relationId
+    field:json:pictures field:json:actor field:json:service`,
   'prose a person or an agent writes: a title, a body, a message, a note': words`
     field:json:about field:json:acceptanceCriteria field:json:alt field:json:answer
     field:json:assistantInstructions field:json:assumed field:json:body field:json:brief
@@ -323,6 +324,7 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     widget/stream.ts Context handed to hono:streamSSE in widgetStream`,
   'an outbound URL, header set or module URL core builds, never a request to core': lines`
     assistant/identity/link-url.ts URLSearchParams.toString in speakerLinkUrl
+    support/secret-link.ts URLSearchParams.toString in secretLinkOf
     contracts-generate.ts URL.href in baseOf
     integrations/autoflow/refresh.ts URLSearchParams.toString in requestRefresh
     integration-door/github-connect-shared.ts URLSearchParams.toString in strandedAt
