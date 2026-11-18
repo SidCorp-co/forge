@@ -15,7 +15,7 @@ pub(super) const ID: &str = "0b8e7a52-3c4d-4e6f-8a1b-2c3d4e5f6a7b";
 /// A stand-in for core: every report, and every clip uploaded (box, span, clip bytes).
 #[derive(Default)]
 pub(super) struct Said(
-    Mutex<Vec<(String, Value)>>,
+    pub(super) Mutex<Vec<(String, Value)>>,
     pub(super) Mutex<Vec<(String, String, Vec<u8>)>>,
 );
 
@@ -98,6 +98,7 @@ fn plant_browser(b: &Boxes, root: &Scratch, port: u16) -> PathBuf {
             held: watch::channel(false).0,
             clock: record::Clock::started_now(),
             recording: false,
+            warm: false,
             closing: false,
         },
     );

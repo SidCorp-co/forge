@@ -282,6 +282,9 @@ async fn heartbeat(
     let period = std::time::Duration::from_secs(heartbeat::INTERVAL_SECS);
     let mut ticks = Ticks::new(period, cancel);
     while ticks.next().await.is_some() {
+        // a warm box whose device stopped answering is failed before an open can take it (ISS-1324)
+        let sweep = boxes.clone();
+        tokio::spawn(async move { sweep.sweep_warm().await });
         let conditions = heartbeat::Conditions {
             disk: disk.borrow().clone(),
             chat_rooms: runner_agent::claude_code::room::chat_room_facts(),

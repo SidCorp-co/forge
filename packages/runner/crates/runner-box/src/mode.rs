@@ -209,6 +209,18 @@ impl Running {
         }
     }
 
+    /// Whether the box's device still answers (ISS-1324): an android emulator `adb` reaches with
+    /// boot complete, a browser daemon still running with its stream, a desktop display still up.
+    /// Otherwise what the check found, said in the tool's words.
+    pub async fn alive(&self, ctx: &Ctx) -> Result<(), String> {
+        match self {
+            Self::Browser(b) => b.stream_port().map(|_| ()).map_err(|l| l.0),
+            Self::Android(a) => a.alive().await,
+            Self::Desktop(d) if display::is_up(&ctx.x, d.display) => Ok(()),
+            Self::Desktop(d) => Err(format!("the desktop's display :{} is gone", d.display)),
+        }
+    }
+
     /// Start recording into the live file (ISS-1321): nothing records until this is asked.
     pub async fn record_on(&self) -> Result<(), String> {
         match self {

@@ -28,6 +28,8 @@ pub(crate) struct Slot {
     clock: record::Clock,
     /// Whether its recording runs now: nothing records until core asks (ISS-1321).
     recording: bool,
+    /// Started warm and not handed out yet: the health sweep checks its device answers (ISS-1324).
+    warm: bool,
     /// Core closed it while it was still opening: the open stops it when it returns.
     closing: bool,
 }
@@ -39,6 +41,8 @@ pub(crate) struct Inner {
     wanted: watch::Sender<bool>,
     record: Option<PathBuf>,
     probe: health::Probe,
+    /// A warm sweep runs: the next heartbeat's waits for it rather than checking twice.
+    sweeping: std::sync::atomic::AtomicBool,
     unmeasured: Mutex<Option<String>>,
 }
 
@@ -91,6 +95,7 @@ impl Boxes {
             wanted,
             record,
             probe,
+            sweeping: Default::default(),
             unmeasured: Mutex::new(None),
         }))
     }
@@ -184,6 +189,7 @@ impl Boxes {
                     held: watch::channel(f.as_person).0,
                     clock: record::Clock::started_now(),
                     recording: false,
+                    warm: f.warm,
                     closing: false,
                 },
             );
@@ -319,6 +325,13 @@ impl Boxes {
         let Some(running) = self.running(&f.box_id) else {
             return tracing::warn!("[box] {}: box.assign for a box not running here", f.box_id);
         };
+        // a warm box is handed out only while its device answers (ISS-1324)
+        if let Err(why) = running.alive(&self.0.ctx).await {
+            return self.device_gone(&f.box_id, &why).await;
+        }
+        if let Some(slot) = self.slots().get_mut(&f.box_id) {
+            slot.warm = false;
+        }
         self.hold(&f.box_id, f.as_person);
         if let Some(url) = f.url.as_deref() {
             if let Err(e) = running.navigate(url).await {
@@ -344,6 +357,44 @@ impl Boxes {
         if let Some(r) = recorded.filter(|r| r["state"] == "failed") {
             self.report(&f.box_id, r).await;
         }
+    }
+
+    /// Every warm box whose device no longer answers is failed by name, so none is handed out
+    /// (ISS-1324). The heartbeat runs it; one sweep at a time.
+    pub async fn sweep_warm(&self) {
+        if self
+            .0
+            .sweeping
+            .swap(true, std::sync::atomic::Ordering::AcqRel)
+        {
+            return;
+        }
+        let warm: Vec<(String, Arc<Running>)> = self
+            .slots()
+            .iter()
+            .filter(|(_, s)| s.warm)
+            .filter_map(|(id, s)| Some((id.clone(), s.running.clone()?)))
+            .collect();
+        for (id, running) in warm {
+            if let Err(why) = running.alive(&self.0.ctx).await {
+                self.device_gone(&id, &why).await;
+            }
+        }
+        self.0
+            .sweeping
+            .store(false, std::sync::atomic::Ordering::Release);
+    }
+
+    /// The box's device is gone: said in the log, failed `BOX_DEVICE_GONE` with what the check
+    /// found, and reaped. Core never hands it out and starts another in its place.
+    async fn device_gone(&self, id: &str, why: &str) {
+        tracing::error!("[box] {id}: its device is gone, so it is failed BOX_DEVICE_GONE: {why}");
+        self.report(
+            id,
+            json!({ "kind": "state", "state": "failed", "failure": "BOX_DEVICE_GONE", "detail": cut(why) }),
+        )
+        .await;
+        self.close(id).await;
     }
 
     fn hold(&self, id: &str, taken: bool) {
@@ -425,3 +476,5 @@ mod recording;
 mod recording_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod warm_tests;

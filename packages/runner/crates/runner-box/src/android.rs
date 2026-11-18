@@ -261,18 +261,9 @@ impl Android {
     async fn wait_booted(&self, until: tokio::time::Instant) -> Result<(), String> {
         loop {
             if let Some(status) = self.exited() {
-                let tail = std::fs::read_to_string(self.state_dir.join("emulator.log"))
-                    .unwrap_or_default();
-                let tail: String = tail
-                    .chars()
-                    .rev()
-                    .take(1500)
-                    .collect::<Vec<_>>()
-                    .into_iter()
-                    .rev()
-                    .collect();
                 return Err(format!(
-                    "the emulator exited {status} before Android booted: {tail}"
+                    "the emulator exited {status} before Android booted: {}",
+                    self.log_tail()
                 ));
             }
             let booted = self
@@ -299,6 +290,47 @@ impl Android {
             }
             tokio::time::sleep(Duration::from_millis(500)).await;
         }
+    }
+
+    /// The emulator log's last 1500 characters.
+    fn log_tail(&self) -> String {
+        let log = std::fs::read_to_string(self.state_dir.join("emulator.log")).unwrap_or_default();
+        let tail: Vec<char> = log.chars().rev().take(1500).collect();
+        tail.into_iter().rev().collect()
+    }
+
+    /// Whether Android still answers on this box's serial (ISS-1324): the emulator has not exited,
+    /// `adb get-state` says `device`, and boot is complete. Otherwise what was found, with the
+    /// emulator log's tail.
+    pub async fn alive(&self) -> Result<(), String> {
+        let gone = |what: String| format!("{what}; emulator log tail: {}", self.log_tail());
+        if let Some(status) = self.exited() {
+            return Err(gone(format!(
+                "the emulator on {} exited {status}",
+                self.serial
+            )));
+        }
+        let within = Duration::from_secs(5);
+        let state = self.adb(&["get-state"], within).await.map_err(gone)?;
+        if state.trim() != "device" {
+            return Err(gone(format!(
+                "`adb -s {} get-state` answered {:?}, not device",
+                self.serial,
+                state.trim()
+            )));
+        }
+        let booted = self
+            .adb(&["shell", "getprop", "sys.boot_completed"], within)
+            .await
+            .map_err(gone)?;
+        if booted.trim() != "1" {
+            return Err(gone(format!(
+                "Android on {} has not completed boot (sys.boot_completed {:?})",
+                self.serial,
+                booted.trim()
+            )));
+        }
+        Ok(())
     }
 
     fn size_from(&self, wm: &str) {
