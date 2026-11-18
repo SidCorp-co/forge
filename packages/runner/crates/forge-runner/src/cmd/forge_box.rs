@@ -4,6 +4,10 @@
 //! `act` goes through core (`POST /api/boxes/:id/acts`), never to the box directly: core holds the
 //! lock no tool has, refusing a write `BOX_HELD_BY_PERSON` while a person holds the box, and
 //! records every act. It prints what the driver printed and exits with its exit code.
+//!
+//! `attach` (ISS-1322) asks core for a browser box's CDP URL, which core hands only to a credential
+//! bound to the box's own device: the device's proxy serves it, where the person's hold binds and
+//! every write reaches the act feed. It prints the URL alone on stdout.
 
 use std::time::Duration;
 
@@ -36,6 +40,17 @@ pub enum Command {
         #[arg(last = true, required = true)]
         command: Vec<String>,
     },
+    /// For an agent on the box's device: print a browser box's CDP URL for Playwright
+    /// (`connectOverCDP`) or chrome-devtools-mcp (`--browserUrl`). Elsewhere it is refused
+    /// BOX_ATTACH_REMOTE; an android or desktop box BOX_ATTACH_UNAVAILABLE.
+    Attach {
+        /// The box's id.
+        #[arg(name = "BOX")]
+        box_id: String,
+        /// The run attaching; defaults to $FORGE_RUN.
+        #[arg(long)]
+        run: Option<String>,
+    },
     /// The modes this device serves, what each lacks and the command that fixes it.
     Doctor,
     /// Install this user's box tools (pinned npm tools, base AVD and snapshot), adopting what
@@ -60,6 +75,7 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
             run,
             command,
         } => act(&ctx, &box_id, run, command).await,
+        Command::Attach { box_id, run } => attach(&ctx, &box_id, run).await,
         Command::Doctor => {
             let cfg = Config::load()?;
             let served = doctor_rows(&cfg);
@@ -107,6 +123,51 @@ pub fn mode_line(m: &runner_box::modes::ModeReport) -> String {
     }
 }
 
+async fn attach(ctx: &Ctx, box_id: &str, run: Option<String>) -> anyhow::Result<()> {
+    let client = match super::api::rest_client(ctx)? {
+        Ok(c) => c,
+        Err(why) => {
+            eprintln!("{why}");
+            std::process::exit(2);
+        }
+    };
+    let run = run_of(run);
+    let body = match &run {
+        Some(r) => json!({ "runId": r }),
+        None => json!({}),
+    };
+    let path = format!("boxes/{box_id}/attach");
+    let resp = call(
+        &client,
+        "POST",
+        &path,
+        Some(body.to_string()),
+        run.as_deref(),
+    )
+    .await?;
+    let (url, how) = attach_lines(&answered(&resp))?;
+    eprintln!("{how}");
+    println!("{url}");
+    Ok(())
+}
+
+/// The URL `attach` answered, and the line saying how to use it.
+fn attach_lines(answer: &Value) -> anyhow::Result<(String, String)> {
+    let url = answer["attach"]["cdp"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("core answered no CDP URL: {answer}"))?;
+    let how = format!(
+        "Playwright: chromium.connectOverCDP(\"{url}\"); chrome-devtools-mcp: --browserUrl {url}. While a person holds the box, input and navigation answer BOX_HELD_BY_PERSON; reads still answer."
+    );
+    Ok((url.to_string(), how))
+}
+
+/// The run named, else `$FORGE_RUN`.
+fn run_of(run: Option<String>) -> Option<String> {
+    run.or_else(|| std::env::var("FORGE_RUN").ok())
+        .filter(|r| !r.trim().is_empty())
+}
+
 async fn act(
     ctx: &Ctx,
     box_id: &str,
@@ -120,9 +181,7 @@ async fn act(
             std::process::exit(2);
         }
     };
-    let run = run
-        .or_else(|| std::env::var("FORGE_RUN").ok())
-        .filter(|r| !r.trim().is_empty());
+    let run = run_of(run);
     let mut body = json!({ "command": command });
     if let Some(r) = &run {
         body["runId"] = r.clone().into();
@@ -275,6 +334,22 @@ mod tests {
             mode_line(&ios),
             "[--]   ios      lacks a macOS host with the iOS Simulator"
         );
+    }
+
+    #[test]
+    fn attach_prints_the_cdp_url_alone_and_says_how_to_connect() {
+        let (url, how) = attach_lines(&json!({
+            "box": { "id": "b" },
+            "attach": { "mode": "browser", "cdp": "http://127.0.0.1:41733" }
+        }))
+        .unwrap();
+        assert_eq!(url, "http://127.0.0.1:41733");
+        assert!(
+            how.contains("connectOverCDP(\"http://127.0.0.1:41733\")"),
+            "{how}"
+        );
+        assert!(how.contains("--browserUrl http://127.0.0.1:41733"), "{how}");
+        assert!(attach_lines(&json!({ "box": {} })).is_err());
     }
 
     #[test]
