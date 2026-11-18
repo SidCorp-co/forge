@@ -217,10 +217,10 @@ export const ROOM_ACT_CARDS = {
     situations: [
       {
         when: 'a message carries pictures (`images` on its head)',
-        do: 'read each with support.image { message, n } before you answer',
+        do: 'read each with support.image { message, n } before you answer; say so of one you cannot read',
       },
     ],
-    practice: ['A record you file from that thread carries its pictures.'],
+    practice: ['A record carries only the pictures you name; leave out one showing a secret.'],
     example: { message: MESSAGE, n: 1 },
     // ISS-1010: screenshots never reached the agent, which asked people to describe them; ISS-1243,
     // AdminHub-Support 14/11: one user, 40 posts of instruction, error screenshot, new instruction
@@ -237,7 +237,7 @@ export const ROOM_ACT_CARDS = {
         when: 'someone instructs or rules',
         do: 'make the act with your own acts, or hand it to the master of the project it concerns with support.ask_master { thread, question, project }, saying what to do; then tell the thread in one line that it is done or in hand',
         watch:
-          'never tell a thread what you or this room may not do, and never send anyone, the owner included, to a page, a setting or a button',
+          'never tell a thread what you or this room may not do, and never send anyone, the owner included, to a page, a setting or a button, the secret link aside',
       },
       {
         when: 'Forge refuses an act, or your role does not hold it',

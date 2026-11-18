@@ -52,7 +52,7 @@ export function imagesOfInput(input: unknown): RecordedImage[] {
 
 /**
  * What the session is shown of a message's pictures, in the message's head: how many, their types,
- * and the act that reads them. A picture's name is the writer's and stays out of the head; the read
+ * the act that reads them, and that they are read before an answer about what the person did. A picture's name is the writer's and stays out of the head; the read
  * hands it framed as data.
  */
 export function imagesHeadOf(input: unknown, messageId: string | null): Record<string, unknown> {
@@ -64,6 +64,8 @@ export function imagesHeadOf(input: unknown, messageId: string | null): Record<s
       count: images.length,
       mimes: images.map((i) => i.mime),
       read: `support.image { message: "${messageId}", n } with n 1..${images.length}`,
+      // ISS-1328: the 10:19 screenshot showed the saved form, and the answer read the text alone
+      before: 'answering about what the person did or saw; say so of one you could not read',
       ...(typeof omitted === 'number' && omitted > 0 ? { omitted } : {}),
     },
   };

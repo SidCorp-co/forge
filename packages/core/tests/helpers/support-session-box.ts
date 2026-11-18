@@ -40,7 +40,7 @@ export interface TurnMessage {
   technicalAnswered?: boolean;
   answersYourQuestion?: string;
   /** The pictures the message carries, as its head names them (ISS-1010). */
-  images?: { count: number; mimes: string[]; read: string; omitted?: number };
+  images?: { count: number; mimes: string[]; read: string; before: string; omitted?: number };
   /** An earlier turn took it and left it unsettled: which hand this is and why (ISS-1236). */
   handedAgain?: { hand: number; why: string };
   /** What core holds on its sender and its thread, to route it by (ISS-1243). */

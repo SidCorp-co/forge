@@ -12,6 +12,7 @@ import type {
   SupportOwnerSignInRequest,
   SupportPromiseRequest,
   SupportRecordKind,
+  SupportSecretLinkRequest,
 } from '@forge/contracts/support';
 import type {
   ChannelRole,
@@ -66,6 +67,7 @@ import { auditReply } from './reply-audit/audit.js';
 import { roomGuideOf } from './room-guide.js';
 import { decideRouting } from './routing.js';
 import { search } from './search.js';
+import { secretLink } from './secret-link.js';
 import { listTools, readThread, reply, runDiagnose, staySilent } from './service.js';
 import { inFlightOf } from './shared-picture.js';
 import { linkMember } from './speaker-link.js';
@@ -105,6 +107,7 @@ export type SupportActInput =
       asker?: string | undefined;
       project?: string | undefined;
       separate?: true | undefined;
+      pictures?: { message: string; n?: number | undefined }[] | undefined;
     }
   | {
       action: 'move_issue';
@@ -162,6 +165,7 @@ export type SupportActInput =
     }
   | { action: 'link'; thread: string; member: string }
   | { action: 'image'; message: string; n?: number | undefined }
+  | ({ action: 'secret_link' } & SupportSecretLinkRequest)
   | ({ action: 'promise' } & SupportPromiseRequest)
   | ({ action: 'owner_consent' } & SupportOwnerConsentRequest)
   | ({ action: 'owner_act' } & SupportOwnerActRequest)
@@ -308,6 +312,8 @@ const SHARED = new Set<SupportActInput['action']>([
   ...REFERENCE_ACTS,
   // and writes a term a person names into the project's glossary (ISS-1256)
   'term',
+  // and gives a person the link where they enter a credential, never in chat (ISS-1328)
+  'secret_link',
 ]);
 
 const OPERATION_ACTIONS: readonly string[] = OPERATIONS_ACTIONS;
@@ -429,6 +435,10 @@ async function act(
     }
     case 'image':
       return readImage(room, { message: input.message, n: input.n });
+    case 'secret_link': {
+      const { action: _, ...request } = input;
+      return secretLink(room, request);
+    }
     case 'promise': {
       const { action: _, ...request } = input;
       return makePromise(room, request);

@@ -13,7 +13,7 @@ export const ROOM_AGENT_GUIDE: CoreGuide = {
   title: 'The room agent: how to work, by situation',
   summary:
     "A room agent's detail by situation: deciding a message, knowing who it answers, answering, consent, where work stands and handing it over.",
-  version: 4,
+  version: 5,
   // the acts this guide works through, in the order its sections reach them; each card is the one
   // text that teaches its act, so the body below says none of it again
   doors: [
@@ -26,6 +26,7 @@ export const ROOM_AGENT_GUIDE: CoreGuide = {
     'support.reply',
     'support.silent',
     'support.image',
+    'support.secret_link',
     'support.route',
     'support.run',
     'support.read',
@@ -49,6 +50,8 @@ The brief you were started with is the map: one line per situation, naming its d
 ### Reading a message
 
 Which project a message concerns is read from its head's \`routing\` before any guess: the sender (\`sender.linked\` and \`sender.account\`, their Forge account; \`from.roles\`, the channel record's), what they worked on before (\`sender.pastProjects\`, \`sender.filedFor\`, \`sender.reported\`), what the thread already holds (\`thread.records\`, the project its earlier records went to, and \`thread.decidedProject\`), and the projects this room reaches (\`roomProjects\`). Each message names its writer's \`roles\` as the channel record holds them; \`to\` "others" marks one written for someone else, and \`technicalAnswered\` true one a Technical member already answered. A head saying \`inThisTurn: n\` marks one of n messages handed in its thread this turn: your one result there answers all n.
+
+A message whose head names \`images\` is answered after you read each picture (support.image): what the person did or saw is often only there. One you cannot read, say so in your answer; never answer as if you had seen it.
 
 ### The record
 
@@ -79,6 +82,10 @@ Before you reply to a problem, find its cause: the logs (support.read on the hos
 When you tell someone how to do something on a product screen, show them the screen as they see it, not words alone. You cannot attach a picture yourself: answer in short and offer a guide with pictures in the same reply; on their plain yes, ask the master of the project that owns the screen for it with support.record { kind: request, project }, naming the screen and each step, and say in the thread that the guide will follow. Its pictures are made away from production with test data, never a customer's, and a guide of more than one step comes as one PDF in one message, never one message per step.
 
 You write to Forge only through the support acts: never with a credential found in the checkout, a .mcp.json or an env file.
+
+### A secret someone sends
+
+A key, a password or a token sent in chat is never kept: Forge filters it, and you are handed a note saying so. Say once in the thread that it was not kept and why, and in the same line give the person the link support.secret_link answers, where they enter it for the project's testing profile and the master reads it from there. Ask for the message's deletion at most once; a deletion its author or a Technical member declines is settled for the thread. Never ask anyone to rotate, change or revoke a key, never repeat what it held, and never keep it anywhere. A later secret in the same thread is not mentioned again.
 
 ### The technical channel
 

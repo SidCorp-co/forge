@@ -20,6 +20,7 @@ import type { Member } from '../helpers/support-world.js';
 // @direct-test-of packages/core/src/support/channel-store.ts
 // @direct-test-of packages/core/src/support/channel-routes.ts
 // @direct-test-of packages/core/src/support/channel-read.ts
+// @direct-test-of packages/core/src/support/secret-flag.ts
 
 const w = new ChannelWorld();
 // a GitHub token's shape, built here so no literal secret sits in the tree
@@ -217,13 +218,15 @@ describe('REQ-75 r6: nothing private kept, and one person mentioned', () => {
     const [flag] = flags();
     expect(flag?.thread).toBe(id);
     expect(flag?.text).toContain('held a secret');
-    expect(flag?.text).toContain('Ask @carol to delete that message');
+    // once per thread, naming the credential door, one deletion ask and no rotation (ISS-1328)
+    expect(flag?.text).toContain('ask @carol once to delete that message');
+    expect(flag?.text).toContain('support.secret_link');
     expect(flag?.text).not.toContain(TOKEN);
     // core posts nothing in the thread
     expect(await w.linesIn(id)).toEqual([]);
     const [action] = await rows<{ output: { technical: string; posted: boolean } }>(sql`
       SELECT output FROM support_actions WHERE room_id = ${w.roomId}::uuid AND kind = 'secret_flagged'`);
-    expect(action?.output).toEqual({ technical: 'carol', posted: false });
+    expect(action?.output).toEqual({ technical: 'carol', posted: false, told: 'first' });
   });
 
   it('lets a reply mention one person the channel lists or the asker, and refuses any other (BC-34)', async () => {

@@ -63,6 +63,7 @@ import { supportRoomsOf } from './read.js';
 import { mountReferenceSessionRoutes } from './reference-routes.js';
 import { mountReplyVerdictRoutes } from './reply-audit/index.js';
 import { mountRoutingRoutes } from './routing-routes.js';
+import { mountSecretLinkSessionRoutes } from './secret-link-routes.js';
 import { act, SESSION_ONLY } from './session-door.js';
 import { mountTermSessionRoutes } from './term-routes.js';
 import { supportTurnsOf } from './turns.js';
@@ -114,7 +115,7 @@ const SHAPES = {
   run: '{ thread, tool, args? }',
   fix: '{ thread, tool, args?, asker }',
   record:
-    '{ thread, kind: defect | feature | request, title, summary, whereSeen?, asker?, project?, separate? }',
+    '{ thread, kind: defect | feature | request, title, summary, whereSeen?, asker?, project?, separate?, pictures? }',
   agree: '{ thread, proposal, message, decision?: agree | decline }',
   link: '{ thread, member }',
   issues: '{ project, status?, key? }',
@@ -475,6 +476,7 @@ mountPromiseRoutes(supportRoutes);
 mountMasterAskRoutes(supportRoutes);
 mountReferenceSessionRoutes(supportRoutes);
 mountTermSessionRoutes(supportRoutes);
+mountSecretLinkSessionRoutes(supportRoutes);
 mountRoutingRoutes(supportRoutes);
 mountOwnerRoutes(supportRoutes);
 mountReplyVerdictRoutes(supportRoutes);

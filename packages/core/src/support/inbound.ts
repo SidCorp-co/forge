@@ -5,7 +5,7 @@
 // answer to a proposal ("ok", "confirm …") is an ordinary message: the session cites it to `agree` (ISS-845).
 
 import type { SupportRoomConfig } from '@forge/contracts/support';
-import { containsSecret, scrubLogText } from '@forge/observability';
+import { containsSecret, FILTERED, scrubLogText } from '@forge/observability';
 import { pushProjectNow } from '../agent-sessions/index.js';
 import { appendMessagesIn } from '../conversations/index.js';
 import { db } from '../db/client.js';
@@ -19,7 +19,6 @@ import {
 } from '../integrations/rocketchat/index.js';
 import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
-import { flagSecret } from './channel.js';
 import { deliverWaiting } from './dispatch.js';
 import { answersOfConfig } from './grants.js';
 import { recordedImagesOf } from './images.js';
@@ -28,6 +27,7 @@ import { settleOwnerAnswer } from './owner-answer.js';
 import { noteRoomMessage } from './room-replies.js';
 import { ensureSupportRoom } from './rooms.js';
 import { clipMessage, limitsOf, threadOf } from './rules.js';
+import { bareKeyInContext, flagSecret } from './secret-flag.js';
 import { addressedInGroup, groupSharers, threadHeldByAnother } from './shared-group.js';
 import {
   insertAction,
@@ -104,15 +104,12 @@ export async function handleSupportMessage(input: {
   shape: RoomShape;
 }): Promise<void> {
   const { route } = input;
-  // a posted secret is never kept: the message is recorded and handed on without it (REQ-75 r6 BC-40)
-  const secret = containsSecret(input.m.text);
-  const m = secret ? { ...input.m, text: scrubLogText(input.m.text) } : input.m;
   // an operations room runs under the default limits
   const config: SupportRoomConfig = route.support ?? route.agent ?? {};
   if (input.shape !== 'group') {
     // a support binding names a group; a direct room bound so is refused, never answered as one
     logger.error(
-      { connectionId: input.connectionId, rid: m.rid, projectId: route.projectId },
+      { connectionId: input.connectionId, rid: input.m.rid, projectId: route.projectId },
       'support: a support binding names a direct room; the message is refused, not answered',
     );
     return;
@@ -121,13 +118,20 @@ export async function handleSupportMessage(input: {
     projectId: route.projectId,
     bindingId: route.bindingId,
     connectionId: input.connectionId,
-    rid: m.rid,
+    rid: input.m.rid,
     room: route.operations
       ? { kind: 'operations', scope: route.operations.scope }
       : route.agent
         ? { kind: 'agent', agent: route.agent }
         : { kind: 'support', support: config },
   });
+  // a posted secret is never kept: the message is recorded and handed on without it (REQ-75 r6
+  // BC-40); a key sent alone is one where its thread says so (ISS-1326, `secret-flag.ts`)
+  const labelled = containsSecret(input.m.text);
+  const secret = labelled || (await bareKeyInContext(room, input.m));
+  const m = secret
+    ? { ...input.m, text: labelled ? scrubLogText(input.m.text) : FILTERED }
+    : input.m;
   try {
     await takeIntoRoom(room, { ...input, m }, config, secret);
   } catch (err) {

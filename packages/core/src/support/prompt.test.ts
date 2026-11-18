@@ -6,7 +6,7 @@ import { servedDoorCatalog } from '../mcp/door-catalog.js';
 import { actCard, mapLine } from './act-cards.js';
 import { operationsBrief } from './ops-prompt.js';
 import { agentOpening, grantsLine, SUPPORT_MAP_ACTS, supportBrief, toolsLine } from './prompt.js';
-import { linksOnWeb, ROOM_MAP_ACTS, roomConductLines } from './room-conduct.js';
+import { linksOnWeb, ROOM_MAP_ACTS, roomConductLines, SHOW_HOW } from './room-conduct.js';
 
 // ISS-1251: a map line is its act's card's lead situation, rendered; the card is the one text
 const NO_PERMISSION_TALK = mapLine('ask_master');
@@ -279,8 +279,29 @@ describe('the room brief is a map of situations', () => {
     for (const line of [...SUPPORT_MAP_ACTS.map(mapLine), ...roomConductLines('http://w')]) {
       expect(line).toMatch(/^- When [^:]+: /);
     }
-    expect(brief.length).toBeLessThan(5_000);
+    // 5,000 until ISS-1328 c5 (FB-742) asked for the show-how line, and the secret link's exception
+    // to "never send anyone to a page": 5,153 with both
+    expect(brief.length).toBeLessThan(5_200);
     expect(ROOM_AGENT_GUIDE.body).toContain('### Reading a message');
+  });
+
+  // ISS-1328 c5 (FB-742): the always-on map names showing how in one line, leading to the guide's
+  // lines on it, which the brief does not restate
+  it('names telling someone how to do something in one line of every room brief', () => {
+    const operations = operationsBrief({
+      role: { name: 'ops', persona: 'You are ops.', grants: ['read'] } as unknown as Parameters<
+        typeof operationsBrief
+      >[0]['role'],
+      scope: 'org',
+      reach: [],
+    });
+    for (const text of [brief, operations]) {
+      const lines = text.split('\n').filter((l) => l.includes('how to do something'));
+      expect(lines).toEqual([SHOW_HOW]);
+    }
+    expect(SHOW_HOW).toContain('what a feature looks like');
+    expect(ROOM_AGENT_GUIDE.body).toContain('show them the screen as they see it');
+    expect(ROOM_AGENT_GUIDE.body).toContain('comes as one PDF in one message');
   });
 
   // ISS-1251 (owner 2026-11-16, one capability, one card): the brief repeats no act's teaching

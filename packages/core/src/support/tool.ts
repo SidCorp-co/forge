@@ -31,6 +31,7 @@ import {
   supportReplyRequestSchema,
   supportRunRequestSchema,
   supportSearchRequestSchema,
+  supportSecretLinkRequestSchema,
   supportSilentRequestSchema,
   supportThreadRequestSchema,
 } from '@forge/contracts/support';
@@ -122,6 +123,7 @@ export const SUPPORT_TOOL_READS: readonly string[] = [
   'asker',
   'guide',
   'references',
+  'secret_link',
 ];
 
 const ACTIONS = [...SUPPORT_ACTIONS, ...OPERATIONS_ACTIONS] as const;
@@ -184,6 +186,7 @@ const REQUESTS = {
   reference_cite: supportReferenceCiteRequestSchema,
   reference_propose: supportReferenceProposeRequestSchema,
   term: supportTermRequestSchema,
+  secret_link: supportSecretLinkRequestSchema,
 } as const satisfies Record<(typeof ACTIONS)[number], z.ZodType>;
 
 /** Each action's request as `forge_describe` answers it, its entry below naming exactly these (ISS-1033). */
@@ -278,6 +281,8 @@ const inputSchema = z.strictObject({
     .shape,
   aliases: supportTermRequestSchema.shape.aliases,
   anchor: supportTermRequestSchema.shape.anchor,
+  // a credential's input link: the testing profile and its one actor or service (ISS-1328)
+  ...supportSecretLinkRequestSchema.omit({ thread: true }).partial().shape,
   // a field two acts' requests both take, each judged by its own act's request: a record's or a
   // draft's kind, or a reference source's; a page's or a source's address; a one-line why, or what a
   // source teaches
@@ -312,7 +317,7 @@ const SIGNATURES = [
   `decide { thread, message?, decision: ${SUPPORT_ROUTING_DECISIONS.join(' | ')}, project?, signals: (${SUPPORT_ROUTING_SIGNALS.join(' | ')})[], confidence: ${SUPPORT_ROUTING_CONFIDENCES.join(' | ')}, why }`,
   'run { thread, tool, args? }',
   'propose_fix { thread, tool, args?, asker }',
-  `record { thread, kind: ${SUPPORT_RECORD_KINDS.join(' | ')}, title, summary, whereSeen?, asker?, project?, separate? }`,
+  `record { thread, kind: ${SUPPORT_RECORD_KINDS.join(' | ')}, title, summary, whereSeen?, asker?, project?, separate?, pictures?: [{ message, n? }] }`,
   'approve { thread, message, feedback, project? }',
   'move_issue { thread, message, issue, to, reason? }',
   'build { thread, branch, title, summary }',
@@ -360,6 +365,7 @@ const SIGNATURES = [
   'reference_cite { source, ref, verdict: take | reject, why, about?, project? }',
   'reference_propose { kind, url, why, areas, evidence, title?, priority?, followReleases?, project? }',
   'term { thread, message, slug, title, means, module, quote, aliases?, anchor?, project? }',
+  'secret_link { thread, profile, actor | service }',
 ];
 
 /** What every act shares, said once in the description and in a refusal. */

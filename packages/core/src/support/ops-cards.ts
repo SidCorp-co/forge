@@ -40,6 +40,7 @@ export const OPS_ACT_CARDS = {
     ],
     practice: [
       'The record is the one place these live: keep none of your own in a file, memory or note.',
+      'A key, password or token a person sends anyway is a secret: never repeat it and never keep it, in the record or anywhere; give them support.secret_link.',
     ],
     example: {},
     redFlag:

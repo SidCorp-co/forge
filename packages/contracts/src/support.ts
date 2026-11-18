@@ -935,7 +935,33 @@ export const SUPPORT_ACTIONS = [
 	"reference_propose",
 	// a term a person names, written into the project's glossary under its module (ISS-1256)
 	"term",
+	// a Forge link where a person enters a credential for the project's testing profile (ISS-1328)
+	"secret_link",
 ] as const;
+
+/**
+ * A Forge link opening the secret input of one actor or service of the project's testing profile
+ * (ISS-1328): the person enters the value there, it is kept as that slot's `secret://`, and the
+ * master reads it at the testing-profile secrets door; it never passes through chat.
+ */
+export const supportSecretLinkRequestSchema = z.strictObject({
+	thread: threadId,
+	profile: z
+		.string()
+		.regex(/^[a-z][a-z0-9-]{0,62}$/, "a testing profile id")
+		.describe("the testing profile, by its id"),
+	actor: z
+		.string()
+		.regex(/^[a-zA-Z][a-zA-Z0-9-]{0,62}$/, "an actor name")
+		.optional()
+		.describe("the profile's actor the value signs in as; or service"),
+	service: z
+		.string()
+		.regex(/^[a-zA-Z][a-zA-Z0-9-]{0,62}$/, "a service name")
+		.optional()
+		.describe("the profile's service the value is a key of; or actor"),
+});
+export type SupportSecretLinkRequest = z.infer<typeof supportSecretLinkRequestSchema>;
 
 export const supportSearchRequestSchema = z.strictObject({
 	query: z.string().trim().min(2).max(300),
@@ -1103,6 +1129,26 @@ export const supportRecordRequestSchema = z.strictObject({
 		.optional()
 		.describe(
 			"true only where the owner asks for new work beside an open item of the thread; his approval of that item is support.approve",
+		),
+	/**
+	 * The pictures that are evidence for the item, each by its message and place (ISS-1327): only these
+	 * are attached, never the thread's every picture; none named, none attached.
+	 */
+	pictures: z
+		.array(
+			z.strictObject({
+				message: z
+					.string()
+					.min(1)
+					.max(64)
+					.regex(/^[A-Za-z0-9_-]+$/, "a Rocket.Chat message id"),
+				n: z.number().int().min(1).max(20).optional(),
+			}),
+		)
+		.max(10)
+		.optional()
+		.describe(
+			"the pictures that are evidence, each { message, n? } (n omitted: every picture of that message), each one you looked at with support.image and that shows no secret, password or key",
 		),
 });
 
@@ -1727,6 +1773,20 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_IMAGE_REFUSED",
 	/** The picture is named on another host than the room's chat server, which is never sent the bot's credential (ISS-1010). */
 	"SUPPORT_IMAGE_OFF_SERVER",
+	/** A picture a record names that no member message of its thread carries (ISS-1327). */
+	"SUPPORT_PICTURE_UNKNOWN",
+	/** A picture a record names from a message whose text had a secret filtered (ISS-1327). */
+	"SUPPORT_PICTURE_HELD_SECRET",
+	/** A secret link naming a testing profile the project does not declare (ISS-1328). */
+	"SUPPORT_SECRET_PROFILE_UNKNOWN",
+	/** A secret link naming neither or both of an actor and a service (ISS-1328). */
+	"SUPPORT_SECRET_SLOT_ONE",
+	/** A secret link naming an actor or service its profile does not declare (ISS-1328). */
+	"SUPPORT_SECRET_SLOT_UNKNOWN",
+	/** A secret link naming a service whose credential is a stored variable, not a secret (ISS-1328). */
+	"SUPPORT_SECRET_SLOT_VARIABLE",
+	/** A secret link asked of a core that knows no web app address to link to (ISS-1328). */
+	"SUPPORT_SECRET_LINK_NO_WEB",
 	/** The chat server could not be read for the picture (ISS-1010). */
 	"SUPPORT_IMAGE_UNREACHABLE",
 	/** A master's post names an image no issue, comment or session upload has (ISS-1024). */
@@ -1935,6 +1995,13 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_IMAGE_GONE: 404,
 	SUPPORT_IMAGE_REFUSED: 503,
 	SUPPORT_IMAGE_OFF_SERVER: 409,
+	SUPPORT_PICTURE_UNKNOWN: 404,
+	SUPPORT_PICTURE_HELD_SECRET: 409,
+	SUPPORT_SECRET_PROFILE_UNKNOWN: 404,
+	SUPPORT_SECRET_SLOT_ONE: 400,
+	SUPPORT_SECRET_SLOT_UNKNOWN: 404,
+	SUPPORT_SECRET_SLOT_VARIABLE: 409,
+	SUPPORT_SECRET_LINK_NO_WEB: 503,
 	SUPPORT_IMAGE_UNREACHABLE: 503,
 	SUPPORT_POST_IMAGE_UNKNOWN: 404,
 	SUPPORT_POST_IMAGE_UNREADABLE: 403,

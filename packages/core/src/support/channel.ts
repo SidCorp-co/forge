@@ -163,7 +163,7 @@ async function membersAskable(room: RoomRow): Promise<MemberRow[]> {
  * How the room shows each of `members`: by the username the chat server pairs with a member the
  * record holds under a user id (ISS-1089), else as the record holds them.
  */
-async function shownNames(
+export async function shownNames(
   room: RoomRow,
   members: readonly MemberRow[],
 ): Promise<(stored: string) => string> {
@@ -486,46 +486,4 @@ export async function announce(
     externalId: posted.messageId,
   });
   return { ok: true, value: { messageId: posted.messageId } };
-}
-
-/**
- * A member posted a secret (BC-40): what was kept of the message is scrubbed already, and the
- * session is handed the fact — which message, whose, and the Technical member who can delete it —
- * to ask for the deletion in its own words, which the bot cannot do. Core posts nothing (ISS-845).
- */
-export async function flagSecret(
-  room: RoomRow,
-  conversationId: string,
-  thread: string,
-  messageId: string,
-  author: { key: string; label: string | null },
-): Promise<void> {
-  const channel = await channelOfRoom(room);
-  const technical = (await membersOf(channel.id))
-    .filter((m) => m.roles.includes('technical'))
-    .sort((a, b) => (a.state === b.state ? 0 : a.state === 'confirmed' ? -1 : 1))[0];
-  const who = author.label ? `@${author.label}` : `account ${author.key}`;
-  const asked = technical ? (await shownNames(room, [technical]))(technical.username) : null;
-  const note = `Message ${messageId} from ${who} in this thread held a secret; Forge kept nothing of it, and the bot cannot delete it. Ask ${asked ? `@${asked}` : 'a Technical member'} to delete that message from the chat server, in your own words, without repeating what it held.`;
-  // the fact goes to the session as a note of the thread, handed on with the message itself
-  await insertAction({
-    roomId: room.id,
-    projectId: room.projectId,
-    conversationId,
-    thread,
-    kind: 'message_in',
-    actorKind: 'core',
-    input: { note },
-    externalId: `secret:${messageId}`,
-  });
-  await insertAction({
-    roomId: room.id,
-    projectId: room.projectId,
-    conversationId,
-    thread,
-    kind: 'secret_flagged',
-    actorKind: 'core',
-    input: { message: messageId },
-    output: { technical: asked, posted: false },
-  });
 }
