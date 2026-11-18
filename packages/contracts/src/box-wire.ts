@@ -97,6 +97,8 @@ export interface BoxControlFrames {
 		viewport: { width: number; height: number } | null;
 		url: string | null;
 		openTimeoutSeconds: number;
+		/** Opened for a person to test by hand: they hold it from the open, input admitted at once. */
+		asPerson: boolean;
 	};
 	/** Stop it and reap every process it started. The recording stays until `box.recording.drop`. */
 	"box.close": { boxId: string; why: "done" | "failed" | "superseded" };
@@ -109,9 +111,10 @@ export interface BoxControlFrames {
 	};
 	/**
 	 * A warm box was given to work: the runner navigates to `url` where one is named. Its
-	 * recording restarts here, so a warm box's idle minutes are never evidence.
+	 * evidence restarts here, so a warm box's idle minutes are never evidence, and it answers
+	 * `ready` with the instant. `asPerson`: a person holds it from the hand-out.
 	 */
-	"box.assign": { boxId: string; url: string | null };
+	"box.assign": { boxId: string; url: string | null; asPerson: boolean };
 	/** A person holds it: the runner accepts `input` channel streams for it from now. */
 	"box.take": { boxId: string; userId: string; name: string | null };
 	/** Back to the agent (`released`, or `expired` by idle): the runner refuses input streams again. */

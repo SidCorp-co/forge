@@ -146,12 +146,19 @@ export async function openBox(
           ...fields,
           ...(asPerson ? { heldBy: actor.userId, heldSince: now, lastInputAt: now } : {}),
           askedAt: now,
+          // its evidence starts at the hand-out, never with the warm minutes before it; the
+          // device's `ready` for the assignment gives the exact instant
+          recordingStartedAt: now,
         },
         actor: kernelActorOf(actor),
         source: SOURCE,
         afterWrite: async (t, rows) => {
           for (const r of rows) {
-            await pushBox(t, device.id, 'box.assign', { boxId: r.id, url: req.url ?? null });
+            await pushBox(t, device.id, 'box.assign', {
+              boxId: r.id,
+              url: req.url ?? null,
+              asPerson,
+            });
             await tellChanged(t, {
               ...warm,
               ...fields,

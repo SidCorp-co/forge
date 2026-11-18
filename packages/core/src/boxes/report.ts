@@ -14,12 +14,26 @@ import { failBox } from './allocate.js';
 import { boxById, boxRecord } from './read.js';
 import { failSpan, recordMark } from './spans.js';
 
-/** Opening → running: a warm box, a person's box to test by hand, or the agent's. */
+/**
+ * Opening → running: a warm box, a person's box to test by hand, or the agent's. A running box's
+ * `ready` answers its assignment (`box.assign`): a warm box's evidence restarts at the hand-out, so
+ * the record's recording start moves to the instant the device restarted it (ISS-1315).
+ */
 async function ready(
   row: BoxRow,
   report: Extract<BoxReport, { kind: 'state' }>,
   device: KernelActor,
 ): Promise<void> {
+  if ((row.state === 'agent' || row.state === 'person') && report.recordingStartedAt) {
+    await db
+      .update(boxes)
+      .set({
+        recordingStartedAt: new Date(report.recordingStartedAt),
+        view: report.offer ?? row.view,
+      })
+      .where(eq(boxes.id, row.id));
+    return;
+  }
   if (row.state !== 'opening') return;
   const now = new Date();
   const to = row.projectId === null ? 'warm' : row.openedAs === 'person' ? 'person' : 'agent';
