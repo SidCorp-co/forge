@@ -341,3 +341,69 @@ describe("a merge check owes the change's probes only", () => {
     expect([three?.latest?.id, three?.latest?.verdict]).toEqual([fail, 'fail']);
   });
 });
+
+// ISS-1294 (FB-717): a batch's one merge check ran every issue's kept probes, and its report carries
+// each issue's under its id, so it is recorded on each issue it lands, and refused on one it does not.
+describe("a batch's one merge check is recorded on each issue it lands", () => {
+  /** A report whose `issues` name each issue's kept probes, each run green by a check of its own. */
+  function batchReport(kept: { issue: string; ran: { criterion: number; probe: string }[] }[]) {
+    const issues = kept.map((k) => {
+      const ran = k.ran.map((r) => ({
+        ...r,
+        check: { ...passingCheck('probes'), scope: `issue ${k.issue}, criterion ${r.criterion}` },
+      }));
+      return {
+        checks: ran.map((r) => r.check),
+        entry: {
+          issue: k.issue,
+          probes: ran.map((r) => ({ criterion: r.criterion, probe: r.probe, check: r.check.id })),
+        },
+      };
+    });
+    return passingReport({
+      base: { branch: 'dev', sha: BASE },
+      head: HEAD,
+      touched: [{ path: 'packages/core/src/issues/x.ts', change: 'changed' }],
+      checks: [
+        ...REQUIRED_MERGE_CHECKS.filter((n) => n !== 'probes').map((n) => passingCheck(n)),
+        ...issues.flatMap((x) => x.checks),
+      ],
+      issues: issues.map((x) => x.entry),
+    });
+  }
+
+  it('records one batch report on both its issues, and refuses an issue it does not cover by name', async () => {
+    const [a, b, other] = [await designedIssue(), await designedIssue(), await designedIssue()];
+    const kept: { issue: string; ran: { criterion: number; probe: string }[] }[] = [];
+    for (const issue of [a, b]) {
+      kept.push({
+        issue,
+        ran: [
+          { criterion: 1, probe: await keep(issue, 1) },
+          { criterion: 3, probe: await keep(issue, 3) },
+        ],
+      });
+    }
+    const body = batchReport(kept);
+    for (const issue of [a, b]) {
+      ok(await record(issue, body), 201);
+      const [recorded] = await verifications(issue);
+      expect(((recorded?.fields ?? []) as Doc[]).find((f) => f.key === 'probes')?.value).toBe(
+        '2 kept probe(s) ran and held, for criteria 1, 3',
+      );
+    }
+    const res = await record(other, body);
+    expect([res.status, refusalCodes(res)]).toEqual([422, ['MERGE_CHECK_ISSUE_NOT_COVERED']]);
+    expect(detailOf(res)).toContain(`(${other})`);
+    expect(detailOf(res)).toContain(`--probes ${other}=<its criteria read>`);
+    expect(await verifications(other)).toEqual([]);
+  });
+
+  it("refuses a batch report that also sends a top-level probes list, which reads as one issue's", async () => {
+    const issue = await designedIssue();
+    const body = batchReport([{ issue, ran: [{ criterion: 1, probe: await keep(issue, 1) }] }]);
+    const res = await record(issue, { ...body, probes: body.issues?.[0]?.probes });
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body)).toContain('sends no top-level `probes`');
+  });
+});

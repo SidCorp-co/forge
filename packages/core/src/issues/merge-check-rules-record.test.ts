@@ -59,9 +59,8 @@ describe('the record a passing check is kept as', () => {
     const notChecked = fields.find((f) => f.key === 'not-checked')?.value ?? '';
     expect(notChecked).toContain('the review');
     expect(notChecked).not.toContain('probe');
-    expect(fields.find((f) => f.key === 'probes')?.value).toBe(
-      '1 kept probe(s) ran and held, for criteria ',
-    );
+    // a `probes` check no binding names ran no kept probe of the issue's (ISS-1294)
+    expect(fields.find((f) => f.key === 'probes')?.value).toBe('no kept probe to run');
     // One check is one record (ISS-474): its duration lives in its check run, never here as well.
     for (const f of fields) expect(f.value).not.toMatch(/\d+\.\ds\b|durationMs|\b1500\b|\b2500\b/);
   });
