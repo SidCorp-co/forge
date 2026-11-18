@@ -9,7 +9,7 @@
  * again; with no model or no embeddings a release stays silent and the pass names why; a newer version
  * joins the source's idea on that item while it is open; a source added again offers no version
  * already declined for an item, and a newer one names only itself (ISS-1289); a source whose read throws is
- * settled with its error and the pass reads the next; a citation is counted on the
+ * settled with its error and the pass reads the next, and so is one followed now; a citation is counted on the
  * source's signals; and a source nobody cited for 90 days is flagged. The releases are fixtures
  * handed to the follow pass, the embedder a word-vector stand-in with issue copies written at a
  * chosen cosine, and the model a stand-in judge: no network.
@@ -32,7 +32,12 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
 import type { FollowedRead } from '../../src/integrations/github/index.js';
 import { env } from '../../src/lib/env.js';
-import { followAllSources, followSource, type ReleaseReader } from '../../src/references/follow.js';
+import {
+  followAllSources,
+  followNow,
+  followSource,
+  type ReleaseReader,
+} from '../../src/references/follow.js';
 import { releaseLead } from '../../src/references/match.js';
 import { activeSourcesOf, type SourceRow } from '../../src/references/read.js';
 import { FORGE_OPEN_ITEMS, RELEASE_NOTES } from '../../src/references/releases.fixture.js';
@@ -380,7 +385,7 @@ describe("a followed source's releases digested (c2)", () => {
   });
 });
 
-describe('a source whose read throws, in the scheduled pass', () => {
+describe('a source whose read throws, in the scheduled pass or followed now', () => {
   it('is settled with its error, and the source behind it is still read', async () => {
     for (const name of ['broken', 'healthy']) {
       const added = await api(jwt, 'POST', base(), {
@@ -420,6 +425,20 @@ describe('a source whose read throws, in the scheduled pass', () => {
       },
       { title: 'acme-healthy/lib', follow_error: null, checked: true },
     ]);
+  });
+
+  it('followed now, answers failed and is settled with its error as the pass settles it', async () => {
+    const read: ReleaseReader = async () => {
+      throw new Error('The connection was reset');
+    };
+    const now = new Date(Date.now() + 60_000);
+    const out = await followNow(project.id, 'acme-broken/lib', read, now);
+    expect(out).toMatchObject({ act: 'failed', said: 'The connection was reset' });
+    const [settled] = await rows<{ follow_error: string | null; checked: boolean }>(
+      sql`SELECT follow_error, last_checked_at = ${now.toISOString()}::timestamptz AS checked
+          FROM reference_sources WHERE title = 'acme-broken/lib'`,
+    );
+    expect(settled).toEqual({ follow_error: 'The connection was reset', checked: true });
   });
 });
 

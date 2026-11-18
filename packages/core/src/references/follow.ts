@@ -391,8 +391,16 @@ export async function followAllSources(
   return tally;
 }
 
-/** `POST …/reference-sources/:source/follow`: reads one followed source now, as the pass would. */
-export async function followNow(projectId: string, ref: string): Promise<FollowOutcome> {
+/**
+ * `POST …/reference-sources/:source/follow`: reads one followed source now, as the pass would, a
+ * source that throws settled with its error as the pass settles it.
+ */
+export async function followNow(
+  projectId: string,
+  ref: string,
+  read: ReleaseReader = readFollowedRepo,
+  now: Date = new Date(),
+): Promise<FollowOutcome> {
   const orgId = await orgOfProject(projectId);
   const source = await sourceIn(db, projectId, orgId, ref);
   if (!source.followReleases) {
@@ -406,7 +414,7 @@ export async function followNow(projectId: string, ref: string): Promise<FollowO
       said: 'its releases are not followed; set followReleases true to follow them',
     };
   }
-  return followSource(source);
+  return followIsolated(source, read, now);
 }
 
 /** The timer's run: the pass over every followed source, logged when it read or stopped on anything. */
