@@ -59,23 +59,28 @@ beforeEach(async () => {
 });
 
 let seq = 11270;
-/** An issue planted at `in_progress`, the status its park returns to. */
-async function plantIssue(): Promise<{ id: string; key: string }> {
+/** An issue planted at `in_progress`, the status its park returns to, or at another with its mark. */
+async function plantIssue(
+  status = 'in_progress',
+  merged = false,
+): Promise<{ id: string; key: string }> {
   const id = randomUUID();
   seq += 1;
   const { db } = await import('../../src/db/client.js');
   const { withKernelMarker } = await import('../../src/db/kernel-marker.js');
   await withKernelMarker(db, (tx) =>
     tx.execute(sql`
-      INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id)
-      VALUES (${id}, ${projectId}, ${seq}, ${`planted ${seq}`}, 'in_progress', ${ownerId})
+      INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, merged_at)
+      VALUES (${id}, ${projectId}, ${seq}, ${`planted ${seq}`}, ${status}, ${ownerId},
+              ${merged ? sql`now()` : null})
     `),
   );
   return { id, key: `ISS-${seq}` };
 }
 
-const park = async (issueId: string, body: Doc) => {
-  ok(
+type Asked = { id: string; blocker_kind: string; answer: Doc };
+const park = async (issueId: string, body: Doc): Promise<Asked> => {
+  const answer = ok(
     await say('master', 'POST', `/api/issues/${issueId}/transition`, {
       toStatus: 'needs_info',
       ...body,
@@ -87,7 +92,7 @@ const park = async (issueId: string, body: Doc) => {
      WHERE issue_id = ${issueId} AND status = 'open' ORDER BY created_at DESC, id DESC LIMIT 1
   `);
   expect(q, 'the park asked no question').toBeDefined();
-  return q as { id: string; blocker_kind: string };
+  return { ...(q as { id: string; blocker_kind: string }), answer };
 };
 
 /** Every word the owner's Needs you serves: its decisions and its rows. */
@@ -124,6 +129,39 @@ describe('a park on a resource or another issue is no person’s (ISS-1127)', ()
     });
     expect(q.blocker_kind).toBe('master_or_peer');
     expect(await ownersNeedsYou()).not.toContain(q.id);
+  });
+
+  it('a decision park naming an issue still open waits on its delivery, and its answer says so (ISS-1292)', async () => {
+    const other = await plantIssue();
+    const issue = await plantIssue();
+    const q = await park(issue.id, {
+      reason: 'The export reads the format the other issue settles.',
+      waitingKind: 'needs_decision',
+      needs: `${other.key} landed, which fixes the export format`,
+    });
+    expect(q.blocker_kind).toBe('master_or_peer');
+    expect(q.answer.parkQuestion).toMatchObject({ id: q.id, owedBy: 'master_or_peer' });
+    expect(q.answer.parkQuestion.because).toContain(other.key);
+  });
+
+  it('a decision park naming a landed, closed or dropped issue as a reference is a person’s (ISS-1292)', async () => {
+    for (const [status, merged] of [
+      ['closed', true],
+      ['dropped', false],
+      ['awaiting_release', true],
+    ] as const) {
+      const shipped = await plantIssue(status, merged);
+      const issue = await plantIssue();
+      const q = await park(issue.id, {
+        reason: 'Upgrading the box runner is the owner’s act.',
+        waitingKind: 'needs_decision',
+        needs: `Upgrade forge-runner on the box to a build at or after ${shipped.key}`,
+      });
+      expect(q.blocker_kind, status).toBe('human');
+      expect(q.answer.parkQuestion, status).toMatchObject({ id: q.id, owedBy: 'human' });
+      expect(q.answer.parkQuestion.because, status).toContain('a decision a person owes');
+      expect(await ownersNeedsYou(), status).toContain(q.id);
+    }
   });
 
   it('a park on its own merge mark is answered by the mark, no person’s', async () => {

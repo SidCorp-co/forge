@@ -1,13 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { AUTONOMOUS_QUESTION_STATUS } from '@forge/contracts/issue-machine';
 import type { QuestionAboutRequest } from '@forge/contracts/questions';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray, or, sql } from 'drizzle-orm';
 import { type IssueStatus, issues, type WaitingKind } from '../db/schema.js';
 import { LEGACY_ISSUE_PREFIX } from '../lib/issue-ref.js';
 import { actorAgency, type TransitionActor } from './actor-agency.js';
 import type { DrizzleTx } from './dependency-executor.js';
 import { activeIssuePrefix, heldIssuePrefixes } from './issue-prefix-read.js';
-import { parkOwedBy } from './park-owed.js';
+import { landedSql } from './host-landing.js';
+import { issuesNamedBy, type ParkBlockerKind, parkOwedBy, seqOfNamed } from './park-owed.js';
 import { askParkQuestion, pendingDesignOfPark, personOwesAnAnswer } from './ports.js';
 
 const DECISION_KIND: WaitingKind = 'needs_decision';
@@ -18,8 +19,15 @@ export interface AwaitedDesignRef {
   revision: number;
 }
 
-/** The question a park minted, as the stall it starts names it (REQ-67 BC-6). */
-export type ParkQuestion = { id: string; text: string };
+/** The question a park minted, as the stall it starts names it (REQ-67 BC-6), and who owes it and
+ *  why, as the transition's answer says (ISS-1292). */
+export type ParkQuestion = { id: string; text: string; owedBy: ParkBlockerKind; because: string };
+
+/** A design revision's question is its approver's, whom the design's own standing names. */
+const DESIGN_OWED = {
+  owedBy: 'human',
+  because: 'it waits on a design revision, which its approver decides',
+} as const;
 
 const NEED_NOT_STATED =
   'the run did not say what would settle this — answer with whatever it needs to carry on';
@@ -89,12 +97,12 @@ export async function mintParkQuestion(
       ...awaited,
       ...(about ? { about } : {}),
       ...(linked ? { linkedUnderIssue: true } : {}),
-      // a design revision's question is its approver's, whom the design's own standing names
-      ...(awaited.awaitsDesign ? {} : { blockerKind: owed }),
+      ...(awaited.awaitsDesign ? {} : { blockerKind: owed.blockerKind }),
     });
   const first = (q: { id: string; steps: Array<{ prompt: string }> }): ParkQuestion => ({
     id: q.id,
     text: q.steps[0]?.prompt ?? prompt,
+    ...(designs.length > 0 ? DESIGN_OWED : { owedBy: owed.blockerKind, because: owed.because }),
   });
   if (designs.length === 0) {
     return first(await ask(awaitsMerge ? { awaitsMerge: { issueId: awaitsMerge.issueId } } : {}));
@@ -116,13 +124,42 @@ async function parkOwedOf(input: MintParkQuestionInput, tx: DrizzleTx, needs: st
     .limit(1);
   const active = await activeIssuePrefix(input.issue.projectId, tx);
   const held = await heldIssuePrefixes(input.issue.projectId, tx);
+  const prefixes = [LEGACY_ISSUE_PREFIX, ...(active ? [active] : []), ...held];
+  const ownSeq = own?.issSeq ?? 0;
+  const named = issuesNamedBy(needs ?? '', prefixes, ownSeq);
   return parkOwedBy({
     waitingKind: input.options.waitingKind,
     needs,
     awaitsMerge: input.options.awaitsMerge !== undefined,
-    prefixes: [LEGACY_ISSUE_PREFIX, ...(active ? [active] : []), ...held],
-    ownSeq: own?.issSeq ?? 0,
-  }).blockerKind;
+    prefixes,
+    ownSeq,
+    shipped: await shippedAmong(tx, input.issue.projectId, named),
+  });
+}
+
+/**
+ * Which of the issues a park's `needs` names are no longer delivery to wait on: landed (the one
+ * predicate every landed read takes, `host-landing.ts:landedSql`), closed or dropped (ISS-1292). A key
+ * naming no issue of the project is none of these, so it still reads as a wait.
+ */
+async function shippedAmong(
+  tx: DrizzleTx,
+  projectId: string,
+  named: readonly string[],
+): Promise<Set<number>> {
+  const seqs = [...new Set(named.map(seqOfNamed))];
+  if (seqs.length === 0) return new Set();
+  const rows = await tx
+    .select({ issSeq: issues.issSeq })
+    .from(issues)
+    .where(
+      and(
+        eq(issues.projectId, projectId),
+        inArray(issues.issSeq, seqs),
+        or(inArray(issues.status, ['closed', 'dropped']), landedSql(sql`"issues"`)),
+      ),
+    );
+  return new Set(rows.map((r) => r.issSeq));
 }
 
 /**

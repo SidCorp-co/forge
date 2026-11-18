@@ -288,7 +288,7 @@ Leaving costs nothing beyond naming the status the park left — \`issue_work_st
 |---|---|---|
 | \`needs_answer\` | a question about the requirements | the answer |
 | \`needs_decision\` | a person must decide what only a person owns: an irreversible act, real money, product direction, standing policy, or an approval the project's policy keeps for a person | the decision |
-| \`needs_resource\` | something the agent cannot create (a test account, credentials, third-party data): its question asks the project's master, who gets it, never a person's Needs you; so does a park whose \`needs\` names another issue | the resource |
+| \`needs_resource\` | something the agent cannot create (a test account, credentials, third-party data): its question asks the project's master, who gets it, never a person's Needs you; so does a park whose \`needs\` names another issue not yet landed (one landed, closed or dropped is a reference, and the wait stays its kind's) | the resource |
 
 A plan awaiting a person's approval, where the project's policy asks one, is \`needs_decision\`. A tradeoff or a scope call inside agreed work is not: the agent decides it and records the choice on the item it shapes. These were the old \`waiting\` park's kinds; \`waiting\` folded into \`needs_info\` with its kind kept.
 
@@ -298,7 +298,7 @@ A plan awaiting a person's approval, where the project's policy asks one, is \`n
 
 ### \`needs_info\` is a question, and a question has an answer box
 
-It takes \`reason\` (why the work stopped), \`waitingKind\` (what it is stopped on) and \`needs\` (what a person must supply for it to start again) — two of them are not the same sentence — and, when the park waits on one fact, the wait that fact settles: a design approval, this issue's own merge mark, or a business question \`about\` a requirement. Which field says each, and what each is refused: the transition and question cards beneath this guide.
+It takes \`reason\` (why the work stopped), \`waitingKind\` (what it is stopped on) and \`needs\` (what a person must supply for it to start again) — two of them are not the same sentence — and, when the park waits on one fact, the wait that fact settles: a design approval, this issue's own merge mark, or a business question \`about\` a requirement. Which field says each, and what each is refused: the transition and question cards beneath this guide. The answer's \`parkQuestion\` says who its question is owed by (\`owedBy\`) and why (\`because\`).
 
 **Re-pointing a park.** An issue at \`needs_info\` waiting on one design, or mark, that now waits on another is moved to \`needs_info\` again with \`reason\` and the \`awaitsDesign\` (or \`awaitsMerge\`) it waits on now. No status moves: the questions the park asked are withdrawn naming the new wait, the new wait's are asked, and the answer says what it withdrew and asked (\`repointed\`). Naming exactly what the park already waits on is \`NO_OP\`.
 

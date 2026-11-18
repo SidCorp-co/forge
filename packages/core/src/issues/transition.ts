@@ -271,6 +271,7 @@ transitionRoutes.post(
       transitionedAt: result.updatedAt,
       ...(result.repointed ? { repointed: result.repointed } : {}),
       ...(result.movedOut ? { movedOut: result.movedOut } : {}),
+      ...(result.parkQuestion ? { parkQuestion: result.parkQuestion } : {}),
       ...(unreported ? { afterCommitFailures: [unreported] } : {}),
     });
   },

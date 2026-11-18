@@ -22,7 +22,12 @@ import { RefusalError } from '../lib/refusal.js';
 import { actorAgency, kernelActorFor, type TransitionActor } from './actor-agency.js';
 import type { DrizzleTx } from './dependency-executor.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
-import { type AwaitedDesignRef, mintParkQuestion, needsNotApplicable } from './park-question.js';
+import {
+  type AwaitedDesignRef,
+  mintParkQuestion,
+  needsNotApplicable,
+  type ParkQuestion,
+} from './park-question.js';
 import { openParkWaitsOn, postIssueNotice, withdrawParkQuestions } from './ports.js';
 import { recordRepoint } from './record-events/kernel-records.js';
 import { emitIssueFieldUpdate } from './update-hook.js';
@@ -134,6 +139,7 @@ export async function repointPark(input: {
   unblockedDependents: [];
   step: WorkStep | null;
   repointed: { withdrawn: string[]; asked: string[] };
+  parkQuestion?: ParkQuestion;
 }> {
   const { issue, actor, options } = input;
   const status = AUTONOMOUS_QUESTION_STATUS;
@@ -240,7 +246,7 @@ export async function repointPark(input: {
       leftStatus: input.leftStatus,
       needs: options.needs?.trim() || null,
     });
-    await mintParkQuestion(
+    const parkQuestion = await mintParkQuestion(
       { issue, toStatus: status, actor, options: { ...options, waitingKind: kind ?? undefined } },
       tx,
     );
@@ -254,6 +260,7 @@ export async function repointPark(input: {
       unblockedDependents: [],
       step: input.step,
       repointed: { withdrawn, asked },
+      ...(parkQuestion ? { parkQuestion } : {}),
     };
   });
 }

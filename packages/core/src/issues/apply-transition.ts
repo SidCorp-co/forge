@@ -171,6 +171,8 @@ export interface StatusTransitionResult {
   repointed?: { withdrawn: string[]; asked: string[] };
   /** Where a close moved each criterion it did not meet, as its notice names them. */
   movedOut?: string[];
+  /** The question a park minted, and who owes it and why (`park-owed.ts:parkOwedBy`, ISS-1292). */
+  parkQuestion?: ParkQuestion;
 }
 
 const authorOf = (actor: TransitionActor) => (actor.type === 'user' ? actor.id : actor.ownerId);
@@ -319,6 +321,7 @@ async function moveIssue(
     unblockedDependents: txResult.unblockedDependents,
     step,
     ...(txResult.movedOut.length > 0 ? { movedOut: txResult.movedOut } : {}),
+    ...(txResult.parkQuestion ? { parkQuestion: txResult.parkQuestion } : {}),
   };
 }
 
@@ -340,6 +343,7 @@ type TransitionWriteResult = {
   row: { id: string; status: IssueStatus; reopenCount: number; updatedAt: Date };
   unblockedDependents: UnblockedDependent[];
   movedOut: string[];
+  parkQuestion: ParkQuestion | null;
 };
 
 /** The work state a move leaves: the park's left status and the step. */
@@ -537,6 +541,7 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
     row: { ...row, status: row.status as IssueStatus },
     unblockedDependents,
     movedOut,
+    parkQuestion: parked.question,
   };
 }
 
