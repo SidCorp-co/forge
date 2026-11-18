@@ -70,7 +70,9 @@ Forge already has three parts the box can reuse:
     reserve, less the cost of boxes started since that measurement;
   - a request that does not fit waits on the record, with its position and reason, and starts when a
     later heartbeat leaves room;
-  - each served mode keeps one warm box, the last thing allocated.
+  - each served mode keeps one warm box, the last thing allocated. A warm box handed to a request
+    reads `opening` until the device says its screen still answers; one whose screen is gone fails
+    `BOX_DEVICE_GONE` and is never handed out (ISS-1324).
 - **The live view travels the preview tunnel.**
   - **Streams:** one per viewer socket, opened by core with `{boxId, channel, fps}`. The runner
     copies it to the box's loopback endpoint for that channel.
@@ -81,7 +83,10 @@ Forge already has three parts the box can reuse:
   - **Agent-browser's socket also takes input,** so for a browser box core is the WebSocket client.
     It forwards only frames to a viewer, at that viewer's rate.
 - **Recording becomes evidence.**
-  - Every box records its whole session.
+  - Nothing records by default, and a warm box never does (ISS-1321; owner 2026-11-18: recording
+    costs resources). A box records when its open asks, when its holder or a project writer turns
+    it on, or while a criterion's span needs it: a span begun with recording off starts it, and the
+    last open span's end stops it.
   - The agent marks a criterion's span. Core orders the clip and its opening still cut from it, within
     the release page's ceiling, and attaches both to the issue under the criterion. A verdict cites
     them as it cites a hand-made clip today.
