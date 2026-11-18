@@ -10,15 +10,16 @@ import { type ContextScopedMcpToolFactory, sourceOf, zodToMcpSchema } from '../l
 import { need } from '../lib/tool-args.js';
 import { onArg, onResolved } from '../permissions/index.js';
 import { agentAct } from './acts.js';
+import { setBoxRecording } from './recording.js';
 import { closeBox, openBox, readBox } from './service.js';
 import { markSpan } from './spans.js';
 
-const ACTIONS = ['open', 'act', 'span', 'close', 'read'] as const;
+const ACTIONS = ['open', 'act', 'span', 'record', 'close', 'read'] as const;
 
 const inputSchema = z.strictObject({
   action: z.enum(ACTIONS),
   projectId: z.uuid().optional().describe('open: the project'),
-  boxId: z.uuid().optional().describe('act, span, close, read: the box'),
+  boxId: z.uuid().optional().describe('act, span, record, close, read: the box'),
   mode: z.string().optional().describe('open: browser, android or desktop'),
   issueId: z.uuid().optional().describe('open: the issue the box tests'),
   criterion: z.number().int().min(1).optional().describe('open, span: the criterion number'),
@@ -28,6 +29,10 @@ const inputSchema = z.strictObject({
     .optional()
     .describe('open: a browser box’s size, e.g. 390×844'),
   url: z.string().optional().describe('open: where a browser box starts'),
+  record: z
+    .boolean()
+    .optional()
+    .describe('open: record the whole session (off by default); record: true starts, false stops'),
   command: z.array(z.string()).optional().describe('act: the driver argv, e.g. ["click", "@e22"]'),
   edge: z.enum(['start', 'end']).optional().describe('span: start or end'),
 });
@@ -45,9 +50,9 @@ export const BOX_CARDS = {
       },
     ],
     practice: [
-      'Name the mode (browser, android, desktop), the issue and the criterion you test; a browser box takes a viewport such as 390×844 and a url.',
-      'ios is refused BOX_MODE_UNAVAILABLE by name, and so is a mode the device lacks, with the fix.',
-      'Close the box when the criterion is shown: its processes are reaped and its recording stays as evidence.',
+      'Name the mode (browser, android, desktop), the issue and the criterion; a browser box takes a viewport such as 390×844 and a url. ios, and a mode the device lacks, are refused BOX_MODE_UNAVAILABLE by name.',
+      'Nothing records unless asked: leave `record` off and mark a span for each criterion you show, which records its own clip; `record: true` only when the whole session is evidence.',
+      'It reads opening until its screen answers: read it until agent. One failed BOX_DEVICE_GONE names the box its request goes on as. Close the box once the criterion is shown.',
     ],
     example: {
       mode: 'browser',
@@ -89,22 +94,46 @@ export const BOX_CARDS = {
   },
   span: {
     purpose:
-      "Marks where a criterion's demonstration starts and ends on the box's recording; Forge cuts the clip and its opening still and attaches them to the issue.",
+      "Marks a criterion's demonstration; the span records itself, and Forge attaches its clip and opening still to the issue.",
     situations: [
       {
         when: 'you are about to show a criterion on a box',
         do: "mark the criterion's span start, show it, mark its end, then cite the attached clip in the verdict's evidence",
+        watch:
+          "the span's start begins the recording and its end stops it, so a clip needs no recording left running",
       },
     ],
     practice: [
+      'Record a span when the clip is a criterion’s evidence, never exploratory work: explore first, then mark the span and show it.',
       'A span longer than the release page ceiling keeps its last 20 seconds: keep the demonstration short.',
-      'The clip attaches as box-<box>-c<n>-<span>.webm with a .png still; cite it by name, id or download URL.',
+      'The clip attaches as box-<box>-c<n>-<span>.mp4 with a .png still; cite it by name, id or download URL (VERDICT_CLIP_REQUIRED reads it there).',
     ],
     example: { criterion: 2, edge: 'start' },
     redFlag: 'Running pnpm clip by hand for a criterion you just showed on a box.',
     family: 'issue-work',
     audience: ['master', 'run', 'person'],
     scenarios: ["a criterion's span marked on a box"],
+  },
+  record: {
+    purpose:
+      "Starts or stops a box's recording. Nothing records by default, because recording costs the device's resources; a span records its own clip.",
+    situations: [
+      {
+        when: 'the whole session, not one criterion, is the evidence (a flow a person must replay)',
+        do: 'turn recording on with record: true, and off with record: false when that part is done',
+        watch:
+          'a recording you turned on keeps running past every span’s end until you stop it or close the box',
+      },
+    ],
+    practice: [
+      'For a criterion’s clip, mark its span instead: the span starts and stops the recording itself.',
+      'Never record exploratory work: it costs disk and CPU and no verdict reads it.',
+    ],
+    example: { boxId: '<box id>', record: true },
+    redFlag: 'Recording a whole session to cut one criterion’s clip from it.',
+    family: 'issue-work',
+    audience: ['master', 'run', 'person'],
+    scenarios: ['a browser box that recorded 21 MB nobody asked for'],
   },
   close: {
     purpose:
@@ -145,9 +174,10 @@ export const BOX_CARDS = {
 
 const DESCRIPTION = [
   'Forge Box: a browser, Android or desktop screen you test a UI in, which a person watches live from Forge and can take over.',
-  'open {projectId, mode, issueId, criterion, runId, viewport?, url?}: a box, or BOX_SLOT_UNAVAILABLE naming its place and why while it waits.',
+  'open {projectId, mode, issueId, criterion, runId, viewport?, url?, record?}: a box, opening until it is ready, or BOX_SLOT_UNAVAILABLE naming its place and why while it waits.',
   'act {boxId, command, runId}: one driver command; a write is refused BOX_HELD_BY_PERSON while a person holds the box, a read always answers.',
-  "span {boxId, criterion, edge}: mark a criterion's demonstration; its clip and still attach to the issue.",
+  "span {boxId, criterion, edge}: mark a criterion's demonstration; a span records its own clip, which attaches to the issue with its still.",
+  'record {boxId, record}: start or stop recording; nothing records unless asked, so record a span, not exploratory work.',
   'close {boxId}; read {boxId}.',
 ].join(' ');
 
@@ -165,6 +195,7 @@ export const forgeBoxTool: ContextScopedMcpToolFactory = (ctx) => ({
       open: onArg('project.write'),
       act: onResolved('project.write', "the box's project, found from the box"),
       span: onResolved('project.write', "the box's project, found from the box"),
+      record: onResolved('project.write', "the box's project, found from the box"),
       close: onResolved('project.write', "the box's project, found from the box"),
       read: onResolved('project.read', "the box's project, found from the box"),
     },
@@ -190,6 +221,7 @@ export const forgeBoxTool: ContextScopedMcpToolFactory = (ctx) => ({
               ...(input.runId ? { runId: input.runId } : {}),
               ...(input.viewport ? { viewport: input.viewport } : {}),
               ...(input.url ? { url: input.url } : {}),
+              ...(input.record !== undefined ? { record: input.record } : {}),
             },
           ),
         };
@@ -207,6 +239,14 @@ export const forgeBoxTool: ContextScopedMcpToolFactory = (ctx) => ({
             boxId(),
             need({ criterion: input.criterion }, 'span', 'criterion').criterion,
             need({ edge: input.edge }, 'span', 'edge').edge,
+          ),
+        };
+      case 'record':
+        return {
+          box: await setBoxRecording(
+            boxId(),
+            actor,
+            need({ record: input.record }, 'record', 'record').record,
           ),
         };
       case 'close':

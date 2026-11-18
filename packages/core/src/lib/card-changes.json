@@ -895,19 +895,24 @@
     "by": "ISS-1276"
   },
   "box.open": {
-    "hash": "ced360c365dc0ecc",
-    "on": "2026-11-17",
-    "by": "ISS-1276"
+    "hash": "7e4943571a91917c",
+    "on": "2026-11-18",
+    "by": "ISS-1321"
   },
   "box.read": {
     "hash": "3683c65bab6be935",
     "on": "2026-11-17",
     "by": "ISS-1276"
   },
+  "box.record": {
+    "hash": "1d4b3cd2e7aa1fcc",
+    "on": "2026-11-18",
+    "by": "ISS-1321"
+  },
   "box.span": {
-    "hash": "5512c7649c043f93",
-    "on": "2026-11-17",
-    "by": "ISS-1276"
+    "hash": "3cb62947bc7ec07d",
+    "on": "2026-11-18",
+    "by": "ISS-1321"
   },
   "channel.contracts": {
     "hash": "c06a11ebf39482e2",

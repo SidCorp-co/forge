@@ -49,6 +49,8 @@ const openFrame = (row: BoxRow, warm: boolean) => ({
   boxId: row.id,
   mode: row.mode,
   warm,
+  // a warm box never records; another records from its start only where its open asked (ISS-1321)
+  record: !warm && row.recordingWhy === 'asked',
   viewport: row.viewport ?? null,
   url: row.url,
   openTimeoutSeconds: BOX_LIMITS.openTimeoutSeconds,
@@ -118,6 +120,7 @@ export async function failBox(
       heldBy: null,
       heldSince: null,
       recordingState: row.recordingState === 'recording' ? 'kept' : row.recordingState,
+      recordingWhy: null,
     },
     reason: failure,
     actor,

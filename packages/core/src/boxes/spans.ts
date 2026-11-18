@@ -1,14 +1,16 @@
 // A criterion's span on a box's recording becomes its evidence (ISS-1276, ADR 0015). The agent marks
 // where the demonstration starts and ends; the device answers each mark with the recording offset it
 // landed at; core then orders the clip cut within the release page's ceiling, and attaches the clip
-// and its opening still to the issue, under the criterion. A verdict cites them as it cites a clip a
+// and its opening still to the issue, under the criterion. Nothing records by default (ISS-1321): a
+// span begun on a box not recording starts its recording, and the last open span's end stops a
+// recording a span began; one an open or a person asked for keeps running. A verdict cites them as it cites a clip a
 // judge recorded by hand (`issues/criteria/clip-citation.ts:clipFault`), and a release page shows them.
 
 import type { BoxSpanRecord } from '@forge/contracts/boxes';
 import { RELEASE_CLIP_MAX_BYTES, RELEASE_CLIP_MAX_SECONDS } from '@forge/contracts/release-page';
-import { and, eq } from 'drizzle-orm';
-import { db } from '../db/client.js';
-import { type BoxRow, type BoxSpanRow, boxSpans } from '../db/schema-boxes.js';
+import { and, eq, ne } from 'drizzle-orm';
+import { db, type Tx } from '../db/client.js';
+import { type BoxRow, type BoxSpanRow, boxes, boxSpans } from '../db/schema-boxes.js';
 import { persistIssueAttachment } from '../issues/index.js';
 import { accessFor, type BoxActor, pushBox, refuse, tellChanged } from './access.js';
 import { spanRecord } from './read.js';
@@ -61,11 +63,19 @@ export async function markSpan(
         .values({ boxId: row.id, issueId, criterion, createdBy: actor.userId })
         .returning();
       if (!span) throw new Error('box_spans: insert returned no row');
+      const starts = (await recordingOf(tx, row.id)).recordingState !== 'recording';
+      if (starts) {
+        await tx
+          .update(boxes)
+          .set({ recordingState: 'recording', recordingWhy: 'span' })
+          .where(eq(boxes.id, row.id));
+      }
       await pushBox(tx, row.deviceId, 'box.span.mark', {
         boxId: row.id,
         spanId: span.id,
         criterion,
         edge,
+        recording: starts ? 'start' : null,
       });
       await tellChanged(tx, row);
       return spanRecord(span);
@@ -82,15 +92,39 @@ export async function markSpan(
       .set({ state: 'cutting', endedAt: new Date() })
       .where(eq(boxSpans.id, open.id))
       .returning();
+    const [another] = await tx
+      .select({ id: boxSpans.id })
+      .from(boxSpans)
+      .where(and(eq(boxSpans.boxId, row.id), eq(boxSpans.state, 'open'), ne(boxSpans.id, open.id)))
+      .limit(1);
+    const stops = !another && (await recordingOf(tx, row.id)).recordingWhy === 'span';
+    if (stops) {
+      await tx
+        .update(boxes)
+        .set({ recordingState: 'kept', recordingWhy: null })
+        .where(eq(boxes.id, row.id));
+    }
     await pushBox(tx, row.deviceId, 'box.span.mark', {
       boxId: row.id,
       spanId: open.id,
       criterion,
       edge,
+      recording: stops ? 'stop' : null,
     });
     await tellChanged(tx, row);
     return spanRecord(span ?? open);
   });
+}
+
+/** The box's recording as it stands inside the span's transaction, its row locked. */
+async function recordingOf(tx: Tx, boxId: string) {
+  const [box] = await tx
+    .select({ recordingState: boxes.recordingState, recordingWhy: boxes.recordingWhy })
+    .from(boxes)
+    .where(eq(boxes.id, boxId))
+    .for('update')
+    .limit(1);
+  return box ?? { recordingState: null, recordingWhy: null };
 }
 
 /**

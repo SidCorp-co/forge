@@ -34,7 +34,21 @@ export const BOX_SCENARIOS: readonly CardScenario[] = [
     source: `${ISSUE}: a verdict owes a clip (VERDICT_CLIP_REQUIRED) that a judge cut by hand`,
     situation: 'The run is about to show criterion 2 on its box',
     good: "mark the span's start, show it, mark its end, and cite the attached clip",
-    teaches: [/mark the criterion's span start/i, /cite the attached clip/i],
+    teaches: [
+      /mark the criterion's span start/i,
+      /cite the attached clip/i,
+      /never exploratory work/i,
+    ],
+  },
+  {
+    name: 'a browser box that recorded 21 MB nobody asked for',
+    card: 'box.record',
+    source:
+      'ISS-1321, 2026-11-18 (sid-xeon-1: browser box 244e9ddf wrote session.webm of 21 MB in about 8 minutes; owner: recording costs resources, so it is optional)',
+    situation: 'A run wants one criterion’s clip from a box it explores for a while first',
+    bad: 'the box recorded its whole session so that one clip could be cut from it',
+    good: 'leave recording off, and mark the criterion’s span, which records its own clip',
+    teaches: [/mark its span instead/i, /never record exploratory work/i],
   },
   {
     name: 'a box that waited on CPU pressure, read until it ran',

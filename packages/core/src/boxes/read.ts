@@ -57,7 +57,11 @@ function recordOf(row: BoxRow, name: string | null): BoxRecord {
     url: row.url,
     view: row.view ?? null,
     recording: row.recordingState
-      ? { state: row.recordingState, startedAt: iso(row.recordingStartedAt) }
+      ? {
+          state: row.recordingState,
+          why: row.recordingState === 'recording' ? row.recordingWhy : null,
+          startedAt: iso(row.recordingStartedAt),
+        }
       : null,
     failure: row.failure,
     detail: row.detail,

@@ -7,6 +7,7 @@ import { boxReportSchema } from '@forge/contracts/box-wire';
 import {
   boxActRequestSchema,
   boxCloseRequestSchema,
+  boxRecordingRequestSchema,
   boxSpanRequestSchema,
   boxTicketRequestSchema,
   openBoxRequestSchema,
@@ -20,6 +21,7 @@ import { requiresNoPermission, requiresOnResolved } from '../permissions/index.j
 import type { BoxActor } from './access.js';
 import { agentAct } from './acts.js';
 import { boxActsAfter, boxSpansOf, projectBoxes } from './read.js';
+import { setBoxRecording } from './recording.js';
 import { reportBox } from './report.js';
 import { closeBox, openBox, readBox, releaseBox, takeBox } from './service.js';
 import { attachSpanClip, markSpan } from './spans.js';
@@ -57,7 +59,7 @@ projectBoxRoutes.post(
     'json',
     openBoxRequestSchema,
     invalid(
-      'invalid body: { mode: browser | android | desktop, issueId?, criterion?, runId?, deviceId?, viewport?: { width, height }, url?, asPerson? }',
+      'invalid body: { mode: browser | android | desktop, issueId?, criterion?, runId?, deviceId?, viewport?: { width, height }, url?, asPerson?, record? }',
     ),
   ),
   async (c) =>
@@ -81,7 +83,7 @@ boxRoutes.post(
     'json',
     boxReportSchema,
     invalid(
-      'invalid body: { kind: state | offer | act | mark | clip_failed, … } (`@forge/contracts/box-wire`)',
+      'invalid body: { kind: state | offer | act | mark | clip_failed | recording, … } (`@forge/contracts/box-wire`)',
     ),
   ),
   async (c) =>
@@ -131,6 +133,7 @@ for (const at of [
   '/:id/close',
   '/:id/take',
   '/:id/release',
+  '/:id/recording',
   '/:id/acts',
   '/:id/spans',
   '/:id/ticket',
@@ -184,6 +187,17 @@ boxRoutes.post(
     const { command, runId } = c.req.valid('json');
     return c.json(await agentAct(actorOf(c), c.req.valid('param').id, command, runId));
   },
+);
+
+boxRoutes.post(
+  '/:id/recording',
+  zValidator('param', boxParam, PATH),
+  requiresOnResolved('project.write', ON_BOX),
+  zValidator('json', boxRecordingRequestSchema, invalid('invalid body: { on: true | false }')),
+  async (c) =>
+    c.json({
+      box: await setBoxRecording(c.req.valid('param').id, actorOf(c), c.req.valid('json').on),
+    }),
 );
 
 const feedQuery = z.strictObject({

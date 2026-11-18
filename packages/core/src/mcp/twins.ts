@@ -98,6 +98,7 @@ export const REST_TWINS: Readonly<Record<string, readonly string[]>> = {
   'box.open': ['POST /api/projects/:id/boxes'],
   'box.act': ['POST /api/boxes/:id/acts'],
   'box.span': ['POST /api/boxes/:id/spans'],
+  'box.record': ['POST /api/boxes/:id/recording'],
   'box.close': ['POST /api/boxes/:id/close'],
   'audit.self': ['POST /api/projects/:id/self-audits'],
   // a master's seed of reference sources went over REST (16 calls on forge, 2026-11-16) and counted

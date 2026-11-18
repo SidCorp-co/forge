@@ -10,26 +10,37 @@ export const BOXES_GUIDE: CoreGuide = {
   audience: 'agent',
   title: 'Forge Box: test a UI where a person can watch',
   summary:
-    "Open a box (browser, android or desktop) for the issue and criterion you test, drive it with `forge-runner box act` or forge_box, mark each criterion's span so its clip attaches to the issue, and close it. A person may take control: your writes are refused BOX_HELD_BY_PERSON, your reads still answer; wait, read what they did, go on.",
-  version: 1,
+    "Open a box (browser, android or desktop) for the issue and criterion you test, drive it with `forge-runner box act` or forge_box, mark each criterion's span so it records its own clip and attaches it to the issue, and close it. Nothing records unless asked. A person may take control: your writes are refused BOX_HELD_BY_PERSON, your reads still answer; wait, read what they did, go on.",
+  version: 2,
   doors: [
     'POST /api/projects/:id/boxes',
     'POST /api/boxes/:id/acts',
     'POST /api/boxes/:id/spans',
+    'POST /api/boxes/:id/recording',
     'POST /api/boxes/:id/close',
   ],
   body: `## Forge Box: test a UI where a person can watch
 
 A box is a screen Forge gives you to test a UI in: a web page (\`browser\`), an Android app
 (\`android\`) or a Linux desktop app (\`desktop\`). The owner opens Forge and watches it live, takes
-control, tests by hand, and hands it back. Every box records its session, so the criterion you show
-there gets its clip without \`pnpm clip\`. Nothing forces a box on you: you choose to open one when
-the criterion is something a person sees.
+control, tests by hand, and hands it back. A criterion you show there gets its clip from its span
+(step 4), without \`pnpm clip\`. Nothing forces a box on you: you choose to open one when the
+criterion is something a person sees.
 
 ### 1. Open one
 \`POST /api/projects/:id/boxes\` (or forge_box \`open\`) with the \`mode\`, the \`issueId\`, the
 \`criterion\` you test and your \`runId\`. A browser box takes a \`viewport\` (390×844 for a phone)
-and a \`url\`. The box runs on your run's device.
+and a \`url\`. The box runs on your run's device. It answers \`opening\` until its screen answers,
+a warm box handed to you included; read it until it stands at \`agent\`.
+
+- **Nothing records unless asked.** Recording costs the device's CPU and disk, so a box records
+  only while something needs it: a criterion's span (step 4) records itself. Add \`record: true\`
+  only when the whole session is the evidence, and never record exploratory work. A recording you
+  asked for runs until you stop it (\`POST /api/boxes/:id/recording\` \`{ on: false }\`, forge_box
+  \`record\`) or close the box; a person may turn it on or off from the Boxes page.
+- **A box whose screen is gone** (an emulator that died, a browser daemon or display gone) fails
+  \`BOX_DEVICE_GONE\` with what the check found, and is never handed out. If it was being handed
+  to you, its detail names the box your request goes on as: read that one.
 
 - **It may wait.** A device starts a box while its measured health has room (memory past its reserve,
   CPU pressure under its ceiling, disk) for the mode's cost: there is no count of boxes. When there
@@ -59,14 +70,18 @@ a loop, and never open a second box to get around a hold. A hold with no input f
 ${BOX_LIMITS.holdIdleSeconds}s expires back to you on the record.
 
 ### 4. Mark each criterion's span
-Before you show a criterion, \`POST /api/boxes/:id/spans\` \`{ criterion, edge: "start" }\`; after,
-\`{ criterion, edge: "end" }\`. Forge has the device cut the span's clip and its opening still and
-attaches both to the issue as \`box-<box>-c<n>-<span>.webm\` and \`.png\`. Cite the clip in that
-criterion's verdict evidence by its name, id or download URL. A span longer than
+Record a span when the clip is a criterion's evidence, never exploratory work: explore first, then
+mark it and show the criterion. Before you show it, \`POST /api/boxes/:id/spans\`
+\`{ criterion, edge: "start" }\`; after, \`{ criterion, edge: "end" }\`. A span begun on a box
+that is not recording starts its recording, and the last open span's end stops it; a recording
+someone asked for keeps running. Forge has the device cut the span's clip and its opening still and
+attaches both to the issue as \`box-<box>-c<n>-<span>.mp4\` and \`.png\`. Cite the clip in that
+criterion's verdict evidence by its name, id or download URL: \`VERDICT_CLIP_REQUIRED\` reads the
+span's clip there like any clip attached to the issue. A span longer than
 ${RELEASE_CLIP_MAX_SECONDS}s keeps its last ${RELEASE_CLIP_MAX_SECONDS}s, so keep each demonstration
 short.
 
 ### 5. Close it
 \`POST /api/boxes/:id/close\` once the criteria are shown: the device reaps every process it started
-and the room goes to the next request. The recording stays on the device until the issue ends.`,
+and the room goes to the next request. What it recorded stays on the device until the issue ends.`,
 };
