@@ -1,1 +1,0 @@
-**An issue no longer closes without its release note.** Its holder's close is refused until a note is recorded, a Skip note included, and says how to write one; a release still closes what it carries.

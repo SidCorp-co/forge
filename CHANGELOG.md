@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.723] - 2026-11-18
+
+A park citing a shipped issue asks a person; no close without a release note
+
+### Fixed
+
+- **A park that names shipped work asks a person again.** An issue already landed, closed or dropped in a park's needs is a reference, not a wait; the park's answer says who owes its question and why.
+- **An issue no longer closes without its release note.** Its holder's close is refused until a note is recorded, a Skip note included, and says how to write one; a release still closes what it carries.
+
 ## [0.4.0-dev.722] - 2026-11-18
 
 Followed references raise one idea per source and problem, never re-offering declined versions
