@@ -1673,11 +1673,11 @@ export const SAID = {
 		vars: { req: "key", status: "text", issues: "said" },
 	},
 	"feedback.rule.requirementNothingShips": {
-		en: "triaged: {req} stands {status} with no issue to ship it, so whoever triages it reroutes it",
+		en: "triaged: {req} stands {status} with no issue to ship; triage it again",
 		vars: { req: "key", status: "text" },
 	},
 	"feedback.rule.acceptedNothingShips": {
-		en: "triaged: {req} was accepted by decision, not shipped, so whoever triages it reroutes it",
+		en: "triaged: {req} accepted by decision, nothing shipped; triage it again",
 		vars: { req: "key" },
 	},
 	"standing.who.itsRootUnnamed": { en: "Its root" },

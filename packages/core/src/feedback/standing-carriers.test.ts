@@ -125,7 +125,7 @@ describe('a requirement route resolves only once what delivers it shipped (ISS-1
     expect(s.chip).toBe('new');
     expect(s.waitingOn.act).toBe('triage it again');
     expect(s.waitingOn.rule).toBe(
-      'triaged: REQ-25 was accepted by decision, not shipped, so whoever triages it reroutes it',
+      'triaged: REQ-25 accepted by decision, nothing shipped; triage it again',
     );
     const phase = phaseOf(routedToRequirement('accepted'));
     const refused = replyRefusal(

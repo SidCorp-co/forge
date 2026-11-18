@@ -87,7 +87,7 @@ describe('ISS-1332 a requirement-routed item resolves only once its requirement 
   it('reads triaged, owed a triage again, once accepted with no live issue to ship it', async () => {
     const f = await item(fb.nothing);
     expect(f.phase).toBe('triaged');
-    expect((f.waitingOn as Body).rule).toMatch(/stands accepted with no issue to ship it/);
+    expect((f.waitingOn as Body).rule).toMatch(/stands accepted with no issue to ship/);
     const owed = (await owedTriages(w.projectId)).map((o) => o.key);
     expect(owed).toContain(fb.nothing);
     expect(owed).not.toContain(fb.unreleased);
