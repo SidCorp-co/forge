@@ -21,12 +21,12 @@ import { toolResultText } from '../tools/mcp-adapter.js';
 import { buildChatToolContext } from '../tools/principal.js';
 import { buildProjectToolset } from '../tools/registry.js';
 import { withTurnImages } from '../tools/turn-images.js';
+import { keptFailure } from './failure.js';
 import type { ChatProposalRow, HeldRestCall, HeldToolCall } from './store.js';
 import { recordRefOf } from './summary.js';
 
 /** The agreement token outlives a slow CLI call and nothing more; it is revoked when the write answers. */
 const AGREEMENT_TOKEN_TTL_MS = 2 * 60 * 1000;
-const FAILURE_MAX = 1_000;
 
 type Replay = (request: Request) => Promise<Response>;
 let replay: Replay | null = null;
@@ -55,9 +55,6 @@ function hrefOf(slug: string, ref: string | null): string | null {
   const req = /^(REQ-\d+)/.exec(ref);
   return req ? `/projects/${slug}/requirements/${req[1]}` : null;
 }
-
-const clipped = (text: string) =>
-  text.length > FAILURE_MAX ? `${text.slice(0, FAILURE_MAX - 1)}…` : text;
 
 async function slugOf(projectId: string): Promise<string> {
   const [row] = await db
@@ -137,7 +134,7 @@ export async function writeAgreed(
       row.form === 'tool'
         ? await writeToolCall(row, credential, slug, authority.userId)
         : await writeRestCall(row, credential);
-    if (!written.ok) return { ok: false, failure: clipped(written.text) };
+    if (!written.ok) return { ok: false, failure: keptFailure(written.text) };
     const ref = recordRefOf(row.kind, parsedObject(written.text));
     return { ok: true, record: { ref, href: hrefOf(slug, ref) }, answered: written.text };
   } finally {

@@ -2,7 +2,9 @@
 // never the JSON the write answered with (ISS-439: the judge's probe F posted a problem document).
 
 import { describe, expect, it } from 'vitest';
-import { failureSentence } from './failure.js';
+import { problemBody } from '../../lib/refusal.js';
+import { failureSentence, keptFailure } from './failure.js';
+import { failureOf } from './refused-twice.js';
 
 describe('the sentence a refused agreed write is told in', () => {
   it("reads a problem document's detail, and nothing of its JSON", () => {
@@ -18,6 +20,22 @@ describe('the sentence a refused agreed write is told in', () => {
       'It was refused: This needs project.write on project p; the caller holds viewer there. Nothing was written.',
     );
     expect(said).not.toMatch(/[{}"]/);
+  });
+
+  it('keeps a long problem body as JSON its readers still parse, and names no raw id it echoes', () => {
+    const id = 'b011ce98-b618-48a6-ad2e-bd9ce0ceec68';
+    const message = `\`${id}\` names no issue: no issue carries this uuid. ${'An issue route takes its key. '.repeat(6)}`;
+    const answered = JSON.stringify(problemBody(404, 'NOT_FOUND', message.trim()));
+    expect(answered.length).toBeGreaterThan(1_000);
+    const kept = keptFailure(answered);
+    expect(kept.length).toBeLessThanOrEqual(1_000);
+    expect(failureOf(kept)).toEqual({ code: 'NOT_FOUND', detail: message.trim() });
+    const said = failureSentence(kept);
+    expect(said).toMatch(
+      /^It was refused: the record names no issue: .+ key\. Nothing was written\.$/,
+    );
+    expect(said).not.toContain(id);
+    expect(keptFailure('x'.repeat(1_200))).toBe(`${'x'.repeat(999)}…`);
   });
 
   it('reads a refusal list, a nested error, and the CLI stream a tool answered with', () => {
