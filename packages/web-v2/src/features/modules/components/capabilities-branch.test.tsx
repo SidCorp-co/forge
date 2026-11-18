@@ -100,11 +100,11 @@ const extra: CapabilitiesView = {
   limits: [],
 };
 
-const tab = (only?: ReadonlySet<string>) =>
+const tab = (only?: ReadonlySet<string>, doors = use) =>
   render(
     <Seeded
       data={[
-        [capabilityKeys.doors(P), use],
+        [capabilityKeys.doors(P), doors],
         [capabilityKeys.piles(P), piles],
         [capabilityKeys.extra(P), extra],
       ]}
@@ -153,6 +153,12 @@ describe("the Capabilities branch", () => {
     expect(chip.getAttribute("data-reason")).toBe("Uncalled for 30 days");
     expect(screen.getByTestId("cap-group-unused").textContent).toMatch(/^Unused1/);
     expect(within(rowOf("inUse")).getByTestId("cap-standing").textContent).toMatch(/^In use/);
+  });
+
+  it("counts a door's calls as words, one call apart from many", () => {
+    tab(undefined, { ...use, doors: use.doors.map((d) => (d.door === "support.member" ? { ...d, calls: 1, byAgent: { "room:support": 1 } } : d)) });
+    expect(within(rowOf("inUse")).getByTestId("cap-calls-count").textContent).toBe("1 call");
+    expect(within(rowOf("unused")).getByTestId("cap-calls-count").textContent).toBe("0 calls");
   });
 
   it("reads a door refused on half its calls and reported as used badly, its refusals by code in words", () => {

@@ -77,7 +77,7 @@ describe("where a door stands", () => {
   });
 
   it("joins each door with its own reports and lessons and counts every standing", () => {
-    const doors = capDoorsOf([door(), door({ door: "support.rule", calls: 0, byAgent: {} })], {
+    const doors = capDoorsOf([door(), door({ door: "support.rule", card: { ...card, id: "support.rule" }, calls: 0, byAgent: {} })], {
       projectId: "p",
       window: { days: 30, since: "", until: "" },
       feedback: [report],
@@ -92,6 +92,22 @@ describe("where a door stands", () => {
       ["support.rule", "unused", 0],
     ]);
     expect(standingCounts(doors)).toEqual({ unused: 1, recheck: 0, misused: 1, untaught: 0, inUse: 0 });
+  });
+
+  it("reads a card's freshness and lessons by its card id where the door is named otherwise, so the re-check count holds every card owing one", () => {
+    const rest = "POST /api/projects/:id/feedback";
+    const doors = capDoorsOf([door({ door: "project_feedback.submit", card: { ...card, id: rest } })], {
+      projectId: "p",
+      window: { days: 30, since: "", until: "" },
+      feedback: [],
+      lessons: [lesson({ card: rest })],
+      freshness: [{ card: rest, recheckOwed: { since: "2026-11-16T00:00:00.000Z" }, scenarios: [], proposed: [] }],
+      module: null,
+      lessonsPass: null,
+      limits: [],
+    });
+    expect(doors.map((d) => [d.standing, d.lessons.length, d.freshness?.card])).toEqual([["recheck", 1, rest]]);
+    expect(standingCounts(doors).recheck).toBe(1);
   });
 });
 

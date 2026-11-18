@@ -71,16 +71,21 @@ export function standingOf(row: DoorUseRow, feedback: CapabilityFeedbackRow | nu
   return "inUse";
 }
 
-/** Every door joined with its reports and card lessons, each read where it stands. */
+/**
+ * Every door joined with its reports and card lessons, each read where it stands. A card's freshness
+ * and lessons are keyed by its card id, which a door named otherwise (`project_feedback.submit`, card
+ * `POST /api/projects/:id/feedback`) does not share, so they are read by the card's id.
+ */
 export function capDoorsOf(doors: readonly DoorUseRow[], extra: CapabilitiesView | undefined): CapDoor[] {
   const feedback = new Map((extra?.feedback ?? []).map((f) => [f.door, f]));
   const fresh = new Map((extra?.freshness ?? []).map((f) => [f.card, f]));
   const lessons = new Map<string, CapabilityLessonRow[]>();
   for (const l of extra?.lessons ?? []) lessons.set(l.card, [...(lessons.get(l.card) ?? []), l]);
   return doors.map((row) => {
+    const cardId = row.card?.id ?? row.door;
     const f = feedback.get(row.door) ?? null;
-    const ls = lessons.get(row.door) ?? [];
-    const fr = fresh.get(row.door) ?? null;
+    const ls = lessons.get(cardId) ?? [];
+    const fr = fresh.get(cardId) ?? null;
     return { row, standing: standingOf(row, f, ls, fr), feedback: f, lessons: ls, freshness: fr };
   });
 }

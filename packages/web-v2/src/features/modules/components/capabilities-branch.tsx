@@ -36,7 +36,7 @@ function DoorLine({ d }: { d: CapDoor }) {
     <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 py-1.5">
       <span className={cn("min-w-0 flex-1 truncate max-md:basis-full", title.mono && "font-mono text-12-5 text-fg")}>{title.text}</span>
       <span className="flex-none text-12 tabular-nums text-muted" data-testid="cap-calls-count">
-        {t("modules.cap.calls", { n: d.row.calls })}
+        {t(d.row.calls === 1 ? "modules.cap.calls.one" : "modules.cap.calls.many", { n: d.row.calls })}
       </span>
       <DoorStanding d={d} />
     </span>
