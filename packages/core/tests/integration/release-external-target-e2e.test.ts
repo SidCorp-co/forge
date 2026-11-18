@@ -11,6 +11,14 @@
  * @direct-test-of packages/core/src/release-batch/gate.ts
  * @direct-test-of packages/core/src/release-batch/recorded.ts
  * @direct-test-of packages/core/src/release-batch/routes.ts
+ * @direct-test-of packages/core/src/release-batch/blockers.ts
+ * @direct-test-of packages/core/src/release-batch/deployed-outside.ts
+ * @direct-test-of packages/core/src/release-batch/release-gates.ts
+ *
+ * ISS-1296 (epod FB-719, 2026-11-17): draft 1.50.0 asked its master for a record with only closed
+ * issues on its roster, each taken by an earlier record and withdrawn by its reopen, and the master read
+ * that nothing could be recorded. The draft asks a record only over issues one still takes, names each
+ * closed one with the release that took it, and a cut naming issues records already took is told so.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -18,6 +26,7 @@ import { sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { resolveReleaseGate } from '../../src/release-batch/gate.js';
+import { releaseActsOwed } from '../../src/release-batch/master-owed-acts.js';
 import { api } from '../helpers/api.js';
 import { seedIssueStatus } from '../helpers/factories.js';
 import {
@@ -215,5 +224,84 @@ describe('a production deployed outside Forge by a door it names (ISS-851)', () 
     const res = await record([issue], { version: 'v1.31.1', branch: BRANCH });
     expect(res.status).toBe(422);
     expect(codes(res.body)).toEqual(['RELEASE_RECORD_BRANCH_UNUSED']);
+  });
+});
+
+type Gate = { code: string; sentence: string };
+type Listed = { version: string; state: string; waitingOn: { says: { act: { key: string } } } };
+
+async function drafts(): Promise<Listed[]> {
+  const res = await api(world.token, 'GET', `/api/projects/${world.projectId}/releases`);
+  expect(res.status, JSON.stringify(res.body)).toBe(200);
+  return (res.body.releases as Listed[]).filter((r) => r.state === 'draft');
+}
+
+async function gatesOf(version: string): Promise<Gate[]> {
+  const res = await api(world.token, 'GET', `/api/projects/${world.projectId}/releases/${version}`);
+  expect(res.status, JSON.stringify(res.body)).toBe(200);
+  return (res.body.release as { gates: Gate[] }).gates;
+}
+
+/** Recorded, reopened for a fix, back at the gate and closed met in scope by its holder. */
+async function withdrawnAndClosed(issue: string, version: string): Promise<void> {
+  expect((await record([issue], { version })).status).toBe(201);
+  const reopened = await api(world.token, 'POST', `/api/issues/${issue}/transition`, {
+    toStatus: 'reopen',
+    reason: 'the deploy showed the old screen',
+  });
+  expect(reopened.status, JSON.stringify(reopened.body)).toBe(200);
+  await seedIssueStatus(issue, 'awaiting_release');
+  const closed = await api(world.token, 'POST', `/api/issues/${issue}/transition`, {
+    toStatus: 'closed',
+  });
+  expect(closed.status, JSON.stringify(closed.body)).toBe(200);
+}
+
+describe('a draft asks a record only over issues one still takes (ISS-1296)', () => {
+  it('asks none once records took its roster, and a cut naming them is told they shipped', async () => {
+    await production({ mode: 'external', target: 'forge-ops' });
+    const a = await landedIssue(1, F4);
+    const b = await landedIssue(2, F4);
+    expect((await record([a], { version: 'v1.49.41' })).status).toBe(201);
+    expect((await record([b], { version: 'v1.49.42' })).status).toBe(201);
+    expect(await drafts()).toEqual([]);
+    expect(await releaseActsOwed(world.projectId)).toEqual([]);
+    const refused = await cut([a, b]);
+    expect(codes(refused.body)).toContain('CLAIM_CONFLICT');
+    expect(codes(refused.body)).not.toContain('RELEASE_DEPLOYED_OUTSIDE');
+    expect(JSON.stringify(refused.body)).toContain('already released');
+  });
+
+  it('still asks it while an issue waits at awaiting_release', async () => {
+    await production({ mode: 'external', target: 'forge-ops' });
+    await landedIssue(1, F4);
+    const [draft] = await drafts();
+    expect(draft?.waitingOn.says.act.key).toBe('standing.act.recordExternalDeploy');
+    expect(await releaseActsOwed(world.projectId)).toEqual([
+      expect.objectContaining({ key: 'standing.act.recordExternalDeploy' }),
+    ]);
+    const gates = await gatesOf(String(draft?.version));
+    expect(gates.map((g) => g.sentence)).toEqual([
+      'Production deploys outside Forge; a release records that deploy.',
+    ]);
+  });
+
+  it('names each closed issue it carries with the record that took it, and the record takes it', async () => {
+    await production({ mode: 'external', target: 'forge-ops' });
+    const a = await landedIssue(1, F4);
+    await withdrawnAndClosed(a, 'v1.49.41');
+    const [draft] = await drafts();
+    expect(draft?.waitingOn.says.act.key).toBe('standing.act.recordExternalDeploy');
+    const gate = (await gatesOf(String(draft?.version))).find(
+      (g) => g.code === 'RELEASE_DEPLOYED_OUTSIDE',
+    );
+    expect(gate?.sentence).toBe(
+      'Production deploys outside Forge; a release records that deploy, and the record carries the closed ISS-1 (taken by 1.49.41, then reopened) too.',
+    );
+    const res = await record([a], { version: 'v1.50.0' });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(res.body.closed).toEqual([a]);
+    expect(await drafts()).toEqual([]);
+    expect(await releaseActsOwed(world.projectId)).toEqual([]);
   });
 });

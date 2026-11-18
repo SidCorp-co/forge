@@ -5,6 +5,7 @@ import { holdersWho, nobodyHoldsAct } from '@forge/contracts/standing';
 import { owedActOfSaid } from '@forge/contracts/who-owes';
 import { agrees } from '../lib/plural.js';
 import type { ReleaseBlocker, ReleaseReasonCode, ReleaseWarning } from './blocker-sentences.js';
+import { deployedOutsideSaid } from './deployed-outside.js';
 import type { ReleaseOwes } from './release-owes.js';
 
 type Details = Record<string, unknown> | undefined;
@@ -201,7 +202,7 @@ const READINGS: Record<ReleaseReasonCode, Reading> = {
   },
   RELEASE_DEPLOYED_OUTSIDE: {
     title: 'standing.gate.title.deployedOutside',
-    plain: plain('standing.gate.deployedOutside'),
+    plain: deployedOutsideSaid,
   },
   RELEASE_PROMOTION_MISSING: {
     title: 'standing.gate.title.promotionMissing',

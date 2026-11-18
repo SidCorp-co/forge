@@ -33,6 +33,7 @@ import {
 } from './channel.js';
 import { claimConflictDetails, readClaimConflicts } from './claim-conflicts.js';
 import { criteriaHold } from './criteria-hold.js';
+import { deployedOutsideBlocker } from './deployed-outside.js';
 import { endedRunBlocker } from './ended-claims.js';
 import { RELEASE_GATE_STATUS, type ReleaseDeclaration, resolveReleaseDeclaration } from './gate.js';
 import type { NamedPromotionRead } from './promotion-named.js';
@@ -243,7 +244,16 @@ export async function collectReleaseBlockers(
     // Production deployed outside Forge by a door it names (ISS-851): the agent's record is the
     // release, owing what every record's roster does; any other door cuts nothing and is refused by name.
     if (read.kind === 'external' && door !== 'record') {
-      blockers.push(blocker('RELEASE_DEPLOYED_OUTSIDE'));
+      // asked only over a roster a record still takes (ISS-1296); a named issue it cannot is the claim's
+      const { issueIds } = options;
+      const named = issueIds !== undefined && issueIds.length > 0;
+      const roster = collected((o) => resolveRoster(projectId, RELEASE_GATE_STATUS, issueIds, o));
+      const [found, claims] = await Promise.all([
+        roster,
+        named ? collected((o) => claimBlockers(projectId, RELEASE_GATE_STATUS, issueIds, o)) : null,
+      ]);
+      await deployedOutsideBlocker(projectId, found.value?.ids ?? [], blockers);
+      blockers.push(...found.out, ...(claims?.out ?? []));
       return {
         projectId,
         projectExists: true,

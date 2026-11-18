@@ -64,6 +64,14 @@ export const SAID = {
 		en: "Production deploys outside Forge; a release records that deploy.",
 	},
 	"standing.gate.title.deployedOutside": { en: "Deployed outside Forge" },
+	"standing.gate.deployedOutsideCarries": {
+		en: "Production deploys outside Forge; a release records that deploy, and the record carries the closed {closed} too.",
+		vars: { closed: "saidSeries" },
+	},
+	"standing.gate.closedWithdrawn": {
+		en: "{key} (taken by {v}, then reopened)",
+		vars: { key: "key", v: "version" },
+	},
 	"standing.gate.promotionMissing": {
 		en: "This release waits on a promotion change request carrying it.",
 	},
