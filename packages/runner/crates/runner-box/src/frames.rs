@@ -3,7 +3,7 @@
 
 use serde::Deserialize;
 
-pub const FRAMES: [&str; 9] = [
+pub const FRAMES: [&str; 10] = [
     "box.open",
     "box.close",
     "box.act",
@@ -13,6 +13,7 @@ pub const FRAMES: [&str; 9] = [
     "box.span.mark",
     "box.recording.fetch",
     "box.recording.drop",
+    "box.recording.set",
 ];
 
 #[derive(Debug, Deserialize)]
@@ -38,6 +39,10 @@ pub struct Open {
     /// admitted at once. A core that names no holder opens it to the agent.
     #[serde(default)]
     pub as_person: bool,
+    /// Record the session once it is up (ISS-1321). A core that names none asks for no recording,
+    /// and a warm box never records.
+    #[serde(default)]
+    pub record: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -64,6 +69,17 @@ pub struct Assign {
     /// Handed to a person: they hold it from the hand-out.
     #[serde(default)]
     pub as_person: bool,
+    /// Start its recording at the hand-out (ISS-1321).
+    #[serde(default)]
+    pub record: bool,
+}
+
+/// Start or stop a box's recording (ISS-1321).
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecordingSet {
+    pub box_id: String,
+    pub on: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -73,6 +89,10 @@ pub struct Mark {
     pub span_id: String,
     pub criterion: u32,
     pub edge: String,
+    /// `start`: the box was not recording, so its recording starts before this mark; `stop`: this
+    /// end closes the recording a span began, after the mark (ISS-1321).
+    #[serde(default)]
+    pub recording: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

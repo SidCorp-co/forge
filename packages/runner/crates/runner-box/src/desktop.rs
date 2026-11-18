@@ -107,7 +107,8 @@ impl Desktop {
             .push(child);
     }
 
-    /// Start the display, the session, AT-SPI, the view and the recording.
+    /// Start the display, the session, AT-SPI and the view. Nothing records until asked
+    /// (`start_recording`, ISS-1321).
     pub async fn open(&self, x: &display::XDirs) -> Result<(), String> {
         for dir in [Some(self.runtime.as_path()), self.recording.parent()]
             .into_iter()
@@ -145,8 +146,7 @@ impl Desktop {
                 .spawn()
                 .map_err(|e| format!("at-spi-bus-launcher did not start: {e}"))?,
         );
-        self.start_view().await?;
-        self.start_recording()
+        self.start_view().await
     }
 
     /// `dbus-run-session` running openbox, the session's address read from its first line.
@@ -217,6 +217,19 @@ impl Desktop {
         .map_err(|_| format!("x11vnc did not listen on {port} in 10 s"))?;
         *self.vnc.lock().unwrap_or_else(|p| p.into_inner()) = Some(port);
         Ok(())
+    }
+
+    /// Start recording the display into the live file (ISS-1321).
+    pub async fn record_on(&self) -> Result<(), String> {
+        let _one = self.rotating.lock().await;
+        self.start_recording()
+    }
+
+    /// Stop recording, closing the live file into a segment named for `file_start`.
+    pub async fn record_off(&self, file_start: SystemTime) -> Result<(), String> {
+        let _one = self.rotating.lock().await;
+        self.end_recording().await;
+        record::seal(&self.recording, file_start).map(|_| ())
     }
 
     fn start_recording(&self) -> Result<(), String> {
@@ -294,7 +307,7 @@ impl Desktop {
         }
     }
 
-    /// End the recording as a whole file. The reap follows.
+    /// End a running recording as a whole file. The reap follows.
     pub async fn stop(&self) {
         self.end_recording().await;
     }

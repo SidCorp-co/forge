@@ -5,7 +5,7 @@
 //! by omission from `held`, and core fails it `BOX_GONE`.
 
 use std::collections::{BTreeSet, HashMap};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -17,6 +17,7 @@ use crate::core::Core;
 use crate::frames::{self, is_uuid};
 use crate::mode::{Ctx, Running, Spec};
 use crate::{act, display, health, modes, proc, record};
+use recording::recording_failed;
 
 /// How long a box's processes get to stop on TERM before KILL.
 const REAP_GRACE: Duration = Duration::from_secs(5);
@@ -25,6 +26,8 @@ pub(crate) struct Slot {
     pub(crate) running: Option<Arc<Running>>,
     pub(crate) held: watch::Sender<bool>,
     clock: record::Clock,
+    /// Whether its recording runs now: nothing records until core asks (ISS-1321).
+    recording: bool,
     /// Core closed it while it was still opening: the open stops it when it returns.
     closing: bool,
 }
@@ -156,6 +159,11 @@ impl Boxes {
                     .await
             }
             "box.recording.drop" => self.drop_recording(&id),
+            "box.recording.set" => {
+                let f: frames::RecordingSet = serde_json::from_value(data).map_err(read)?;
+                let body = self.set_recording(&f.box_id, f.on).await;
+                self.report(&f.box_id, body).await;
+            }
             other => return Err(format!("not a box frame: {other}")),
         }
         Ok(())
@@ -175,6 +183,7 @@ impl Boxes {
                     running: None,
                     held: watch::channel(f.as_person).0,
                     clock: record::Clock::started_now(),
+                    recording: false,
                     closing: false,
                 },
             );
@@ -188,22 +197,35 @@ impl Boxes {
             within: Duration::from_secs(f.open_timeout_seconds.clamp(10, 600)),
         };
         let opened = Running::open(&self.0.ctx, &spec).await.map(Arc::new);
-        // every mode starts its recording last in its open
-        let clock = record::Clock::started_now();
         let closing = self.slots().get(&id).is_none_or(|s| s.closing);
         match opened {
             Ok(running) if !closing => {
+                // a warm box never records; any other records only when its open asked
+                let recorded = if f.record && !f.warm {
+                    Some(running.record_on().await)
+                } else {
+                    None
+                };
+                let clock = record::Clock::started_now();
                 let offer = running.offer();
+                let on = matches!(recorded, Some(Ok(())));
                 if let Some(slot) = self.slots().get_mut(&id) {
                     slot.running = Some(running);
                     slot.clock = clock;
+                    slot.recording = on;
                 }
-                record::save_clock(&self.0.ctx.box_dir(&id), &clock);
-                let at = record::iso(clock.evidence_start);
-                self.report(&id, json!({ "kind": "state", "state": "ready", "offer": offer, "recordingStartedAt": at })).await;
+                let mut ready = json!({ "kind": "state", "state": "ready", "offer": offer });
+                if on {
+                    record::save_clock(&self.0.ctx.box_dir(&id), &clock);
+                    ready["recordingStartedAt"] = record::iso(clock.file_start).into();
+                }
+                self.report(&id, ready).await;
+                if let Some(Err(detail)) = recorded {
+                    self.report(&id, recording_failed(&detail)).await;
+                }
             }
             Ok(running) => {
-                running.stop().await;
+                running.stop(false).await;
                 self.finish(&id).await;
             }
             Err(detail) => {
@@ -231,15 +253,15 @@ impl Boxes {
 
     /// Stop the box's tools and reap every process it started; the recording stays.
     pub(crate) async fn close(&self, id: &str) {
-        let running = {
+        let (running, recording) = {
             let mut slots = self.slots();
             match slots.get_mut(id) {
                 Some(slot) if slot.running.is_none() => {
                     slot.closing = true;
                     return;
                 }
-                Some(slot) => slot.running.take(),
-                None => None,
+                Some(slot) => (slot.running.take(), slot.recording),
+                None => (None, false),
             }
         };
         let adb = match running.as_deref() {
@@ -247,7 +269,7 @@ impl Boxes {
             _ => None,
         };
         if let Some(r) = running {
-            r.stop().await;
+            r.stop(recording).await;
         }
         self.finish(id).await;
         let android_left = self
@@ -303,16 +325,25 @@ impl Boxes {
                 tracing::warn!("[box] {}: {e}", f.box_id);
             }
         }
+        // its evidence starts at the hand-out; a warm box recorded nothing before it (ISS-1321)
         let now = std::time::SystemTime::now();
-        let clock = self.slots().get_mut(&f.box_id).map(|slot| {
+        if let Some(slot) = self.slots().get_mut(&f.box_id) {
             slot.clock.evidence_start = now;
-            slot.clock
-        });
-        if let Some(c) = clock {
-            record::save_clock(&self.0.ctx.box_dir(&f.box_id), &c);
         }
-        let body = json!({ "kind": "state", "state": "ready", "offer": running.offer(), "recordingStartedAt": record::iso(now) });
+        let recorded = if f.record {
+            Some(self.set_recording(&f.box_id, true).await)
+        } else {
+            None
+        };
+        let mut body = json!({ "kind": "state", "state": "ready", "offer": running.offer() });
+        match &recorded {
+            Some(r) if r["state"] == "on" => body["recordingStartedAt"] = r["at"].clone(),
+            _ => {}
+        }
         self.report(&f.box_id, body).await;
+        if let Some(r) = recorded.filter(|r| r["state"] == "failed") {
+            self.report(&f.box_id, r).await;
+        }
     }
 
     fn hold(&self, id: &str, taken: bool) {
@@ -321,104 +352,6 @@ impl Boxes {
                 slot.held.send_replace(taken);
             }
             None => tracing::warn!("[box] {id}: a hold moved on a box not held here"),
-        }
-    }
-
-    async fn mark(&self, f: frames::Mark) {
-        let Some(offset) = self.slots().get(&f.box_id).map(|s| s.clock.mark_now()) else {
-            return tracing::warn!("[box] {}: a mark on a box not held here", f.box_id);
-        };
-        tracing::debug!(
-            "[box] {}: criterion {} span {} at {offset} ms",
-            f.box_id,
-            f.criterion,
-            f.edge
-        );
-        self.report(
-            &f.box_id,
-            json!({ "kind": "mark", "spanId": f.span_id, "edge": f.edge, "offsetMs": offset }),
-        )
-        .await;
-    }
-
-    async fn fetch(&self, f: frames::Fetch) {
-        let dir = self.0.ctx.box_dir(&f.box_id);
-        let made = match self.recording_at(&f.box_id, &dir, f.from_ms).await {
-            Ok((rec, clock)) => match self.0.ctx.env.which("ffmpeg") {
-                Some(ff) => {
-                    let work = dir.join("cuts").join(&f.span_id);
-                    let c = record::cut(
-                        &ff,
-                        (&rec.0, rec.1),
-                        &clock,
-                        (f.from_ms, f.to_ms),
-                        (f.max_seconds, f.max_bytes),
-                        &work,
-                    )
-                    .await;
-                    let _ = std::fs::remove_dir_all(&work);
-                    c
-                }
-                None => Err("this device has no ffmpeg to cut the clip with".into()),
-            },
-            Err(e) => Err(e),
-        };
-        let sent = match made {
-            Ok(c) => {
-                self.0
-                    .core
-                    .clip(&f.box_id, &f.span_id, c.clip, c.still)
-                    .await
-            }
-            Err(e) => Err(e),
-        };
-        if let Err(detail) = sent {
-            self.report(
-                &f.box_id,
-                json!({ "kind": "clip_failed", "spanId": f.span_id, "detail": cut(&detail) }),
-            )
-            .await;
-        }
-    }
-
-    /// The recording segment a span starting at `from_ms` is in, and the box's clock. A running
-    /// box first closes its recording so far into a segment (see `record`).
-    async fn recording_at(
-        &self,
-        id: &str,
-        dir: &Path,
-        from_ms: u64,
-    ) -> Result<((PathBuf, std::time::SystemTime), record::Clock), String> {
-        let slot_clock = self.slots().get(id).map(|s| s.clock);
-        let mut clock = slot_clock
-            .or_else(|| record::load_clock(dir))
-            .ok_or_else(|| format!("box {id} has no recording on this device"))?;
-        if let Some(r) = self.running(id) {
-            clock.file_start = r.rotate(clock.file_start).await?;
-            if let Some(slot) = self.slots().get_mut(id) {
-                slot.clock.file_start = clock.file_start;
-            }
-            record::save_clock(dir, &clock);
-        }
-        let at = clock.at(from_ms);
-        let rec = record::pick(dir, &clock, at).ok_or_else(|| {
-            format!(
-                "box {id} has no recording holding {} on this device",
-                record::iso(at)
-            )
-        })?;
-        Ok((rec, clock))
-    }
-
-    fn drop_recording(&self, id: &str) {
-        if self.slots().contains_key(id) {
-            return tracing::warn!("[box] {id}: its recording is not dropped while the box runs");
-        }
-        let dir = self.0.ctx.box_dir(id);
-        if dir.exists() {
-            if let Err(e) = std::fs::remove_dir_all(&dir) {
-                tracing::warn!("[box] {id}: cannot drop {}: {e}", dir.display());
-            }
         }
     }
 
@@ -482,9 +415,13 @@ fn read_record(path: Option<&std::path::Path>) -> Vec<String> {
         .collect()
 }
 
-fn cut(detail: &str) -> String {
+pub(super) fn cut(detail: &str) -> String {
     act::cut(detail.as_bytes().to_vec(), 4000)
 }
 
+mod recording;
+
+#[cfg(test)]
+mod recording_tests;
 #[cfg(test)]
 mod tests;

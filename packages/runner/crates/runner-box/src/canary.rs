@@ -83,7 +83,17 @@ pub async fn run(base: &BoxSettings, tool: &str, version: &str, scratch: &Path) 
                 detail: format!("exit {}: {}", o.exit_code, first_line(&o.stdout, &o.stderr)),
             });
         }
-        running.stop().await;
+        let recorded = running.record_on().await;
+        checks.push(Check {
+            name: "record",
+            passed: recorded.is_ok(),
+            detail: recorded
+                .as_ref()
+                .err()
+                .cloned()
+                .unwrap_or_else(|| "the recording started".into()),
+        });
+        running.stop(recorded.is_ok()).await;
     }
     let reaped = proc::reap(&box_id, Duration::from_secs(10)).await;
     checks.push(Check {

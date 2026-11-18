@@ -10,10 +10,14 @@ use runner_preview::codec::{Channel, ResetCode};
 use runner_preview::tunnel::BoxEndpoints;
 use tokio::io::AsyncWriteExt;
 
-const ID: &str = "0b8e7a52-3c4d-4e6f-8a1b-2c3d4e5f6a7b";
+pub(super) const ID: &str = "0b8e7a52-3c4d-4e6f-8a1b-2c3d4e5f6a7b";
 
+/// A stand-in for core: every report, and every clip uploaded (box, span, clip bytes).
 #[derive(Default)]
-struct Said(Mutex<Vec<(String, Value)>>);
+pub(super) struct Said(
+    Mutex<Vec<(String, Value)>>,
+    pub(super) Mutex<Vec<(String, String, Vec<u8>)>>,
+);
 
 impl Core for Said {
     fn report<'a>(&'a self, box_id: &'a str, body: Value) -> crate::core::Fut<'a, ()> {
@@ -22,17 +26,21 @@ impl Core for Said {
     }
     fn clip<'a>(
         &'a self,
-        _: &'a str,
-        _: &'a str,
-        _: Vec<u8>,
+        box_id: &'a str,
+        span_id: &'a str,
+        clip: Vec<u8>,
         _: Vec<u8>,
     ) -> crate::core::Fut<'a, Result<(), String>> {
+        self.1
+            .lock()
+            .unwrap()
+            .push((box_id.into(), span_id.into(), clip));
         Box::pin(async { Ok(()) })
     }
 }
 
 impl Said {
-    fn kinds(&self) -> Vec<Value> {
+    pub(super) fn kinds(&self) -> Vec<Value> {
         self.0
             .lock()
             .unwrap()
@@ -42,14 +50,14 @@ impl Said {
     }
 }
 
-fn boxes(root: &Scratch, said: Arc<Said>) -> Boxes {
+pub(super) fn boxes(root: &Scratch, said: Arc<Said>) -> Boxes {
     let settings = BoxSettings {
         socket_root: root.path().join("s"),
         data_dir: Some(root.path().join("data")),
         ..BoxSettings::default()
     };
     let env = modes::Env {
-        path: vec![],
+        path: vec![root.path().join("bin")],
         tools_dir: root.path().join("tools"),
         sdk: None,
         avd_home: None,
@@ -89,6 +97,7 @@ fn plant_browser(b: &Boxes, root: &Scratch, port: u16) -> PathBuf {
             running: Some(Arc::new(Running::Browser(browser))),
             held: watch::channel(false).0,
             clock: record::Clock::started_now(),
+            recording: false,
             closing: false,
         },
     );

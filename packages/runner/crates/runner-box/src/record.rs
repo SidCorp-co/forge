@@ -2,8 +2,10 @@
 //! cut from it at core's order (`box.recording.fetch`), on this device where ffmpeg is. Core chose
 //! the span and the ceiling; a cut over the ceiling is said, never sent.
 //!
-//! The recording runs from the box's start. A warm box assigned to work restarts the evidence
-//! there: its offsets count from the assignment, and the minutes before it are never cut.
+//! Nothing records until asked (ISS-1321): an open or a hand-out naming `record`, a
+//! `box.recording.set`, or a span begun while the box was not recording. A mark's offset counts
+//! from the evidence's start (the open, or the hand-out of a warm box, which never records), and a
+//! recording begun later starts its own file, so a cut reads the segment its span starts in.
 //!
 //! A recording is kept as segments on disk: the live file (`session.<ext>`), whose start is in
 //! `clock.json` beside it, and closed ones (`seg-<start ms>.<ext>`). No recorder has written what
@@ -17,7 +19,7 @@ use std::time::{Duration, SystemTime};
 
 use crate::act;
 
-/// When the file began, and when the evidence did (the open, or the assignment of a warm box).
+/// When the live file began, and when the evidence did (the open, or the assignment of a warm box).
 #[derive(Debug, Clone, Copy)]
 pub struct Clock {
     pub file_start: SystemTime,

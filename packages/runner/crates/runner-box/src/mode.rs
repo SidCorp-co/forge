@@ -209,11 +209,29 @@ impl Running {
         }
     }
 
-    /// End the recording and the tools gracefully; the reap takes what is left.
-    pub async fn stop(&self) {
+    /// Start recording into the live file (ISS-1321): nothing records until this is asked.
+    pub async fn record_on(&self) -> Result<(), String> {
         match self {
-            Self::Browser(b) => b.stop().await,
-            Self::Android(a) => a.stop().await,
+            Self::Browser(b) => b.start_recording().await,
+            Self::Android(a) => a.start_recording().await,
+            Self::Desktop(d) => d.record_on().await,
+        }
+    }
+
+    /// Stop recording, closing the live file (begun at `file_start`) into a segment a cut reads.
+    pub async fn record_off(&self, file_start: SystemTime) -> Result<(), String> {
+        match self {
+            Self::Browser(b) => b.stop_recording(file_start).await,
+            Self::Android(a) => a.stop_recording(file_start).await,
+            Self::Desktop(d) => d.record_off(file_start).await,
+        }
+    }
+
+    /// End a running recording (`recording`) and the tools gracefully; the reap takes what is left.
+    pub async fn stop(&self, recording: bool) {
+        match self {
+            Self::Browser(b) => b.stop(recording).await,
+            Self::Android(a) => a.stop(recording).await,
             Self::Desktop(d) => d.stop().await,
         }
     }

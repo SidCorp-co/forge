@@ -158,6 +158,7 @@ impl Android {
     }
 
     /// Boot the emulator, wait for Android, push scrcpy's server, open `url` where one is named.
+    /// Nothing records until asked (`start_recording`, ISS-1321).
     pub async fn open(
         &self,
         avd: &str,
@@ -213,7 +214,20 @@ impl Android {
         if let Some(url) = url {
             self.navigate(url).await?;
         }
+        Ok(())
+    }
+
+    /// Start recording the screen into the live file (ISS-1321).
+    pub async fn start_recording(&self) -> Result<(), String> {
+        let _one = self.rotating.lock().await;
         self.record("start").await
+    }
+
+    /// Stop recording, closing the live file into a segment named for `file_start`.
+    pub async fn stop_recording(&self, file_start: SystemTime) -> Result<(), String> {
+        let _one = self.rotating.lock().await;
+        self.record("stop").await?;
+        record::seal(&self.recording, file_start).map(|_| ())
     }
 
     /// The emulator console's screen recorder: `-record-session` is never finalised by `emu kill`
@@ -328,10 +342,12 @@ impl Android {
         .map(|_| ())
     }
 
-    /// End the recording as a whole file, then stop the emulator through its console.
-    pub async fn stop(&self) {
-        if let Err(e) = self.record("stop").await {
-            tracing::warn!("[box] {}: {e}", self.box_id);
+    /// End a running recording as a whole file, then stop the emulator through its console.
+    pub async fn stop(&self, recording: bool) {
+        if recording {
+            if let Err(e) = self.record("stop").await {
+                tracing::warn!("[box] {}: {e}", self.box_id);
+            }
         }
         let _ = self.adb(&["emu", "kill"], Duration::from_secs(10)).await;
         let child = self

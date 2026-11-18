@@ -103,7 +103,8 @@ impl Browser {
         }
     }
 
-    /// Start the browser on `url`, size it, start recording, and find its stream.
+    /// Start the browser on `url`, size it, and find its stream. Nothing records until asked
+    /// (`start_recording`, ISS-1321).
     pub async fn open(&self, url: Option<&str>, within: Duration) -> Result<(), String> {
         std::fs::create_dir_all(&self.dir)
             .map_err(|e| format!("cannot make {}: {e}", self.dir.display()))?;
@@ -120,8 +121,6 @@ impl Browser {
             .await?;
         let (w, h) = (self.size.0.to_string(), self.size.1.to_string());
         self.must(&["set", "viewport", &w, &h], within).await?;
-        let rec = self.recording.to_string_lossy().into_owned();
-        self.must(&["record", "start", &rec], within).await?;
         if self.stream_port().is_err() {
             self.must(&["stream", "enable"], within).await?;
         }
@@ -139,6 +138,24 @@ impl Browser {
         read_stream_port(&self.dir)
     }
 
+    /// Start recording the session into the live file (ISS-1321).
+    pub async fn start_recording(&self) -> Result<(), String> {
+        let _one = self.rotating.lock().await;
+        let rec = self.recording.to_string_lossy().into_owned();
+        self.must(&["record", "start", &rec], Duration::from_secs(30))
+            .await
+            .map(|_| ())
+    }
+
+    /// Stop recording: agent-browser writes the live file now, which is closed into a segment
+    /// named for `file_start`, where a span's cut still reads it.
+    pub async fn stop_recording(&self, file_start: SystemTime) -> Result<(), String> {
+        let _one = self.rotating.lock().await;
+        self.must(&["record", "stop"], Duration::from_secs(30))
+            .await?;
+        record::seal(&self.recording, file_start).map(|_| ())
+    }
+
     /// Close the recording so far into a segment and start the next, so a cut can read it:
     /// agent-browser writes its file only when the recording stops. Returns the new file's start.
     pub async fn rotate(&self, file_start: SystemTime) -> Result<SystemTime, String> {
@@ -152,11 +169,13 @@ impl Browser {
         Ok(next)
     }
 
-    /// End the recording so it is a whole file, and close the browser. The reap follows.
-    pub async fn stop(&self) {
+    /// End a running recording so it is a whole file, and close the browser. The reap follows.
+    pub async fn stop(&self, recording: bool) {
         let within = Duration::from_secs(20);
-        if let Err(e) = self.must(&["record", "stop"], within).await {
-            tracing::warn!("[box] {}: {e}", self.box_id);
+        if recording {
+            if let Err(e) = self.must(&["record", "stop"], within).await {
+                tracing::warn!("[box] {}: {e}", self.box_id);
+            }
         }
         let _ = self.must(&["close"], within).await;
     }
