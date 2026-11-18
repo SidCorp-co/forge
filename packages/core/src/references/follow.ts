@@ -1,12 +1,14 @@
 // Following a source's releases (ISS-1252). Each followed github.com repository is read once a pass,
 // asked with the ETag of the last read; the releases newer than the tag last seen are digested
 // against each reading project's open issues and requirements (`match.ts`: the nearest by meaning,
-// judged by the fast model). Releases of one source that help the same open item in one pass file
-// ONE idea in the project's Product (feedback kind `idea`, on that item, the newest release named and
-// the others listed), joined by its signal key so a second read files nothing again; each release is
-// kept on the source's timeline, the helping ones recorded against that idea. A release no vector or
-// no model can judge stays silent, and the pass says why by name. A spent rate limit ends the pass by
-// name, never retried.
+// judged by the fast model). The versions of one source that help one open item make ONE idea in the
+// project's Product (feedback kind `idea`, on that item, every version named), keyed by source and
+// item: a later pass's versions join that idea while it is open, and file a new one, naming only
+// themselves, once it is declined; a version already declined for an item, read again (a source
+// added again), is never offered for it again (ISS-1289, REQ-104 BC-3). Each release is kept on the
+// source's timeline, the helping ones recorded against their idea. A release no vector or no model
+// can judge stays silent, and the pass says why by name. A spent rate limit ends the pass by name,
+// never retried.
 
 import { githubRepoOf, referenceSignalKey } from '@forge/contracts/references';
 import { and, eq, isNull, sql } from 'drizzle-orm';
@@ -31,7 +33,13 @@ import {
   type ReleaseMatch,
 } from './match.js';
 import { openItemsOf } from './open-items.js';
-import { orgOfProject, type SourceRow, sourceIn } from './read.js';
+import {
+  type DeclinedIn,
+  declinedVersions,
+  orgOfProject,
+  type SourceRow,
+  sourceIn,
+} from './read.js';
 import { judgeRelease, nearestOpenItems } from './release-judge.js';
 
 /** Reads a repository's releases: the GitHub port, or a fixture in a test. */
@@ -56,8 +64,11 @@ const TITLE_CHARS = 200;
 export interface FollowOutcome {
   source: string;
   act: 'digested' | 'unchanged' | 'failed' | 'skipped';
+  /** The ideas this pass filed, or named new versions on while they were open. */
   ideas: string[];
   silent: number;
+  /** Versions that help an item they were already declined for, kept off any new idea. */
+  declined: number;
   /** Releases kept silent because no vector or no model could judge them; `said` names why. */
   unjudged: number;
   /** Why it failed or was skipped, or why releases went unjudged. */
@@ -67,49 +78,70 @@ export interface FollowOutcome {
 
 type Helping = { release: FollowedRelease; why: string };
 
+const versionOf = (h: Helping) => h.release.name ?? h.release.tag;
+
+/** Every version, oldest first: `v1`, `v1 and v2`, `v1, v2 and v3`. */
+const versionsOf = (helping: readonly Helping[]) => {
+  const names = helping.map(versionOf);
+  return names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
+};
+
+/** Each version on its own line: where it is published, and how the model judged it helps. */
+const versionLines = (helping: readonly Helping[]) =>
+  helping.map((h) => `- ${versionOf(h)} (${h.release.url}): ${h.why}`).join('\n');
+
+/** The versions a title names: the newest, and how many earlier ones the idea also names. */
+function titleVersions(helping: readonly Helping[]) {
+  const newest = (helping.at(-1) as Helping).release.tag;
+  const earlier = helping.length - 1;
+  if (earlier === 0) return newest;
+  return `${newest} and ${earlier} earlier version${earlier === 1 ? '' : 's'}`;
+}
+
 function ideaBody(source: SourceRow, item: OpenItem, helping: readonly Helping[]) {
-  const newest = helping[helping.length - 1] as Helping;
-  const earlier = helping.slice(0, -1);
+  const newest = helping.at(-1) as Helping;
   const notes = newest.release.body.trim().slice(0, NOTES_CHARS);
   return [
-    `${source.title} published ${newest.release.name ?? newest.release.tag} (${newest.release.url}).`,
-    `It may help with ${item.ref}: ${item.title}. ${newest.why}`,
-    earlier.length
-      ? `Earlier releases read in the same pass help with it too:\n${earlier.map((h) => `- ${h.release.name ?? h.release.tag} (${h.release.url}): ${h.why}`).join('\n')}`
-      : '',
+    `${source.title} published ${versionsOf(helping)}.`,
+    `${helping.length === 1 ? 'It' : 'They'} may help with ${item.ref}: ${item.title}.`,
+    versionLines(helping),
     `Followed because: ${source.why}`,
-    notes ? `Release notes, as published:\n\n${notes}` : '',
+    notes ? `Release notes of ${versionOf(newest)}, as published:\n\n${notes}` : '',
     'Read the release itself, then take or reject it and say why (references.cite).',
   ]
     .filter(Boolean)
     .join('\n\n');
 }
 
-/** One idea for the releases of one pass that help `item`, named by the newest; its FB key and id. */
+/**
+ * The idea for the versions that help `item`, naming every one: a new one, or the one still open from
+ * this source on `item`, which takes them as an occurrence naming each. Its FB key and id.
+ */
 async function fileIdea(
   source: SourceRow,
   projectId: string,
   item: OpenItem,
   helping: readonly Helping[],
 ): Promise<{ id: string; key: string }> {
-  const newest = (helping[helping.length - 1] as Helping).release;
+  const newest = (helping.at(-1) as Helping).release;
   const agent = await db.transaction((tx) => resolveProjectHandle(tx, projectId));
   const filed = await fileSignalFeedback({
     projectId,
     actor: { userId: agent.userId, agency: 'agent' },
     request: {
       kind: 'idea',
-      title: `${source.title} ${newest.tag} may help with ${item.ref}: ${item.title}`.slice(
-        0,
-        TITLE_CHARS,
-      ),
+      title:
+        `${source.title} ${titleVersions(helping)} may help with ${item.ref}: ${item.title}`.slice(
+          0,
+          TITLE_CHARS,
+        ),
       body: ideaBody(source, item, helping),
       severity: 'low',
       ...(item.kind === 'issue' ? { issue: item.id } : { requirement: item.id }),
     },
-    signalKey: referenceSignalKey(source.id, newest.tag),
+    signalKey: referenceSignalKey(source.id, item.id),
     source: { projectId, issueId: null, runId: null, clientVersion: null },
-    said: `Read from ${newest.url}.`,
+    said: `${source.title} published ${versionsOf(helping)}:\n${versionLines(helping)}`,
   });
   if (!filed.ok) {
     throw new Error(
@@ -192,14 +224,30 @@ async function digestFor(
     await record(source, projectId, release, { silent });
     out.silent += 1;
   }
+  const declined =
+    byItem.size > 0
+      ? await declinedVersions(projectId, source.orgId, source.url)
+      : new Map<string, Map<string, DeclinedIn>>();
   for (const { item, helping } of byItem.values()) {
-    const idea = await fileIdea(source, projectId, item, helping);
+    const refused = declined.get(item.ref);
+    const offered = refused ? helping.filter((h) => !refused.has(h.release.tag)) : helping;
+    // a version declined for this item stays on the timeline against the idea that declined it
     for (const h of helping) {
+      const was = refused?.get(h.release.tag);
+      if (!was) continue;
+      await record(source, projectId, h.release, {
+        idea: { ref: item.ref, why: h.why, feedbackId: was.id },
+      });
+      out.declined += 1;
+    }
+    if (offered.length === 0) continue;
+    const idea = await fileIdea(source, projectId, item, offered);
+    for (const h of offered) {
       await record(source, projectId, h.release, {
         idea: { ref: item.ref, why: h.why, feedbackId: idea.id },
       });
     }
-    out.ideas.push(idea.key);
+    if (!out.ideas.includes(idea.key)) out.ideas.push(idea.key);
   }
   if (unjudged.length > 0) {
     out.unjudged += unjudged.length;
@@ -224,7 +272,7 @@ export async function followSource(
   now: Date = new Date(),
   ports: FollowPorts = CORE_PORTS,
 ): Promise<FollowOutcome> {
-  const base = { source: source.title, ideas: [] as string[], silent: 0, unjudged: 0 };
+  const base = { source: source.title, ideas: [] as string[], silent: 0, declined: 0, unjudged: 0 };
   const repo = githubRepoOf(source.url);
   if (!repo) {
     const said = 'only a github.com repository is followed';
@@ -282,7 +330,15 @@ async function followIsolated(
     logger.error({ err, source: source.id }, `reference-releases: ${source.title} threw`);
     reportFailure(err, { tags: { area: 'reference-releases' }, extra: { source: source.id } });
     await settle(source.id, { lastCheckedAt: now, followError: said });
-    return { source: source.title, act: 'failed', ideas: [], silent: 0, unjudged: 0, said };
+    return {
+      source: source.title,
+      act: 'failed',
+      ideas: [],
+      silent: 0,
+      declined: 0,
+      unjudged: 0,
+      said,
+    };
   }
 }
 
@@ -345,6 +401,7 @@ export async function followNow(projectId: string, ref: string): Promise<FollowO
       act: 'skipped',
       ideas: [],
       silent: 0,
+      declined: 0,
       unjudged: 0,
       said: 'its releases are not followed; set followReleases true to follow them',
     };

@@ -11,9 +11,10 @@ import { and, asc, desc, eq, inArray, isNull, or } from 'drizzle-orm';
 import { z } from 'zod';
 import { db, type Tx } from '../db/client.js';
 import { referenceReleases, referenceSources } from '../db/schema-references.js';
-import { feedbackKeysOf } from '../feedback/index.js';
+import { feedbackKeysOf, rowIn as feedbackRowIn, linkedOf, phaseIn } from '../feedback/index.js';
 import { notFound } from '../middleware/route-errors.js';
 import { findProjectOrgId } from '../projects/index.js';
+import { addressKey } from './rules.js';
 
 export type SourceRow = typeof referenceSources.$inferSelect;
 type Executor = Tx | typeof db;
@@ -174,5 +175,58 @@ export async function ideasBySource(
     ideas.set(r.sourceId, (ideas.get(r.sourceId) ?? new Set()).add(r.feedbackId));
   }
   for (const [sourceId, ids] of ideas) out.set(sourceId, [...ids]);
+  return out;
+}
+
+/** A version declined for an open item: the declined idea it was offered in, its id and `FB-n`. */
+export interface DeclinedIn {
+  id: string;
+  key: string;
+}
+
+/**
+ * The versions of the repository at `url` whose idea in `projectId` was declined, by the open item
+ * (`ISS-n` or `REQ-n`) each was offered for and its tag (ISS-1289, REQ-104 BC-3). Read off the
+ * timeline of every entry of that address the project read, a removed one included, so a source
+ * added again offers none of them for that item again.
+ */
+export async function declinedVersions(
+  projectId: string,
+  orgId: string,
+  url: string,
+): Promise<Map<string, Map<string, DeclinedIn>>> {
+  const out = new Map<string, Map<string, DeclinedIn>>();
+  const rows = (
+    await db
+      .select({
+        tag: referenceReleases.tag,
+        ref: referenceReleases.matchedRef,
+        feedbackId: referenceReleases.feedbackId,
+        url: referenceSources.url,
+      })
+      .from(referenceReleases)
+      .innerJoin(referenceSources, eq(referenceSources.id, referenceReleases.sourceId))
+      .where(
+        and(
+          eq(referenceReleases.projectId, projectId),
+          eq(referenceSources.orgId, orgId),
+          eq(referenceReleases.outcome, 'idea'),
+        ),
+      )
+  ).filter((r) => addressKey(r.url) === addressKey(url));
+  const ids = [...new Set(rows.flatMap((r) => (r.feedbackId ? [r.feedbackId] : [])))];
+  if (ids.length === 0) return out;
+  const ideas = await Promise.all(ids.map((id) => feedbackRowIn(db, projectId, id)));
+  const linked = await linkedOf(projectId, ideas);
+  const declined = new Map(
+    ideas
+      .filter((r) => phaseIn(r, linked) === 'declined')
+      .map((r) => [r.id, { id: r.id, key: `FB-${r.fbSeq}` }]),
+  );
+  for (const r of rows) {
+    const idea = r.feedbackId ? declined.get(r.feedbackId) : undefined;
+    if (!idea || !r.ref) continue;
+    out.set(r.ref, (out.get(r.ref) ?? new Map()).set(r.tag, idea));
+  }
   return out;
 }

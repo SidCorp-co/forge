@@ -4,9 +4,11 @@
  * github.com repository are refused by name; a followed source's release files an idea only where
  * the fast model judges it helps one of the open items nearest it by meaning. orca 1.4.255 and
  * Claude Code v2.1.323, each near an open item, stay silent; coolify v4.7.0 files ONE idea on the
- * ISS-1082-like issue carrying the model's why; three coolify versions read in one pass file one idea,
- * the newest named and every one recorded against it, a second read filing nothing again; with no
- * model or no embeddings a release stays silent and the pass names why; a source whose read throws is
+ * ISS-1082-like issue carrying the model's why; once it is declined, three coolify versions read in
+ * one pass file one new idea naming each and not the declined one, a second read filing nothing
+ * again; with no model or no embeddings a release stays silent and the pass names why; a newer version
+ * joins the source's idea on that item while it is open; a source added again offers no version
+ * already declined for an item, and a newer one names only itself (ISS-1289); a source whose read throws is
  * settled with its error and the pass reads the next; a citation is counted on the
  * source's signals; and a source nobody cited for 90 days is flagged. The releases are fixtures
  * handed to the follow pass, the embedder a word-vector stand-in with issue copies written at a
@@ -217,6 +219,22 @@ const ideaCount = async () =>
     )
   )[0]?.n;
 
+/** Declines an idea as a person triaging it does. */
+async function decline(key: string) {
+  const out = await api(jwt, 'POST', `/api/projects/${project.id}/feedback/${key}/triage`, {
+    route: 'decline',
+    note: 'Not what this item needs.',
+  });
+  expect(out.status, JSON.stringify(out.body)).toBeLessThan(300);
+}
+
+const newestIdea = async () =>
+  (
+    await rows<{ title: string; body: string }>(
+      sql`SELECT title, body FROM feedback WHERE project_id = ${project.id} AND kind = 'idea' ORDER BY fb_seq DESC LIMIT 1`,
+    )
+  )[0];
+
 async function timeline(source: SourceRow): Promise<Record<string, Body>> {
   const read = await api(jwt, 'GET', `${base()}/${source.id}/timeline`);
   expect(read.status).toBe(200);
@@ -283,19 +301,28 @@ describe("a followed source's releases digested (c2)", () => {
     });
   });
 
-  it('files ONE idea for three versions of one source that help the same item, the newest named', async () => {
+  it('files ONE idea for three versions of one source that help the same item, naming each', async () => {
+    await decline(
+      (await timeline(await sourceNamed('coollabsio/coolify')))['v4.7.0']?.idea as string,
+    );
     const source = await sourceNamed('coollabsio/coolify');
     const read = coolify('v4.7.3', 'v4.7.2', 'v4.7.1', 'v4.7.0');
     const out = await followSource(source, read);
     expect(out.ideas).toHaveLength(1);
     expect(await ideaCount()).toBe(2);
 
-    const [idea] = await rows<{ title: string; body: string }>(
-      sql`SELECT title, body FROM feedback WHERE project_id = ${project.id} AND kind = 'idea' ORDER BY fb_seq DESC LIMIT 1`,
+    const idea = await newestIdea();
+    expect(idea?.title).toMatch(
+      /^coollabsio\/coolify v4\.7\.3 and 2 earlier versions may help with ISS-1082/,
     );
-    expect(idea?.title).toMatch(/^coollabsio\/coolify v4\.7\.3 may help with ISS-1082/);
-    expect(idea?.body).toContain('releases/tag/v4.7.1');
-    expect(idea?.body).toContain('releases/tag/v4.7.2');
+    expect(idea?.body).toContain('published v4.7.1, v4.7.2 and v4.7.3.');
+    for (const tag of ['v4.7.1', 'v4.7.2', 'v4.7.3']) {
+      expect(idea?.body).toContain(
+        `- ${tag} (https://github.com/coollabsio/coolify/releases/tag/${tag}): `,
+      );
+    }
+    // the version declined for this item is not named again
+    expect(idea?.body).not.toContain('releases/tag/v4.7.0');
     const byTag = await timeline(source);
     for (const tag of ['v4.7.1', 'v4.7.2', 'v4.7.3']) {
       expect(byTag[tag], tag).toMatchObject({ outcome: 'idea', idea: out.ideas[0] });
@@ -334,6 +361,22 @@ describe("a followed source's releases digested (c2)", () => {
       llm.embeddings = true;
     }
     expect(await ideaCount()).toBe(2);
+  });
+
+  it("names a newer version on the source's idea for that item while it is open, filing none", async () => {
+    const source = await sourceNamed('coollabsio/coolify');
+    const open = (await timeline(source))['v4.7.3']?.idea as string;
+    const out = await followSource(source, coolify('v4.7.6', 'v4.7.5'));
+    expect(out).toMatchObject({ ideas: [open], declined: 0 });
+    expect(await ideaCount()).toBe(2);
+    expect((await timeline(source))['v4.7.6']).toMatchObject({ outcome: 'idea', idea: open });
+    const [said] = await rows<{ said: string }>(
+      sql`SELECT o.said FROM feedback_occurrences o JOIN feedback f ON f.id = o.feedback_id
+          WHERE f.project_id = ${project.id} AND f.fb_seq = ${Number(open.slice(3))}
+          ORDER BY o.created_at DESC LIMIT 1`,
+    );
+    expect(said?.said).toContain('published v4.7.6:');
+    expect(said?.said).toContain(COOLIFY_WHY);
   });
 });
 
@@ -415,5 +458,38 @@ describe('signals (c4)', () => {
     const graphiti = (signals.body.sources as Body[]).find((s) => s.title === 'getzep/graphiti');
     expect(graphiti?.flags).toEqual([expect.objectContaining({ kind: 'uncited' })]);
     expect(signals.body.review).toEqual(['keep', 'replace', 'remove']);
+  });
+});
+
+describe('a version declined for an item (ISS-1289)', () => {
+  it('is not offered for it again when its source is added again; a newer version names only itself', async () => {
+    const before = await timeline(await sourceNamed('coollabsio/coolify'));
+    const open = before['v4.7.3']?.idea as string;
+    await decline(open);
+    const removed = await api(
+      jwt,
+      'POST',
+      `${base()}/${encodeURIComponent('coollabsio/coolify')}/remove`,
+      { reason: 'added again below' },
+    );
+    expect(removed.status, JSON.stringify(removed.body)).toBe(200);
+    const again = await followed('coollabsio/coolify', 'how forge-dev is deployed');
+
+    const read = coolify('v4.7.7', 'v4.7.6', 'v4.7.3', 'v4.7.2', 'v4.7.1', 'v4.7.0');
+    const out = await followSource(again, read);
+    expect(out).toMatchObject({ declined: 5 });
+    expect(out.ideas).toHaveLength(1);
+    expect(await ideaCount()).toBe(3);
+    const idea = await newestIdea();
+    expect(idea?.title).toMatch(/^coollabsio\/coolify v4\.7\.7 may help with ISS-1082/);
+    for (const tag of ['v4.7.6', 'v4.7.3', 'v4.7.2', 'v4.7.1', 'v4.7.0']) {
+      expect(idea?.body, tag).not.toContain(`releases/tag/${tag}`);
+    }
+    // each declined version stays on the new entry's timeline against the idea that declined it
+    const byTag = await timeline(again);
+    expect(byTag['v4.7.7']).toMatchObject({ outcome: 'idea', idea: out.ideas[0] });
+    for (const tag of ['v4.7.6', 'v4.7.3', 'v4.7.0']) {
+      expect(byTag[tag], tag).toMatchObject({ idea: before[tag]?.idea });
+    }
   });
 });

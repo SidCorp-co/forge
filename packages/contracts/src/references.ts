@@ -172,9 +172,12 @@ export function githubRepoOf(address: string): string | null {
 	return `${m[1]}/${m[2]}`;
 }
 
-/** The feedback key an idea from one release of one source is filed and joined under. */
-export const referenceSignalKey = (sourceId: string, tag: string) =>
-	`reference-release:${sourceId}:${tag}`;
+/**
+ * The feedback key the idea from one source on one open problem is filed and joined under: a later
+ * pass's versions join the idea while it is open, and file a new one once it is declined (REQ-104 BC-3).
+ */
+export const referenceSignalKey = (sourceId: string, itemId: string) =>
+	`reference-release:${sourceId}:${itemId}`;
 
 export interface ReferenceSourceView {
 	id: string;
