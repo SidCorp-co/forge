@@ -22,6 +22,18 @@ interface ViewProps {
   fps: number;
   /** Drawn over the screen, in its exact bounds: the holder's input layer. */
   overlay?: ReactNode;
+  /**
+   * `page`: as wide as fits and never taller than most of the window. `screen`: as large as fits in
+   * its nearest size container whole (full screen, the box's own address), its shape kept.
+   */
+  fit?: "page" | "screen";
+}
+
+/** The screen's box: the box's own shape, at the size its place gives it, so the input layer over it maps 0..1 to the box exactly. */
+function screenStyle(size: { width: number; height: number } | null | undefined, fit: "page" | "screen") {
+  const [w, h] = size ? [size.width, size.height] : [16, 9];
+  const width = fit === "screen" ? `min(100cqw, calc(100cqh * ${w} / ${h}))` : size ? `min(100%, calc(70vh * ${w} / ${h}))` : "100%";
+  return { aspectRatio: `${w} / ${h}`, width };
 }
 
 export function BoxView(props: ViewProps) {
@@ -89,7 +101,7 @@ function useViewSocket(url: string | null, codec: BoxViewCodec, fps: number, ref
   return phase;
 }
 
-function ViewEntry({ box, label, fps, overlay, codec, round, onReconnect }: ViewProps & { codec: BoxViewCodec; round: number; onReconnect: () => void }) {
+function ViewEntry({ box, label, fps, overlay, fit = "page", codec, round, onReconnect }: ViewProps & { codec: BoxViewCodec; round: number; onReconnect: () => void }) {
   const t = useCopy();
   const ticket = useQuery(boxQueries.ticket(box.id, "view", `${fps}|${round}`));
   const [img, setImg] = useState<HTMLImageElement | null>(null);
@@ -102,13 +114,9 @@ function ViewEntry({ box, label, fps, overlay, codec, round, onReconnect }: View
   const size = phase.at === "live" && phase.width > 0 ? phase : (box.view ?? box.viewport);
   const known = ["jpeg-frames", "scrcpy-h264", "rfb"].includes(codec);
   return (
-    <div className="grid gap-2" data-testid="box-view" data-codec={codec} data-phase={phase.at}>
+    <div className="grid gap-2" data-testid="box-view" data-codec={codec} data-phase={phase.at} data-fit={fit}>
       <RefusedLine label={t("boxes.view.ticketFailed")} error={ticket.error} className="text-13 text-danger-11" />
-      {/* the screen keeps the box's own shape, as wide as fits and never taller than most of the window, so the input layer over it maps 0..1 to the box exactly */}
-      <div
-        className="relative mx-auto bg-neutral-12"
-        style={size ? { aspectRatio: `${size.width} / ${size.height}`, width: `min(100%, calc(70vh * ${size.width} / ${size.height}))` } : { aspectRatio: "16 / 9", width: "100%" }}
-      >
+      <div className="relative mx-auto bg-neutral-12" style={screenStyle(size, fit)}>
         {!known ? <p className="p-4 text-13 text-neutral-1">{t("boxes.view.unknownCodec", { codec })}</p> : null}
         {codec === "jpeg-frames" ? <img ref={setImg} alt={t("boxes.view.title", { box: label })} className="absolute inset-0 size-full object-contain" /> : null}
         {codec === "scrcpy-h264" ? <canvas ref={setCanvas} aria-label={t("boxes.view.title", { box: label })} className="absolute inset-0 size-full object-contain" /> : null}

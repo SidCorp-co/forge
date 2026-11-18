@@ -80,6 +80,12 @@
     "boxes.closedWhy.idle": "Closed idle",
     "boxes.issue.label": "Box",
     "boxes.issue.reproduce": "Reproduce in a box",
-    "boxes.issue.watch": "Watch"
+    "boxes.issue.watch": "Watch",
+    "boxes.screen.full": "Full screen",
+    "boxes.screen.exit": "Exit",
+    "boxes.screen.closed": "Box closed",
+    "boxes.screen.failed": "Box failed",
+    "boxes.screen.noClip": "No clip",
+    "boxes.screen.refused": "Can't open box"
   }
 }

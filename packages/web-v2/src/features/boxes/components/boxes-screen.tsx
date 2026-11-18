@@ -12,13 +12,11 @@ import { useRoom } from "@/lib/ws/use-room";
 import { useAuth } from "@/providers/auth-provider";
 import { useProjectBoxes } from "../hooks";
 import { isLive } from "../labels";
+import { BOX_PARAM } from "../links";
 import { BoxList, BoxQueue, useBoxLabel } from "./box-list";
 import { BoxLive } from "./box-live";
 import { BoxOpen } from "./box-open";
 import { BoxesBand } from "./boxes-band";
-
-/** The `?box=` param the page selects by. */
-export const BOX_PARAM = "box";
 
 function Selected({ box, projectId, me, canWrite }: { box: BoxRecord; projectId: string; me: string | undefined; canWrite: boolean }) {
   const label = useBoxLabel(box);

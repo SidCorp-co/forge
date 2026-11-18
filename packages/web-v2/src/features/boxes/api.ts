@@ -50,6 +50,9 @@ export interface BoxIssueLabel {
 }
 
 export const boxesApi = {
+  /** One box by its id: a box the caller cannot read is refused by core, by name. */
+  one: async (id: string): Promise<BoxRecord> => readBox("GET box", (await apiClient<{ box: unknown }>(routeOf(BOX_ROUTES.get, { id }))).box),
+
   ofProject: async (projectId: string): Promise<BoxRecord[]> => {
     const body = await apiClient<{ boxes: unknown[] }>(routeOf(BOX_ROUTES.ofProject, { id: projectId }));
     return body.boxes.map((b) => readBox("GET boxes", b));

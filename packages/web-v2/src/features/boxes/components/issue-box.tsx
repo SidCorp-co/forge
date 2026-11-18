@@ -1,5 +1,6 @@
 // An issue's box (ISS-1276 c7): the box testing this issue now, if one runs or waits, as one line
-// that opens it on the Boxes page; and Reproduce, which opens a box a person holds for the issue.
+// that opens its screen alone (ISS-1325); and Reproduce, which opens a box a person holds for the
+// issue and goes straight to its screen.
 
 import type { BoxRecord } from "@forge/contracts/boxes";
 import { ToneBadge } from "@/design";
@@ -8,9 +9,8 @@ import { Link, useRouter } from "@/lib/navigation/router";
 import { useAuth } from "@/providers/auth-provider";
 import { useProjectBoxes } from "../hooks";
 import { holderWords, isEnded, isLive, STATE_TONE } from "../labels";
+import { boxScreenHref } from "../links";
 import { BoxOpen } from "./box-open";
-
-const boxesHref = (slug: string, boxId: string) => `/projects/${slug}/boxes?box=${encodeURIComponent(boxId)}`;
 
 function OneBox({ box, slug }: { box: BoxRecord; slug: string }) {
   const t = useCopy();
@@ -20,7 +20,7 @@ function OneBox({ box, slug }: { box: BoxRecord; slug: string }) {
     <li className="flex min-w-0 flex-wrap items-center gap-2 text-13" data-testid="issue-box" data-state={box.state}>
       <ToneBadge tone={STATE_TONE[box.state]} label={t(`boxes.state.${box.state}`)} title={t(`boxes.state.${box.state}`)} value={box.state} pulse={isLive(box)} />
       <span className="min-w-0 truncate text-muted">{line}</span>
-      <Link className="text-link hover:underline" href={boxesHref(slug, box.id)}>
+      <Link className="text-link hover:underline" href={boxScreenHref(slug, box.id)}>
         {t("boxes.issue.watch")}
       </Link>
     </li>
@@ -42,7 +42,7 @@ export function IssueBox({ projectId, issueId, slug, canWrite }: { projectId: st
           ))}
         </ul>
       ) : null}
-      {canWrite ? <BoxOpen projectId={projectId} issueId={issueId} label={t("boxes.issue.reproduce")} onOpened={(b) => router.push(boxesHref(slug, b.id))} /> : null}
+      {canWrite ? <BoxOpen projectId={projectId} issueId={issueId} label={t("boxes.issue.reproduce")} onOpened={(b) => router.push(boxScreenHref(slug, b.id))} /> : null}
     </div>
   );
 }

@@ -73,6 +73,7 @@ import { Route as WorkspaceProjectsSlugWorkflowsIndexRouteImport } from './route
 import { Route as WorkspaceProjectsSlugAgentsSessionIdIndexRouteImport } from './routes/_workspace/projects/$slug/agents/$sessionId/index'
 import { Route as WorkspaceProjectsSlugAgentsMasterIndexRouteImport } from './routes/_workspace/projects/$slug/agents/master/index'
 import { Route as WorkspaceProjectsSlugAgentsRunsIndexRouteImport } from './routes/_workspace/projects/$slug/agents/runs/index'
+import { Route as WorkspaceProjectsSlugBoxesBoxIdIndexRouteImport } from './routes/_workspace/projects/$slug/boxes/$boxId/index'
 import { Route as WorkspaceProjectsSlugChannelsChannelIndexRouteImport } from './routes/_workspace/projects/$slug/channels/$channel/index'
 import { Route as WorkspaceProjectsSlugEcosystemApiIndexRouteImport } from './routes/_workspace/projects/$slug/ecosystem/api/index'
 import { Route as WorkspaceProjectsSlugFeedbackFeedbackIndexRouteImport } from './routes/_workspace/projects/$slug/feedback/$feedback/index'
@@ -441,6 +442,12 @@ const WorkspaceProjectsSlugAgentsRunsIndexRoute =
     path: '/agents/runs/',
     getParentRoute: () => WorkspaceProjectsSlugRouteRoute,
   } as any)
+const WorkspaceProjectsSlugBoxesBoxIdIndexRoute =
+  WorkspaceProjectsSlugBoxesBoxIdIndexRouteImport.update({
+    id: '/boxes/$boxId/',
+    path: '/boxes/$boxId/',
+    getParentRoute: () => WorkspaceProjectsSlugRouteRoute,
+  } as any)
 const WorkspaceProjectsSlugChannelsChannelIndexRoute =
   WorkspaceProjectsSlugChannelsChannelIndexRouteImport.update({
     id: '/channels/$channel/',
@@ -595,6 +602,7 @@ export interface FileRoutesByFullPath {
   '/projects/$slug/agents/$sessionId/': typeof WorkspaceProjectsSlugAgentsSessionIdIndexRoute
   '/projects/$slug/agents/master/': typeof WorkspaceProjectsSlugAgentsMasterIndexRoute
   '/projects/$slug/agents/runs/': typeof WorkspaceProjectsSlugAgentsRunsIndexRoute
+  '/projects/$slug/boxes/$boxId/': typeof WorkspaceProjectsSlugBoxesBoxIdIndexRoute
   '/projects/$slug/channels/$channel/': typeof WorkspaceProjectsSlugChannelsChannelIndexRoute
   '/projects/$slug/ecosystem/api/': typeof WorkspaceProjectsSlugEcosystemApiIndexRoute
   '/projects/$slug/feedback/$feedback/': typeof WorkspaceProjectsSlugFeedbackFeedbackIndexRoute
@@ -672,6 +680,7 @@ export interface FileRoutesByTo {
   '/projects/$slug/agents/$sessionId': typeof WorkspaceProjectsSlugAgentsSessionIdIndexRoute
   '/projects/$slug/agents/master': typeof WorkspaceProjectsSlugAgentsMasterIndexRoute
   '/projects/$slug/agents/runs': typeof WorkspaceProjectsSlugAgentsRunsIndexRoute
+  '/projects/$slug/boxes/$boxId': typeof WorkspaceProjectsSlugBoxesBoxIdIndexRoute
   '/projects/$slug/channels/$channel': typeof WorkspaceProjectsSlugChannelsChannelIndexRoute
   '/projects/$slug/ecosystem/api': typeof WorkspaceProjectsSlugEcosystemApiIndexRoute
   '/projects/$slug/feedback/$feedback': typeof WorkspaceProjectsSlugFeedbackFeedbackIndexRoute
@@ -754,6 +763,7 @@ export interface FileRoutesById {
   '/_workspace/projects/$slug/agents/$sessionId/': typeof WorkspaceProjectsSlugAgentsSessionIdIndexRoute
   '/_workspace/projects/$slug/agents/master/': typeof WorkspaceProjectsSlugAgentsMasterIndexRoute
   '/_workspace/projects/$slug/agents/runs/': typeof WorkspaceProjectsSlugAgentsRunsIndexRoute
+  '/_workspace/projects/$slug/boxes/$boxId/': typeof WorkspaceProjectsSlugBoxesBoxIdIndexRoute
   '/_workspace/projects/$slug/channels/$channel/': typeof WorkspaceProjectsSlugChannelsChannelIndexRoute
   '/_workspace/projects/$slug/ecosystem/api/': typeof WorkspaceProjectsSlugEcosystemApiIndexRoute
   '/_workspace/projects/$slug/feedback/$feedback/': typeof WorkspaceProjectsSlugFeedbackFeedbackIndexRoute
@@ -835,6 +845,7 @@ export interface FileRouteTypes {
     | '/projects/$slug/agents/$sessionId/'
     | '/projects/$slug/agents/master/'
     | '/projects/$slug/agents/runs/'
+    | '/projects/$slug/boxes/$boxId/'
     | '/projects/$slug/channels/$channel/'
     | '/projects/$slug/ecosystem/api/'
     | '/projects/$slug/feedback/$feedback/'
@@ -912,6 +923,7 @@ export interface FileRouteTypes {
     | '/projects/$slug/agents/$sessionId'
     | '/projects/$slug/agents/master'
     | '/projects/$slug/agents/runs'
+    | '/projects/$slug/boxes/$boxId'
     | '/projects/$slug/channels/$channel'
     | '/projects/$slug/ecosystem/api'
     | '/projects/$slug/feedback/$feedback'
@@ -993,6 +1005,7 @@ export interface FileRouteTypes {
     | '/_workspace/projects/$slug/agents/$sessionId/'
     | '/_workspace/projects/$slug/agents/master/'
     | '/_workspace/projects/$slug/agents/runs/'
+    | '/_workspace/projects/$slug/boxes/$boxId/'
     | '/_workspace/projects/$slug/channels/$channel/'
     | '/_workspace/projects/$slug/ecosystem/api/'
     | '/_workspace/projects/$slug/feedback/$feedback/'
@@ -1474,6 +1487,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WorkspaceProjectsSlugAgentsRunsIndexRouteImport
       parentRoute: typeof WorkspaceProjectsSlugRouteRoute
     }
+    '/_workspace/projects/$slug/boxes/$boxId/': {
+      id: '/_workspace/projects/$slug/boxes/$boxId/'
+      path: '/boxes/$boxId'
+      fullPath: '/projects/$slug/boxes/$boxId/'
+      preLoaderRoute: typeof WorkspaceProjectsSlugBoxesBoxIdIndexRouteImport
+      parentRoute: typeof WorkspaceProjectsSlugRouteRoute
+    }
     '/_workspace/projects/$slug/channels/$channel/': {
       id: '/_workspace/projects/$slug/channels/$channel/'
       path: '/channels/$channel'
@@ -1623,6 +1643,7 @@ interface WorkspaceProjectsSlugRouteRouteChildren {
   WorkspaceProjectsSlugAgentsSessionIdIndexRoute: typeof WorkspaceProjectsSlugAgentsSessionIdIndexRoute
   WorkspaceProjectsSlugAgentsMasterIndexRoute: typeof WorkspaceProjectsSlugAgentsMasterIndexRoute
   WorkspaceProjectsSlugAgentsRunsIndexRoute: typeof WorkspaceProjectsSlugAgentsRunsIndexRoute
+  WorkspaceProjectsSlugBoxesBoxIdIndexRoute: typeof WorkspaceProjectsSlugBoxesBoxIdIndexRoute
   WorkspaceProjectsSlugChannelsChannelIndexRoute: typeof WorkspaceProjectsSlugChannelsChannelIndexRoute
   WorkspaceProjectsSlugEcosystemApiIndexRoute: typeof WorkspaceProjectsSlugEcosystemApiIndexRoute
   WorkspaceProjectsSlugFeedbackFeedbackIndexRoute: typeof WorkspaceProjectsSlugFeedbackFeedbackIndexRoute
@@ -1692,6 +1713,8 @@ const WorkspaceProjectsSlugRouteRouteChildren: WorkspaceProjectsSlugRouteRouteCh
       WorkspaceProjectsSlugAgentsMasterIndexRoute,
     WorkspaceProjectsSlugAgentsRunsIndexRoute:
       WorkspaceProjectsSlugAgentsRunsIndexRoute,
+    WorkspaceProjectsSlugBoxesBoxIdIndexRoute:
+      WorkspaceProjectsSlugBoxesBoxIdIndexRoute,
     WorkspaceProjectsSlugChannelsChannelIndexRoute:
       WorkspaceProjectsSlugChannelsChannelIndexRoute,
     WorkspaceProjectsSlugEcosystemApiIndexRoute:
