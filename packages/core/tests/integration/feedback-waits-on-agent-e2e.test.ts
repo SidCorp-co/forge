@@ -497,7 +497,7 @@ describe("a manual release the project's master cuts is on no person's Needs you
         act: `cut the release that carries ${carriers[n]?.key}`,
         ref: carriers[n]?.key,
       });
-      expect(row.waitingOn.rule).toMatch(/the project's master cuts it by \d{4}-\d{2}-\d{2}$/);
+      expect(row.waitingOn.rule).toMatch(/the master cuts it by \d{4}-\d{2}-\d{2}$/);
       expect(row.attentionGroup).not.toBe('needs_you');
     }
   });
