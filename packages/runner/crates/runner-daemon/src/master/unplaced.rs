@@ -68,6 +68,13 @@ pub(crate) enum Unplaced {
     CapabilityUnminted { detail: String },
     /// Everything was in place and tmux did not start the pane.
     PaneUnstarted { detail: String },
+    /// Core placed a master and its conversation is still held: by the master's own tmux pane,
+    /// not idle yet (`pane`), or by another process. Nothing is started beside it; the next sweep
+    /// reads it again (ISS-1304).
+    CutoverWaits {
+        detail: String,
+        pane: Option<String>,
+    },
     /// Core withheld a pane, or left a running one undriven, said as core said
     /// it (ADR 0009, What core takes over: Placement). `pane` is the one left
     /// running, where core left one.
@@ -119,6 +126,10 @@ impl std::fmt::Display for Unplaced {
             Self::PaneUnstarted { detail } => write!(
                 f,
                 "everything it needs was in place and the pane itself did not start ({detail})"
+            ),
+            Self::CutoverWaits { detail, .. } => write!(
+                f,
+                "core places its master as a background session and nothing is started beside the session holding its conversation: {detail}"
             ),
             Self::Withheld {
                 reason,
@@ -179,7 +190,8 @@ impl Unplaced {
         match self {
             Self::StoodDown { pane, .. }
             | Self::RegisterFailed { pane, .. }
-            | Self::Withheld { pane, .. } => pane.as_deref(),
+            | Self::Withheld { pane, .. }
+            | Self::CutoverWaits { pane, .. } => pane.as_deref(),
             Self::StaleCapability { pane, .. } => Some(pane),
             _ => None,
         }
@@ -201,6 +213,10 @@ impl Unplaced {
     /// pane running undriven, or a start the project wanted refused by a fault
     /// on this box. Everything else is a pane absent for a reason core gave.
     pub(crate) fn is_error(&self) -> bool {
+        // a pane waiting to be moved is the cutover working, said as a warning (ISS-1304)
+        if matches!(self, Self::CutoverWaits { .. }) {
+            return false;
+        }
         self.pane().is_some()
             || matches!(
                 self,

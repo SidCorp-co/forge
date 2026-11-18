@@ -245,6 +245,16 @@ pub fn above_at(root: &Path, peer: u32) -> Option<Host> {
     None
 }
 
+/// Whether `pid` runs at or beneath `ancestor`, read as it is now: [`beneath_at`] with the start
+/// time the process carries this moment.
+pub fn descends_at(root: &Path, pid: u32, ancestor: u32) -> HostRead {
+    match stat(root, pid) {
+        StatRead::Read(s) => beneath_at(root, pid, &s.start, ancestor),
+        StatRead::Missing => HostRead::Gone,
+        StatRead::Unreadable => HostRead::Unreadable,
+    }
+}
+
 /// Whether `pid`, started at `start`, still runs and walking up from it
 /// reaches `ancestor`, within [`MAX_DEPTH`].
 pub fn beneath_at(root: &Path, pid: u32, start: &str, ancestor: u32) -> HostRead {

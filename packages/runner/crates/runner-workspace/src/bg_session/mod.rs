@@ -19,6 +19,9 @@
 //! lets a bypass session take a socket message without a dialog.
 
 pub mod canary;
+pub mod cutover;
+#[cfg(all(test, unix))]
+pub(crate) mod fake_claude;
 pub mod launch;
 pub mod peer;
 pub mod pidns;
@@ -56,6 +59,23 @@ impl Kind {
 /// carried, so the ledger's rows keyed on them still name the same resident.
 pub fn session_name(kind: Kind, slug: &str) -> String {
     crate::terminal::session_name(kind.prefix(), slug)
+}
+
+/// The `claude` this module runs: the box's own, or under test the fake one a test names, so no
+/// test ever reaches this box's background service.
+pub(crate) fn claude_bin() -> std::ffi::OsString {
+    #[cfg(test)]
+    if let Some(fake) = FAKE_CLAUDE.with(|f| f.borrow().clone()) {
+        return fake.into_os_string();
+    }
+    runner_platform::process::resolve_claude_bin().into()
+}
+
+#[cfg(test)]
+thread_local! {
+    /// A test's own `claude`, a script it writes ([`claude_bin`]).
+    pub(crate) static FAKE_CLAUDE: std::cell::RefCell<Option<std::path::PathBuf>> =
+        const { std::cell::RefCell::new(None) };
 }
 
 /// Claude Code's config directory, where its session records, keys and transcripts are.

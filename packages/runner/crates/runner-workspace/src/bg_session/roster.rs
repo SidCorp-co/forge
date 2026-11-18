@@ -94,7 +94,7 @@ pub async fn list_all() -> Result<Vec<BgSession>, RosterError> {
 }
 
 async fn read(args: &[&str]) -> Result<Vec<BgSession>, RosterError> {
-    let mut cmd = tokio::process::Command::new(runner_platform::process::resolve_claude_bin());
+    let mut cmd = tokio::process::Command::new(super::claude_bin());
     cmd.args(args)
         .env_remove("CLAUDECODE")
         .stdin(std::process::Stdio::null())

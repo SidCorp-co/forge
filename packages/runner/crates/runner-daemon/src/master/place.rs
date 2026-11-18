@@ -237,6 +237,7 @@ async fn start_session(
     let plugins = runner_workspace::plugin_source::pane_launch()
         .map_err(|why| format!("could not start {name}: {why}"))?;
     let brief = brief_for(t, carry, mcp_config, true);
+    let work = || work_held(&t.resolved.repo_path, carry.conversation, carry.inherited);
     let place = resident::Place {
         name,
         cwd: &t.resolved.repo_path,
@@ -246,6 +247,7 @@ async fn start_session(
         plugins_off: &plugins.disabled,
         resume: carry.conversation,
         brief: &brief,
+        work: &work,
     };
     resident::place(&place)
         .await

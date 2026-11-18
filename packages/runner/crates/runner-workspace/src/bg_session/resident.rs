@@ -161,6 +161,9 @@ pub struct Place<'a> {
     pub resume: Option<&'a str>,
     /// What it is told first: its launch prompt, or the first message of a woken conversation.
     pub brief: &'a str,
+    /// What holds its conversation beyond its own turn, read before a tmux pane holding it is
+    /// ended ([`super::cutover`]).
+    pub work: &'a super::cutover::Work<'a>,
 }
 
 /// What [`place`] did.
@@ -199,6 +202,8 @@ pub async fn place(p: &Place<'_>) -> Result<Placed, String> {
     })?;
     let doc = launch::settings_doc(p.env, p.plugins_off, Some(hooks));
     launch::write_settings(&settings, &doc)?;
+    // the last step before a start: a pane ended here is resumed now, never left ended (ISS-1304)
+    super::cutover::make_way(p.name, p.resume, p.work).await?;
     let stopped_bg = match p.resume {
         Some(id) => roster::list_all()
             .await

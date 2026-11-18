@@ -409,6 +409,10 @@ async fn place(
     found: &mut Found,
 ) {
     let (project_id, slug) = (t.project_id(), t.slug());
+    let inherited = inherited_for(ledger.as_ref(), project_id, slug);
+    if stays(t, placing.resume.as_deref(), &inherited).await {
+        return;
+    }
     let adopted = t.seen.adopted.as_ref().filter(|_| placing.ended_deaf);
     let session = match adopted {
         Some(a) => a.session.clone(),
@@ -417,7 +421,6 @@ async fn place(
             None => return,
         },
     };
-    let inherited = inherited_for(ledger.as_ref(), project_id, slug);
     let lifted = match &t.seen.standing {
         StandingRead::Known(Some(s)) => lifted_from(s),
         _ => None,

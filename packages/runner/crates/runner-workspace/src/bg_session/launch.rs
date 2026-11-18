@@ -107,10 +107,11 @@ impl BgLaunch {
         a
     }
 
-    /// Start it, and read back the session it became.
+    /// Start it, and read back the session it became; a copy it started is stopped first.
     pub async fn start(&self) -> Result<Started, String> {
         let said = claude(&self.argv(), Some(&self.cwd)).await?;
-        started_from(&said, &self.name, self.resume.is_some())?
+        answered(&said, &self.name, self.resume.is_some())
+            .await?
             .listed()
             .await
     }
@@ -184,6 +185,92 @@ pub fn started_from(said: &str, name: &str, resuming: bool) -> Result<Started, S
     })
 }
 
+/// The short id of the copy `said` says Claude Code started instead of continuing a
+/// conversation: `Some(None)` where it says it started one and names no id this can read.
+pub fn copy_in(said: &str) -> Option<Option<String>> {
+    if !said.contains("started a copy") {
+        return None;
+    }
+    let named = said.split("started a copy as ").nth(1).map(|rest| {
+        rest.chars()
+            .take_while(char::is_ascii_alphanumeric)
+            .collect::<String>()
+    });
+    let printed = said
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("backgrounded \u{b7} "))
+        .and_then(|l| l.split(" \u{b7} ").next())
+        .map(|id| id.trim().to_string());
+    Some(
+        named
+            .into_iter()
+            .chain(printed)
+            .find(|id| !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric())),
+    )
+}
+
+/// Stop the copy `id` with `stop`, and answer for it gone by the roster `live` reads after: a
+/// stop that did not take is said, never read as taken (ISS-1208).
+pub(crate) async fn stop_copy<S, L>(id: &str, stop: S, live: L) -> Result<(), String>
+where
+    S: std::future::Future<Output = Result<(), String>>,
+    L: std::future::Future<Output = Result<Vec<roster::BgSession>, roster::RosterError>>,
+{
+    let stopped = stop.await;
+    let said = stopped.err().map(|e| format!(" ({e})")).unwrap_or_default();
+    match live.await {
+        Ok(all)
+            if all
+                .iter()
+                .any(|s| s.id.as_deref() == Some(id) && s.is_live()) =>
+        {
+            Err(format!("it still runs after `claude stop {id}`{said}"))
+        }
+        Ok(_) => Ok(()),
+        Err(e) => Err(format!(
+            "whether it still runs after `claude stop {id}` could not be read{said}: {e}"
+        )),
+    }
+}
+
+/// The refusal a copy is answered with, once the stop of it was tried: `BG_RESUME_COPIED` where
+/// the copy is gone, `BG_COPY_LEFT_RUNNING` where two sessions still hold one conversation.
+pub fn copy_refusal(
+    said: &str,
+    name: &str,
+    copy: Option<&str>,
+    stopped: Result<(), String>,
+) -> String {
+    let said = said.trim();
+    match (copy, stopped) {
+        (Some(id), Ok(())) => format!(
+            "[BG_RESUME_COPIED] Claude Code started a copy of {name}'s conversation instead of \
+             continuing it, and the copy {id} was stopped at once: {said}"
+        ),
+        (Some(id), Err(why)) => format!(
+            "[BG_COPY_LEFT_RUNNING] Claude Code started a copy {id} of {name}'s conversation \
+             instead of continuing it, and it could not be stopped: {why}. Two sessions hold one \
+             conversation until `claude stop {id}` ends the copy: {said}"
+        ),
+        (None, _) => format!(
+            "[BG_COPY_LEFT_RUNNING] Claude Code started a copy of {name}'s conversation instead \
+             of continuing it and named no id this box can stop it by: {said}"
+        ),
+    }
+}
+
+/// What `said` says this box started, with a copy it reports stopped before it is refused.
+async fn answered(said: &str, name: &str, resuming: bool) -> Result<Started, String> {
+    let Some(copy) = copy_in(said) else {
+        return started_from(said, name, resuming);
+    };
+    let stopped = match copy.as_deref() {
+        Some(id) => stop_copy(id, stop(id), roster::list()).await,
+        None => Err("no id".into()),
+    };
+    Err(copy_refusal(said, name, copy.as_deref(), stopped))
+}
+
 /// Continue the stopped background session `session_id` in `cwd`, with the options it was
 /// started with: its settings file is re-read, so a caller rewrites that file first.
 pub async fn resume(session_id: &str, name: &str, cwd: &Path) -> Result<Started, String> {
@@ -192,7 +279,7 @@ pub async fn resume(session_id: &str, name: &str, cwd: &Path) -> Result<Started,
         Some(cwd),
     )
     .await?;
-    let mut s = started_from(&said, name, true)?;
+    let mut s = answered(&said, name, true).await?;
     s.session_id = session_id.to_string();
     Ok(s)
 }
@@ -214,8 +301,7 @@ pub async fn logs(id: &str) -> Result<String, String> {
 
 /// Run `claude <args>` with the launcher's scrubbed environment, its output answered whole.
 async fn claude(args: &[String], cwd: Option<&Path>) -> Result<String, String> {
-    let bin = runner_platform::process::resolve_claude_bin();
-    let mut cmd = tokio::process::Command::new(bin);
+    let mut cmd = tokio::process::Command::new(super::claude_bin());
     cmd.args(args)
         .env_clear()
         .envs(
@@ -392,3 +478,7 @@ mod tests {
         assert_eq!(&a[a.len() - 2..], ["--", "--not-a-flag brief"]);
     }
 }
+
+#[cfg(all(test, unix))]
+#[path = "copy_tests.rs"]
+mod copy_tests;

@@ -114,7 +114,7 @@ thread_local! {
     /// A test's own tmux server. The transport under test is driven on it, so a test run never
     /// reaches the server this box's config names, which is the box's live one where the tests
     /// run inside a box's pane.
-    static TEST_SOCKET: std::cell::RefCell<Option<std::path::PathBuf>> =
+    pub(crate) static TEST_SOCKET: std::cell::RefCell<Option<std::path::PathBuf>> =
         const { std::cell::RefCell::new(None) };
 }
 
@@ -557,7 +557,7 @@ async fn still_there(name: &str) -> Result<bool> {
 }
 
 #[cfg(all(test, unix))]
-mod tests;
+pub(crate) mod tests;
 
 #[cfg(all(test, unix))]
 mod wake_tests;

@@ -279,7 +279,7 @@ impl Host {
     /// Start `l` in the room, and read back the session it became.
     pub async fn start(&self, l: &BgLaunch) -> Result<Started, String> {
         let said = self.claude(&l.argv(), &l.cwd).await?;
-        let started = launch::started_from(&said, &l.name, l.resume.is_some())?;
+        let started = self.answered(&said, &l.name, l.resume.is_some()).await?;
         self.listed(started).await
     }
 
@@ -292,9 +292,25 @@ impl Host {
     ) -> Result<Started, String> {
         let args = ["--bg", "--resume", session_id].map(String::from);
         let said = self.claude(&args, cwd).await?;
-        let mut s = launch::started_from(&said, name, true)?;
+        let mut s = self.answered(&said, name, true).await?;
         s.session_id = session_id.to_string();
         Ok(s)
+    }
+
+    /// What `said` says the room started, with a copy it reports stopped in the room first.
+    async fn answered(&self, said: &str, name: &str, resuming: bool) -> Result<Started, String> {
+        let Some(copy) = launch::copy_in(said) else {
+            return launch::started_from(said, name, resuming);
+        };
+        let stopped = match copy.as_deref() {
+            Some(id) => {
+                let stop = ["stop", id].map(String::from);
+                let stop = async { self.claude(&stop, &self.dirs.root).await.map(drop) };
+                launch::stop_copy(id, stop, self.roster()).await
+            }
+            None => Err("no id".into()),
+        };
+        Err(launch::copy_refusal(said, name, copy.as_deref(), stopped))
     }
 
     async fn listed(&self, mut s: Started) -> Result<Started, String> {
