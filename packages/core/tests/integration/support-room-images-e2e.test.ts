@@ -15,6 +15,8 @@
  * @direct-test-of packages/core/src/support/acts.ts
  * @direct-test-of packages/core/src/support/routes.ts
  * @direct-test-of packages/core/src/support/record.ts
+ * @direct-test-of packages/core/src/support/record-pictures.ts
+ * @direct-test-of packages/core/src/support/propose.ts
  * @direct-test-of packages/core/src/support/fixes.ts
  * @direct-test-of packages/core/src/feedback/attachments.ts
  * @direct-test-of packages/core/src/integrations/rocketchat/rest-client.ts
@@ -120,6 +122,8 @@ describe('ISS-1010: a support room message hands its pictures to the session', (
       count: 4,
       mimes: ['image/png', 'image/png', 'image/png', 'image/png'],
       read: `support.image { message: "${posted.id}", n } with n 1..4`,
+      // each read before an answer about what the person did, or said unread (ISS-1328)
+      before: 'answering about what the person did or saw; say so of one you could not read',
       omitted: 1,
     });
 
@@ -190,7 +194,7 @@ describe('ISS-1010: a support room message hands its pictures to the session', (
     expect(chat.uploadReads.length).toBe(readsBefore);
   });
 
-  it('attaches the thread’s pictures to the Feedback filed from it, readable with uploads.read, and names each that could not go', async () => {
+  it('attaches the pictures it names to the Feedback filed from it, readable with uploads.read, and names each that could not go', async () => {
     expect(thread).not.toBe('');
     await w.settleWarm();
     let offer: Record<string, unknown> | null = null;
@@ -203,6 +207,8 @@ describe('ISS-1010: a support room message hands its pictures to the session', (
           kind: 'defect',
           title: 'Checkout button is hidden',
           summary: 'The checkout button is cut off on the cart page, as the screenshots show.',
+          // every picture of the message that showed it, named as evidence (ISS-1327)
+          pictures: [{ message: thread }],
         });
       }
     };
@@ -221,7 +227,7 @@ describe('ISS-1010: a support room message hands its pictures to the session', (
         ],
       },
     });
-    expect(String(out.what)).toContain("with 1 of the thread's pictures attached");
+    expect(String(out.what)).toContain('with 1 of the pictures you named attached');
 
     const fb = await w.lastGroupFiling();
     const attached = await rows<{ id: string; name: string; mime: string; size: number }>(sql`
@@ -256,5 +262,91 @@ describe('ISS-1010: a support room message hands its pictures to the session', (
     expect(fetched.status, JSON.stringify(fetched.body)).toBe(200);
     const result = (fetched.body as { result: Answer }).result;
     expect(imageOf(result)).toEqual({ mime: 'image/png', bytes: PNG_BYTES });
+  });
+});
+
+describe('ISS-1327: a record carries only the pictures it names', () => {
+  it('attaches only the pictures a record names, never one beside a filtered secret, and refuses a picture its thread does not carry (ISS-1327)', async () => {
+    await w.settleWarm();
+    w.box.model = async () => undefined;
+    const shot = (name: string) => ({ name, mime: 'image/png', bytes: PNG_BYTES });
+    const opened = await chat.sayWithImages(w.chat.bob, 'Form nhà cung cấp lưu không được', [
+      shot('one.png'),
+      shot('two.png'),
+      shot('three.png'),
+    ]);
+    const more = await chat.sayWithImages(
+      w.chat.bob,
+      'thêm ảnh',
+      [shot('four.png'), shot('five.png')],
+      opened.id,
+    );
+    // an obvious fake, built here; the text filter keeps it out, and its picture may show it
+    const secret = await chat.sayWithImages(
+      w.chat.bob,
+      `Secret: ${'a1b2c3d4e5f60718'.repeat(2)}`,
+      [shot('form-filled.png')],
+      opened.id,
+    );
+    await expect
+      .poll(
+        async () =>
+          (
+            await rows(sql`SELECT 1 FROM support_actions
+               WHERE kind = 'secret_flagged' AND input->>'message' = ${secret.id}`)
+          ).length,
+        { timeout: 15_000 },
+      )
+      .toBe(1);
+    await w.settleWarm();
+
+    const offers: Record<string, unknown>[] = [];
+    w.box.model = async (turn, act) => {
+      for (const m of turn.messages) {
+        if (m.from === 'forge' || !m.text.includes('ghi nhận giúp')) continue;
+        const record = (pictures: unknown[]) =>
+          act({
+            action: 'record',
+            thread: m.thread,
+            kind: 'defect',
+            title: 'Supplier form does not save',
+            summary: 'Saving the supplier form leaves it unsaved, as the screenshots show.',
+            pictures,
+          });
+        offers.push(await record([{ message: secret.id }]));
+        offers.push(await record([{ message: opened.id, n: 4 }, { message: 'mNEVER1' }]));
+        offers.push(
+          await record([
+            { message: opened.id, n: 2 },
+            { message: more.id, n: 1 },
+          ]),
+        );
+      }
+    };
+    await w.chat.say(w.chat.bob, 'ghi nhận giúp mình', opened.id);
+    await expect.poll(() => offers.length, { timeout: 15_000 }).toBe(3);
+    const [beside, unknown, named] = offers as [
+      Record<string, unknown>,
+      Record<string, unknown>,
+      Record<string, unknown>,
+    ];
+    // planted on today's code: record takes no pictures, so every one of these is refused BAD_REQUEST
+    expect(refusalCodes(beside), JSON.stringify(beside)).toEqual(['SUPPORT_PICTURE_HELD_SECRET']);
+    expect(refusalCodes(unknown), JSON.stringify(unknown)).toEqual([
+      'SUPPORT_PICTURE_UNKNOWN',
+      'SUPPORT_PICTURE_UNKNOWN',
+    ]);
+    expect(JSON.stringify(unknown)).toContain('n is 1..3');
+
+    const { out } = await w.agreeBy(w.chat.bob, 'ừ ghi đi', opened.id, String(named.proposal));
+    expect(out, JSON.stringify(out)).toMatchObject({
+      recorded: true,
+      pictures: { attached: 2, notAttached: [] },
+    });
+    const fb = await w.lastGroupFiling();
+    const attached = await rows<{ name: string }>(sql`
+      SELECT a.name FROM feedback_attachments a JOIN feedback f ON f.id = a.feedback_id
+       WHERE f.project_id = ${w.projectId}::uuid AND f.fb_seq = ${fb.fb_seq} ORDER BY a.name`);
+    expect(attached.map((a) => a.name)).toEqual(['four.png', 'two.png']);
   });
 });

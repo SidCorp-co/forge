@@ -5,12 +5,11 @@
 import { createHash } from 'node:crypto';
 import { FEEDBACK_LIMITS } from '@forge/contracts/feedback';
 import type { SupportRecordKind } from '@forge/contracts/support';
-import { attachToFiled, type ExternalReporter, fileExternalFeedback } from '../feedback/index.js';
+import { type ExternalReporter, fileExternalFeedback } from '../feedback/index.js';
 import { buildMessagePermalink } from '../integrations/rocketchat/index.js';
-import { logger } from '../lib/logger.js';
-import { fetchRecordedImage, threadImages } from './images.js';
 import { namedProject } from './ops-scope.js';
 import { knownThread, type Outcome, threadUnknown } from './outcome.js';
+import { attachNamedPictures, type FiledPictures, type NamedPicture } from './record-pictures.js';
 import { refusalOf } from './refusals.js';
 import { FEEDBACK_KIND_OF, visitorIdOf } from './rules.js';
 import { insertAction, insertLink, type RoomRow } from './store.js';
@@ -27,6 +26,8 @@ export interface RecordRequest {
   project?: string | undefined;
   /** New work the owner asks for beside an open item of the thread, approving none (ISS-1243). */
   separate?: true | undefined;
+  /** The pictures that are evidence, each by its message and place (ISS-1327); none named, none go. */
+  pictures?: NamedPicture[] | undefined;
 }
 
 /** The thread's link in Rocket.Chat, or the room and thread ids where the server gives none. */
@@ -120,9 +121,10 @@ export async function fileRecord(
       ),
     };
   }
-  // the thread's pictures go with what was filed from it, readable with uploads.read (ISS-1010)
+  // the pictures named as evidence go with what was filed, readable with uploads.read (ISS-1010),
+  // and no other picture of the thread (ISS-1327)
   const pictures = filed.created
-    ? await attachThreadPictures(room, projectId, input.thread, filed.id)
+    ? await attachNamedPictures(room, projectId, input.thread, filed.id, input.pictures ?? [])
     : null;
   if (filed.created) {
     await insertAction({
@@ -146,76 +148,4 @@ export async function fileRecord(
       ...(pictures ? { pictures } : {}),
     },
   };
-}
-
-/** What became of a thread's pictures on the item filed from it: how many went, and each that did not, with why. */
-export interface FiledPictures {
-  attached: number;
-  notAttached: { message: string; n: number; code: string; why: string }[];
-}
-
-/**
- * Attach every picture the members' messages of the thread recorded to the item filed from it, up
- * to the most one item keeps (ISS-1010): each fetched with the room's bot credential, as the session
- * reads it, and stored as every feedback attachment is, under the project the item was filed in,
- * which for a followed project's record is not the room's (ISS-1088). One that cannot be fetched or
- * kept is named with why; the filing stands either way. Null where the thread carried no picture.
- */
-async function attachThreadPictures(
-  room: RoomRow,
-  projectId: string,
-  thread: string,
-  itemId: string,
-): Promise<FiledPictures | null> {
-  const all = await threadImages(room.id, thread);
-  if (all.length === 0) return null;
-  const notAttached: FiledPictures['notAttached'] = [];
-  const kept = all.slice(0, FEEDBACK_LIMITS.attachmentsPerItem);
-  for (const p of all.slice(FEEDBACK_LIMITS.attachmentsPerItem)) {
-    notAttached.push({
-      message: p.message,
-      n: p.n,
-      code: 'FEEDBACK_ATTACHMENTS_FULL',
-      why: `an item keeps at most ${FEEDBACK_LIMITS.attachmentsPerItem} attachments`,
-    });
-  }
-  const files: { name: string; mime: string; contentBase64: string }[] = [];
-  const sources: { message: string; n: number }[] = [];
-  for (const p of kept) {
-    const got = await fetchRecordedImage(room, p.image);
-    if (!got.ok) {
-      notAttached.push({ message: p.message, n: p.n, code: got.code, why: got.why });
-      continue;
-    }
-    files.push({
-      name: p.image.name,
-      mime: p.image.mime,
-      contentBase64: got.bytes.toString('base64'),
-    });
-    sources.push({ message: p.message, n: p.n });
-  }
-  // the item is filed by now: a picture that breaks on the way is named on it, never a throw that
-  // hides the filing from the session (ISS-1088)
-  const put = await attachToFiled({
-    projectId,
-    itemId,
-    uploadedBy: room.principalUserId,
-    files,
-  }).catch((err: unknown) => {
-    logger.error({ err, roomId: room.id, itemId }, 'support: attaching a thread picture threw');
-    const why = `attaching the thread's pictures broke (${err instanceof Error ? err.message : String(err)}), so the item may hold none or only some of them`;
-    return {
-      attached: [],
-      refused: files.map((_, file) => ({
-        file,
-        refusal: refusalOf('SUPPORT_REFUSED', `/files/${file}`, why),
-      })),
-    };
-  });
-  for (const { file, refusal } of put.refused) {
-    // `files` and `sources` are built side by side, so each refused file has its source
-    const source = sources[file] as { message: string; n: number };
-    notAttached.push({ ...source, code: refusal.code, why: refusal.detail });
-  }
-  return { attached: put.attached.length, notAttached };
 }

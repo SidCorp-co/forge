@@ -22,6 +22,7 @@ import { namedProject } from './ops-scope.js';
 import { knownThread, threadUnknown } from './outcome.js';
 import { recordIsApproval } from './owner-approves.js';
 import type { RecordRequest } from './record.js';
+import { picturesNamed } from './record-pictures.js';
 import { type Refusal, refusalOf } from './refusals.js';
 import { mintConfirmCode } from './rules.js';
 import { insertAction, insertFix, type ProposalRow, type RoomRow, threadMembers } from './store.js';
@@ -266,6 +267,16 @@ export async function proposeRecord(
   // a project outside the agent's set is refused now, before the asker is asked anything (ISS-874)
   const target = await namedProject(room, input.project);
   if (!target.ok) return target;
+  // each picture named as evidence is one of the thread's, and none sat beside a secret (ISS-1327)
+  const { faults } = await picturesNamed(room.id, input.thread, input.pictures ?? []);
+  if (faults.length > 0) {
+    return {
+      ok: false,
+      refusals: faults.map((f) =>
+        refusalOf(f.code, `/pictures/${f.at}`, `${f.why}; nothing was proposed`),
+      ),
+    };
+  }
   const { asker: _asker, ...request } = input;
   return offerChange({
     room,

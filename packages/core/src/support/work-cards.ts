@@ -90,6 +90,7 @@ export const WORK_ACT_CARDS = {
     practice: [
       'Name the owning project as `project`: without it the item lands in your home project and its master never sees it.',
       'Never post progress and never promise a date; you are told once it is answered, shipped or declined.',
+      'Attach only the pictures that are evidence, by pictures [{ message, n }], each one you read with support.image; leave out any showing a secret, a password or a key.',
     ],
     example: {
       thread: THREAD,

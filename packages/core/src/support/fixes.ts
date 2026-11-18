@@ -29,7 +29,8 @@ import { deciderFor, deciderNote, decidersOfAct } from './deciders.js';
 import { grantsOf, isNamedOwner, isOwner, supportConfigOf } from './grants.js';
 import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
 import { changeName, nothingDone } from './propose.js';
-import { type FiledPictures, fileRecord, type RecordRequest } from './record.js';
+import { fileRecord, type RecordRequest } from './record.js';
+import type { FiledPictures } from './record-pictures.js';
 import type { Refusal } from './refusals.js';
 import { limitsOf } from './rules.js';
 import {
@@ -384,8 +385,10 @@ async function notFiled(
 /** What the session is told of the thread's pictures on a filing (ISS-1010). */
 function picturesLine(pictures: FiledPictures | undefined): string {
   if (!pictures) return '';
-  const missed = pictures.notAttached.map((p) => `picture ${p.n} of ${p.message}: ${p.why}`);
-  return `, with ${pictures.attached} of the thread's pictures attached${missed.length ? ` (not attached: ${missed.join('; ')})` : ''}`;
+  const missed = pictures.notAttached.map(
+    (p) => `${p.n === null ? 'the pictures' : `picture ${p.n}`} of ${p.message}: ${p.why}`,
+  );
+  return `, with ${pictures.attached} of the pictures you named attached${missed.length ? ` (not attached: ${missed.join('; ')})` : ''}`;
 }
 
 async function runFix(
