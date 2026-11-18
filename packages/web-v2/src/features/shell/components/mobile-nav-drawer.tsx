@@ -6,9 +6,9 @@ import { projectGlyph, projectInitials } from "@/features/projects";
 import type { ProjectListItem } from "@/features/projects";
 import { cn } from "@/lib/utils/cn";
 import { useMyEcosystems } from "@/features/ecosystem";
-import { useActivityWaiting } from "@/features/activity";
 import { useCopy, useInterfaceLanguage, useNavLabel } from "@/lib/i18n/interface-language";
 import {
+  type ActivityWaiting,
   activityBadge,
   ecosystemRow,
   type ProjectBadges,
@@ -71,6 +71,8 @@ interface MobileNavDrawerProps {
   railProjectName: string | null | undefined;
   activeKey: string;
   attentionCount: number;
+  /** What the Activity page says waits on the person, read by the route from the page's own query (ISS-1330). */
+  activityWaiting?: ActivityWaiting;
   badges: ProjectBadges;
   /** Projects scoped to the active org (ISS-480). */
   scopedProjects: ProjectListItem[];
@@ -97,6 +99,7 @@ export function MobileNavDrawer({
   railProjectName,
   activeKey,
   attentionCount,
+  activityWaiting,
   badges,
   scopedProjects,
   onNavigate,
@@ -111,7 +114,7 @@ export function MobileNavDrawer({
   // Esc closes the mobile drawer.
   const ecosystem = ecosystemRow(useMyEcosystems().data);
   // the Activity row counts what its page says waits on the person, the page's own read (ISS-1330)
-  const activity = activityBadge(useActivityWaiting()).badge;
+  const activity = activityBadge(activityWaiting).badge;
   const t = useCopy();
   const language = useInterfaceLanguage();
   const navLabel = useNavLabel();

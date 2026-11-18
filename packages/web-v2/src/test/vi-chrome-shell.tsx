@@ -58,6 +58,7 @@ function Sidebar({ compact }: { compact: boolean }) {
       onChooseGroups={noop}
       activeKey="proj-feedback"
       attentionCount={3}
+      activityWaiting={{ n: 4, projects: 2 }}
       railSlug="hop"
       rail={rail}
       badges={{ needsYou: needsYou as never }}

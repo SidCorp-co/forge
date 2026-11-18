@@ -130,6 +130,16 @@ function useTourRelease(railRef: string | undefined): TourRelease {
   return useMemo(() => ({ version, want }), [version, want]);
 }
 
+/**
+ * What the shell's counts read: Attention's decisions across projects, and what the Activity page says
+ * waits on the person, from that page's own query (ISS-1330). The route reads both and hands them to
+ * the rail, the drawer and the tabs, since the shell sits below the Activity feature.
+ */
+function useShellWaiting() {
+  const { waitingOnYou: attentionCount } = useAttention();
+  return { attentionCount, activityWaiting: useActivityWaiting() };
+}
+
 /** ⌘K / Ctrl+K anywhere in the workspace toggles the command palette. */
 function usePaletteShortcut(toggle: () => void) {
   useEffect(() => {
@@ -202,8 +212,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const sidebar = useSidebarContext();
   const { items: recents } = useRecents();
   const pinnedViews = usePinnedViews();
-  const { waitingOnYou: attentionCount } = useAttention();
-  const activityWaiting = useActivityWaiting();
+  const { attentionCount, activityWaiting } = useShellWaiting();
   const { data: openCount } = useOpenCount();
 
   const { stopped: signInStopped } = useLoginRedirect(!isLoading && !user, !!user);
@@ -268,7 +277,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
           groupOpen={sidebar.groupOpen}
           onChooseGroups={sidebar.chooseGroups}
           activeKey={activeKey}
-          attentionCount={attentionCount}
+          attentionCount={attentionCount} activityWaiting={activityWaiting}
           railSlug={railSlug}
           rail={rail}
           badges={{ needsYou }}
@@ -288,7 +297,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         railSlug={railSlug}
         railProjectName={railProject?.name}
         activeKey={activeKey}
-        attentionCount={attentionCount}
+        attentionCount={attentionCount} activityWaiting={activityWaiting}
         badges={{ needsYou }}
         scopedProjects={scopedProjects}
         onNavigate={navigate}

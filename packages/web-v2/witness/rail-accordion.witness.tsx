@@ -91,6 +91,7 @@ function Frame() {
           onChooseGroups={sidebar.chooseGroups}
           activeKey={activeKey}
           attentionCount={4}
+          activityWaiting={waiting}
           railSlug="forge"
           rail={RAIL}
           badges={{}}
@@ -110,6 +111,7 @@ function Frame() {
         railProjectName="Forge"
         activeKey={activeKey}
         attentionCount={4}
+        activityWaiting={waiting}
         badges={{}}
         scopedProjects={[]}
         onNavigate={setActiveKey}

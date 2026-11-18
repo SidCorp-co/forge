@@ -207,6 +207,7 @@ describe("the shell's account chip", () => {
         onChooseGroups={noop}
         activeKey="overview"
         attentionCount={0}
+        activityWaiting={undefined}
         railSlug={null}
         rail={{ projectMark: null, switcherProjects: [], togglePin: noop }}
         badges={{}}

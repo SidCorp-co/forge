@@ -2,11 +2,13 @@
 // page's You column from the page's own read, so the menu number never disagrees with the page it
 // opens (REQ-11 BC-10). Its tooltip names how many projects hold it, zero draws no badge, and the
 // same org frame that moves the page moves the badge. On a phone the More sheet's Activity row and
-// the More tab carry the same number.
+// the More tab carry the same number. The shell is handed the count as the workspace route reads it:
+// `useActivityWaiting`, the page's own query.
 // @direct-test-of packages/web-v2/src/features/activity/hooks.ts
 // @direct-test-of packages/web-v2/src/features/shell/nav-model.ts
 // @direct-test-of packages/web-v2/src/features/shell/components/mobile-nav-drawer.tsx
 // @direct-test-of packages/web-v2/src/design/patterns/bottom-tab-bar.tsx
+// @direct-test-of packages/web-v2/src/routes/_workspace/route.tsx
 
 import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -23,9 +25,8 @@ vi.mock("@/features/orgs", async (orig) => ({
 }));
 
 import { routeEvent } from "@/lib/ws/event-router";
-import { bottomTabItems } from "../nav-model";
-import { MobileNavDrawer } from "./mobile-nav-drawer";
-import { WorkspaceSidebar } from "./workspace-sidebar";
+import { MobileNavDrawer, bottomTabItems } from "@/features/shell";
+import { WorkspaceSidebar } from "@/features/shell/components/workspace-sidebar";
 
 const noop = () => {};
 const AHFE = project({
@@ -39,6 +40,7 @@ const AHFE = project({
 function Sidebar() {
   return (
     <WorkspaceSidebar
+      activityWaiting={useActivityWaiting()}
       collapsed={false}
       onToggleCollapsed={noop}
       groupOpen={{}}
@@ -54,6 +56,28 @@ function Sidebar() {
       userInitials="OR"
       search={() => null}
       bell={null}
+    />
+  );
+}
+
+/** The phone's More sheet as the shell draws it, handed the count the route reads. */
+function Drawer() {
+  return (
+    <MobileNavDrawer
+      open
+      onClose={noop}
+      slug={null}
+      railSlug={null}
+      railProjectName={null}
+      activeKey="overview"
+      attentionCount={0}
+      activityWaiting={useActivityWaiting()}
+      badges={{}}
+      scopedProjects={[]}
+      onNavigate={noop}
+      onOpenProject={noop}
+      onCreateProject={noop}
+      onViewAllProjects={noop}
     />
   );
 }
@@ -133,21 +157,7 @@ describe("on a phone", () => {
     serve(read([FORGE, AHFE, QUIET]));
     renderWithQuery(
       <>
-        <MobileNavDrawer
-          open
-          onClose={noop}
-          slug={null}
-          railSlug={null}
-          railProjectName={null}
-          activeKey="overview"
-          attentionCount={0}
-          badges={{}}
-          scopedProjects={[]}
-          onNavigate={noop}
-          onOpenProject={noop}
-          onCreateProject={noop}
-          onViewAllProjects={noop}
-        />
+        <Drawer />
         <Tabs />
       </>,
     );

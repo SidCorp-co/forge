@@ -1,5 +1,4 @@
 import { type BottomTabItem, type NavEntry, type NavItem, type NavItemGroup, isNavGroup } from "@/design";
-import type { ActivityWaiting } from "@/features/activity";
 import { needsMe } from "@/features/ecosystem";
 import type { WorkspaceRead } from "@/features/ecosystem";
 import { needsYouHint } from "@/features/needs-you";
@@ -202,6 +201,16 @@ export function buildBottomActiveKey(pathname: string, moreOpen: boolean, chatOp
   if (chatOpen) return "chat";
   if (ATTENTION_ROUTE.test(pathname)) return "attention";
   return "home";
+}
+
+/**
+ * What the Activity page says waits on the person: `n` the sum of its You column, `projects` its Waiting
+ * on you chip. The workspace route reads it from the page's own query and hands it down, so the shell
+ * never reads the Activity feature itself (ISS-1330).
+ */
+export interface ActivityWaiting {
+  n: number;
+  projects: number;
 }
 
 /** The Activity row's count and tooltip: the page's own Waiting on you, none until core has answered (ISS-1330). */
