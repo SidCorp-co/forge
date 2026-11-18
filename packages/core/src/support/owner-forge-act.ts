@@ -17,7 +17,6 @@
 import { ITEM_ACT_NAMES, type ItemAct } from '@forge/contracts/item-acts';
 import { SUPPORT_FORGE_ACTS, type SupportForgeActRequest } from '@forge/contracts/support-channel';
 import { makeItemAct, planItemAct } from '../assistant/index.js';
-import { type MembershipAct, membershipActByName } from '../ecosystem/index.js';
 import { applyMergeMarker, listIssues, settleReleaseOnMark } from '../issues/index.js';
 import { isRefusal } from '../lib/refusal.js';
 import { actorFor, permissionRefusalFor, projectResource } from '../permissions/index.js';
@@ -32,6 +31,7 @@ import { asAsker } from './ops-writes.js';
 import { no } from './outcome.js';
 import { doorOfDecision } from './owner-acts-reach.js';
 import { decisionForgeAct, isDecisionForgeAct } from './owner-decision-acts.js';
+import { isMembershipAct, membershipAct } from './owner-membership-act.js';
 import { insertAction, type RoomRow } from './store.js';
 
 /** How much of his message the act's reason quotes. */
@@ -59,16 +59,6 @@ const NO_REASON = new Set<string>([
   'membership.accept',
   'membership.decline',
 ]);
-
-/** The ecosystem membership acts (ISS-1299), each the verb its own service takes. */
-const MEMBERSHIP: Readonly<Record<string, MembershipAct>> = {
-  'membership.invite': 'invite',
-  'membership.accept': 'accept',
-  'membership.decline': 'decline',
-  'membership.leave': 'leave',
-};
-/** How long a membership's leave reason may be, as its route takes it. */
-const LEAVE_REASON_MAX = 500;
 
 /** Who he is, by the chat server's record of who wrote `message`, or the refusal naming why not. */
 async function ownerOfMessage(
@@ -250,34 +240,6 @@ async function markMerged(
   return { ok: true, value: { key: input.item, recorded: `${marked.mark}: ${marked.markDetail}` } };
 }
 
-/** An ecosystem membership act, as its own service makes it for him (ISS-1299). */
-async function membershipAct(
-  input: SupportForgeActRequest,
-  reason: string | undefined,
-  at: { projectId: string; projectSlug: string; userId: string },
-): Promise<OpsOutcome<{ key: string; recorded: string }>> {
-  const verb = MEMBERSHIP[input.act] as MembershipAct;
-  const made = await membershipActByName({
-    act: verb,
-    ecosystem: input.item,
-    projectId: at.projectId,
-    projectSlug: at.projectSlug,
-    userId: at.userId,
-    reason: reason ? quotedTo(reason, LEAVE_REASON_MAX) : null,
-  });
-  if (!made.ok) return { ok: false, refusals: made.refusals };
-  return {
-    ok: true,
-    value: {
-      key: input.item,
-      recorded: `${at.projectSlug} in ${input.item}: membership ${made.membership.id}, ${made.membership.state}`,
-    },
-  };
-}
-
-const quotedTo = (text: string, max: number): string =>
-  text.length > max ? `${text.slice(0, max - 1)}…` : text;
-
 /** The project document or one binding, written whole at the revision read, as its door writes it. */
 async function writeDocument(
   input: SupportForgeActRequest,
@@ -320,7 +282,7 @@ async function act(room: RoomRow, input: SupportForgeActRequest): Promise<OpsOut
       ? itemAct(input, reason, at)
       : input.act === 'issue.merge'
         ? markMerged(input, reason, at)
-        : MEMBERSHIP[input.act]
+        : isMembershipAct(input.act)
           ? membershipAct(input, reason, { ...at, projectSlug: project.value.slug })
           : isDecisionForgeAct(input.act)
             ? decisionForgeAct(input.act, input.item, reason, at)

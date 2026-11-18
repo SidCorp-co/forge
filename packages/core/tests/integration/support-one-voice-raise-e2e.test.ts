@@ -24,6 +24,7 @@ import { SupportWorld } from '../helpers/support-world.js';
 // @direct-test-of packages/core/src/support/technical-turn.ts
 // @direct-test-of packages/core/src/support/owner-forge-act.ts
 // @direct-test-of packages/core/src/support/owner-decision-acts.ts
+// @direct-test-of packages/core/src/support/owner-membership-act.ts
 // @direct-test-of packages/core/src/ecosystem/membership-acts.ts
 //
 // ISS-1299 (owner 2026-11-18): in forge's own thread of Forge-Communicate he gave the room full
