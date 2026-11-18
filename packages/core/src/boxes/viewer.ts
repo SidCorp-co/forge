@@ -4,8 +4,9 @@
 // no new port, no tailnet) and proxies it server-side:
 // - view: watch-only, many viewers, each at its own rate. agent-browser's stream socket also takes
 //   input, so for a browser box core is the WebSocket client and forwards only frames, at most
-//   `fps` a second; scrcpy and VNC bytes are relayed as they come (the device opened them view-only); an RFB
-//   viewer's binary messages go back to x11vnc for its handshake, which `-viewonly` keeps watch-only.
+//   `fps` a second (`./frame-relay.ts`); scrcpy and VNC bytes are relayed as they come (the device
+//   opened them view-only); an RFB viewer's binary messages go back to x11vnc for its handshake,
+//   which `-viewonly` keeps watch-only.
 // - input: the holder's `BoxInput` lines, each validated and recorded before it is forwarded; the
 //   socket closes the moment the hold ends.
 
@@ -21,12 +22,13 @@ import {
 } from '@forge/contracts/box-wire';
 import { BOX_LIMITS, type BoxRecord } from '@forge/contracts/boxes';
 import { jwtVerify, SignJWT } from 'jose';
-import { WebSocket, WebSocketServer } from 'ws';
+import { type WebSocket, WebSocketServer } from 'ws';
 import { env } from '../lib/env.js';
 import { logger } from '../lib/logger.js';
 import { openBoxStream } from '../previews/index.js';
 import { accessFor, type BoxActor, refuse } from './access.js';
 import { recordPersonInput } from './acts.js';
+import { relayFrames } from './frame-relay.js';
 import { boxById, holderOf } from './read.js';
 import { rowOf } from './service.js';
 
@@ -233,38 +235,22 @@ async function serveView(
     stream.on('error', end);
     return;
   }
-  relayFrames(ws, stream, fps, end);
-}
-
-/** agent-browser's frames, as a WebSocket client over the stream, at most `fps` a second per viewer. */
-function relayFrames(ws: WebSocket, stream: Duplex, fps: number, end: () => void) {
-  const upstream = new WebSocket('ws://box.invalid/', { createConnection: () => stream as never });
-  const every = 1000 / fps;
-  let pending: string | null = null;
-  let lastSent = 0;
-  let timer: NodeJS.Timeout | null = null;
-  const flush = () => {
-    timer = null;
-    if (pending === null || ws.readyState !== ws.OPEN) return;
-    ws.send(pending);
-    pending = null;
-    lastSent = Date.now();
-  };
-  upstream.on('message', (data, isBinary) => {
-    if (isBinary) return;
-    const text = data.toString();
-    if (!text.startsWith('{"type":"frame"')) return;
-    pending = text;
-    const wait = lastSent + every - Date.now();
-    if (wait <= 0) flush();
-    else timer ??= setTimeout(flush, wait);
-  });
-  upstream.on('close', end);
-  upstream.on('error', end);
-  ws.on('close', () => {
-    if (timer) clearTimeout(timer);
-    upstream.terminate();
-  });
+  relayFrames(
+    boxId,
+    {
+      frame: (text) => {
+        if (ws.readyState === ws.OPEN) ws.send(text);
+      },
+      fail: (code, why) => {
+        say(ws, { type: 'closed', why, code });
+        ws.close(1011, code);
+      },
+      onClose: (fn) => ws.on('close', fn),
+    },
+    stream,
+    () => openBoxStream(deviceId, { boxId, channel: 'view', fps }),
+    fps,
+  );
 }
 
 async function serveInput(ws: WebSocket, boxId: string, deviceId: string, userId: string) {

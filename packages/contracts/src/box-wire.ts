@@ -256,7 +256,16 @@ export type BoxViewerMessage =
 			watchOnly: true;
 	  }
 	| { type: "holder"; holder: string | null; since: string | null }
-	| { type: "closed"; why: string };
+	/** A `jpeg-frames` picture: agent-browser's frame, re-said by core in this shape. */
+	| { type: "frame"; seq: number | null; data: string }
+	/** `code` names a view whose stream could not be read (ISS-1315); `why` says it in words. */
+	| { type: "closed"; why: string; code?: BoxViewFault };
+
+/**
+ * Why a browser box's view ended though the box runs: agent-browser's stream could not be read
+ * after opening it again (`STREAM_UNREADABLE`), or it sent no frame (`STREAM_SILENT`).
+ */
+export type BoxViewFault = "STREAM_UNREADABLE" | "STREAM_SILENT";
 
 export const boxViewQuerySchema = z.strictObject({
 	ticket: z.string().min(1).max(2000),
