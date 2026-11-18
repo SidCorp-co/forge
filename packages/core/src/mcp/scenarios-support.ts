@@ -106,4 +106,19 @@ export const SUPPORT_SCENARIOS: readonly CardScenario[] = [
     good: 'propose the fix naming her as asker and cite her own words with support.agree',
     teaches: [/support\.propose_fix/, /support\.agree/],
   },
+  {
+    name: 'a test key sent, then a declined deletion: one mention and the link',
+    card: 'support.secret_link',
+    source:
+      'ISS-1328, Catalog-AdminHub thread of 18/11: the owner’s grant of a test key refused four times, then a delete-and-rotate ask after he declined',
+    situation:
+      'The owner sends a test account’s key for the master to use and says it needs no deletion',
+    bad: 'the bot refused the grant four times and asked him to delete the message and rotate the key',
+    good: 'say once it was not kept and why, give the secret link in the same line, ask no deletion again and never a rotation',
+    teaches: [
+      /say once that it was not kept/i,
+      /support\.secret_link/,
+      /never ask anyone to rotate/i,
+    ],
+  },
 ];
