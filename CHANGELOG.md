@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.736] - 2026-11-18
+
+A credential that cannot drive a test box is refused at open; idle boxes close
+
+### Fixed
+
+- **A credential that cannot drive a box can no longer open one.** The open is refused, naming who mints one that can, and a box nothing used for an hour closes, its row reading Closed idle.
+
 ## [0.4.0-dev.735] - 2026-11-18
 
 A merged promotion moves its release on; a release run's account shows on its release
