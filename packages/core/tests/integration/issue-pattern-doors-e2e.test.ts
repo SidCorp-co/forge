@@ -290,6 +290,25 @@ describe('a pattern a run named is decided by anyone holding patterns.approve bu
     expect([res.status, codes(res)]).toEqual([200, []]);
     expect(res.body.pattern.decidedSession).toBeNull();
   });
+
+  it('retracts with the run a box call names, as naming and deciding take it, and refuses a run the box holds none of', async () => {
+    const other = await issueAt(w(), 'open');
+    const made = await asBox(w(), 'POST', patterns(other.id), {
+      pattern: 'tap-door',
+      summary: 'a tap as a door',
+      run: runA,
+    });
+    expect(made.status).toBe(201);
+    const retract = (run: string) =>
+      asBox(w(), 'POST', `${patterns(other.id)}/${made.body.pattern.id}/retract`, {
+        reason: 'the issue no longer takes it',
+        run,
+      });
+    expect(codes(await retract(randomUUID()))).toEqual(['PATTERN_RUN_UNKNOWN']);
+    const res = await retract(runB);
+    expect([res.status, codes(res)]).toEqual([200, []]);
+    expect(res.body.pattern.retractedAt).toEqual(expect.any(String));
+  });
 });
 
 describe('an issue that names no pattern', () => {

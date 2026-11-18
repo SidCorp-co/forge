@@ -470,13 +470,20 @@ export async function decidePattern(args: {
   });
 }
 
-/** The issue no longer takes this pattern; the row stays, and a pending one stops holding the issue. */
+/**
+ * The issue no longer takes this pattern; the row stays, and a pending one stops holding the issue.
+ * A `run` the call names is checked as naming and deciding check theirs (`runOfCall`).
+ */
 export async function retractPattern(args: {
   issueId: string;
+  projectId: string;
   patternId: string;
   reason: string;
-  userId: string;
+  actor: PatternActor;
 }): Promise<Outcome<IssuePatternRow> | null> {
+  const { actor } = args;
+  const run = await runOfCall({ projectId: args.projectId, issueId: args.issueId, ...actor });
+  if (!run.ok) return run;
   return db.transaction(async (tx) => {
     const row = await lockedRow(tx, args.issueId, args.patternId);
     if (!row) return null;
@@ -484,7 +491,7 @@ export async function retractPattern(args: {
     if (refusals.length > 0) return { ok: false as const, refusals };
     const [retracted] = await tx
       .update(issuePatterns)
-      .set({ retractedAt: new Date(), retractedBy: args.userId, retractReason: args.reason })
+      .set({ retractedAt: new Date(), retractedBy: actor.userId, retractReason: args.reason })
       .where(and(eq(issuePatterns.id, row.id), isNull(issuePatterns.retractedAt)))
       .returning();
     if (!retracted) throw new Error(`pattern ${row.id} was retracted under its own lock`);

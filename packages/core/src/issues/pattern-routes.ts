@@ -133,11 +133,13 @@ issuePatternRoutes.post(
     const userId = c.get('userId');
     const { id, patternId } = c.req.valid('param');
     const issue = await resolveIssueRouteRef(id, c.req.valid('query').projectId, userId);
+    const body = c.req.valid('json');
     const out = await retractPattern({
       issueId: issue.id,
+      projectId: issue.projectId,
       patternId,
-      reason: c.req.valid('json').reason,
-      userId,
+      reason: body.reason,
+      actor: actorOf(c, body.run),
     });
     if (!out) throw notFound(`the issue names no pattern ${patternId}`);
     if (!out.ok) return refused(c, out.refusals, 'PATTERN_REFUSED');

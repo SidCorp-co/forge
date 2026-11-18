@@ -119,10 +119,12 @@ export const DECIDE_PATTERN_SHAPE =
 
 export const retractPatternRequestSchema = z.strictObject({
 	reason: z.string().trim().min(1).max(PATTERN_LIMITS.reason),
+	/** The run retracting it, on a box credential, checked as naming and deciding check theirs. */
+	run: runField.optional(),
 });
 export type RetractPatternRequest = z.infer<typeof retractPatternRequestSchema>;
 export const RETRACT_PATTERN_SHAPE =
-	"{ reason } says why the issue no longer takes this pattern";
+	"{ reason: why the issue no longer takes this pattern; run?: on a box credential, the run id the box declared for the run retracting }";
 
 export interface IssuePatternView {
 	id: string;
