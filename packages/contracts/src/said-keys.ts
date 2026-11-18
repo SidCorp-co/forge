@@ -1783,7 +1783,7 @@ export const SAID = {
 		vars: { route: "code" },
 	},
 	"releases.rule.mergedAwaitsMarks": {
-		en: "every request merged; {issues} hold no merge mark, and the last mark closes it",
+		en: "every request merged; {issues} hold no merge mark yet",
 		vars: { issues: "text" },
 	},
 	"releases.rule.acceptedMerges": {
