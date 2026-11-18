@@ -112,8 +112,9 @@ describe("ISS-1271: the organization's shared operations room is the default tec
     expect([header?.text, more]).toEqual([`Technical · ${w.projectName}`, []]);
     expect(header?.text).not.toContain(slug);
     expect(await recorded()).toBe(header?.id);
+    // the project's own thread names it already: the agent's words alone, no template lead (ISS-1299)
     expect(w.threadLines(ops, String(header?.id)).map((l) => l.text)).toEqual([
-      `${w.projectName} asks for a permission: I need the mailbox share grant for bob`,
+      'I need the mailbox share grant for bob',
     ]);
     // nothing in the owner's direct messages, nothing in the asker's thread
     expect(w.stand.linesIn(DM).length).toBe(dmBefore);

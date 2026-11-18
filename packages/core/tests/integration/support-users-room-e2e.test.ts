@@ -323,10 +323,10 @@ describe('ISS-1246: a question for the owner goes only to the technical channel'
     );
     expect(out.isError, JSON.stringify(out)).toBe(false);
     expect(allLines()).toBe(before);
-    // ISS-1249: the project's name and a plain lead in the room's language, then the agent's words
+    // ISS-1249, ISS-1299: the project's name, then the agent's words, with no template lead
     const project = w.projectName;
     expect(chat.linesIn(DM).map((l) => l.text)).toEqual([
-      `${project} hỏi: Anh có đồng ý gửi lại đơn hôm nay không?`,
+      `${project} · Anh có đồng ý gửi lại đơn hôm nay không?`,
     ]);
     expect(chat.linesIn(DM)[0]?.text).not.toContain(thread.id);
     expect(await asksRecorded()).toBe(1);

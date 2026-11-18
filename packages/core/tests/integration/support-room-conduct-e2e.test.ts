@@ -68,11 +68,9 @@ describe('a room agent raises what it needs in the one technical channel, and no
     // the owner is u-alice; the stand-in opens D-<username>
     const dm = w.stand.linesIn('D-alice');
     expect(dm.map((l) => l.text).join('\n')).toContain('I need the mailbox share grant for bob');
-    // ISS-1249: the project's name and the need in plain words, then the agent's, and no id
+    // ISS-1249, ISS-1299: the project's name, then the agent's words with no template lead, no id
     const project = w.projectName;
-    expect(dm.at(-1)?.text).toBe(
-      `${project} asks for a permission: I need the mailbox share grant for bob`,
-    );
+    expect(dm.at(-1)?.text).toBe(`${project} · I need the mailbox share grant for bob`);
     expect(dm.at(-1)?.text).not.toContain(thread);
     expect(dm.at(-1)?.text).not.toContain(w.stand.rid);
     expect(w.threadLines(w.stand.rid, thread)).toEqual([]);

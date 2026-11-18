@@ -77,9 +77,10 @@ describe('REQ-77 BC-12, ISS-1246: an agent asks the owner in the technical chann
     );
     expect(asked.isError, JSON.stringify(asked)).toBe(false);
     expect(asked).toMatchObject({ mentioned: false, record: w.issueKey });
-    // ISS-1246, ISS-1249: in the technical channel alone, the project's name then the agent's words
+    // ISS-1246, ISS-1299: in the technical channel alone, a direct message naming the project, then
+    // the agent's words, with no template lead
     const line = askLine(restart);
-    expect(line.text).toBe(`${w.projectName} asks: ${restart}`);
+    expect(line.text).toBe(`${w.projectName} · ${restart}`);
     expect(threadLinesNow('')).toBe(before);
     const [routed] = await rows<{ output: { rid: string; channel: string } }>(sql`
       SELECT output FROM support_actions

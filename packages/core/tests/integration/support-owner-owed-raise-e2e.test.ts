@@ -106,11 +106,11 @@ describe('ISS-1243 item 23: what waits on the owner, raised by the agent once pe
     await expect.poll(() => raisedOut, { timeout: 15_000 }).toMatchObject({ raised: true });
     const dm = chat.linesIn('D-alice').filter((l) => l.text.includes('size M'));
     expect(dm).toHaveLength(1);
-    // ISS-1249: a plain lead naming the project, English where the project names no language and the
-    // mixed words are not surely Vietnamese, and neither the room's nor the owed- thread's id
+    // ISS-1249, ISS-1299: the project's name in his direct message, then the agent's words with no
+    // template lead, and neither the room's nor the owed- thread's id
     const project = w.projectName;
     expect(dm[0]?.text).toBe(
-      `${project} asks for approval: Anh ơi, run hỏi: ship rule in size M trước khi sync catalog không? Em đề xuất: có.`,
+      `${project} · Anh ơi, run hỏi: ship rule in size M trước khi sync catalog không? Em đề xuất: có.`,
     );
     expect(dm[0]?.text).not.toContain(thread);
     await expect.poll(() => code(again), { timeout: 15_000 }).toBe('SUPPORT_OWED_ALREADY_RAISED');
