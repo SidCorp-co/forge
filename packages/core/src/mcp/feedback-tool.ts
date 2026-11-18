@@ -11,6 +11,7 @@ import {
   FEEDBACK_PHASES,
   FEEDBACK_SEVERITIES,
   type FeedbackSummary,
+  feedbackAttachmentDeleteRequestSchema,
   feedbackAttachmentRequestSchema,
   feedbackClarificationRequestSchema,
 } from '@forge/contracts/feedback';
@@ -102,7 +103,9 @@ const inputSchema = z.strictObject({
   ...feedbackClarificationRequestSchema.partial().shape,
   ...feedbackAttachmentRequestSchema.partial().shape,
   attachment: z.uuid().optional().describe('detach: the attachment’s id, as get lists it'),
-  reason: z.string().max(4000).optional().describe('detach: why it is deleted'),
+  reason: feedbackAttachmentDeleteRequestSchema.shape.reason
+    .optional()
+    .describe('detach: why it is deleted'),
 });
 
 type Input = z.infer<typeof inputSchema>;

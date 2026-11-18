@@ -210,4 +210,15 @@ export const FEEDBACK_SCENARIOS: readonly CardScenario[] = [
     good: 'call similar on it and route it with the item it duplicates',
     teaches: [/call similar on it and route it with the item it duplicates/i],
   },
+  {
+    name: 'one picture showing a secret key removed from adminhub-fe FB-29',
+    card: 'project_feedback.detach',
+    source:
+      'ISS-1327, adminhub-fe FB-29: one of three pictures showed a secret key, and the only deletion took the reporter’s whole data',
+    situation:
+      'One attachment of an item shows a secret key; the item’s text and other pictures are evidence',
+    bad: 'delete the reporter’s whole data, taking the item’s text and every picture',
+    good: 'read the item, detach that one attachment by its id with a reason that does not repeat the key',
+    teaches: [/detach it by its id with a reason/i, /never repeat what the attachment showed/i],
+  },
 ];

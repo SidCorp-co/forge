@@ -17,6 +17,7 @@ import { refusalCodes, SupportWorld } from '../helpers/support-world.js';
 /**
  * @direct-test-of packages/core/src/support/fixes.ts
  * @direct-test-of packages/core/src/support/record.ts
+ * @direct-test-of packages/core/src/support/record-pictures.ts
  * @direct-test-of packages/core/src/support/store.ts
  * @direct-test-of packages/core/src/feedback/attachments.ts
  * @direct-test-of packages/core/src/feedback/external.ts
@@ -99,6 +100,8 @@ async function proposeFrom(
       title,
       summary: `${title}, asked in the users' group.`,
       project,
+      // the message's picture, named as evidence (ISS-1327)
+      pictures: [{ message: m.message }],
     });
     proposal = String(out.proposal ?? JSON.stringify(out));
   };
