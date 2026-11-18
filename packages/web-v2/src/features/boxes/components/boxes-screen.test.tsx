@@ -1,4 +1,4 @@
-// ISS-1276 c5, c7: a project's Boxes page as a person reads and drives it. Core is stood in for over
+// ISS-1276 c5, c7, ISS-1321 c2, c4: a project's Boxes page as a person reads and drives it. Core is stood in for over
 // `fetch` with the contracts' own `BOX_ROUTES`; the view and input sockets are stood in for, so no
 // test reaches a box.
 
@@ -140,5 +140,39 @@ describe("the Boxes page", () => {
     await waitFor(() => expect(again.some((c) => c.method === "POST" && c.path === path(BOX_ROUTES.release, BOX.held))).toBe(true));
     // the holder's view carries the input layer, entered with its own input ticket
     expect(again.some((c) => c.method === "POST" && c.path === path(BOX_ROUTES.ticket, BOX.held) && (c.body as { channel?: string }).channel === "input")).toBe(true);
+  });
+
+  it("says whether a box records and why, and its toggle starts and stops it with the seam's recording route", async () => {
+    const calls = core(projectBoxes(), (c) => (c.method === "POST" && c.path.endsWith("/recording") ? { body: { box: projectBoxes().find((b) => c.path.includes(b.id)) } } : undefined));
+    selectBox(BOX.admin);
+    const first = renderWithQuery(<BoxesScreen projectId={PROJECT_ID} canWrite />);
+    const off = await screen.findByTestId("box-recording");
+    expect(off).toHaveTextContent("Not recording");
+    fireEvent.click(screen.getByRole("button", { name: "Record" }));
+    await waitFor(() => expect(calls.find((c) => c.method === "POST" && c.path === path(BOX_ROUTES.recording, BOX.admin))?.body).toEqual({ on: true }));
+    first.unmount();
+
+    selectBox(BOX.android);
+    vi.stubGlobal("VideoDecoder", FakeDecoder);
+    vi.stubGlobal("EncodedVideoChunk", class {});
+    renderWithQuery(<BoxesScreen projectId={PROJECT_ID} canWrite />);
+    const on = await screen.findByTestId("box-recording");
+    expect(on.textContent).toMatch(/^● Recording · 0:1\d · For a span$/);
+    fireEvent.click(screen.getByRole("button", { name: "Stop recording" }));
+    await waitFor(() => expect(calls.find((c) => c.method === "POST" && c.path === path(BOX_ROUTES.recording, BOX.android))?.body).toEqual({ on: false }));
+  });
+
+  it("opens a box that records only when its Record box is ticked", async () => {
+    const calls = core(projectBoxes(), (c) => (c.method === "POST" && c.path === path(BOX_ROUTES.ofProject, PROJECT_ID) ? { status: 201, body: { box: projectBoxes()[0] } } : undefined));
+    renderWithQuery(<BoxesScreen projectId={PROJECT_ID} canWrite />);
+    const form = await screen.findByTestId("box-open");
+    fireEvent.submit(form);
+    await waitFor(() => expect(calls.filter((c) => c.method === "POST" && c.path === path(BOX_ROUTES.ofProject, PROJECT_ID))).toHaveLength(1));
+    fireEvent.click(within(form).getByRole("checkbox", { name: "Record" }));
+    fireEvent.submit(form);
+    await waitFor(() => expect(calls.filter((c) => c.method === "POST" && c.path === path(BOX_ROUTES.ofProject, PROJECT_ID))).toHaveLength(2));
+    const [plain, recorded] = calls.filter((c) => c.method === "POST" && c.path === path(BOX_ROUTES.ofProject, PROJECT_ID)).map((c) => c.body as { record?: boolean });
+    expect(plain?.record).toBeUndefined();
+    expect(recorded?.record).toBe(true);
   });
 });

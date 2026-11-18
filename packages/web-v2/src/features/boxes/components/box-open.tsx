@@ -4,7 +4,7 @@
 
 import { BOX_MODES, type BoxMode, type BoxRecord } from "@forge/contracts/boxes";
 import { useState } from "react";
-import { Button, Input, NativeSelect } from "@/design";
+import { Button, Checkbox, Input, NativeSelect } from "@/design";
 import { RefusedLine } from "@/lib/api/refusal-line";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useOpenBox } from "../hooks";
@@ -22,9 +22,17 @@ export function BoxOpen({ projectId, issueId, label, onOpened }: OpenProps) {
   const open = useOpenBox(projectId);
   const [mode, setMode] = useState<BoxMode>("browser");
   const [url, setUrl] = useState("");
+  // nothing records unless asked (ISS-1321): recording costs the device's resources
+  const [record, setRecord] = useState(false);
   const submit = () =>
     open.mutate(
-      { mode, asPerson: true, ...(issueId ? { issueId } : {}), ...(mode === "browser" && url.trim() ? { url: url.trim() } : {}) },
+      {
+        mode,
+        asPerson: true,
+        ...(record ? { record } : {}),
+        ...(issueId ? { issueId } : {}),
+        ...(mode === "browser" && url.trim() ? { url: url.trim() } : {}),
+      },
       { onSuccess: onOpened },
     );
   return (
@@ -48,6 +56,9 @@ export function BoxOpen({ projectId, issueId, label, onOpened }: OpenProps) {
       {mode === "browser" ? (
         <Input aria-label={t("boxes.open.url")} placeholder="https://" type="url" className="w-56 max-w-full py-1.5 text-13" value={url} onChange={(e) => setUrl(e.target.value)} />
       ) : null}
+      <span className="text-13" data-testid="box-open-record">
+        <Checkbox checked={record} onChange={setRecord} label={t("boxes.open.record")} />
+      </span>
       <Button type="submit" size="sm" variant="primary" icon="plus" loading={open.isPending}>
         {label}
       </Button>

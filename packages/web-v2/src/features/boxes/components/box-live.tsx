@@ -1,14 +1,15 @@
 // The selected box (ISS-1276 c4, c5, c7; mockup MK-12): its head with who holds it and the one act a
 // person has on it now (Take control, or Hand back while they hold it, with the idle countdown that
 // hands it back for them), the live view beside the agent's command feed, and the criteria it is
-// demonstrating in the footer with its recording's clock.
+// demonstrating in the footer with whether it records, why, and its clock (ISS-1321), beside the
+// toggle that starts or stops it.
 
 import { BOX_LIMITS, type BoxRecord, type BoxSpanRecord } from "@forge/contracts/boxes";
 import { useState } from "react";
 import { Button, NativeSelect, ToneBadge, useNow } from "@/design";
 import { RefusedLine } from "@/lib/api/refusal-line";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
-import { useBoxActs, useBoxSpans, useCloseBox, useReleaseBox, useTakeBox } from "../hooks";
+import { useBoxActs, useBoxSpans, useCloseBox, useReleaseBox, useStartRecording, useStopRecording, useTakeBox } from "../hooks";
 import { clock, heldBy, holderWords, isEnded, isLive, sizeOf, STATE_TONE } from "../labels";
 import { BoxFeed } from "./box-feed";
 import { BoxInputLayer } from "./box-input";
@@ -78,6 +79,7 @@ function BoxActs({ box, projectId, me, canWrite, fps, onFps }: LiveProps & { fps
           {t("boxes.live.handBack")}
         </Button>
       ) : null}
+      {canWrite && isLive(box) ? <RecordToggle box={box} projectId={projectId} /> : null}
       {canWrite && !isEnded(box) ? (
         <Button size="sm" variant="ghost" loading={close.isPending} onClick={() => close.mutate(box.id)}>
           {t("boxes.live.close")}
@@ -87,6 +89,23 @@ function BoxActs({ box, projectId, me, canWrite, fps, onFps }: LiveProps & { fps
       <RefusedLine label={t("boxes.live.handBack.failed")} error={release.error} className="basis-full text-12 text-danger-11" />
       <RefusedLine label={t("boxes.live.close.failed")} error={close.error} className="basis-full text-12 text-danger-11" />
     </div>
+  );
+}
+
+/** Start or stop the box's recording: its holder or a project writer (ISS-1321). */
+function RecordToggle({ box, projectId }: { box: BoxRecord; projectId: string }) {
+  const t = useCopy();
+  const start = useStartRecording(projectId);
+  const stop = useStopRecording(projectId);
+  const on = box.recording?.state === "recording";
+  const move = on ? stop : start;
+  return (
+    <>
+      <Button size="sm" variant="ghost" loading={move.isPending} onClick={() => move.mutate(box.id)} data-testid="box-record-toggle" aria-pressed={on}>
+        {t(on ? "boxes.rec.stop" : "boxes.rec.start")}
+      </Button>
+      <RefusedLine label={t("boxes.rec.failed")} error={move.error} className="basis-full text-12 text-danger-11" />
+    </>
   );
 }
 
@@ -103,7 +122,9 @@ function SpanChip({ span }: { span: BoxSpanRecord }) {
 function BoxFoot({ box }: { box: BoxRecord }) {
   const t = useCopy();
   const spans = useBoxSpans(box.id).data ?? [];
-  const recording = box.recording?.state === "recording" && box.recording.startedAt ? box.recording.startedAt : null;
+  const on = box.recording?.state === "recording";
+  const recording = on && box.recording?.startedAt ? box.recording.startedAt : null;
+  const why = on && box.recording?.why ? t(`boxes.rec.why.${box.recording.why}`) : null;
   const now = useNow(1000, !!recording && isLive(box));
   return (
     <footer className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-line-subtle px-3 py-2 text-12 text-muted" data-testid="box-foot">
@@ -111,7 +132,13 @@ function BoxFoot({ box }: { box: BoxRecord }) {
         <SpanChip key={s.id} span={s} />
       ))}
       <span className="flex-1" />
-      {recording ? <span className="tabular-nums">{`● ${t("boxes.foot.recording", { at: clock(now - Date.parse(recording)) })}`}</span> : null}
+      {isLive(box) || on ? (
+        <span className="tabular-nums" data-testid="box-recording" data-on={on} data-why={on ? (box.recording?.why ?? "") : undefined}>
+          {on
+            ? [`● ${recording ? t("boxes.foot.recording", { at: clock(now - Date.parse(recording)) }) : t("boxes.rec.on")}`, why].filter(Boolean).join(" · ")
+            : t("boxes.rec.off")}
+        </span>
+      ) : null}
     </footer>
   );
 }

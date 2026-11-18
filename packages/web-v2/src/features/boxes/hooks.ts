@@ -21,6 +21,8 @@ function useBoxMove(projectId: string, move: (id: string) => Promise<BoxRecord>)
 export const useTakeBox = (projectId: string) => useBoxMove(projectId, boxesApi.take);
 export const useReleaseBox = (projectId: string) => useBoxMove(projectId, boxesApi.release);
 export const useCloseBox = (projectId: string) => useBoxMove(projectId, boxesApi.close);
+export const useStartRecording = (projectId: string) => useBoxMove(projectId, (id) => boxesApi.recording(id, true));
+export const useStopRecording = (projectId: string) => useBoxMove(projectId, (id) => boxesApi.recording(id, false));
 
 export function useOpenBox(projectId: string) {
   const qc = useQueryClient();

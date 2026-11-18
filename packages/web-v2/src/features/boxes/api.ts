@@ -64,6 +64,10 @@ export const boxesApi = {
 
   close: async (id: string): Promise<BoxRecord> => readBox("POST close", (await post<{ box: unknown }>(BOX_ROUTES.close, { id })).box),
 
+  /** Start or stop the box's recording: nothing records unless asked (ISS-1321). */
+  recording: async (id: string, on: boolean): Promise<BoxRecord> =>
+    readBox("POST recording", (await post<{ box: unknown }>(BOX_ROUTES.recording, { id }, { on })).box),
+
   acts: async (id: string): Promise<BoxActRecord[]> => (await apiClient<{ acts: BoxActRecord[] }>(routeOf(BOX_ROUTES.acts, { id }))).acts,
 
   spans: async (id: string): Promise<BoxSpanRecord[]> => (await apiClient<{ spans: BoxSpanRecord[] }>(routeOf(BOX_ROUTES.spans, { id }))).spans,

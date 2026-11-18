@@ -54,7 +54,8 @@ function FeedLine({ act, start, cursor }: { act: BoxActRecord; start: number; cu
 export function BoxFeed({ box }: { box: BoxRecord }) {
   const t = useCopy();
   const acts = useBoxActs(box.id).data ?? [];
-  const start = Date.parse(box.recording?.startedAt ?? box.createdAt);
+  // the session's clock: a recording starts and stops when asked, so it counts from the open
+  const start = Date.parse(box.createdAt);
   return (
     <section aria-label={t("boxes.feed.title")} className="min-w-0 font-mono text-12" data-testid="box-feed">
       {acts.length === 0 ? (
