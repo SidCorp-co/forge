@@ -58,7 +58,7 @@ async function running(open: Doc = {}): Promise<string> {
 /** The device's upload of the whole recording, through the span clip's door. */
 async function upload(id: string, clip: Buffer = Buffer.from(WEBM)) {
   const form = new FormData();
-  form.set('clip', new File([clip], 'clip.webm', { type: 'video/webm' }));
+  form.set('clip', new File([new Uint8Array(clip)], 'clip.webm', { type: 'video/webm' }));
   form.set('still', new File([Buffer.from(PNG)], 'still.png', { type: 'image/png' }));
   const r = await w.app.request(`/api/boxes/${id}/spans/session/clip`, {
     method: 'POST',
