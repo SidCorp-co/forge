@@ -9,6 +9,19 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.733] - 2026-11-18
+
+Secrets in chat: bare keys filtered, pictures chosen, test keys given by link
+
+### Added
+
+- **Give a test credential through a Forge link, not the chat.** The room assistant mentions a filtered secret once, never asks to rotate it, and links the testing profile's field; it reads your screenshots before answering.
+
+### Fixed
+
+- **A key sent alone in chat is no longer kept.** Right after a filtered secret, or after you say a key is coming, Forge filters it too; a commit sha in ordinary talk stays as written.
+- **A recorded report carries only the screenshots the assistant chose as evidence.** None beside a filtered secret is attached, and one attachment can now be deleted from a feedback item, with a reason, keeping the rest.
+
 ## [0.4.0-dev.732] - 2026-11-18
 
 Agents prove a screen by using it in a Forge Box, not a render test
