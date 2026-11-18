@@ -37,9 +37,11 @@ function Row({ label, children, testid }: { label: string; children: React.React
   );
 }
 
-function Fact({ fact, slug }: { fact: ValueFactView | null; slug: string }) {
+/** A fact and where it came from; drawn from the item its page shows, it names no source (the page is it). */
+function Fact({ fact, slug, itemKey }: { fact: ValueFactView | null; slug: string; itemKey: string }) {
   const t = useCopy();
   if (!fact) return <span className="text-subtle">{t("intake.value.missing")}</span>;
+  if (fact.source.kind !== "recommended" && fact.source.kind !== "answer" && fact.source.key === itemKey) return <span>{fact.value}</span>;
   return (
     <>
       <span>{fact.value}</span>
@@ -118,13 +120,13 @@ function ValueRows({ draft, value, projectId, slug }: { draft: IntakeDraftView; 
   return (
     <dl className="grid">
       <Row label={t("intake.value.who")} testid="value-who">
-        <Fact fact={value.who} slug={slug} />
+        <Fact fact={value.who} slug={slug} itemKey={draft.item.key} />
       </Row>
       <Row label={t("intake.value.improves")} testid="value-improves">
-        <Fact fact={value.improves} slug={slug} />
+        <Fact fact={value.improves} slug={slug} itemKey={draft.item.key} />
       </Row>
       <Row label={t("intake.value.measured")} testid="value-measured">
-        <Fact fact={value.measured} slug={slug} />
+        <Fact fact={value.measured} slug={slug} itemKey={draft.item.key} />
       </Row>
       <Row label={t("intake.value.exists")} testid="value-exists">
         {value.exists ? (

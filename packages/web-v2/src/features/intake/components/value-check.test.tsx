@@ -71,9 +71,19 @@ function shown(view: IntakeDraftView | null, write?: (body: unknown, path: strin
 }
 
 describe("a request's value check on its page", () => {
+  it("names another item a fact came from by its link, and the page's own item by nothing", async () => {
+    const other = { kind: "feedback" as const, key: "FB-4", title: "Clerks lose referrals" };
+    shown(draft({ value: value({ improves: { value: "Each referral reaches its patient", source: other } }) }));
+    const row = await screen.findByTestId("value-improves");
+    expect(row.textContent).toBe("What improvesEach referral reaches its patient · From FB-4");
+    expect(within(row).getByRole("link").getAttribute("href")).toBe("/projects/forge/feedback/FB-4");
+    expect(within(screen.getByTestId("value-who")).queryByRole("link")).toBeNull();
+  });
+
   it("names who it is for, what improves, how it is measured and where each came from (BC-1)", async () => {
     shown(draft());
-    expect((await screen.findByTestId("value-who")).textContent).toBe("Who it is forClinic clerks · From REQ-9");
+    // drawn from the request this page shows, a fact names no source: "From REQ-9" on REQ-9 named the page itself
+    expect((await screen.findByTestId("value-who")).textContent).toBe("Who it is forClinic clerks");
     expect(screen.getByTestId("value-measured").textContent).toBe("Measured byWeekly · Recommended answer to question 1");
     expect(screen.getByTestId("value-exists").textContent).toBe("Already existsNone found");
     expect(screen.getByTestId("value-check").dataset.outcome).toBe("accept");
