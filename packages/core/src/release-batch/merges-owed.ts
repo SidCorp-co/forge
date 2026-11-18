@@ -7,10 +7,9 @@ import { whoOwes } from '@forge/contracts/who-owes';
 import { desc, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { releaseApprovals } from '../db/schema-release-ledger.js';
-import { repoPullRequests } from '../db/schema-repo-projection.js';
 import { issueDisplayIds } from '../issues/index.js';
 import { approvalRequired, readOwedPolicy } from '../project-config/index.js';
-import { label, mergeStepsOf } from './change-request-roster.js';
+import { changeRequestStates, label, mergeStepsOf } from './change-request-roster.js';
 import { tagOwedOf } from './release-tag-record.js';
 
 /** The next merge an accepted change-request release waits on. */
@@ -85,19 +84,10 @@ export async function releaseMergesOwed(projectId: string): Promise<ReleaseMerge
   });
   const steps = accepted.flatMap((r) => mergeStepsOf(r.metadata) ?? []);
   if (steps.length === 0) return [];
-  const [states, keys] = await Promise.all([
-    db
-      .select({ id: repoPullRequests.id, state: repoPullRequests.state })
-      .from(repoPullRequests)
-      .where(
-        inArray(
-          repoPullRequests.id,
-          steps.map((s) => s.pullRequestId),
-        ),
-      ),
+  const [stateOf, keys] = await Promise.all([
+    changeRequestStates(steps.map((s) => s.pullRequestId)),
     issueDisplayIds(steps.flatMap((s) => s.issueIds.slice(0, 1))),
   ]);
-  const stateOf = new Map(states.map((s) => [s.id, s.state]));
   return accepted.flatMap((r) => {
     const order = mergeStepsOf(r.metadata) ?? [];
     const unrecorded =

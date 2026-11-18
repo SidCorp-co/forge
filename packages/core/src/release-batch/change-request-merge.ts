@@ -11,7 +11,7 @@ import { repoPullRequests } from '../db/schema-repo-projection.js';
 import { isRefusal, refuser } from '../lib/refusal.js';
 import { readProjectDocument } from '../project-config/index.js';
 import { approvalsOfRuns, assertApprovalAllowsAttempt } from './approvals.js';
-import { label, linksOf, mergeStepsOf } from './change-request-roster.js';
+import { changeRequestStates, label, linksOf, mergeStepsOf } from './change-request-roster.js';
 import { resolveReleaseDeclaration } from './gate.js';
 
 /** A merge refused by the release it belongs to answers on the merge route, under its codes. */
@@ -137,16 +137,7 @@ export async function admitChangeRequestMerge(args: {
       '/pullRequest',
     );
   }
-  const states = await db
-    .select({ id: repoPullRequests.id, state: repoPullRequests.state })
-    .from(repoPullRequests)
-    .where(
-      inArray(
-        repoPullRequests.id,
-        steps.map((s) => s.pullRequestId),
-      ),
-    );
-  const stateOf = new Map(states.map((s) => [s.id, s.state]));
+  const stateOf = await changeRequestStates(steps.map((s) => s.pullRequestId));
   const first = steps.find((s) => stateOf.get(s.pullRequestId) !== 'merged');
   if (
     first &&
