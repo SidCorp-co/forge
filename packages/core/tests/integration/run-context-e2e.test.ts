@@ -175,7 +175,7 @@ describe('c1: a drive run records each rule and lesson its prompt carried', () =
     expect(reaches(view, 'prompt')).not.toContain('knowledge:build-commands');
     // every working agreement its map stated, at the revision in force (REQ-90 BC-7)
     expect(agreementsGiven(view, 'prompt')).toEqual(
-      expect.arrayContaining(['lean-testing@forge@1', 'access@forge@1', 'gate-profile@forge@1']),
+      expect.arrayContaining(['lean-testing@forge@2', 'access@forge@1', 'gate-profile@forge@1']),
     );
   });
 
@@ -191,7 +191,7 @@ describe('c1: a drive run records each rule and lesson its prompt carried', () =
     expect(reaches(view, 'prompt').sort()).toEqual(
       ['lesson:lesson-1', 'rule:delete-by-literal-path'].sort(),
     );
-    expect(agreementsGiven(view, 'prompt')).toContain('lean-testing@forge@1');
+    expect(agreementsGiven(view, 'prompt')).toContain('lean-testing@forge@2');
     await kernel(sql`UPDATE agent_sessions SET status = 'completed' WHERE id = ${declared}`);
   });
 });
@@ -264,7 +264,7 @@ describe("c5: a read of the working agreements made with a run's token records e
     expect(got.status, JSON.stringify(got.body)).toBe(200);
     await backgroundSettled();
     const view = await context(`session=${w.sessionId}`);
-    expect(agreementsGiven(view, 'get')).toEqual(['lean-testing@forge@1']);
+    expect(agreementsGiven(view, 'get')).toEqual(['lean-testing@forge@2']);
   });
 });
 

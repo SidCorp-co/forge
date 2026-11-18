@@ -201,6 +201,15 @@ export const FORGE_AGREEMENTS: readonly ForgeAgreement[] = [
         detail:
           'No test file by default for each change, helper or branch; table or parameterized cases for one behaviour; tests hold the behaviour callers rely on, not function names or file splits; the audit weighs protected behaviour against upkeep, never a file count or coverage alone, and never deletes in bulk by threshold. The agreement stops new accumulation; auditing the existing suite is separate Audit work that needs evidence first. It works with proportional verification and continuous audit, and adds no manual review gate per test.',
       },
+      {
+        revision: 2,
+        at: '2026-11-18',
+        reason:
+          'The owner, 2026-11-18 (ISS-1320): a screen is proven by an agent using it in a box during dev, not by component unit tests.',
+        rule: 'Add a test only where it proves behaviour that matters or stops a specific regression the existing tests miss; extend an existing test first, and audit duplicate, stale and implementation-bound tests on a schedule.',
+        detail:
+          'No test file by default for each change, helper or branch; table or parameterized cases for one behaviour; tests hold the behaviour callers rely on, not function names or file splits. A screen is proven by its builder using it as a person would, in a Forge Box from its first UI change; unit tests stay for logic a screen does not show (money, permissions, data rules, parsers), and a component render test is written only to pin a rule a person cannot see. The audit weighs protected behaviour against upkeep, never a file count or coverage alone, and never deletes in bulk by threshold. The agreement stops new accumulation; auditing the existing suite is separate Audit work that needs evidence first. It works with proportional verification and continuous audit, and adds no manual review gate per test.',
+      },
     ],
   },
   {

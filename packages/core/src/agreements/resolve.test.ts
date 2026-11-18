@@ -78,6 +78,17 @@ describe('BC-13: the nine owner defaults ship as Forge agreements', () => {
     },
   );
 
+  it('lean testing says a screen is proven by use in a box, a render test only for a rule unseen (ISS-1320)', () => {
+    const lean = FORGE_AGREEMENTS.find((f) => f.slug === 'lean-testing') as ForgeAgreement;
+    const detail = currentRevision(lean).detail ?? '';
+    expect(detail).toContain(
+      'A screen is proven by its builder using it as a person would, in a Forge Box',
+    );
+    expect(detail).toContain(
+      'a component render test is written only to pin a rule a person cannot see',
+    );
+  });
+
   it('shows every default on a project that changed nothing: the page never ships empty', () => {
     const view = resolve([]);
     expect(view.agreements.map((a) => a.state)).toEqual(FORGE_AGREEMENTS.map(() => 'inherited'));
@@ -195,7 +206,7 @@ describe('BC-5, BC-7: what reaches a run is the effective text, and the run reco
       ref: 'proportional-verification',
       revision: 'project@1',
     });
-    expect(carried).toContainEqual({ kind: 'agreement', ref: 'lean-testing', revision: 'forge@1' });
+    expect(carried).toContainEqual({ kind: 'agreement', ref: 'lean-testing', revision: 'forge@2' });
     expect(carried).toHaveLength(FORGE_AGREEMENTS.length);
   });
 

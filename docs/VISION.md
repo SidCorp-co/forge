@@ -51,8 +51,9 @@ conforms. **Delivery** builds to it fast, in batches: an issue is one verifiable
 at least one whole issue, an issue is never split across releases, and a batch lands when it builds
 and the app answers. Verification follows the blast radius: narrow checks sit next to the fix, wide
 ones run on the integrated build at the release mark, and a change that touches shared logic,
-billing, permissions or data is checked wide early. The fix does only what bounds its own impact or
-proves it; cleanup that can stand alone is recorded as debt for the Audit, never done inside the fix.
+billing, permissions or data is checked wide early. A screen is proven by its builder using it as a
+person would, in a box, while building it; a unit test proves what no screen shows, and a render test
+pins only a rule a person cannot see. The fix does only what bounds its own impact or proves it; cleanup that can stand alone is recorded as debt for the Audit, never done inside the fix.
 An issue closes when its criteria are met in scope. **Release** puts each batch live once, and one
 live judge reads its criteria on the running build; released and confirmed on the target environment
 are marks on the release, never issue statuses, so "is it live" is read from the release and never

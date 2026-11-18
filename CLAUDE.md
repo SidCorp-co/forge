@@ -220,6 +220,10 @@ naming its own rule**. A test that cannot fail has not been written yet.
 Cover the axes, not just the happy path: happy · negative · boundary · extreme/edge · the business
 rule itself.
 
+**jsdom lays nothing out, so a screen is proven by use.** Its builder opens a Forge Box on the
+worktree's dev server from the first UI change and walks each criterion as a person would (the
+`boxes` guide); a render test pins only a rule a person cannot see.
+
 ## Documentation is deleted, not carried
 
 **Better no document than a wrong one.** A doc that cannot be verified is removed in the change
