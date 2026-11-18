@@ -55,6 +55,17 @@ describe('the Agent door reads the project through the routes its reply check co
   });
 });
 
+describe('the method every project reads names no one project’s external tools', () => {
+  // a project's own server names its tools `<system>__<tool>`; a name of one belongs to that project
+  it.each([
+    ['Assistant mode', web],
+    ['the Rocket.Chat door', rocket],
+  ])('%s names an external tool by its shape alone', (_door, prompt) => {
+    expect(prompt.match(/\b[A-Za-z][\w-]*__\w+/g) ?? []).toEqual([]);
+    expect(prompt).toContain('`<system>__<tool>`');
+  });
+});
+
 describe('every door that states a figure is told to name its read', () => {
   it.each([
     ['web', web],
