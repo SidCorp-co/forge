@@ -362,6 +362,10 @@ export const FEEDBACK_REFUSAL_CODES = [
 	"FEEDBACK_CLARIFICATION_CLOSED",
 	/** The item already holds the most attachments it keeps. */
 	"FEEDBACK_ATTACHMENTS_FULL",
+	/** An attachment id the item does not hold (ISS-1327). */
+	"FEEDBACK_ATTACHMENT_UNKNOWN",
+	/** Deleting one attachment says why, on the item's record (ISS-1327). */
+	"FEEDBACK_ATTACHMENT_REASON_REQUIRED",
 	// an attachment's bytes, refused under the names every attachment write uses (`attachments.ts`)
 	"EMPTY_FILE",
 	"FILE_TOO_LARGE",
@@ -748,6 +752,18 @@ export type FeedbackAttachmentRequest = z.infer<
 	typeof feedbackAttachmentRequestSchema
 >;
 export const FEEDBACK_ATTACHMENT_SHAPE = `{ name, mime, contentBase64, redacted?, label?: ${FEEDBACK_ATTACHMENT_LABELS.join(" | ")} }`;
+
+/**
+ * `DELETE …/feedback/:fb/attachments/:aid` (ISS-1327): one attachment and its bytes deleted, the
+ * item's other attachments and text kept, and why written on the item's record as an internal note.
+ */
+export const feedbackAttachmentDeleteRequestSchema = z.strictObject({
+	reason: z.string().max(FEEDBACK_LIMITS.reason),
+});
+export type FeedbackAttachmentDeleteRequest = z.infer<
+	typeof feedbackAttachmentDeleteRequestSchema
+>;
+export const FEEDBACK_ATTACHMENT_DELETE_SHAPE = "{ reason }";
 
 /** `GET /api/projects/:id/feedback` — `phase` is comma-separated. */
 export const listFeedbackQuerySchema = z.strictObject({

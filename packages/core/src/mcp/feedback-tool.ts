@@ -19,6 +19,7 @@ import {
   addAttachment,
   askClarification,
   createFeedback,
+  deleteAttachment,
   detailAs,
   feedbackTargetSchema,
   listFeedbackAs,
@@ -58,6 +59,7 @@ export const ACTIONS = [
   'submit',
   'clarify',
   'attach',
+  'detach',
 ] as const;
 const READS = ['list', 'get', 'progress', 'similar'] as const;
 export const PROJECT_FEEDBACK_READ_ACTIONS: readonly string[] = READS;
@@ -99,6 +101,8 @@ const inputSchema = z.strictObject({
   title: createFeedbackRequestSchema.shape.title.optional(),
   ...feedbackClarificationRequestSchema.partial().shape,
   ...feedbackAttachmentRequestSchema.partial().shape,
+  attachment: z.uuid().optional().describe('detach: the attachment’s id, as get lists it'),
+  reason: z.string().max(4000).optional().describe('detach: why it is deleted'),
 });
 
 type Input = z.infer<typeof inputSchema>;
@@ -114,6 +118,7 @@ const DESCRIPTION = [
   'similar {feedback}: the items nearest it, to spot a duplicate; not_embedded, provider_not_configured, failed or withheld_by_policy does not mean none is similar.',
   `submit ${SUBMIT_SHAPE}: file it as the person you speak for, at phase new. target is the one thing it is about: a requirement it touches is best (find it with requirements.similar; ref REQ-n), else an issue (ISS-n), a release (its version), a workflow (its flow slug), an endpoint (METHOD /path, a tool or a command the project serves), a mockup (MK-n) or a screen. A remark that fits none of them, about the product as a whole, names the screen it was met on in words ({ kind: screen, ref: "checkout page" }); a screen is where it was seen, so leave whereSeen out beside it.`,
   `attach {feedback, ${FEEDBACK_ATTACHMENT_SHAPE.slice(2, -2)}}: attach a file to an existing item, as anyone who may comment on it may; label approved_design marks a mockup a person approved. The bytes are base64; the type and size limits are an issue attachment's. Answers the new attachmentId; get lists every attachment, and uploads.fetch {data:{target:"feedback", attachmentId}} reads one.`,
+  'detach {feedback, attachment, reason}: delete one attachment and its bytes, keeping the item’s other attachments and text; why is written on the item’s record. The item’s writer may, and anyone holding feedback.redact (project admin).',
   'clarify {feedback, prompt, needed, recommended}: ask the reporter one question; `needed` says what would settle it, `recommended` is the answer you recommend, which they send by one click. Ask every question you need; refused only when the item is past triage.',
   'Triage, decline, verify and retarget are not done here: triage is the project’s master’s, a person’s only on a strict project, on the Feedback page; this tool does none of them. Issues are never filed from here: triage routes an item to its work.',
   'A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and writes nothing: tell the person the detail.',
@@ -148,6 +153,7 @@ const GRANT = {
     submit: 'projects:write',
     clarify: 'projects:write',
     attach: 'projects:write',
+    detach: 'projects:write',
   },
 } as const;
 
@@ -169,6 +175,10 @@ const PERMISSION = {
     attach: byRule(
       'feedback/attachments.ts:addAttachment',
       'the item is found (NOT_FOUND), then project.write refused by name (FEEDBACK_REFUSED)',
+    ),
+    detach: byRule(
+      'feedback/attachment-delete.ts:deleteAttachment',
+      "project.read declared, then the item's writer or feedback.redact, refused by name (FEEDBACK_REFUSED)",
     ),
   },
 } as const;
@@ -364,6 +374,18 @@ async function attach(ctx: McpContext, projectId: string, input: Input) {
   };
 }
 
+/** One attachment deleted by its id, with why on the item's record (ISS-1327); the item as it stands. */
+async function detach(ctx: McpContext, projectId: string, input: Input) {
+  const ref = need(input, input.action, 'feedback').feedback;
+  const attachmentId = need(input, input.action, 'attachment').attachment;
+  const reason = need(input, input.action, 'reason').reason;
+  return written(
+    ctx,
+    projectId,
+    await deleteAttachment({ projectId, ref, attachmentId, reason, actor: actorOf(ctx) }),
+  );
+}
+
 const LOOSE_TARGETS = ['issue', 'release', 'workflow', 'endpoint', 'mockup', 'screen'] as const;
 
 /** A submit naming its target the REST body's way, refused by name with the one field it takes. */
@@ -379,7 +401,7 @@ function looseTargetRefusal(args: Record<string, unknown>) {
   );
 }
 
-const HANDLERS = { list, get, progress, similar, submit, clarify, attach } as const;
+const HANDLERS = { list, get, progress, similar, submit, clarify, attach, detach } as const;
 
 export const projectFeedbackMcpTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'project_feedback',

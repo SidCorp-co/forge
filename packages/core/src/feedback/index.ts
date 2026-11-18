@@ -1,4 +1,5 @@
 export { claimAnswersTold, type UntoldAnswer, untoldAnswersOf } from './answers-told.js';
+export { deleteAttachment } from './attachment-delete.js';
 export {
   addAttachment,
   askClarification,

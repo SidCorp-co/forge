@@ -42,6 +42,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { holdChatWrite } from '../middleware/chat-write-hold.js';
 import { invalid, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
 import { requiresOnParam } from '../permissions/index.js';
+import { mountAttachmentDelete } from './attachment-delete-routes.js';
 import { addAttachment, askClarification, attachmentBytes } from './attachments.js';
 import { confirmWaitFeedback } from './confirm-wait.js';
 import { similarFeedbackAs, similarToDraftAs } from './embeddings.js';
@@ -484,6 +485,9 @@ feedbackRoutes.get(
     return sendBytes(c, file.bytes);
   },
 );
+
+// one attachment deleted, the rest of the item kept (ISS-1327)
+mountAttachmentDelete(feedbackRoutes);
 
 feedbackRoutes.delete('/:id/feedback/:fb/reporter-data', itemParam, READ, async (c) => {
   const { id, fb } = c.req.valid('param');

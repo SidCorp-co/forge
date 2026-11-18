@@ -111,6 +111,33 @@ export const CARDS = {
     audience: ['person'],
     scenarios: ['approved design images attached so the item’s builder reads them: ISS-879'],
   },
+  detach: {
+    purpose:
+      'Deletes one attachment of a feedback item by its id, keeping the item’s other attachments and text.',
+    situations: [
+      {
+        when: 'an attachment of an item shows a secret, a password, a key or personal data that must not stay',
+        do: 'detach it by its id with a reason, and leave the item’s other attachments and text as they are',
+      },
+    ],
+    practice: [
+      'Read the item with get first: each attachment is listed with its id and name.',
+      'The reason is written on the item’s record; never repeat what the attachment showed in it.',
+    ],
+    example: {
+      projectId: '<project uuid>',
+      feedback: 'FB-29',
+      attachment: '62779a48-0ec5-4b21-9879-11ab3fab61fb',
+      reason: 'the screenshot shows a test account’s secret key',
+    },
+    // ISS-1327: adminhub-fe FB-29 held a picture showing a secret key, and the only door deleted the
+    // item's whole reporter data
+    redFlag:
+      'Deleting an item’s whole reporter data to remove one picture: the item’s text and other attachments go with it.',
+    family: 'project-feedback',
+    audience: ['person', 'master'],
+    scenarios: ['one picture showing a secret key removed from adminhub-fe FB-29'],
+  },
   progress: {
     purpose:
       'Reads how the work an item was routed to goes: runs, whom it waits on and an estimate.',
