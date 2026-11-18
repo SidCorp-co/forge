@@ -88,6 +88,8 @@
     "boxes.screen.noClip": "No clip",
     "boxes.session.label": "Session",
     "boxes.session.sending": "Sending",
+    "boxes.session.onDevice": "On device",
+    "boxes.session.onDeviceWhy": "This recording stayed on the box's device: it was kept before Forge received recordings, or by a runner that does not send them.",
     "boxes.session.fault.TOO_LARGE": "Too large",
     "boxes.session.fault.DEVICE_GONE": "Device gone",
     "boxes.session.fault.NO_ANSWER": "No answer",

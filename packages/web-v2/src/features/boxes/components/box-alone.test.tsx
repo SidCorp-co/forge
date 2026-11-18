@@ -106,12 +106,24 @@ describe("a box at its own address", () => {
     expect(calls.some((c) => c.path.endsWith("/ticket"))).toBe(false);
   });
 
-  it("says a closed box kept no clip where none of its spans did", async () => {
-    boxCore(projectBoxes(), undefined, () => []);
+  it("says a closed box kept no clip where it never recorded and none of its spans kept one", async () => {
+    boxCore(projectBoxes().map((b) => (b.id === BOX.done ? { ...b, recording: null } : b)), undefined, () => []);
     renderWithQuery(<BoxAlone boxId={BOX.done} slug="orvio" canWriteIn={() => true} />);
     const ended = await screen.findByTestId("box-ended");
     expect(within(ended).getByText("Box closed")).toBeTruthy();
     await within(ended).findByText("No clip");
+    expect(within(ended).queryByTestId("box-session")).toBeNull();
+  });
+
+  // ISS-1338 c2, failed live on dev.740: a recording kept on the device that Forge was never sent read only No clip
+  it("says a recording kept on the device that Forge was never sent stayed there, the why on hover, never No clip alone", async () => {
+    boxCore(projectBoxes(), undefined, () => []);
+    renderWithQuery(<BoxAlone boxId={BOX.done} slug="orvio" canWriteIn={() => true} />);
+    const ended = await screen.findByTestId("box-ended");
+    const line = await within(ended).findByTestId("box-session");
+    expect(line).toHaveTextContent("Session · On device");
+    expect(line.getAttribute("title")).toMatch(/stayed on the box's device/);
+    expect(within(ended).queryByText("No clip")).toBeNull();
   });
 
   it("plays the whole session a person asked to record first, beside the clips its spans kept", async () => {

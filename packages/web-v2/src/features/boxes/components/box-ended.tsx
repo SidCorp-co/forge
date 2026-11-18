@@ -1,7 +1,8 @@
 // A box that ended (ISS-1325, ISS-1338): closed or failed in one line, and what it kept to watch: the
 // whole session a person asked to record and each span's clip, a press apart in one switch. A session
-// recording on its way, or one that could not come, says so in its own words, the why on hover; a box
-// that kept nothing says No clip only where nothing else is said.
+// recording on its way, or one that could not come, says so in its own words, the why on hover; one
+// kept on the device that Forge was never sent (recorded before it was, or by a runner that does not
+// send it) says it stayed there; a box that kept nothing says No clip only where nothing else is said.
 
 import type { BoxRecord, BoxSessionRecording } from "@forge/contracts/boxes";
 import { useState } from "react";
@@ -51,7 +52,15 @@ export function BoxEnded({ box, label }: { box: BoxRecord; label: string }) {
   const [picked, setPicked] = useState<string | null>(null);
   const shown = options.find((o) => o.value === picked) ?? options[0];
   const why = box.failure ? t(`boxes.failure.${box.failure}`) : box.closedWhy === "idle" ? t("boxes.closedWhy.idle") : null;
-  const missing = session && session.state !== "attached" ? <SessionLine session={session} /> : null;
+  const onDevice = !session && box.recording?.state === "kept";
+  const missing =
+    session && session.state !== "attached" ? (
+      <SessionLine session={session} />
+    ) : onDevice ? (
+      <p className="text-13 text-muted" title={t("boxes.session.onDeviceWhy")} data-testid="box-session" data-state="on-device">
+        {`${t("boxes.session.label")} · ${t("boxes.session.onDevice")}`}
+      </p>
+    ) : null;
   return (
     <div className="flex size-full min-h-0 flex-col items-center gap-3" data-testid="box-ended" data-state={box.state}>
       <p className="text-14 font-semibold">{[t(box.state === "failed" ? "boxes.screen.failed" : "boxes.screen.closed"), why].filter(Boolean).join(" · ")}</p>
