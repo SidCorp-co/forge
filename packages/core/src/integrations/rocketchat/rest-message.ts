@@ -90,22 +90,41 @@ export function extractMessageText(
   return parts.join('\n');
 }
 
+const UPLOAD_ID_RE = /\/file-upload\/([^/?#]+)\//;
+
+/**
+ * One ref per picture. Rocket.Chat records one image upload three times: the upload on
+ * `file`/`files`, its `thumb-<name>` copy on `files`, and an attachment whose `image_url` is the
+ * thumbnail's id under the original name, `encodeURI`d. The thumbnail is skipped and every
+ * `/file-upload` ref is keyed by its upload id, so neither copy reads as a picture of its own.
+ */
 export function extractMessageImages(
   raw: Pick<RawRestMessage, 'file' | 'files' | 'attachments'>,
   baseUrl: string,
 ): RocketChatImageRef[] {
   const out = new Map<string, RocketChatImageRef>();
-  for (const f of [raw.file, ...(raw.files ?? [])]) {
-    if (!f?._id || typeof f.name !== 'string' || !IMAGE_MIME_RE.test(f.type ?? '')) continue;
+  const files = [raw.file, ...(raw.files ?? [])].filter(
+    (f): f is RawRestFile & { _id: string; name: string } =>
+      !!f?._id && typeof f.name === 'string' && IMAGE_MIME_RE.test(f.type ?? ''),
+  );
+  const names = new Set(files.map((f) => f.name));
+  const thumbs = new Set<string>();
+  for (const f of files) {
+    if (f.name.startsWith('thumb-') && names.has(f.name.slice('thumb-'.length))) {
+      thumbs.add(f._id);
+      continue;
+    }
+    if (out.has(f._id)) continue;
     const ref = absolutize(`/file-upload/${f._id}/${encodeURIComponent(f.name)}`, baseUrl);
-    out.set(ref, { name: f.name, mime: normalizeMime(f.type as string), ref });
+    out.set(f._id, { name: f.name, mime: normalizeMime(f.type as string), ref });
   }
   for (const a of raw.attachments ?? []) {
     if (typeof a.image_url !== 'string' || !IMAGE_MIME_RE.test(a.image_type ?? '')) continue;
     const ref = absolutize(a.image_url, baseUrl);
-    if (out.has(ref)) continue;
+    const key = UPLOAD_ID_RE.exec(a.image_url)?.[1] ?? ref;
+    if (out.has(key) || thumbs.has(key)) continue;
     const name = a.title ?? ref.split('/').pop() ?? 'image';
-    out.set(ref, { name, mime: normalizeMime(a.image_type as string), ref });
+    out.set(key, { name, mime: normalizeMime(a.image_type as string), ref });
   }
   return [...out.values()];
 }
