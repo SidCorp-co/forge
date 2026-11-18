@@ -66,7 +66,8 @@ export async function move(
     { key: input.issue },
     { sort: 'updatedAt:desc', limit: 1, offset: 0 },
   );
-  const issue = listed.ok ? listed.rows[0] : undefined;
+  if (!listed.ok) return no('OPS_ISSUE_UNKNOWN', '/issue', listed.message);
+  const issue = listed.rows[0];
   if (!issue) {
     return no('OPS_ISSUE_UNKNOWN', '/issue', `${project.value.slug} holds no issue ${input.issue}`);
   }

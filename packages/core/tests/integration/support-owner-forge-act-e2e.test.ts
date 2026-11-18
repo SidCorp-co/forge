@@ -262,6 +262,13 @@ describe("ISS-1243 item 24: the owner's Forge act is made as him from his own me
   });
 
   it('marks an issue merged as him, through the merge door', async () => {
+    // a key that is no issue reference says why, as the issue list reads it, not that none is held
+    const malformed = await askBy(chat.alice, 'merge cái này rồi', {
+      act: 'issue.merge',
+      item: 'merge-it',
+    });
+    expect(code(malformed.out), JSON.stringify(malformed.out)).toBe('OPS_ISSUE_UNKNOWN');
+    expect(JSON.stringify(malformed.out)).toContain('is not an issue reference');
     const his = await askBy(chat.alice, `${w.issueKey} merge rồi nhé`, {
       act: 'issue.merge',
       item: w.issueKey,

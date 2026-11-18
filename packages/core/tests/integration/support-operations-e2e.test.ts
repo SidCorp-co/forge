@@ -310,6 +310,10 @@ describe('REQ-75 r4: operations rooms answer under their bot’s role (BC-20..BC
       actor_on_behalf_of: ids.alice,
     });
     expect(moved?.actor_token_id).toBeTruthy();
+    // a key of another prefix says why, as the issue list reads it, not that none is held
+    const foreign = await ask('alice', 'ops', { ...move(1), issue: 'ZZ-1' });
+    expect(JSON.stringify(foreign)).toContain('OPS_ISSUE_UNKNOWN');
+    expect(JSON.stringify(foreign)).toContain('which this project does not answer to');
   });
 
   it('refuses a mapped member without the permission, naming it (BC-21)', async () => {

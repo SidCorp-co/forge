@@ -220,7 +220,15 @@ async function markMerged(
     { key: input.item },
     { sort: 'updatedAt:desc', limit: 1, offset: 0 },
   );
-  const issue = listed.ok ? listed.rows[0] : undefined;
+  // a key that is no issue reference is refused by the list's own words, not as one not held
+  if (!listed.ok) {
+    return no(
+      'OPS_ISSUE_UNKNOWN',
+      '/item',
+      `${listed.message.replace(/\.?$/, '.')} Nothing was done`,
+    );
+  }
+  const issue = listed.rows[0];
   if (!issue) {
     return no(
       'OPS_ISSUE_UNKNOWN',
