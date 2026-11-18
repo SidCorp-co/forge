@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.730] - 2026-11-18
+
+Boxes record only on request and open only once their emulator works
+
+### Changed
+
+- **A box records only when you ask.** Tick Record when opening one, or use its Record button; a criterion's span records its own clip. The box shows whether it records and why.
+
+### Fixed
+
+- **A box whose screen died is never handed to you.** A warm box is checked before it is handed out; a dead one shows Screen gone and your request opens on a fresh box.
+
 ## [0.4.0-dev.729] - 2026-11-18
 
 Running pool jobs stay single, and browser box live views show frames
