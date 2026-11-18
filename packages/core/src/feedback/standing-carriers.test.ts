@@ -1,14 +1,17 @@
 import { say, sayEn } from '@forge/contracts/said';
 import { waitingOn } from '@forge/contracts/standing';
 import { describe, expect, it } from 'vitest';
+import { replyRefusal } from './reply-rules.js';
 import {
   type CarrierStanding,
   carriersPhrase,
   feedbackStandingOf,
   type PhaseFacts,
   phaseOf,
+  type StandingFacts,
 } from './standing.js';
-import { shippedFailingOf } from './standing-carrier.js';
+import { type RoutedIssueFacts, shippedFailingOf } from './standing-carrier.js';
+import type { RequirementOwed } from './standing-requirement.js';
 
 /** When the times read: a master serves, so no wait here reads stuck by the master alone. */
 const AT = {
@@ -23,8 +26,7 @@ const routedTo = (...statuses: string[]): PhaseFacts => ({
   route: 'issue',
   routedIssues: statuses.map((status) => ({ status, unreleased: false })),
   suggestion: null,
-  routedRequirementStatus: null,
-  routedRequirementDelivered: false,
+  routedRequirement: null,
   rootPhase: null,
 });
 
@@ -38,27 +40,101 @@ const reader = {
   canAdmin: false,
 };
 
-// FB-512, FB-486, FB-128, FB-108 read planned for ever (2026-11-08): each one's requirement stood
-// accepted by a decision, which `deliveredAmong` leaves out as unproven, so the item never resolved
-describe('a requirement route resolves once its requirement is accepted, by decision too', () => {
-  const routedToRequirement = (status: string, delivered: boolean): PhaseFacts => ({
+// ISS-1332: adminhub-api FB-78 read resolved, chip done, while REQ-25 stood accepted and its issues
+// ISS-245 and ISS-246 sat unreleased in 0.28.0: an accept, by checklist or by decision, read as
+// shipped. Planted red by reading an accepted requirement as resolving whatever its issues hold.
+describe('a requirement route resolves only once what delivers it shipped (ISS-1332)', () => {
+  const routedToRequirement = (status: string, ...issues: RoutedIssueFacts[]): PhaseFacts => ({
     ...routedTo(),
     route: 'new_requirement',
     routedIssues: [],
-    routedRequirementStatus: status,
-    routedRequirementDelivered: delivered,
+    routedRequirement: { status, issues },
+  });
+  const issue = (status: string, unreleased = false): RoutedIssueFacts => ({
+    key: 'ISS-245',
+    status,
+    unreleased,
   });
 
-  it('resolves on an accepted requirement whether or not its accept waived proof', () => {
-    expect(phaseOf(routedToRequirement('accepted', false))).toBe('resolved');
-    expect(phaseOf(routedToRequirement('accepted', true))).toBe('resolved');
-    expect(phaseOf(routedToRequirement('delivered', true))).toBe('resolved');
+  it('reads planned once its requirement is accepted while its issue is unreleased', () => {
+    expect(phaseOf(routedToRequirement('agreed', issue('awaiting_release')))).toBe('planned');
+    expect(phaseOf(routedToRequirement('accepted', issue('awaiting_release')))).toBe('planned');
+    expect(phaseOf(routedToRequirement('accepted', issue('closed', true)))).toBe('planned');
+    expect(phaseOf(routedToRequirement('delivered', issue('closed'), issue('in_progress')))).toBe(
+      'planned',
+    );
   });
 
-  it('stays planned while agreed or in delivery, and re-triages a dropped one', () => {
-    expect(phaseOf(routedToRequirement('agreed', false))).toBe('planned');
-    expect(phaseOf(routedToRequirement('in_delivery', false))).toBe('planned');
-    expect(phaseOf(routedToRequirement('dropped', false))).toBe('triaged');
+  it('reads resolved once that issue is closed and released, delivered or accepted alike', () => {
+    expect(phaseOf(routedToRequirement('accepted', issue('closed')))).toBe('resolved');
+    expect(phaseOf(routedToRequirement('delivered', issue('closed'), issue('dropped')))).toBe(
+      'resolved',
+    );
+  });
+
+  it('stays planned while agreed or in delivery, its issues shipped or not, and re-triages a dropped one', () => {
+    expect(phaseOf(routedToRequirement('agreed'))).toBe('planned');
+    expect(phaseOf(routedToRequirement('in_delivery', issue('closed')))).toBe('planned');
+    expect(phaseOf(routedToRequirement('dropped', issue('closed')))).toBe('triaged');
+  });
+
+  it('reads triaged, owed a triage again, once accepted with no live issue to ship it', () => {
+    expect(phaseOf(routedToRequirement('accepted'))).toBe('triaged');
+    expect(phaseOf(routedToRequirement('accepted', issue('dropped')))).toBe('triaged');
+    expect(phaseOf(routedToRequirement('delivered'))).toBe('triaged');
+  });
+
+  const REQ_25 = { key: 'REQ-25', status: 'accepted', byDecision: false };
+  const standingOf = (
+    phase: 'planned' | 'triaged',
+    requirement: RequirementOwed,
+    extra: Partial<StandingFacts> = {},
+  ) =>
+    feedbackStandingOf(
+      phase,
+      'new_requirement',
+      ['REQ-25'],
+      'R',
+      reader,
+      null,
+      { ...NO_STANDING_FACTS, requirement, ...extra },
+      AT,
+    );
+
+  it('names the issues it waits on to ship, never the requirement already accepted', () => {
+    const s = standingOf('planned', { ...REQ_25, owed: ['ISS-245', 'ISS-246'] });
+    expect(s.chip).toBe('planned');
+    expect(s.waitingOn).toMatchObject({ kind: 'issue', who: 'ISS-245 and ISS-246', act: 'ship' });
+    expect(s.waitingOn.rule).toBe(
+      'planned: REQ-25 stands accepted; ISS-245 and ISS-246 carry it until they ship',
+    );
+  });
+
+  it('names the release its issues wait at, as an issue route names it', () => {
+    const w = standingOf(
+      'planned',
+      { ...REQ_25, owed: ['ISS-245', 'ISS-246'] },
+      { carrierRelease: 'approval', carrierVersion: '0.28.0', releaseHolders: ['Ada'] },
+    ).waitingOn;
+    expect(w).toMatchObject({ kind: 'person', who: 'Ada', ref: '0.28.0' });
+    expect(w.act).toBe('Approve release 0.28.0');
+  });
+
+  it('says an accept by decision with nothing to ship as accepted, not shipped, for a triager to reroute', () => {
+    const s = standingOf('triaged', { ...REQ_25, byDecision: true, owed: [] });
+    expect(s.chip).toBe('new');
+    expect(s.waitingOn.act).toBe('triage it again');
+    expect(s.waitingOn.rule).toBe(
+      'triaged: REQ-25 was accepted by decision, not shipped, so whoever triages it reroutes it',
+    );
+    const phase = phaseOf(routedToRequirement('accepted'));
+    const refused = replyRefusal(
+      'FB-78',
+      { status: 'triaged', route: 'new_requirement', phase },
+      null,
+      'still broken',
+    );
+    expect(refused?.detail).not.toContain('Its fix shipped');
   });
 });
 

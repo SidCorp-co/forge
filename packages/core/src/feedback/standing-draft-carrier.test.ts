@@ -27,8 +27,7 @@ const routedTo = (...statuses: string[]): PhaseFacts => ({
   route: 'issue',
   routedIssues: statuses.map((status) => ({ status, unreleased: false })),
   suggestion: null,
-  routedRequirementStatus: null,
-  routedRequirementDelivered: false,
+  routedRequirement: null,
   rootPhase: null,
 });
 
