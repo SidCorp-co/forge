@@ -5,6 +5,7 @@
 //
 // @direct-test-of packages/core/src/release-batch/release-read-views.ts
 // @direct-test-of packages/core/src/release-batch/release-view.ts
+// @direct-test-of packages/core/src/release-batch/release-turn-facts.ts
 
 import { saidDisagreements } from '@forge/contracts/said';
 import { beforeAll, describe, expect, it } from 'vitest';

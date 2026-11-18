@@ -2,6 +2,8 @@
 // requirement's total, and before ISS-463 `completionOf` carried only the codes this release moves
 // and the codes still owed, so no page could draw passed out of the total. These read the counts
 // off the same coverage the requirement page reads, and watch one verdict move them.
+//
+// @direct-test-of packages/core/src/release-batch/release-completion.ts
 
 import type { CriterionStanding } from '@forge/contracts/issue-vocabulary';
 import type { BcVerdict } from '@forge/contracts/requirements';
