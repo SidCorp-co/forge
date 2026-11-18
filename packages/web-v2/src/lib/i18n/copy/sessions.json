@@ -221,7 +221,7 @@
     "sessions.reasonAction.provider_subscription_disabled": "Claude Code is off for this organization; an admin must re-enable it.",
     "sessions.reasonAction.provider_usage_limit": "The account hit its usage window; it retries after the reset.",
     "sessions.reasonAction.queue_timeout": "Never picked up by a runner",
-    "sessions.reasonAction.release_cancelled_without_abort": "Cancelled with no abort on record; nothing says who ended it or why.",
+    "sessions.reasonAction.release_cancelled_without_abort": "Cancelled with no abort recorded; nothing says who ended it or why.",
     "sessions.reasonAction.release_not_shipped": "Closed with nothing recording that it shipped.",
     "sessions.reasonAction.repo_root_contention": "Another job held the repo for ten minutes; Retry once free.",
     "sessions.reasonAction.residency_expired": "The session outlived its window — Rerun to start fresh.",

@@ -150,7 +150,10 @@ export function followHold(
     try {
       row = await boxById(boxId);
     } catch (err) {
-      logger.warn({ err, boxId }, 'box viewer: the box could not be read; the next poll reads again');
+      logger.warn(
+        { err, boxId },
+        'box viewer: the box could not be read; the next poll reads again',
+      );
       return;
     }
     if (!row || (row.state !== 'agent' && row.state !== 'person')) {

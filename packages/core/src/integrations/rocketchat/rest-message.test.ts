@@ -38,7 +38,11 @@ describe('extractMessageImages', () => {
     const a = screenshot('U1', 'T1', 'a.png');
     const b = screenshot('U2', 'T2', 'b.png');
     const refs = extractMessageImages(
-      { file: a.file, files: [...a.files, ...b.files], attachments: [...a.attachments, ...b.attachments] },
+      {
+        file: a.file,
+        files: [...a.files, ...b.files],
+        attachments: [...a.attachments, ...b.attachments],
+      },
       BASE,
     );
     expect(refs.map((r) => r.ref)).toEqual([
@@ -57,7 +61,9 @@ describe('extractMessageImages', () => {
 
   it('keeps a picture linked only by an attachment, on another host', () => {
     const refs = extractMessageImages(
-      { attachments: [{ title: 'x', image_url: 'https://img.test/x.png', image_type: 'image/png' }] },
+      {
+        attachments: [{ title: 'x', image_url: 'https://img.test/x.png', image_type: 'image/png' }],
+      },
       BASE,
     );
     expect(refs).toEqual([{ name: 'x', mime: 'image/png', ref: 'https://img.test/x.png' }]);

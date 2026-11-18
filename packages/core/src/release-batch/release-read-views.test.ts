@@ -214,9 +214,8 @@ describe('the commit a shipped release names (FB-105)', () => {
   });
 });
 
-// JU-11: dev.120 read "Proof · No criteria recorded" while its Checks held a deploy probe, and
-// nothing said in words that only the deploy was verified; hop 0.2.0 listed design reviews
-// (a design for the owner to approve) among what users get
+// JU-11: dev.120 read "Proof · No criteria recorded" while its Checks held a deploy probe, saying
+// nothing of only the deploy verified; hop 0.2.0 listed design reviews among what users get
 describe('what a release says it verified', () => {
   const criterion = (standing: 'pass' | 'fail' | 'unjudged') => ({
     n: 1,

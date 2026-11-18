@@ -49,8 +49,8 @@ describe('deniedActRefusal: a production deploy is named as people know it', () 
       document: { environments: { live: { tier: 'production', deployment: { binding } } } },
     });
     const out = await deniedActRefusal(room, { action: 'deploy', thread: 't-1', target: binding });
-    expect(out && !out.ok && out.refusals[0]?.code).toBe('SUPPORT_ACT_DENIED');
-    const text = (raiseTechnical.mock.calls[0]?.[1] as { text: string }).text;
+    expect(out && !out.ok ? out.refusals[0]?.code : undefined).toBe('SUPPORT_ACT_DENIED');
+    const text = String((raiseTechnical.mock.calls[0]?.[1] as { text?: string } | undefined)?.text);
     expect(text).toContain('(deploy: deploy to live)');
     expect(text).not.toContain(binding);
   });

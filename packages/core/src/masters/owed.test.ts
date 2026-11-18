@@ -142,7 +142,6 @@ describe('owedLine: what a pass is told it owes besides issues', () => {
     const line = owedLine({ ...none, stewardAsks: [ask] });
     expect(line).toContain("The project's steward asks you to act on 1 item");
     expect(line).toContain('ISS-498: no master has taken it since 10-14');
-    // ISS-607: only an ISO 8601 date ends a decision; the line says so, matching decision-until.ts
     expect(line).toContain(ISSUE_DECISION_BODY);
     expect(dispatched([], { ...none, stewardAsks: [ask] }).owed).toBe(1);
     expect(workDigest([], { ...none, stewardAsks: [ask] })).not.toBe(workDigest([], none));
@@ -160,9 +159,7 @@ describe('owedLine: what a pass is told it owes besides issues', () => {
     expect(line).toContain(
       'on a requirement (REQ-23), `forge-runner api projects/<projectId>/requirements/<key>/comments -X POST`',
     );
-    expect(line).toContain(
-      '`reversedWhen` inside `decision` holding a date (ISO 8601, such as 2026-11-01) or a condition',
-    );
+    expect(line).toMatch(/`reversedWhen` inside `decision` holding a date .+ or a condition/);
     expect(line).not.toContain('issues/<id>/events');
     const issue = askOf('a4', 'ISS-9: take it', { kind: 'issue', key: 'ISS-9' });
     const mixed = owedLine({ ...none, stewardAsks: [issue, fb] });

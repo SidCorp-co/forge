@@ -212,7 +212,9 @@ describe('one grant epoch for the box surface, its open included (ISS-1335)', ()
       details: { surface: '/api/boxes', routeEpoch: 4, tokenEpoch: 2 },
     });
     // the way through: the act that mints a credential at the box surface's epoch, by its door
-    expect(String(opened.json.message)).toContain('re-pairs the runner device (`forge-runner login`');
+    expect(String(opened.json.message)).toContain(
+      're-pairs the runner device (`forge-runner login`',
+    );
     expect(String(opened.json.message)).toContain('POST /api/projects/<project id>/runners');
     expect(await count()).toBe(before);
   });
