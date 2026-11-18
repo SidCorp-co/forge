@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.726] - 2026-11-18
+
+Release pages open on a hero with the judge's clips and screenshots
+
+### Added
+
+- **Release pages show what changed.** Each new or fixed line shows the clip or desktop and phone shots its tester marked, the page opens on a cover clip with counts, and the release post carries the same pictures.
+
 ## [0.4.0-dev.725] - 2026-11-18
 
 Outside-deployed releases stop asking for empty records
