@@ -1,1 +1,0 @@
-**A followed source's new versions arrive as one idea per problem.** The idea names every version, a newer one joins it while it is open, and a version you declined for that problem is not offered again.

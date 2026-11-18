@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.722] - 2026-11-18
+
+Followed references raise one idea per source and problem, never re-offering declined versions
+
+### Fixed
+
+- **A followed source's new versions arrive as one idea per problem.** The idea names every version, a newer one joins it while it is open, and a version you declined for that problem is not offered again.
+
 ## [0.4.0-dev.721] - 2026-11-18
 
 Masters hand findings to other projects; products read their feedback's status
