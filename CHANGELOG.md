@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.721] - 2026-11-18
+
+Masters hand findings to other projects; products read their feedback's status
+
+### Added
+
+- **A master can hand a finding to another project's intake.** It arrives there as feedback naming where it came from, and the original issue or feedback item keeps the key it was filed under.
+- **A product's feedback key now reads where its own reports stand.** With the same key it files with, a product reads the phase of each report it sent, and nothing it did not send.
+
 ## [0.4.0-dev.720] - 2026-11-17
 
 Criteria traces stop copying, verdict identity warnings, rule requirements ready on examples
