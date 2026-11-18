@@ -186,6 +186,9 @@ describe('ISS-1328: support.secret_link answers the link of one declared slot', 
       { profile: 'stg', service: 'db' },
       { profile: 'stg' },
       { profile: 'stg', actor: 'supplier', service: 'pgprints' },
+      // a name the slot regex takes that an object's prototype also answers
+      { profile: 'stg', actor: 'constructor' },
+      { profile: 'stg', service: 'toString' },
     ];
     await w.ask(w.chat.bob, 'Mình gửi key PGPrints test thế nào?', async (m, act) => {
       for (const t of tries)
@@ -211,6 +214,8 @@ describe('ISS-1328: support.secret_link answers the link of one declared slot', 
       'SUPPORT_SECRET_SLOT_VARIABLE',
       'SUPPORT_SECRET_SLOT_ONE',
       'SUPPORT_SECRET_SLOT_ONE',
+      'SUPPORT_SECRET_SLOT_UNKNOWN',
+      'SUPPORT_SECRET_SLOT_UNKNOWN',
     ]);
     expect(JSON.stringify(refused[1])).toContain(
       'declares no service stripe; it declares actor supplier, service db, service pgprints',

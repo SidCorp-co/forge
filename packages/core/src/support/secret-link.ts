@@ -60,7 +60,10 @@ export async function secretLink(
     );
   }
   const { actors, services } = held.document;
-  const declared = input.actor !== undefined ? actors[input.actor] : services[input.service ?? ''];
+  // own keys only: a name such as `constructor` must not read the object's prototype
+  const [slots, name] =
+    input.actor !== undefined ? [actors, input.actor] : [services, input.service ?? ''];
+  const declared = Object.hasOwn(slots, name) ? slots[name] : undefined;
   if (!declared) {
     const names = [
       ...Object.keys(actors).map((a) => `actor ${a}`),
