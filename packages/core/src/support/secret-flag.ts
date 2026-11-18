@@ -22,7 +22,7 @@ import { threadOf } from './rules.js';
 import { insertAction, type RoomRow } from './store.js';
 
 /** How recent a filtered secret or a writer's word that a key is coming still speaks for a token. */
-export const SECRET_CONTEXT_MS = 15 * 60_000;
+const SECRET_CONTEXT_MS = 15 * 60_000;
 
 /** One opaque token: no space, long enough to be a key, letters and digits both, and no address. */
 const OPAQUE = /^[A-Za-z0-9][A-Za-z0-9_+/=.-]{15,}$/;
@@ -37,7 +37,7 @@ const KEY_COMING = new RegExp(
 );
 
 /** Whether a message is one opaque token alone, the shape a key and an id share. */
-export function isBareToken(text: string): boolean {
+function isBareToken(text: string): boolean {
   const t = text.trim();
   return OPAQUE.test(t) && /\d/.test(t) && /[A-Za-z]/.test(t) && !/^https?:/i.test(t);
 }
@@ -113,7 +113,7 @@ async function toldBefore(roomId: string, thread: string): Promise<boolean> {
 }
 
 /** The note on a thread's first secret: once, why, the door, one deletion ask, no rotation. */
-export function firstSecretNote(messageId: string, who: string, asked: string | null): string {
+function firstSecretNote(messageId: string, who: string, asked: string | null): string {
   return [
     `Message ${messageId} from ${who} in this thread held a secret; Forge kept nothing of it, and the bot cannot delete it.`,
     'Say so once in this thread, in your own words: that it was not kept, and why (a secret is never kept in chat or in Forge).',
@@ -124,7 +124,7 @@ export function firstSecretNote(messageId: string, who: string, asked: string | 
 }
 
 /** The note on a later secret in a thread already told: nothing is said of it again. */
-export function againSecretNote(messageId: string, who: string): string {
+function againSecretNote(messageId: string, who: string): string {
   return [
     `Message ${messageId} from ${who} in this thread also held a secret; Forge kept nothing of it.`,
     'This thread was already told once: say nothing more of it, ask no deletion and no rotation, and answer what the person asked.',

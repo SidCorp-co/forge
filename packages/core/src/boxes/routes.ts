@@ -85,7 +85,7 @@ boxRoutes.post(
     'json',
     boxReportSchema,
     invalid(
-      'invalid body: { kind: state | offer | act | mark | clip_failed | recording, … } (`@forge/contracts/box-wire`)',
+      'invalid body: { kind: state | offer | act | mark | clip_failed | cdp | recording, … } (`@forge/contracts/box-wire`)',
     ),
   ),
   async (c) =>

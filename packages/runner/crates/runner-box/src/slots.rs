@@ -43,7 +43,8 @@ pub(crate) struct Inner {
     wanted: watch::Sender<bool>,
     record: Option<PathBuf>,
     probe: health::Probe,
-    /// A warm sweep runs: the next heartbeat's waits for it rather than checking twice.
+    /// A warm sweep runs: a heartbeat's sweep started meanwhile returns at once rather than
+    /// checking twice.
     sweeping: std::sync::atomic::AtomicBool,
     unmeasured: Mutex<Option<String>>,
 }
