@@ -109,13 +109,27 @@ interface Unplaced {
   why: string;
 }
 
+/** Why a traced criterion cannot go to an issue serving another or no requirement, and the way out:
+ *  one serving none is linked to the requirement by its door (FB-704 looked for a PATCH field). */
+function servesOtherSaid(
+  projectId: string,
+  bc: { reqSeq: number; code: string },
+  dest: { key: string; requirementId: string | null },
+): string {
+  const req = `REQ-${bc.reqSeq}`;
+  const lead = `it traces ${req} ${bc.code}, and ${dest.key} serves ${dest.requirementId ? 'another requirement' : 'none'}: a criterion proves a BC of its own issue's requirement`;
+  return dest.requirementId
+    ? `${lead}, so name an issue that serves ${req}`
+    : `${lead}, so link ${dest.key} to ${req} first (\`POST /api/projects/${projectId}/requirements/${req}/issues\` { "issue": "${dest.key}" })`;
+}
+
 /**
  * The criteria a close would leave with nowhere to go, each with why, or the moves it makes where
  * none is left. Read under the move's lock, on its transaction.
  */
 export async function closeScopeOf(
   executor: Pick<Tx, 'execute'>,
-  issue: { id: string },
+  issue: { id: string; projectId: string },
   facts: CloseScopeFacts,
 ): Promise<{ unplaced: Unplaced[]; moves: MovedCriterion[] }> {
   const live = await listCriteria(executor, issue.id);
@@ -191,7 +205,7 @@ export async function closeScopeOf(
         : FROZEN.has(dest.status)
           ? `${dest.key} is \`${dest.status}\`, where its criteria are the ones its verdicts were earned on`
           : bc && bc.requirementId !== dest.requirementId
-            ? `it traces REQ-${bc.reqSeq} ${bc.code}, and ${dest.key} serves ${dest.requirementId ? 'another requirement' : 'none'}: a criterion proves a BC of its own issue's requirement`
+            ? servesOtherSaid(issue.projectId, bc, dest)
             : null;
     if (fault || !dest) {
       unplaced.push({ criterion: c.n, why: fault ?? 'its destination was not read' });

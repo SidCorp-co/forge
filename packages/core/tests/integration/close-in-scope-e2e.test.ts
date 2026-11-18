@@ -248,6 +248,14 @@ describe('an issue closes when met in scope (ISS-1062)', () => {
     const next = await landed(['the next batch keeps its own'], 'open');
     await failVerdict(id, 3);
     await lease(id);
+    // a traced criterion sent to an issue serving no requirement names the door that makes it serve one
+    const serving = await close(id, { unmet: [{ criterion: 1, to: { issue: next.key } }] });
+    expect(refusalsOf(serving)[0]?.detail).toContain(
+      `${next.key} serves none: a criterion proves a BC of its own issue's requirement`,
+    );
+    expect(refusalsOf(serving)[0]?.detail).toContain(
+      `POST /api/projects/${projectId}/requirements/REQ-${reqSeq}/issues\` { "issue": "${next.key}" }`,
+    );
     const r = await close(id, {
       unmet: [
         { criterion: 3, to: { issue: next.key } },
