@@ -101,12 +101,17 @@ export async function allocateDevice(
   });
 }
 
-/** Fail a box by the kernel or the runner, naming why, and have the device reap what it started. */
+/**
+ * Fail a box by the kernel or the runner, naming why, and have the device reap what it started.
+ * `onFailed` runs in the same transaction only when this call moved the row, so a second report of
+ * one failure does nothing twice.
+ */
 export async function failBox(
   row: BoxRow,
   failure: BoxFailure,
   detail: string,
   actor: KernelActor,
+  onFailed?: (tx: Tx) => Promise<void>,
 ): Promise<void> {
   if (row.state === 'closed' || row.state === 'failed' || row.state === 'waiting') return;
   await transition(db, BOX_MACHINE, {
@@ -130,6 +135,7 @@ export async function failBox(
         await pushBox(tx, row.deviceId, 'box.close', { boxId: r.id, why: 'failed' });
         await tellChanged(tx, { ...row, ...r, state: 'failed' });
       }
+      if (rows.length > 0) await onFailed?.(tx);
     },
   });
 }

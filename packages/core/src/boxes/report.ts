@@ -2,6 +2,7 @@
 // credential; `@forge/contracts/box-wire:boxReportSchema`). The device says what happened; core
 // moves the record. A device answers only for the boxes it holds.
 
+import { randomUUID } from 'node:crypto';
 import type { BoxReport } from '@forge/contracts/box-wire';
 import { BOX_MACHINE, type BoxRecord } from '@forge/contracts/boxes';
 import { eq } from 'drizzle-orm';
@@ -66,11 +67,15 @@ async function ready(
 async function deviceGone(row: BoxRow, said: string | undefined, device: KernelActor) {
   if (row.state === 'closed' || row.state === 'failed') return;
   const words = said ?? "the device found the box's screen no longer answering";
-  let detail = words;
-  if (row.projectId !== null) {
-    const [next] = await db
-      .insert(boxes)
-      .values({
+  if (row.projectId === null) {
+    await failBox(row, 'BOX_DEVICE_GONE', words, device);
+  } else {
+    // its replacement is written only by the report that failed it: two reports, one request
+    const next = randomUUID();
+    const detail = `${words}. Its request goes on as box ${next}: read that one`;
+    await failBox(row, 'BOX_DEVICE_GONE', detail, device, async (tx) => {
+      await tx.insert(boxes).values({
+        id: next,
         deviceId: row.deviceId,
         projectId: row.projectId,
         issueId: row.issueId,
@@ -83,11 +88,9 @@ async function deviceGone(row: BoxRow, said: string | undefined, device: KernelA
         viewport: row.viewport,
         recordingWhy: row.recordingWhy === 'asked' ? 'asked' : null,
         createdBy: row.createdBy,
-      })
-      .returning({ id: boxes.id });
-    if (next) detail = `${words}. Its request goes on as box ${next.id}: read that one`;
+      });
+    });
   }
-  await failBox(row, 'BOX_DEVICE_GONE', detail, device);
   await allocateDevice(row.deviceId);
 }
 

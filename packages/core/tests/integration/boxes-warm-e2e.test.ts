@@ -113,12 +113,23 @@ describe('a warm box is handed out only while its device answers', () => {
     const opened = await open('agent', { mode: 'android', criterion: 3, runId: 'run-w' });
     const id = (opened.json.box as Doc).id as string;
     expect((opened.json.box as Doc).state).toBe('opening');
-    await w.say('device', 'POST', `/api/boxes/${id}/report`, {
+    // the assign check and the warm sweep can both report it: one request, one replacement
+    const report = {
       kind: 'state',
       state: 'failed',
       failure: 'BOX_DEVICE_GONE',
       detail: 'the emulator on emulator-5556 exited exit status: 1',
-    });
+    };
+    await Promise.all([
+      w.say('device', 'POST', `/api/boxes/${id}/report`, report),
+      w.say('device', 'POST', `/api/boxes/${id}/report`, report),
+    ]);
+    const [{ n }] = (await db.execute(sql`
+      SELECT count(*)::int AS n FROM boxes
+       WHERE issue_id = ${w.issueId} AND criterion = 3 AND id <> ${id}`)) as unknown as [
+      { n: number },
+    ];
+    expect(n).toBe(1);
     const failed = await w.box(id);
     expect(failed).toMatchObject({ state: 'failed', failure: 'BOX_DEVICE_GONE' });
     const next = /goes on as box ([0-9a-f-]{36})/.exec(String(failed.detail))?.[1];
