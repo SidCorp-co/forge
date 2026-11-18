@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.729] - 2026-11-18
+
+Running pool jobs stay single, and browser box live views show frames
+
+### Fixed
+
+- **Jobs on a box run once again.** A job that is still working is no longer reported ended and started a second time.
+- **A browser box's live view shows its picture.** A static page shows at once and changes follow at your rate; a view that cannot reach the browser says why. A box opened for you takes input at once.
+
 ## [0.4.0-dev.728] - 2026-11-18
 
 Closing a box you hold is now checked against the hold rule
