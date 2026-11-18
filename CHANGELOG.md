@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.740] - 2026-11-18
+
+Recorded box sessions watchable after close; broken box links say why
+
+### Added
+
+- **A box you asked to record can be watched after it closes.** Its whole session plays at the box's page beside its clips; where it could not be saved, the box says why, such as Too large.
+
+### Fixed
+
+- **A box link that cannot open says why in plain words.** A missing box reads Not found and a broken link Bad link, instead of an error code and the box's id.
+
 ## [0.4.0-dev.739] - 2026-11-18
 
 A tidier menu with one section open, and the Activity count in it
