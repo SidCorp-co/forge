@@ -11,6 +11,9 @@ import { provideAssistantMethod } from './assistant-method-guide.js';
 import { type GuideSlug, guideCall } from './guide-ref.js';
 import { getGuide, listGuides } from './registry.js';
 
+/** A project with a run slot free: the admissible line asks for a build (ISS-1297). */
+const FREE = { held: 1, inUse: 0 };
+
 // REQ-23 BC-2: a prompt Forge composes names the guide that holds a method by its slug, rather than
 // restating the guide's text. Restated, the two copies drift apart in silence; named, there is one.
 
@@ -172,8 +175,8 @@ const everyOwed = {
 
 describe('the master nudge names a guide by slug, never restates one', () => {
   it('restates no guide, with every kind of owed work on it', () => {
-    expect(restated(masterWork([], everyOwed, 'dispatch').nudge)).toEqual([]);
-    expect(restated(masterWork([], everyOwed, 'direct').nudge)).toEqual([]);
+    expect(restated(masterWork([], everyOwed, 'dispatch', FREE).nudge)).toEqual([]);
+    expect(restated(masterWork([], everyOwed, 'direct', FREE).nudge)).toEqual([]);
   });
 
   it.each(Object.entries(OWED_KINDS))(

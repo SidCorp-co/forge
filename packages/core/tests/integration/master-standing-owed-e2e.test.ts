@@ -15,6 +15,10 @@
  * @direct-test-of packages/core/src/lib/master-wait.ts
  * @direct-test-of packages/core/src/masters/owed.ts
  * @direct-test-of packages/core/src/masters/verdict.ts
+ * @direct-test-of packages/core/src/masters/admissible-line.ts
+ *
+ * ISS-1297 (FB-720): an admissible row the master passed over with such a decision is off its line
+ * until the date passes, and while every run slot of the project is in use the line asks no build.
  */
 
 import { type MasterFacts, masterFactsSchema } from '@forge/contracts/master-verdict';
@@ -22,7 +26,7 @@ import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { judgeMaster } from '../../src/masters/service.js';
-import { openStandings, standingActsOwed } from '../../src/standing/index.js';
+import { masterStandingsOwed, openStandings } from '../../src/standing/index.js';
 import {
   closeWorld,
   ok,
@@ -39,8 +43,10 @@ import {
   createTestIssue,
   createTestProject,
   createTestRequirement,
+  createTestRunSession,
   createTestUser,
 } from '../helpers/factories.js';
+import { seedProjectDocument } from '../helpers/release-world.js';
 
 const HOUR = 3600;
 let world = { projectId: '', ownerId: '', deviceId: '', runnerId: '' };
@@ -251,7 +257,8 @@ describe('a decision at its own door holds the item off the master’s owed work
   // its triage is the triage line's to name, so the standing acts read is where its hold shows
   it('a feedback item: a decision comment at its own door, naming a condition, holds it', async () => {
     const key = await createTestFeedback(world.projectId, world.ownerId, 1);
-    const acted = async () => (await standingActsOwed(world.projectId)).map((a) => a.subject.key);
+    const acted = async () =>
+      (await masterStandingsOwed(world.projectId)).acts.map((a) => a.subject.key);
     expect(await acted()).toContain(key);
     ok(await decideOn(`feedback/${key}`, 'until the reporter answers'), 201);
     expect(await acted()).not.toContain(key);
@@ -288,5 +295,68 @@ describe('a decision at its own door holds the item off the master’s owed work
     );
     const answer = await sweep('alive');
     expect(answer.work.nudge).toContain(`${key}: propose or drop r1`);
+  });
+});
+
+/** A pass-over of issue `id` as the line asks it, at the issue's events door, held `until`. */
+const passOver = (until: string) => [
+  { key: 'decision', value: 'Pass it over.' },
+  { key: 'why', value: 'The batch in flight touches the same files.' },
+  { key: 'until', value: until },
+];
+
+describe('the admissible line asks only what the master can take now (ISS-1297)', () => {
+  // the standard profile with fast delivery: the master works direct, so its pass names each row
+  beforeEach(async () => {
+    await seedProjectDocument(world.projectId, world.ownerId, {
+      environments: {
+        dev: { tier: 'production', deploysFrom: 'main', deployment: { mode: 'external' } },
+      },
+    });
+  });
+
+  it('a row passed over until a date to come is not listed, and is listed again once it passes', async () => {
+    const { id, key } = await createTestIssue(world.projectId, world.ownerId, 1, {
+      status: 'open',
+      createdAt: hourAgo(),
+    });
+    expect((await sweep('alive')).work.nudge).toContain(`${key} ${id}`);
+    const nextWeek = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
+    const fields = passOver(nextWeek);
+    ok(
+      await say('POST', `/api/issues/${id}/events`, { kind: 'decision', contract: 1, fields }),
+      201,
+    );
+    const held = await sweep('alive');
+    expect(held.work.admissible, held.verdict.because).toBe(0);
+    expect(held.work.nudge ?? '').not.toContain(key);
+
+    const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+    await db.execute(sql`
+      UPDATE activity_log SET payload = jsonb_set(payload, '{fields}', ${JSON.stringify(passOver(yesterday))}::jsonb)
+       WHERE issue_id = ${id} AND payload ? 'fields'`);
+    const back = await sweep('alive');
+    expect(back.work.admissible).toBe(1);
+    expect(back.work.nudge).toContain(`${key} ${id}`);
+  });
+
+  it('while every run slot is in use the line asks no build, and names the row again once one frees', async () => {
+    const { id, key } = await createTestIssue(world.projectId, world.ownerId, 1, {
+      status: 'open',
+      createdAt: hourAgo(),
+    });
+    await db.execute(sql`UPDATE devices SET max_subagents = 1 WHERE id = ${world.deviceId}`);
+    await createTestRunSession(world.projectId, world.deviceId, hourAgo(), null);
+    const full = await sweep('alive');
+    expect(full.work.nudge).toContain(`1 admissible issue waits for a run slot`);
+    expect(full.work.nudge).toContain(`in use: ${key}. Build none`);
+    expect(full.work.nudge).not.toContain('open for you to build');
+
+    // a slot frees: the box declares room for a second subagent (a run's close moves its session through the kernel)
+    await db.execute(sql`UPDATE devices SET max_subagents = 2 WHERE id = ${world.deviceId}`);
+    const freed = await sweep('alive');
+    expect(freed.work.nudge).toContain(`1 admissible issue is open for you to build`);
+    expect(freed.work.nudge).toContain(`${key} ${id}`);
+    expect(freed.work.digest).not.toBe(full.work.digest);
   });
 });

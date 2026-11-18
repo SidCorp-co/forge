@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { masterWork } from './owed.js';
 
+/** A project with a run slot free: the admissible line asks for a build (ISS-1297). */
+const FREE = { held: 1, inUse: 0 };
+
 // @direct-test-of packages/core/src/masters/pass-order.ts
 
 // The owed-work fixture of owed.test.ts, cut to the work a direct-mode pass is composed over.
@@ -59,8 +62,8 @@ const issue = (issueId: string) => ({
 // build and record afterwards, so the pass prompt the box types names no dispatch and no brief.
 describe('masterWork under direct mode: the pass is told to build, not to dispatch', () => {
   const owed = { ...none, triages: [{ key: 'FB-1' }] };
-  const direct = masterWork([issue('a')], owed, 'direct');
-  const dispatch = masterWork([issue('a')], owed, 'dispatch');
+  const direct = masterWork([issue('a')], owed, 'direct', FREE);
+  const dispatch = masterWork([issue('a')], owed, 'dispatch', FREE);
 
   it('names no dispatch, lands, then records in one go under the kernel, and still carries what is owed', () => {
     expect(direct.nudge.startsWith('Pass.')).toBe(true);
@@ -118,8 +121,8 @@ describe('masterWork under direct mode: the pass is told to build, not to dispat
   });
 
   it('briefs a new pane the same, and leaves every other project as it was', () => {
-    expect(masterWork([issue('a')], none, 'direct').owedLine).toContain('works direct');
-    expect(masterWork([issue('a')], none, 'dispatch').owedLine).toBe('');
+    expect(masterWork([issue('a')], none, 'direct', FREE).owedLine).toContain('works direct');
+    expect(masterWork([issue('a')], none, 'dispatch', FREE).owedLine).toBe('');
     expect(
       dispatch.nudge.startsWith('Pass. Run the wave by `forge-runner api guides/dispatch.md`'),
     ).toBe(true);
@@ -144,7 +147,7 @@ describe('masterWork names no plugin skill and no plugin verb, in either mode', 
 
   for (const mode of ['dispatch', 'direct'] as const) {
     it(`over every owed kind, ${mode}`, () => {
-      const { nudge } = masterWork([issue('a')], owed, mode);
+      const { nudge } = masterWork([issue('a')], owed, mode, FREE);
       expect(nudge).not.toMatch(plugin);
       expect(nudge).toContain('`forge-runner api guides/dispatch.md`');
     });
@@ -172,7 +175,7 @@ describe("a room agent's ask comes first in the pass, its wait and breach said",
 
   for (const mode of ['dispatch', 'direct'] as const) {
     it(mode, () => {
-      const work = masterWork([issue('a')], owed, mode);
+      const work = masterWork([issue('a')], owed, mode, FREE);
       const first = work.nudge.indexOf('First, before any other work in this pass');
       expect(first).toBeGreaterThan(-1);
       expect(first).toBeLessThan(work.nudge.indexOf('FB-1'));
@@ -183,9 +186,44 @@ describe("a room agent's ask comes first in the pass, its wait and breach said",
       expect(work.nudge).toContain('support/master-asks/<askId>/answer -X POST');
       expect(work.owed).toBe(3);
       // an answered ask leaves the work, so the digest moves and the box nudges again
-      expect(masterWork([issue('a')], { ...owed, agentAsks: [] }, mode).digest).not.toBe(
+      expect(masterWork([issue('a')], { ...owed, agentAsks: [] }, mode, FREE).digest).not.toBe(
         work.digest,
       );
     });
   }
+});
+
+// ISS-1297 (FB-720): while every run slot was in use, each pass asked a build or a pass-over of every
+// row, though each declare was refused RUN_SLOT_UNAVAILABLE; the wait is said once instead
+// @direct-test-of packages/core/src/masters/admissible-line.ts
+describe('a direct pass with every run slot in use asks no build', () => {
+  const rows = ['1', '2', '3', '4', '5', '6'].map(issue);
+  const full = masterWork(rows, none, 'direct', { held: 2, inUse: 2 });
+  const free = masterWork(rows, none, 'direct', { held: 2, inUse: 1 });
+
+  it('says once how many wait for a run slot, with the first keys, and asks neither act', () => {
+    expect(full.nudge).toContain(
+      "6 admissible issues wait for a run slot, all 2 of the project's in use: ISS-1, ISS-2, ISS-3, ISS-4, ISS-5, and 1 more after them.",
+    );
+    expect(full.nudge).toContain('Build none and record no pass-over for them');
+    expect(full.nudge).not.toContain('open for you to build');
+    expect(full.nudge).not.toContain('why you pass');
+    expect(full.owedLine).toContain('wait for a run slot');
+  });
+
+  it('with a slot free, names each row to build again, and the digest moves so the pass is asked', () => {
+    expect(free.nudge).toContain('6 admissible issues are open for you to build');
+    expect(free.nudge).toContain('ISS-1 1; ISS-2 2');
+    expect(free.nudge).toContain('record on the issue why you pass one over');
+    expect(free.nudge).not.toContain('wait for a run slot');
+    expect(free.digest).not.toBe(full.digest);
+  });
+
+  it('one row reads in the singular, and a dispatching pass is left as it was', () => {
+    expect(masterWork([issue('a')], none, 'direct', { held: 1, inUse: 1 }).nudge).toContain(
+      "1 admissible issue waits for a run slot, all 1 of the project's in use: ISS-a. Build none and record no pass-over for it",
+    );
+    const dispatch = masterWork(rows, none, 'dispatch', { held: 2, inUse: 2 });
+    expect(dispatch).toEqual(masterWork(rows, none, 'dispatch', FREE));
+  });
 });

@@ -11,7 +11,7 @@ import type { ReleaseEndedRunHold } from '@forge/contracts/releases';
 import { readAdmissibleIssues, readOwedComments } from '../devices/index.js';
 import { type GuideSlug, guideCall } from '../guides/index.js';
 import { agrees } from '../lib/plural.js';
-import { admissibleLine } from './admissible-line.js';
+import { admissibleLine, type RunSlotsNow, runSlotsOf, slotsFull } from './admissible-line.js';
 import { lastFinishedPassStart } from './last-pass.js';
 import { agentAsksLine } from './owed-agent-asks.js';
 import { confirmsLine } from './owed-confirms.js';
@@ -294,7 +294,8 @@ function count(owed: Owed): number {
 }
 
 /** One line per thing a master is owed, so the digest moves exactly when the work does. */
-function workLines(admissible: Admissible[], owed: Owed): string[] {
+function workLines(admissible: Admissible[], owed: Owed, slotWait: boolean): string[] {
+  const wait = slotWait ? ['run-slots:full'] : [];
   const issues = admissible.map((a) => {
     const gates = a.relations
       .filter((r) => r.kind === GATING_KIND)
@@ -338,13 +339,13 @@ function workLines(admissible: Admissible[], owed: Owed): string[] {
     ...owed.releaseActs.map((a) => `release-act:${a.version}|${a.key}`),
     ...standingActsWork(owed.standingActs),
   ];
-  return [...issues, ...ids].sort();
+  return [...wait, ...issues, ...ids].sort();
 }
 
-/** A digest of the work, compared for equality only: the same work digests the same on every sweep. */
-export function workDigest(admissible: Admissible[], owed: Owed): string {
+/** The work's digest, equality only; `slotWait` moves it as the rows wait or a slot frees (ISS-1297). */
+export function workDigest(admissible: Admissible[], owed: Owed, slotWait = false): string {
   const hash = createHash('sha256');
-  for (const line of workLines(admissible, owed)) hash.update(`${line}\n`);
+  for (const line of workLines(admissible, owed, slotWait)) hash.update(`${line}\n`);
   return hash.digest('hex').slice(0, 32);
 }
 
@@ -363,7 +364,12 @@ export function contentLanguageLine(tag: string): string {
  * pass is told to build rather than dispatch, and a new pane's first brief is told the same, since a
  * pane placed for issues alone is otherwise briefed with no line of core's at all.
  */
-export function masterWork(admissible: Admissible[], owed: Owed, mode: MasterMode): MasterWork {
+export function masterWork(
+  admissible: Admissible[],
+  owed: Owed,
+  mode: MasterMode,
+  slots: RunSlotsNow,
+): MasterWork {
   const owedCount = count(owed);
   const line = owedLine(owed);
   const only = admissible.length === 1 && owedCount === 0 ? admissible[0] : undefined;
@@ -372,9 +378,9 @@ export function masterWork(admissible: Admissible[], owed: Owed, mode: MasterMod
     admissible: admissible.length,
     owed: owedCount,
     liveChecks: owed.liveChecks.length,
-    digest: workDigest(admissible, owed),
-    nudge: `${direct ? `${DIRECT_NUDGE}${admissibleLine(admissible)}` : NUDGE}${line}${contentLanguageLine(owed.contentLanguage)}`,
-    owedLine: direct ? `${DIRECT_ORDER}${admissibleLine(admissible)}${line}` : line,
+    digest: workDigest(admissible, owed, direct && admissible.length > 0 && slotsFull(slots)),
+    nudge: `${direct ? `${DIRECT_NUDGE}${admissibleLine(admissible, slots)}` : NUDGE}${line}${contentLanguageLine(owed.contentLanguage)}`,
+    owedLine: direct ? `${DIRECT_ORDER}${admissibleLine(admissible, slots)}${line}` : line,
     issueKey: only?.issueKey ?? null,
   };
 }
@@ -409,7 +415,8 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     wedgedWork,
     merges,
     releaseActs,
-    standingActs,
+    standings,
+    slots,
   ] = await Promise.all([
     readAdmissibleIssues({ deviceId, projectId }),
     readOwedComments(projectId),
@@ -431,7 +438,8 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     ports.wedgedWorkOwed(projectId),
     ports.mergesOwed(projectId),
     ports.releaseActsOwed(projectId),
-    ports.standingActsOwed(projectId),
+    ports.masterStandingsOwed(projectId),
+    runSlotsOf(deviceId, projectId),
   ]);
   const held = new Set(await ports.breakdownsHeldBySteward(projectId));
   const carriers = await ports.draftCarriersWaiting(projectId);
@@ -453,13 +461,14 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
   const mode = await ports.masterMode(projectId);
   // the lists that name an item's own act: a standing act on an item one of them names is named there
   const naming = { requests, carriers, triages, confirms, revisions, intakeFailures, designs };
-  const standingDue = standingActsDue(standingActs, admittedOnly, {
+  const standingDue = standingActsDue(standings.acts, admittedOnly, {
     ...naming,
     ...{ designApprovals, breakdownsDue, releaseNotes, warnedNotes, marks: merges.marks },
     ...{ landedWork, wedgedWork, releaseHolds, reviews },
   });
   const work = masterWork(
-    admissible.items,
+    // a row the master passed over with a decision that still holds is off the line (ISS-1297)
+    admissible.items.filter((a) => !standings.heldIssues.has(a.issueId)),
     {
       designs,
       designApprovals,
@@ -497,6 +506,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
       contentLanguage,
     },
     mode,
+    slots,
   );
   const waits = [
     ...releaseActs.map((r) => ({ on: r.version, act: r.act })),

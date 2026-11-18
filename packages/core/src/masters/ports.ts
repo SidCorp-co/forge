@@ -230,9 +230,12 @@ interface MastersPorts {
   releaseActsOwed(projectId: string): Promise<ReleaseActOwed[]>;
   /**
    * The acts the project's open issues, requirements, feedback items and workflows wait on its master
-   * for, as the one standing read names them (`standing/master-owed.ts`, ISS-1278).
+   * for, as the one standing read names them (`standing/master-owed.ts`, ISS-1278), and the issues
+   * a decision of the master holds, which the admissible line withholds (ISS-1297).
    */
-  standingActsOwed(projectId: string): Promise<StandingActOwed[]>;
+  masterStandingsOwed(
+    projectId: string,
+  ): Promise<{ acts: StandingActOwed[]; heldIssues: ReadonlySet<string> }>;
   /** Running releases the project requires approval for that have asked none (ISS-591). */
   releaseApprovalsOwed(projectId: string): Promise<{ runId: string; version: string | null }[]>;
   /** Questions on the project's issues answered after `after`, with what each answer did to its park. */

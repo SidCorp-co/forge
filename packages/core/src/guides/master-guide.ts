@@ -69,7 +69,9 @@ version that shipped is never re-decided (\`RELEASE_CARRIED_SHIPPED\`).
 person can take — a credential, a call that is irreversible or on real money or product direction,
 an approval the kernel asks of a strict project — is parked at \`needs_info\` with that act as the question, so it
 leaves the backlog and comes back when the person acts. Left at \`open\`, it stays admissible, and
-core keeps waking you for it.
+core keeps waking you for it, unless you pass it over with a decision on the issue whose \`until\` is a
+date to come or a condition: then it is off your line until the date passes or the issue moves. A
+row waiting only for a run slot needs no pass-over: while every slot is in use the line says so once.
 
 **Ordering between issues is a blocks edge, never a park.** How to add one, and why a park is
 not one: the dependency and transition doors' cards, below.

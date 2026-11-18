@@ -9,7 +9,8 @@
  * A wait naming the master is left out only where its act is counted elsewhere or is not owed yet,
  * each said in {@link LEFT_OUT}, or where the master already recorded why it waits (ISS-1282): a
  * decision on the item, at its own kind's door (`masters/decision-doors.ts`), holding it by a date
- * to come or a condition, read as a requirement's standing reads one ({@link heldIds}).
+ * to come or a condition, read as a requirement's standing reads one ({@link heldIds}). The same
+ * reading holds a claimable issue off the master's admissible line (ISS-1297).
  */
 
 import type { ItemStanding, StandingSubject } from '@forge/contracts/steward';
@@ -103,15 +104,32 @@ async function heldIds(items: readonly ItemStanding[], now: Date): Promise<Set<s
   return held;
 }
 
+/** What the master's standings owe: the acts this read counts, and the issues a decision holds. */
+export interface MasterStandingsOwed {
+  acts: StandingActOwed[];
+  /**
+   * The issues whose wait on the master a decision of its holds, a claimable one's included (ISS-1297):
+   * the admissible line withholds each as the standings line withholds a held item, so one passed over
+   * until a date or while a condition holds is listed again once the date passes or its wait moves.
+   */
+  heldIssues: ReadonlySet<string>;
+}
+
 /** Every open item whose standing waits on the master, with the act it names, as the standing read orders them. */
-export async function standingActsOwed(projectId: string): Promise<StandingActOwed[]> {
-  const waits = (await openStandings(projectId)).filter(counted);
+export async function masterStandingsOwed(projectId: string): Promise<MasterStandingsOwed> {
+  const waits = (await openStandings(projectId)).filter((i) => waitNamesMaster(i.waitingOn));
   const held = await heldIds(waits, new Date());
-  return waits
-    .filter((i) => !held.has(i.subject.id))
+  const acts = waits
+    .filter((i) => counted(i) && !held.has(i.subject.id))
     .map((i) => ({
       subject: i.subject,
       key: innermostAct(i.waitingOn.says.act).key,
       act: i.waitingOn.act,
     }));
+  const heldIssues = new Set(
+    waits
+      .filter((i) => i.subject.kind === 'issue' && held.has(i.subject.id))
+      .map((i) => i.subject.id),
+  );
+  return { acts, heldIssues };
 }

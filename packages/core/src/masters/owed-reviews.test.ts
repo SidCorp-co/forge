@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { masterWork, owedLine, workDigest } from './owed.js';
 import type { ReviewOwed } from './ports.js';
 
+/** A project with a run slot free: the admissible line asks for a build (ISS-1297). */
+const FREE = { held: 1, inUse: 0 };
+
 // ISS-870 (FB-433): a review an independent judge owes is master work, counted, named and digested
 // like every other owed item, so the verdict that reads `owed` places a master for it.
 
@@ -50,8 +53,8 @@ const review = (over: Partial<ReviewOwed> = {}): ReviewOwed => ({
 
 describe('ISS-870: the reviews an independent judge owes', () => {
   it('counts a review owed as master work, so a project owing only that is not read as owing nothing', () => {
-    expect(masterWork([], none, 'dispatch').owed).toBe(0);
-    const work = masterWork([], { ...none, reviews: [review()] }, 'dispatch');
+    expect(masterWork([], none, 'dispatch', FREE).owed).toBe(0);
+    const work = masterWork([], { ...none, reviews: [review()] }, 'dispatch', FREE);
     expect(work.owed).toBe(1);
     expect(work.admissible).toBe(0);
   });
@@ -71,7 +74,7 @@ describe('ISS-870: the reviews an independent judge owes', () => {
     expect(line).toContain('`--role qa`');
     expect(line).toContain('`--role reviewer`');
     expect(line).toContain('`forge-runner api guides/qa.md` is how');
-    expect(masterWork([], { ...none, reviews: [review()] }, 'dispatch').nudge).toContain(
+    expect(masterWork([], { ...none, reviews: [review()] }, 'dispatch', FREE).nudge).toContain(
       '1 issue owes an independent review (ISS-10',
     );
   });

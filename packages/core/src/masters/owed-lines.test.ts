@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { masterWork, owedLine, workDigest } from './owed.js';
 import type { AgentConfirmOwed } from './ports.js';
 
+/** A project with a run slot free: the admissible line asks for a build (ISS-1297). */
+const FREE = { held: 1, inUse: 0 };
+
 // The owed lines for questions an agent owes, confirms an agent reporter owes (owed-confirms.ts), and
 // the release holds whose act is the master's (ISS-888).
 // @direct-test-of packages/core/src/masters/owed-confirms.ts
@@ -44,7 +47,8 @@ const none: Parameters<typeof owedLine>[0] = {
   contentLanguage: 'en',
 };
 
-const dispatched = (owed: Parameters<typeof masterWork>[1]) => masterWork([], owed, 'dispatch');
+const dispatched = (owed: Parameters<typeof masterWork>[1]) =>
+  masterWork([], owed, 'dispatch', FREE);
 
 // REQ-79 BC-14: outside strict a decision is owed by the master, and no person's Needs you lists
 // it, so the pass names each open one with the doors that answer and void it

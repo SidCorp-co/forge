@@ -10,12 +10,15 @@ import type {
   WaitingRequest,
 } from './ports.js';
 
+/** A project with a run slot free: the admissible line asks for a build (ISS-1297). */
+const FREE = { held: 1, inUse: 0 };
+
 // The owed-work read is core's: owed.ts counts and digests what a master owes; the box carries its line.
 /** The work as a project that dispatches is told it; direct mode is owed-direct.test.ts's. */
 const dispatched = (
   admissible: Parameters<typeof masterWork>[0],
   owed: Parameters<typeof masterWork>[1],
-) => masterWork(admissible, owed, 'dispatch');
+) => masterWork(admissible, owed, 'dispatch', FREE);
 
 const none = {
   designs: [],
