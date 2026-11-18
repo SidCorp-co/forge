@@ -111,6 +111,8 @@ describe('the master skill is a map, its method served by core (ISS-1251)', () =
       '`"type": "change-request"`',
       'The fence refusal names this act',
       'send that project a change request through the channel',
+      // another project's defect goes to its intake, recorded on both items (ISS-1286)
+      '`…/channel/handoffs -X POST` files it there as feedback naming your item',
     ]) {
       expect(MASTER).toContain(word);
     }

@@ -92,4 +92,34 @@ export const ECOSYSTEM_REST_CARDS = {
     audience: ['master'],
     scenarios: ['a dead link left at unverified with a note: ISS-790'],
   },
+  // FB-636: sidcorp-mail's master found FB-13 was sid-desk's code, was refused filing it there, and
+  // carried it by a pane message nothing in Forge recorded (ISS-1286)
+  'POST /api/projects/:id/channel/handoffs': {
+    purpose:
+      'Hands a finding about another project’s part to that project’s intake, recorded on both sides.',
+    situations: [
+      {
+        when: 'an issue or feedback item of this project turns out to be another project’s code',
+        do: 'hand it to that project’s intake: it is filed there as feedback naming this item, and the item keeps the key it got',
+        watch:
+          'a project no ecosystem shows this one is refused HANDOFF_NOT_LINKED, naming who links them',
+      },
+    ],
+    practice: [
+      'Handing the same item again while its feedback is open writes nothing and answers the same key.',
+      'A part to build under a contract the two share goes as a change request (channel drafts) instead.',
+    ],
+    example: {
+      to: '0c44c0c3-5b7e-4d2a-9f61-3e8a2b7c4d10',
+      item: 'FB-13',
+      kind: 'bug',
+      title: 'Replies to a ticket arrive without their attachments',
+      whereSeen: 'ticket thread, reply pane',
+    },
+    redFlag:
+      'Messaging the other project’s pane or a person to file it, so no record on either side holds the handoff.',
+    family: 'ecosystem',
+    audience: ['master'],
+    scenarios: ['another project’s defect carried by a pane message nothing recorded: FB-636'],
+  },
 } satisfies Record<string, CapabilityCardBody>;

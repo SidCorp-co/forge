@@ -314,6 +314,11 @@
     "on": "2026-11-17",
     "by": "ISS-1251"
   },
+  "POST /api/projects/:id/channel/handoffs": {
+    "hash": "8260db5deb9fe062",
+    "on": "2026-11-18",
+    "by": "ISS-1286"
+  },
   "POST /api/projects/:id/contract-requests": {
     "hash": "119b156983c38298",
     "on": "2026-11-17",

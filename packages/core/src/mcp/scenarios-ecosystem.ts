@@ -125,4 +125,15 @@ export const ECOSYSTEM_SCENARIOS: readonly CardScenario[] = [
     good: 'adopt it: one transaction writes the interface and moves every link’s pin',
     teaches: [/adopt it: one transaction/i, /adopt never re-pins a baseline/i],
   },
+  {
+    name: 'another project’s defect carried by a pane message nothing recorded: FB-636',
+    card: 'POST /api/projects/:id/channel/handoffs',
+    source:
+      'FB-636 (sidcorp-mail ISS-18, 2026-11-14): POST projects/<sid-desk>/feedback refused PAT_PROJECT_OUTSIDE_FENCE',
+    situation:
+      'A master triaging its FB-13 found the defect was in sid-desk’s code, and filing it on sid-desk was refused',
+    bad: 'a cross-session message to the sid-desk master pane asking it to file and triage the feedback; nothing in Forge records the handoff except a comment on ISS-18',
+    good: 'hand the item to sid-desk’s intake through the channel, so sid-desk holds it as feedback and FB-13 keeps its key',
+    teaches: [/hand it to that project’s intake/i, /keeps the key/i],
+  },
 ];

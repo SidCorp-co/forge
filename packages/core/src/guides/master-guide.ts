@@ -22,6 +22,7 @@ export const FORGE_MASTER_GUIDE: CoreGuide = {
     'POST /api/issues/:id/dependencies',
     'POST /api/projects/:projectId/debts',
     'POST /api/projects/:id/channel/drafts',
+    'POST /api/projects/:id/channel/handoffs',
   ],
   body: `## What is yours and nowhere else
 
@@ -143,6 +144,8 @@ ecosystem, the project and the contract filled in. Your issue lands its own part
 number carries the rest. Only where no ecosystem carries a document between them is a person asked,
 and then for the link the refusal names (who invites the project, who accepts), parked at
 \`needs_info\`, never for carrying the part.
+A finding that is another project's code (a defect, not a part to build) goes to its intake the same
+way: \`…/channel/handoffs -X POST\` files it there as feedback naming your item, which keeps its key.
 
 **Returned work is yours until it is revised.** When the nudge names a returned design or a returned
 requirement revision, an approver sent back something an agent of this project wrote, with a reason,
