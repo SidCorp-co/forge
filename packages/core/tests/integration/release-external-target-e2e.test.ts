@@ -296,7 +296,7 @@ describe('a draft asks a record only over issues one still takes (ISS-1296)', ()
       (g) => g.code === 'RELEASE_DEPLOYED_OUTSIDE',
     );
     expect(gate?.sentence).toBe(
-      'Production deploys outside Forge; a release records that deploy, and the record carries the closed ISS-1 (taken by 1.49.41, then reopened) too.',
+      'Deployed outside Forge; its record also carries the closed ISS-1 (taken by 1.49.41, then reopened).',
     );
     const res = await record([a], { version: 'v1.50.0' });
     expect(res.status, JSON.stringify(res.body)).toBe(201);

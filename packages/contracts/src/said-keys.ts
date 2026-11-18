@@ -65,7 +65,7 @@ export const SAID = {
 	},
 	"standing.gate.title.deployedOutside": { en: "Deployed outside Forge" },
 	"standing.gate.deployedOutsideCarries": {
-		en: "Production deploys outside Forge; a release records that deploy, and the record carries the closed {closed} too.",
+		en: "Deployed outside Forge; its record also carries the closed {closed}.",
 		vars: { closed: "saidSeries" },
 	},
 	"standing.gate.closedWithdrawn": {
