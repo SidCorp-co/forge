@@ -15,7 +15,7 @@ vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation"
 function Page({ technical = true }: { technical?: boolean }) {
   return (
     <main>
-      <section data-tour="rel-users">What users see</section>
+      <section data-tour="rel-users">What's new</section>
       {technical && <div data-tour="rel-technical">Technical</div>}
       <TourLauncher />
     </main>
@@ -57,7 +57,7 @@ const events = () => calls.filter((c) => c.path === "/me/tour-events").map((c) =
 describe("a ?tour= deep link", () => {
   it("opens the tour on its page, takes the parameter off the address, and stores it completed at its revision", async () => {
     renderWithQuery(<Page />);
-    expect(await screen.findByText("What users see", { selector: ".driver-popover-title" })).toBeInTheDocument();
+    expect(await screen.findByText("What's new", { selector: ".driver-popover-title" })).toBeInTheDocument();
     expect(replace).toHaveBeenCalledWith("/projects/forge/releases/0.4.0-dev.87?tab=overview", { scroll: false });
     press(".driver-popover-next-btn");
     await screen.findByText("Technical", { selector: ".driver-popover-title" });
@@ -70,7 +70,7 @@ describe("a ?tour= deep link", () => {
 
   it("skips a step whose anchor is missing, records it, and stores a dismissal at the step it was closed on", async () => {
     renderWithQuery(<Page technical={false} />);
-    expect(await screen.findByText("What users see", { selector: ".driver-popover-title" })).toBeInTheDocument();
+    expect(await screen.findByText("What's new", { selector: ".driver-popover-title" })).toBeInTheDocument();
     press(".driver-popover-close-btn");
     await waitFor(() =>
       expect(events()).toEqual([
