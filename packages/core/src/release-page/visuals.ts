@@ -207,7 +207,10 @@ export async function withVisuals<T extends Changes>(
   };
 }
 
-/** The lines that touched a screen and show nothing, with no why from their judge (ISS-1308). */
+/**
+ * The lines that touched a screen and show nothing, with no why from their judge (ISS-1308). Each
+ * line's `ui` is `touchedUi`'s, as `withVisuals` set it.
+ */
 export function visualsOwedOf(
   detail: Pick<ReleaseDetail, 'issues'>,
   changes: Changes,
@@ -216,7 +219,7 @@ export function visualsOwedOf(
   const byKey = new Map(detail.issues.map((i) => [i.key, i] as const));
   const owes = (c: Change) => {
     const issue = byKey.get(c.issueKey);
-    if (!issue?.surfaces.includes('ui')) return false;
+    if (c.ui !== true || !issue) return false;
     return !c.visual && !facts.saidNone.has(issue.id);
   };
   const lines = [
