@@ -416,8 +416,10 @@ status the run took it from, unless its work landed: a recorded mark the issue w
 where it stands, and the issue records why (`issue.handBackKept`,
 `packages/core/src/devices/run-issue-return.ts`). A run's end hands back its lease and never undoes a
 landing (adminhub-fe ISS-50, 2026-10-26). `awaiting_release` → `closed` is the issue met in scope:
-written by the run holding it (`NOT_THE_HOLDER` for anyone else), each criterion it did not meet moved
-out first (`packages/core/src/issues/close-in-scope.ts`, `CLOSE_CRITERION_UNPLACED`), or by a release
+written by the run holding it (`NOT_THE_HOLDER` for anyone else) over its recorded release note
+(`packages/core/src/issues/close-note-guard.ts:closeNoteFault`, `CLOSE_RELEASE_NOTE_MISSING`), each
+criterion it did not meet moved out first (`packages/core/src/issues/close-in-scope.ts`,
+`CLOSE_CRITERION_UNPLACED`), or by a release
 that claimed it, and it needs the merge either way (`CLOSE_REQUIRES_SHIPPED`). On a project with
 no production environment that release is the recorded landing
 (`packages/core/src/release-batch/recorded-landing.ts:recordLanding`), which keeps the commit the
