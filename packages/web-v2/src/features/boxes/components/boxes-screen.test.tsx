@@ -7,6 +7,7 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { androidActs, androidSpans, BOX, heldActs, ISSUE_LABELS, ME, PROJECT_ID, projectBoxes } from "@/test/boxes";
 import { type Call, fakeCore, renderWithQuery } from "@/test/render";
+import { BoxList } from "./box-list";
 import { BoxesScreen } from "./boxes-screen";
 
 vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => undefined }));
@@ -85,6 +86,17 @@ describe("the Boxes page", () => {
     ]);
     const band = screen.getByTestId("boxes-band");
     expect(within(band).getAllByTestId("band-figure-value").map((v) => v.textContent)).toEqual(["3", "1", "2"]);
+  });
+
+  // ISS-1335: a box its opener could no longer drive stayed open; the sweep closes it, and its row says so
+  it("says a box the sweep closed once nothing used it closed idle, and nothing more on one its caller closed", () => {
+    const done = projectBoxes().find((b) => b.id === BOX.done);
+    if (!done) throw new Error("no closed box in the fixture");
+    const idle = { ...done, id: BOX.mine, issueId: null, closedWhy: "idle" as const };
+    renderWithQuery(<BoxList boxes={[idle, { ...done, issueId: null }]} me={ME} selected={null} onSelect={() => {}} />);
+    const [closedIdle, closedDone] = screen.getAllByTestId("box-row");
+    expect(closedIdle?.textContent).toContain("Closed idle");
+    expect(closedDone?.textContent).not.toContain("Closed idle");
   });
 
   it("names who holds a held box and since when, and counts its idle hold down", async () => {
