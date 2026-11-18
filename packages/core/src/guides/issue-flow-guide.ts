@@ -447,7 +447,8 @@ landing and moved, its key in its own commit subject so the mark reads the commi
    note kept with two waits off a release page still to ship until rewritten), and each step an
    admin must take before it goes out in \`adminSteps\` — no paths, hashes or refactors, the engineering detail in
    \`technical\`; \`{ section: 'Skip', userFacing: '-' }\` where they will see nothing, since a Skip
-   still carries a sentence. A release refuses to claim an issue without one.
+   still carries a sentence. A note the door refuses is not stored, and your close is refused
+   without one.
 4. \`POST /api/issues/:id/transition\` \`{ toStatus: 'awaiting_release' }\`. It is refused
    \`MERGE_NOT_RECORDED\` while the merge is not recorded; it asks no verdict, since verdicts are
    judged on the release that carries the work.
@@ -462,11 +463,12 @@ landing and moved, its key in its own commit subject so the mark reads the commi
 environment, are marks on the release, never issue statuses. A criterion this issue cannot meet is
 moved out on the record before the close — to the next batch's issue, a new issue or the
 requirement — and the close names where each one went. **The run holding the issue closes it:**
+write its release note (step 3), read it back with \`GET /api/issues/:id\`, then
 \`POST /api/issues/:id/transition\` \`{ toStatus: 'closed', unmet: [{ criterion: 3, to: { issue: '<its key>' } }, { criterion: 4, to: 'requirement' }] }\`
 from \`awaiting_release\`, \`unmet\` left out where every criterion is met; a criterion whose newest
-verdict is a fail, or one named with nowhere to go, is refused \`CLOSE_CRITERION_UNPLACED\`. A
-release that claims an issue still at \`awaiting_release\` closes it too; one you closed it carries as
-it stands. Whether the work is live is read from that release's record, never from \`closed\`. On a project that
+verdict is a fail, or one named with nowhere to go, is refused \`CLOSE_CRITERION_UNPLACED\`, and a
+close with no release note recorded \`CLOSE_RELEASE_NOTE_MISSING\`. A release that claims an issue
+still at \`awaiting_release\` closes it too; one you closed it carries as it stands. Whether the work is live is read from that release's record, never from \`closed\`. On a project that
 declares no production environment that release is the recorded landing
 (\`POST /api/projects/:id/release-records\`): the agent's record in its own words, a version
 optional and a commit only evidence, never checked. The record reports each criterion by the pass

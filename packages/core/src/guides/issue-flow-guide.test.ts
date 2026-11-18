@@ -87,6 +87,16 @@ describe('the issue-flow guide states goals, with the gates a project turns on',
     expect(prose).not.toContain("**Today the kernel still makes the close a release's act:**");
     expect(prose).not.toContain('CLOSE_ONLY_BY_RELEASE');
   });
+
+  // ISS-1293: gwork's master closed over a release note the door had refused, and set it after
+  it('closes after the release note is written and read back, naming the refusal of a close without one', () => {
+    const flat = prose.split(/\s+/).join(' ');
+    expect(flat).toContain(
+      '**The run holding the issue closes it:** write its release note (step 3), read it back with `GET /api/issues/:id`, then `POST /api/issues/:id/transition`',
+    );
+    expect(flat).toContain('a close with no release note recorded `CLOSE_RELEASE_NOTE_MISSING`');
+    expect(flat).not.toContain('A release refuses to claim an issue without one.');
+  });
 });
 
 // ISS-1256 r5: a working day of landings wrote no term or rule while "when work finishes, add terms"
