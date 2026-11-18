@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.741] - 2026-11-18
+
+A box recording kept on its device now says so in Forge
+
+### Fixed
+
+- **A box recording that stayed on its device now says so.** Instead of No clip, the box reads Session · On device, and hovering says why it never reached Forge.
+
 ## [0.4.0-dev.740] - 2026-11-18
 
 Recorded box sessions watchable after close; broken box links say why
