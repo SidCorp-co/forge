@@ -1,5 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { AUTONOMOUS_QUESTION_STATUS } from '@forge/contracts/issue-machine';
+import {
+  AUTONOMOUS_QUESTION_STATUS,
+  ISSUE_TERMINAL_STATUSES,
+} from '@forge/contracts/issue-machine';
 import type { QuestionAboutRequest } from '@forge/contracts/questions';
 import { and, eq, inArray, or, sql } from 'drizzle-orm';
 import { type IssueStatus, issues, type WaitingKind } from '../db/schema.js';
@@ -156,7 +159,7 @@ async function shippedAmong(
       and(
         eq(issues.projectId, projectId),
         inArray(issues.issSeq, seqs),
-        or(inArray(issues.status, ['closed', 'dropped']), landedSql(sql`"issues"`)),
+        or(inArray(issues.status, [...ISSUE_TERMINAL_STATUSES]), landedSql(sql`"issues"`)),
       ),
     );
   return new Set(rows.map((r) => r.issSeq));
