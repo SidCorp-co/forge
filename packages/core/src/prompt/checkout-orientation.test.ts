@@ -321,7 +321,8 @@ describe('the orientation core serves reads the rules from the knowledge store',
         proposedDeltas: [
           delta('p-1', 'A gotcha a later run would hit again'),
           delta('p-2', 'Another project only'),
-          delta(null, 'Every project learned this'),
+          // a deleted project's delta keeps no project, and reaches none (cleanup 3460d196)
+          delta(null, 'A deleted project learned this'),
           delta('p-1', 'Not a situation', 'practice'),
         ],
       },
@@ -330,8 +331,8 @@ describe('the orientation core serves reads the rules from the knowledge store',
     expect(body).toMatch(
       /\| \(proposed\) A gotcha a later run would hit again \| [^|]*memory -X POST[^|]* \| \|/,
     );
-    expect(body).toContain('| (proposed) Every project learned this |');
     expect(body).not.toContain('Another project only');
+    expect(body).not.toContain('A deleted project learned this');
     expect(body).not.toContain('Not a situation');
     expect(checkoutOrientation('p-1', 'forge', RULES)).not.toContain('(proposed)');
   });
