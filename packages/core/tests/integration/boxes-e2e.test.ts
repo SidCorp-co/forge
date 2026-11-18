@@ -329,6 +329,17 @@ describe('a hold ends with its box (ISS-1317)', () => {
     expect((await frames(id, 'box.close')).at(-1)?.data).toEqual({ boxId: id, why: 'done' });
   });
 
+  it('closes a held box in one write the hold check admits, called past the door', async () => {
+    const id = await runningBox();
+    const taken = await say('person', 'POST', `/api/boxes/${id}/take`);
+    const holder = (taken.json.box as { holder: { userId: string } }).holder.userId;
+    const { closeBox } = await import('../../src/boxes/service.js');
+    // past the door, a close that kept the hold throws Postgres's own refusal naming boxes_held_chk
+    await expect(closeBox(id, { userId: holder, agency: 'human' })).resolves.toMatchObject({
+      state: 'closed',
+    });
+  });
+
   it('fails a box a person holds with its hold cleared', async () => {
     const id = await runningBox();
     await say('person', 'POST', `/api/boxes/${id}/take`);
