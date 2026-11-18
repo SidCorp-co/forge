@@ -122,7 +122,7 @@ describe("a box at its own address", () => {
     const ended = await screen.findByTestId("box-ended");
     const line = await within(ended).findByTestId("box-session");
     expect(line).toHaveTextContent("Session · On device");
-    expect(line.getAttribute("title")).toMatch(/stayed on the box's device/);
+    expect(line.getAttribute("title")).toBe("Kept on the box's device; never sent to Forge.");
     expect(within(ended).queryByText("No clip")).toBeNull();
   });
 
