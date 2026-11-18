@@ -17,6 +17,8 @@ uuid = { workspace = true }
 dirs-next = { workspace = true }
 jiff = { workspace = true }
 tokio-tungstenite = { version = "0.30", features = ["rustls-tls-native-roots"] }
+# the attach proxy's discovery reads (ISS-1322)
+reqwest = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.31", features = ["signal", "process", "fs", "feature", "user"] }

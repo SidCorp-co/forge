@@ -1485,6 +1485,7 @@ dependencies = [
  "futures-util",
  "jiff",
  "nix",
+ "reqwest",
  "runner-platform",
  "runner-preview",
  "runner-transport",

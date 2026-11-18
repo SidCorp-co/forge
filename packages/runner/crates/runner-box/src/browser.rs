@@ -183,6 +183,40 @@ impl Browser {
     pub fn dir(&self) -> &Path {
         &self.dir
     }
+
+    /// Where Chrome's own CDP answers now, as agent-browser says (`get cdp-url`, which never
+    /// launches a browser), read again on every call: a browser that restarted is followed. Only
+    /// this device's loopback is taken (ISS-1322).
+    pub async fn cdp_upstream(&self) -> Result<String, String> {
+        let said = self
+            .must(&["get", "cdp-url"], Duration::from_secs(10))
+            .await?;
+        cdp_authority(&said)
+    }
+}
+
+/// The `host:port` of the `ws://` URL agent-browser printed, refused unless it is loopback.
+pub fn cdp_authority(said: &str) -> Result<String, String> {
+    let url = said
+        .split_whitespace()
+        .find_map(|t| t.strip_prefix("ws://"))
+        .ok_or_else(|| {
+            format!(
+                "`agent-browser get cdp-url` named no ws:// URL: {:?}",
+                said.trim()
+            )
+        })?;
+    let authority = url.split('/').next().unwrap_or_default();
+    let host = authority
+        .rsplit_once(':')
+        .map(|(h, _)| h)
+        .unwrap_or_default();
+    if !matches!(host, "127.0.0.1" | "localhost" | "[::1]") {
+        return Err(format!(
+            "Chrome's CDP answers at {authority:?}, not on this device's loopback: it is not proxied"
+        ));
+    }
+    Ok(authority.to_string())
 }
 
 /// The port in `<dir>/b.stream`, and the daemon in `<dir>/b.pid` still running to serve it.
@@ -240,6 +274,18 @@ mod tests {
         let long = PathBuf::from(format!("/tmp/{}", "d".repeat(90)));
         let err = socket_dir(&long, id).unwrap_err();
         assert!(err.contains("over the 103"), "{err}");
+    }
+
+    #[test]
+    fn chromes_cdp_address_is_read_from_agent_browser_and_only_loopback_is_taken() {
+        assert_eq!(
+            cdp_authority("ws://127.0.0.1:39221/devtools/browser/4f1c\n"),
+            Ok("127.0.0.1:39221".into())
+        );
+        let none = cdp_authority("no browser is running").unwrap_err();
+        assert!(none.contains("named no ws:// URL"), "{none}");
+        let far = cdp_authority("ws://10.0.0.7:9222/devtools/browser/x").unwrap_err();
+        assert!(far.contains("not on this device's loopback"), "{far}");
     }
 
     #[test]

@@ -32,6 +32,8 @@ pub(crate) struct Slot {
     warm: bool,
     /// Core closed it while it was still opening: the open stops it when it returns.
     closing: bool,
+    /// A browser box's CDP proxy, the attach door's endpoint (ISS-1322); gone with the slot.
+    attach: Option<crate::cdp::Proxy>,
 }
 
 pub(crate) struct Inner {
@@ -191,6 +193,7 @@ impl Boxes {
                     recording: false,
                     warm: f.warm,
                     closing: false,
+                    attach: None,
                 },
             );
         }
@@ -216,11 +219,14 @@ impl Boxes {
                 let offer = running.offer();
                 let on = matches!(recorded, Some(Ok(())));
                 if let Some(slot) = self.slots().get_mut(&id) {
-                    slot.running = Some(running);
+                    slot.running = Some(running.clone());
                     slot.clock = clock;
                     slot.recording = on;
                 }
                 let mut ready = json!({ "kind": "state", "state": "ready", "offer": offer });
+                if let Some(attach) = self.attach_on(&id, &running).await {
+                    ready["attach"] = attach;
+                }
                 if on {
                     record::save_clock(&self.0.ctx.box_dir(&id), &clock);
                     ready["recordingStartedAt"] = record::iso(clock.file_start).into();
@@ -349,6 +355,9 @@ impl Boxes {
             None
         };
         let mut body = json!({ "kind": "state", "state": "ready", "offer": running.offer() });
+        if let Some(attach) = self.attach_of(&f.box_id) {
+            body["attach"] = attach;
+        }
         match &recorded {
             Some(r) if r["state"] == "on" => body["recordingStartedAt"] = r["at"].clone(),
             _ => {}
@@ -470,6 +479,7 @@ pub(super) fn cut(detail: &str) -> String {
     act::cut(detail.as_bytes().to_vec(), 4000)
 }
 
+mod attach;
 mod recording;
 
 #[cfg(test)]

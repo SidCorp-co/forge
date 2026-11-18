@@ -56,6 +56,7 @@ fn plant_android(b: &Boxes, root: &Scratch, id: &str, port: u16, adb: &Path) {
             recording: false,
             warm: true,
             closing: false,
+            attach: None,
         },
     );
 }

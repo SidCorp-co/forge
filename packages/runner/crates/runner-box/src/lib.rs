@@ -9,6 +9,7 @@ pub mod act;
 pub mod android;
 pub mod browser;
 pub mod canary;
+pub mod cdp;
 pub mod core;
 pub mod desktop;
 pub mod display;

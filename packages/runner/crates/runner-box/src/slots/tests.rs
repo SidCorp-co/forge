@@ -100,6 +100,7 @@ fn plant_browser(b: &Boxes, root: &Scratch, port: u16) -> PathBuf {
             recording: false,
             warm: false,
             closing: false,
+            attach: None,
         },
     );
     dir
