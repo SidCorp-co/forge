@@ -46,6 +46,7 @@ export {
 } from './forge-reads.js';
 export { settleOwnForgeFeedback } from './forge-settle.js';
 export { type ForgeCaller, resolveForgeSource } from './forge-source.js';
+export { fileHandoff, type HandedItem, type Handoff } from './handoff.js';
 export { feedbackStandingsOf, listFeedbackAs, listFeedbackIn } from './list-page-read.js';
 export { linkedOf, phaseIn } from './list-read.js';
 export { sweepResolvedFeedback } from './loop-check.js';

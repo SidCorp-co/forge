@@ -63,16 +63,20 @@ function strangersSaid(way: FenceWay): string {
   );
 }
 
-function unlinkedSaid(fromSlugs: string[], named: string, stewards: FenceSteward[]): string {
-  const who =
-    stewards.length > 0
-      ? `an admin of the organization stewarding an ecosystem ${fromSlugs.join(' or ')} is in (${stewards
-          .map((s) => `${s.org.name ?? s.org.id} for ${s.ecosystem.slug}, ${s.ecosystem.id}`)
-          .join('; ')}) invites that project (\`POST /api/ecosystems/<ecosystem>/invitations\` ` +
+/** Who links `fromSlugs` to a project they share no ecosystem with: the steward's invite and its accept. */
+export function whoLinksSaid(fromSlugs: string[], stewards: FenceSteward[]): string {
+  return stewards.length > 0
+    ? `an admin of the organization stewarding an ecosystem ${fromSlugs.join(' or ')} is in (${stewards
+        .map((s) => `${s.org.name ?? s.org.id} for ${s.ecosystem.slug}, ${s.ecosystem.id}`)
+        .join('; ')}) invites that project (\`POST /api/ecosystems/<ecosystem>/invitations\` ` +
         `{ "project": <its uuid> }) and an admin of that project accepts ` +
         '(`POST /api/memberships/<membership>/accept`)'
-      : `${fromSlugs.join(' and ')} ${fromSlugs.length === 1 ? 'is' : 'are'} in no ecosystem: an org admin creates one ` +
+    : `${fromSlugs.join(' and ')} ${fromSlugs.length === 1 ? 'is' : 'are'} in no ecosystem: an org admin creates one ` +
         '(`POST /api/ecosystems`) and invites both projects, each accepting as its own admin';
+}
+
+function unlinkedSaid(fromSlugs: string[], named: string, stewards: FenceSteward[]): string {
+  const who = whoLinksSaid(fromSlugs, stewards);
   return (
     `No ecosystem channel carries a document from ${fromSlugs.join(' or ')} to project ${named}: ` +
     'the channel carries one only between counterparties in an ecosystem both are active in. ' +

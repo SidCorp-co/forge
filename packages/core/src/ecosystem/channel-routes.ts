@@ -1,3 +1,7 @@
+import {
+  CHANNEL_HANDOFF_SHAPE,
+  channelHandoffRequestSchema,
+} from '@forge/contracts/channel-handoff';
 import { REASON_LINE_MAX } from '@forge/contracts/comments';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod';
@@ -11,6 +15,7 @@ import { forbidden, refusedBy } from './access.js';
 import type { ChannelOutcome } from './channel-act.js';
 import { type ChannelNeed, channelRoleRefusal, writerOf } from './channel-author.js';
 import { supersede, withdraw } from './channel-ends.js';
+import { handOff } from './channel-handoff.js';
 import { holdOrRelease } from './channel-holds.js';
 import { inbox, outbox, readAs, standingOf, threadAs, unanswered } from './channel-read.js';
 import { NUMBER_PATTERN } from './channel-schema.js';
@@ -150,6 +155,29 @@ channelProjectRoutes.post('/:id/channel/drafts', projectParam, WRITES, draftBody
       input,
     }),
   );
+});
+
+const handoffBody = zValidator(
+  'json',
+  channelHandoffRequestSchema,
+  invalid(`a handoff is ${CHANNEL_HANDOFF_SHAPE}`),
+);
+
+// A finding for another project's intake (ISS-1286): filed there as its feedback naming this
+// project's item, and recorded on that item with the key it was filed under. Who may hand one is the
+// channel's write rule; where it may go is the channel's link (`channel-handoff.ts`).
+channelProjectRoutes.post('/:id/channel/handoffs', projectParam, WRITES, handoffBody, async (c) => {
+  const { id } = c.req.valid('param');
+  const { userId } = await writer(c, id);
+  const agency = c.get('agency');
+  if (!agency) throw new Error('channel: a handoff reached its handler without an auth gate');
+  const outcome = await handOff({
+    projectId: id,
+    actor: { userId, agency },
+    request: c.req.valid('json'),
+  });
+  if (!outcome.ok) return refused(c, outcome.refusals, 'ECOSYSTEM_REFUSED');
+  return c.json({ handoff: outcome.handoff }, outcome.handoff.created ? 201 : 200);
 });
 
 channelProjectRoutes.put('/:id/channel/documents/:doc', docParam, WRITES, editBody, async (c) => {

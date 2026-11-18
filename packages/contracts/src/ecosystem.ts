@@ -77,6 +77,12 @@ export const CHANNEL_REFUSAL_CODES = [
 	"CHANNEL_ECOSYSTEM_AMBIGUOUS",
 	"CHANNEL_PROJECT_UNNAMED",
 	"CHANNEL_PROJECT_OUTSIDE_TOKEN",
+	/** A finding handed to a project no ecosystem shared with the sender shows it (ISS-1286). */
+	"HANDOFF_NOT_LINKED",
+	/** A handoff names no issue or feedback item of the project it is handed from. */
+	"HANDOFF_ITEM_UNKNOWN",
+	/** A handoff names the project it is handed from: its own intake is its feedback door. */
+	"HANDOFF_TO_OWN_PROJECT",
 ] as const;
 export type ChannelRefusalCode = (typeof CHANNEL_REFUSAL_CODES)[number];
 
