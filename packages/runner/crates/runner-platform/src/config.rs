@@ -432,17 +432,10 @@ impl Config {
         Ok(cfg)
     }
 
-    /// Atomic write (`.tmp` + rename).
+    /// Write what this build changed into the file, keeping every key, section and comment it
+    /// does not know ([`crate::config_edit`], ISS-1304). Atomic (`.tmp` + rename).
     pub fn save(&self) -> Result<()> {
-        let p = base_dir()?.join("config.toml");
-        if let Some(parent) = p.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let body = toml::to_string_pretty(self).map_err(|e| Error::Config(e.to_string()))?;
-        let tmp = p.with_extension("toml.tmp");
-        std::fs::write(&tmp, body)?;
-        std::fs::rename(&tmp, &p)?;
-        Ok(())
+        crate::config_edit::write_lossless(&base_dir()?.join("config.toml"), self)
     }
 }
 

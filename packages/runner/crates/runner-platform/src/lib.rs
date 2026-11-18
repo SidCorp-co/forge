@@ -1,6 +1,7 @@
 pub mod box_settings;
 pub mod clock;
 pub mod config;
+pub mod config_edit;
 pub mod confine;
 pub mod cred_store;
 pub mod english;
