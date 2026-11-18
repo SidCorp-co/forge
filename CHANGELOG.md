@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.734] - 2026-11-18
+
+Feedback routed to a requirement reads done only once its issues ship
+
+### Fixed
+
+- **Feedback sent to a requirement no longer reads done before its fix ships.** It stays planned, naming the release it waits on, until the requirement's issues are released; one accepted with nothing to ship goes back to triage.
+
 ## [0.4.0-dev.733] - 2026-11-18
 
 Secrets in chat: bare keys filtered, pictures chosen, test keys given by link
