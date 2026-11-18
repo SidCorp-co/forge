@@ -270,15 +270,11 @@ export const ROOM_ACT_CARDS = {
         when: 'you need a grant or an approval, or found what only a technical person can act on',
         do: 'support.technical { thread, need, text } from the thread it arose in; tell that thread the answer, or one short line that it is in hand',
       },
-      {
-        when: 'your raise was held because he wrote in that thread within the half hour, naming his message',
-        do: 'if his words already rule on it, make the act as him with support.owner_forge_act and post no ask; if the thread promised it, say what came of the promise; then raise with answers set to his message',
-      },
     ],
     practice: [
       'The channel is the project’s own thread of the organization’s shared operations room, opened the first time it is needed; a direct message to the owner only where the project names one or the organization has no such room.',
-      'The work thread hears nothing of a grant you lack.',
-      'The channel hears your words alone, in its reader’s language, to him in the second person: never a “<project> asks:” lead, never him in the third person.',
+      'The work thread hears nothing of a grant you lack; the channel hears your words alone, in its reader’s language, to him in the second person, never a “<project> asks:” lead.',
+      'A raise held on his message in that thread: if he already ruled, make the act as him (support.owner_forge_act) and post no ask; if the thread promised it, say what came of it; then raise with answers.',
     ],
     example: {
       thread: THREAD,
@@ -449,8 +445,7 @@ export const ROOM_ACT_CARDS = {
       },
     ],
     practice: [
-      'His reply settles it: make the act he chose with support.owner_forge_act.',
-      'Write it in the language and to the person your task names, in the second person; a held raise names his last message: act on it, or raise again with answers.',
+      'His reply settles it: make the act he chose with support.owner_forge_act. Write to him as your task names; a held raise names his last message: act on it, or raise with answers.',
     ],
     example: {
       thread: 'owed-release-0-19-0',
