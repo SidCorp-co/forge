@@ -11,7 +11,7 @@ export const BOXES_GUIDE: CoreGuide = {
   title: 'Forge Box: use a screen as a person would, where a person can watch',
   summary:
     "A screen is proven by being used: its builder opens a box (browser, android or desktop) on its worktree's dev server from the first UI change, and its judge on the running build. Drive it with `forge-runner box act` or forge_box; an agent on the box's device with a Playwright or MCP flow attaches it to the box's browser instead of a private headless one. Screenshot and look after each change, mark each criterion's span so it records its own clip and attaches it to the issue, and close it. Nothing records unless asked. A person may take control: your writes are refused BOX_HELD_BY_PERSON, your reads still answer; wait, read what they did, go on.",
-  version: 5,
+  version: 6,
   doors: [
     'POST /api/projects/:id/boxes',
     'POST /api/boxes/:id/acts',
@@ -40,6 +40,9 @@ its screen answers, a warm box handed to you included; read it until it stands a
   or an android box on the dev build. Keep it open while you build: a box nothing used for
   ${BOX_LIMITS.agentIdleSeconds / 60} minutes (no act, span or recording change) closes on the record and
   reads \`closedWhy: idle\`; open a new one.
+- **A person watches it at its own address**: \`/projects/<project slug>/boxes/<box id>\` on Forge's web
+  app opens the box's screen alone, full screen, where they can take control. Link that address
+  wherever you ask a person to watch (an issue comment, a room post), not the Boxes page.
 - **A credential that cannot drive a box is refused its open** \`PAT_GRANT_PREDATES_ROUTE\`, as it
   is every box call: the refusal names who mints one that reaches the box, and by which door.
 
