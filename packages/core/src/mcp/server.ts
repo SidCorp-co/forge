@@ -208,6 +208,7 @@ export function createMcpServer(ctx: McpContext): Server {
         grant: principal.permissions,
         fence: allow,
         grantEpoch: principal.grantEpoch,
+        holder: principal,
         tokenId: principal.tokenId,
       });
       if (refusal) {

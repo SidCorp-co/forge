@@ -175,7 +175,7 @@ function assertReach(
 }
 
 function assertEpoch(principal: PatPrincipal, path: string): void {
-  const refusal = patEpochRefusal(path, principal.grantEpoch);
+  const refusal = patEpochRefusal(path, principal.grantEpoch, principal);
   if (!refusal) return;
   const { prefix, surface, routeEpoch, tokenEpoch } = refusal;
   throw new HTTPException(403, {

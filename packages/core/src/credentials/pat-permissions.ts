@@ -1,6 +1,7 @@
 import { TOKEN_EXPLICIT_PERMISSIONS, TOKEN_GRANT_EXCLUSIONS } from '@forge/contracts/permissions';
 import { HTTPException } from 'hono/http-exception';
 import type { scopeForMethod } from '../middleware/pat-rest-surface.js';
+import { type PatEpochHolder, patRemintDoor } from './pat-remint.js';
 
 /**
  * Where a resource's routes can be fenced. `project` routes resolve a project
@@ -109,6 +110,9 @@ export const PAT_NESTED_SURFACES = Object.freeze({
   // listed reports too, and keeps that epoch now they are retired (REQ-47)
   '/api/projects/:id/automation': '/api/agent-sessions',
   '/api/issues/:id/cost-summary': '/api/pipeline',
+  // a box opens here and is driven, marked and closed under /api/boxes: dated by that surface, a
+  // credential that cannot drive a box is refused its open too, so none opens a box it cannot close (ISS-1335)
+  '/api/projects/:id/boxes': '/api/boxes',
 } as const satisfies Record<string, PatPrefix>);
 
 // cm:hack ISS-105 until:forge-plugin reads runner load at a route under /api/runners — GET
@@ -320,10 +324,12 @@ function patNestedSurfaceFor(path: string): PatNestedSurface | null {
 
 // the one epoch rule: REST reads it for the request path, /mcp for the route a tool
 // declares, so a token minted before a prefix joined the menu is refused it on both, and a route
-// nested under an older mount is dated by the surface it serves (PAT_NESTED_SURFACES).
+// nested under an older mount is dated by the surface it serves (PAT_NESTED_SURFACES). The refusal
+// names who mints the credential anew, by its kind (`pat-remint.ts:patRemintDoor`).
 export function patEpochRefusal(
   path: string,
   tokenEpoch: number | undefined,
+  holder: PatEpochHolder,
 ): PatEpochRefusal | null {
   const match = patPrefixForPath(path);
   if (!match) return null;
@@ -341,7 +347,7 @@ export function patEpochRefusal(
     surface: dated ? dated.surface : null,
     routeEpoch,
     tokenEpoch: held,
-    message: `${why}Mint a new token to reach it.`,
+    message: `${why}${patRemintDoor(holder, PAT_GRANT_EPOCH)}`,
   };
 }
 

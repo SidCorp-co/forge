@@ -202,6 +202,7 @@ async function callTool(
       grant: ctx.grant !== undefined ? ctx.grant : principal.permissions,
       fence: ctx.fence !== undefined ? ctx.fence : patEffectiveProjectIds(principal),
       grantEpoch: principal.grantEpoch,
+      holder: principal,
       tokenId: principal.tokenId,
     },
     'the access token the person asking reached Forge with',

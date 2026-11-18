@@ -10,6 +10,7 @@ import {
   patPrefixForPath,
 } from '../credentials/pat-permissions.js';
 import { askAPersonDoor } from '../credentials/pat-remedy.js';
+import type { PatEpochHolder } from '../credentials/pat-remint.js';
 import type {
   ToolGrant,
   ToolGrantEntry,
@@ -299,6 +300,7 @@ export function toolEpochRefusal(
   tool: GrantedTool,
   args: Record<string, unknown>,
   held: number | undefined,
+  holder: PatEpochHolder,
 ): string | null {
   const action = calledAction(tool, args);
   const entry = pick(tool.grant, action);
@@ -308,7 +310,7 @@ export function toolEpochRefusal(
   if (route === undefined) {
     return `FORBIDDEN: ${what} needs '${entry}' and declares no route under its resource, so no token may call it`;
   }
-  const refusal = patEpochRefusal(route, held);
+  const refusal = patEpochRefusal(route, held, holder);
   if (!refusal) return null;
   return `FORBIDDEN: ${PAT_GRANT_PREDATES_ROUTE}: ${what} is served at ${route}, and ${refusal.message} Nothing was done.`;
 }

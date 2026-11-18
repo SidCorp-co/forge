@@ -1,4 +1,5 @@
 import { HTTPException } from 'hono/http-exception';
+import type { PatEpochHolder } from '../credentials/pat-remint.js';
 import { runWithPatScope } from '../credentials/pat-scope.js';
 import { assertUnfenced } from './authz.js';
 import {
@@ -12,6 +13,8 @@ interface ToolCallBound {
   readonly grant: readonly string[] | null;
   readonly fence: readonly string[] | null;
   readonly grantEpoch: number | undefined;
+  /** The credential itself, so an epoch refusal names who mints it anew. */
+  readonly holder: PatEpochHolder;
   readonly tokenId: string;
 }
 
@@ -41,7 +44,7 @@ export function toolCallRefusal(
 ): string | null {
   return (
     accountRefusal(toolAccountWork(tool, args), bound) ??
-    toolEpochRefusal(tool, args, bound.grantEpoch) ??
+    toolEpochRefusal(tool, args, bound.grantEpoch, bound.holder) ??
     toolGrantRefusal(tool, args, bound.grant, holder, bound.fence)
   );
 }
