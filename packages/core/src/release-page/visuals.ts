@@ -112,10 +112,19 @@ async function filesOf(ids: readonly string[]): Promise<Map<string, ReleaseVisua
   );
 }
 
-/** What the judges of these issues marked, and which said none shows. */
-export async function lineVisualsOf(issueIds: readonly string[]): Promise<LineVisualFacts> {
+/**
+ * What the judges of these issues marked, and which said none shows; that is read only where
+ * `owedCounted`, as only the developer view counts owed visuals.
+ */
+export async function lineVisualsOf(
+  issueIds: readonly string[],
+  owedCounted: boolean,
+): Promise<LineVisualFacts> {
   if (issueIds.length === 0) return { visuals: new Map(), saidNone: new Set() };
-  const [rows, saidNone] = await Promise.all([markRows(issueIds), saidNoneOf(issueIds)]);
+  const [rows, saidNone] = await Promise.all([
+    markRows(issueIds),
+    owedCounted ? saidNoneOf(issueIds) : new Set<string>(),
+  ]);
   const files = await filesOf([
     ...new Set(rows.flatMap((r) => [r.desktop, r.phone, r.still].filter((x) => x !== null))),
   ]);
@@ -178,7 +187,10 @@ export async function withVisuals<T extends Changes>(
   view: ReleasePage['view'],
 ): Promise<T & { visualsOwed: ReleaseVisualsOwed | null }> {
   const byKey = new Map(detail.issues.map((i) => [i.key, i] as const));
-  const facts = await lineVisualsOf(detail.issues.map((i) => i.id));
+  const facts = await lineVisualsOf(
+    detail.issues.map((i) => i.id),
+    view === 'developer',
+  );
   const on = async (c: Change): Promise<Change> => {
     const issue = byKey.get(c.issueKey);
     const marked = issue ? facts.visuals.get(issue.id) : undefined;
