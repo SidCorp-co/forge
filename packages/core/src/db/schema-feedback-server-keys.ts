@@ -6,7 +6,8 @@ import { projects } from './schema-projects.js';
 /**
  * A product server's key to file Feedback into its one project (ISS-922): minted by a holder of
  * `project.admin`, shown once, kept as the SHA-256 of its secret. It admits `POST
- * /api/projects/:id/feedback` on its project and nothing else (`feedback/server-key-door.ts`). Every
+ * /api/projects/:id/feedback` on its project, and `GET …/feedback/:fb` of an item its product filed
+ * (ISS-1287), and nothing else (`feedback/server-key-door.ts`). Every
  * filing names the product's own agent account as its reporter (`account_id`, shared by every key of
  * one product in the project, a member of nothing), so a key is never a person's session.
  */

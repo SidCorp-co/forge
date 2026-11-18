@@ -127,7 +127,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
   'what a monitoring connection’s Prometheus and Alertmanager send once its sd or alerts token matched: the job discovered, the alerts fired (ISS-1225)': words`
     field:json:alerts field:query:job`,
   [ROW_KEYS]: words`
-    param:bindingId param:file param:id param:projectId param:provider param:questionId param:slug param:target
+    param:bindingId param:fb param:file param:id param:projectId param:provider param:questionId param:slug param:target
     param:templateId param:version query:projectId
     field:param:agentUserId field:param:aid field:param:approvalId field:param:askId field:param:at
     field:param:attachmentId field:param:bid field:param:bindingId field:param:code

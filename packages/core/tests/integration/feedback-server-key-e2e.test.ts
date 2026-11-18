@@ -3,8 +3,9 @@
  * `project.admin`, person or agent, mints a key; the secret is shown once and never listed. The key
  * files `POST /api/projects/:id/feedback` on its project, the item's reporter recorded as the product,
  * and is refused by name on every other route and project, after revoke, after expiry and over its
- * hourly limit, filing nothing. An actor without the permission cannot mint. Through the app, against
- * real Postgres.
+ * hourly limit, filing nothing. An actor without the permission cannot mint. It reads back the phase
+ * and chip of an item its product filed, the same the project's feedback page reads (ISS-1287), and is
+ * refused by name on an item another reporter filed. Through the app, against real Postgres.
  *
  * @direct-test-of packages/core/src/feedback/server-keys.ts
  * @direct-test-of packages/core/src/feedback/server-key-door.ts
@@ -118,7 +119,7 @@ describe('a feedback server key (ISS-922)', () => {
     expect(fbKey).toMatch(/^FB-\d+$/);
     expect(await filedOn(projectId)).toBe(before + 1);
 
-    // the key reads nothing back: the item is read by a member
+    // a member reads the item's reporter: the key reads only where it stands, in (f)
     const read = await api(adminJwt, 'GET', `/api/projects/${projectId}/feedback/${fbKey}`);
     expect(read.status).toBe(200);
     const reporters = (read.body.feedback as Body).reporters as Body[];
@@ -262,5 +263,77 @@ describe('a feedback server key (ISS-922)', () => {
 
     const listByMember = await api(memberJwt, 'GET', keys());
     expect(listByMember.status).toBe(403);
+  });
+});
+
+describe('a feedback server key reading back (ISS-1287)', () => {
+  it('(f) reads the phase and chip of an item its product filed, as the page reads them, and no other item', async () => {
+    const secret = (await mint(adminJwt, { product: 'epod' })).body.secret as string;
+    const filed = await api(
+      secret,
+      'POST',
+      `/api/projects/${projectId}/feedback`,
+      item('Stock off'),
+    );
+    const fbKey = (filed.body.feedback as Body).key as string;
+    const at = (key: string) => `/api/projects/${projectId}/feedback/${key}`;
+
+    const asPage = async () => {
+      const page = await api(adminJwt, 'GET', at(fbKey));
+      expect(page.status, JSON.stringify(page.body)).toBe(200);
+      const view = page.body.feedback as Body;
+      return { key: fbKey, phase: view.phase, chip: view.chip };
+    };
+    const read = await api(secret, 'GET', at(fbKey));
+    expect(read.status, JSON.stringify(read.body)).toBe(200);
+    expect(read.body).toEqual({ feedback: await asPage() });
+    expect(read.body.feedback).toMatchObject({ phase: 'new', chip: 'new' });
+
+    const declined = await api(adminJwt, 'POST', `${at(fbKey)}/triage`, {
+      route: 'decline',
+      note: 'Stock is counted nightly.',
+    });
+    expect(declined.status, JSON.stringify(declined.body)).toBe(200);
+    const after = await api(secret, 'GET', at(fbKey));
+    expect(after.body).toEqual({ feedback: await asPage() });
+    expect(after.body.feedback).toMatchObject({ phase: 'declined', chip: 'declined' });
+
+    // every key of the product names one reporter, so a re-minted key reads what the old one filed
+    const reminted = (await mint(adminJwt, { product: 'epod' })).body.secret as string;
+    expect((await api(reminted, 'GET', at(fbKey))).status).toBe(200);
+
+    const byPerson = await api(adminJwt, 'POST', `/api/projects/${projectId}/feedback`, item('y'));
+    const personKey = (byPerson.body.feedback as Body).key as string;
+    const otherProduct = (await mint(adminJwt, { product: 'shop' })).body.secret as string;
+    const byShop = await api(
+      otherProduct,
+      'POST',
+      `/api/projects/${projectId}/feedback`,
+      item('z'),
+    );
+    const shopKey = (byShop.body.feedback as Body).key as string;
+    for (const key of [personKey, shopKey]) {
+      const theirs = await api(secret, 'GET', at(key));
+      expect(theirs.status, JSON.stringify(theirs.body)).toBe(403);
+      expect(codeOf(theirs.body)).toBe('FEEDBACK_SERVER_KEY_NOT_ITS_FILING');
+      expect(JSON.stringify(theirs.body)).not.toContain('"phase"');
+    }
+
+    const closed: ['GET' | 'POST', string][] = [
+      ['GET', `${at(fbKey)}/similar`],
+      ['POST', `${at(fbKey)}/triage`],
+      ['GET', at('endpoints')],
+      ['GET', `/api/projects/${otherProjectId}/feedback/${fbKey}`],
+    ];
+    for (const [method, path] of closed) {
+      const out = await api(
+        secret,
+        method,
+        path,
+        method === 'POST' ? { route: 'decline' } : undefined,
+      );
+      expect(out.status, `${method} ${path}`).toBe(403);
+      expect(codeOf(out.body), `${method} ${path}`).toBe('FEEDBACK_SERVER_KEY_SCOPE');
+    }
   });
 });

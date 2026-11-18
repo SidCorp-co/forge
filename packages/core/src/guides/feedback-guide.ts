@@ -37,8 +37,9 @@ into FB-n when it is product feedback after all.
 A product's own server files with a **server key** instead of a person's token. A holder of
 \`project.admin\`, person or agent, mints one with \`POST …/feedback/server-keys\` \`{ product, expiresAt? }\`
 (the \`fsk_…\` secret is shown once), lists them with \`GET\`, and revokes one with \`DELETE …/server-keys/:keyId\`.
-The key admits \`POST /api/projects/:id/feedback\` on its project alone, the reporter recorded as the product,
-and reads nothing back; anywhere else it is \`FEEDBACK_SERVER_KEY_SCOPE\` (403). Unknown, revoked or expired is
+The key admits \`POST /api/projects/:id/feedback\` on its project alone, the reporter recorded as the product;
+\`GET …/feedback/FB-n\` reads \`{ key, phase, chip }\` of an item its product filed, another's is \`FEEDBACK_SERVER_KEY_NOT_ITS_FILING\` (403).
+Anywhere else it is \`FEEDBACK_SERVER_KEY_SCOPE\` (403). Unknown, revoked or expired is
 \`FEEDBACK_SERVER_KEY_UNKNOWN\`, \`_REVOKED\` or \`_EXPIRED\` (401); over 30 filings an hour,
 \`FEEDBACK_SERVER_KEY_RATE_LIMITED\` (429). Nothing is filed on a refusal.
 

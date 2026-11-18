@@ -1,9 +1,11 @@
 // A product server's key to file Feedback into its one Forge project (ISS-922). A holder of
 // `project.admin` mints it, person or agent; the secret is shown once and kept as its SHA-256. The key
-// admits `POST /api/projects/:id/feedback` on that project and nothing else, rate-limited per key, and
-// every item it files names the product as its reporter. It reads nothing back.
+// admits `POST /api/projects/:id/feedback` on that project, rate-limited per key, and every item it
+// files names the product as its reporter. It reads back where an item its product filed stands
+// (`GET /api/projects/:id/feedback/:fb`, ISS-1287) and nothing else.
 
 import { z } from "zod";
+import type { FeedbackPhase, FeedbackRowChip } from "./feedback.js";
 import type { RefusalStatuses } from "./refusal.js";
 
 /** The secret: this prefix and 43 base64url characters (256 random bits). */
@@ -60,11 +62,19 @@ export interface FeedbackServerKeyRevokeResponse {
 
 /**
  * `POST …/feedback` under a server key: the item's key and whether this call filed it, and the
- * reporter it was recorded as. Reading the item back is not something the key admits.
+ * reporter it was recorded as.
  */
 export interface FeedbackServerKeyFiledResponse {
 	feedback: { key: string; created: boolean };
 	reporter: { kind: "product"; product: string };
+}
+
+/**
+ * `GET …/feedback/:fb` under a server key, on an item its product filed: where it stands, read by the
+ * reader the project's own feedback page reads it with: its phase and the one word its row's chip says.
+ */
+export interface FeedbackServerKeyReadResponse {
+	feedback: { key: string; phase: FeedbackPhase; chip: FeedbackRowChip };
 }
 
 export const FEEDBACK_SERVER_KEY_REFUSAL_CODES = [
@@ -85,11 +95,13 @@ export const FEEDBACK_SERVER_KEY_REFUSAL_STATUSES = {
 
 /**
  * The answers a server key gets at the door that are not refusals of a request body: an unknown,
- * revoked or expired key (401), and one over its hourly filings (429).
+ * revoked or expired key (401), a read of an item another reporter filed (403), and one over its
+ * hourly filings (429).
  */
 export const FEEDBACK_SERVER_KEY_DOOR_CODES = {
 	FEEDBACK_SERVER_KEY_UNKNOWN: 401,
 	FEEDBACK_SERVER_KEY_REVOKED: 401,
 	FEEDBACK_SERVER_KEY_EXPIRED: 401,
+	FEEDBACK_SERVER_KEY_NOT_ITS_FILING: 403,
 	FEEDBACK_SERVER_KEY_RATE_LIMITED: 429,
 } as const;

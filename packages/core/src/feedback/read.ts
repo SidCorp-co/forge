@@ -3,6 +3,7 @@ import {
   type FeedbackDecisionView,
   type FeedbackMessageView,
   type FeedbackPhase,
+  type FeedbackSummary,
   type FeedbackVerifiedView,
   type FeedbackView,
   feedbackKey,
@@ -38,7 +39,7 @@ import { productsOfAccounts } from './server-keys.js';
 import { shipNoticeOf } from './ship-notice.js';
 import { clarificationViewOf, shownClarification } from './told.js';
 import { recordCheckOf, verifyHeldOf } from './verify-window.js';
-import { routeAsksOf, viewerCanOf } from './viewer-can.js';
+import { routeAsksOf, viewerCanIn, viewerCanOf } from './viewer-can.js';
 
 export interface FeedbackActor {
   userId: string;
@@ -227,6 +228,21 @@ function verifiedViewOf(
     reason: withhold ? null : d.reason,
     says: { reason: withhold ? null : decisionReasonSaid(d.reason, d.decidedAgency) },
   };
+}
+
+/**
+ * One item's summary as `viewer` reads it, by the reader the project's feedback page reads it with,
+ * for a door that settled who may read the item itself: a product's server key, on an item its product
+ * filed (`server-key-door.ts`, ISS-1287). No `project.read` floor, so no other caller takes it.
+ */
+export async function summaryOfFiled(viewer: FeedbackActor, row: Row): Promise<FeedbackSummary> {
+  const [level, linked, can] = await Promise.all([
+    dataPolicyOf(row.projectId),
+    linkedOf(row.projectId, [row]),
+    viewerCanIn(viewer, row.projectId),
+  ]);
+  const { withhold } = feedbackEgress(level, viewer.agency, {});
+  return summaryOf(row, linked, viewer, withhold, can);
 }
 
 export async function detailAs(

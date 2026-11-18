@@ -209,7 +209,7 @@ const SECRET_DOORS: Readonly<Record<string, string>> = {
   'credentials/mcp-oauth-store.ts':
     'redeemCode and refreshGrant look a code or a refresh token up by its digest; a PAT digests to neither',
   'feedback/server-key-door.ts':
-    'a product server’s feedback key, read by readServerKeyBearer and looked up by its SHA-256, files POST …/feedback on its one project as the product’s account and sets no session; a PAT is never one, and passes on to requireAuth',
+    'a product server’s feedback key, read by readServerKeyBearer and looked up by its SHA-256, files POST …/feedback on its one project as the product’s account, reads GET …/feedback/:fb of an item that account filed, and sets no session; a PAT is never one, and passes on to requireAuth',
   'feedback/server-keys.ts':
     'serverKeyOf looks a feedback server key up by its SHA-256; mintServerKey stores only the digest of what it mints',
   'feedback/server-key-rules.ts':
