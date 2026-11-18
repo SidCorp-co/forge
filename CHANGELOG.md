@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.732] - 2026-11-18
+
+Agents prove a screen by using it in a Forge Box, not a render test
+
+### Changed
+
+- **Agents prove a screen by using it.** While building, an agent uses each change in a Forge Box at desktop and phone width, and its clip is the evidence, not a component unit test.
+
 ## [0.4.0-dev.731] - 2026-11-18
 
 Room agents act on the owner's word and ask him in his language
