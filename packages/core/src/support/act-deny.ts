@@ -48,16 +48,18 @@ function gatedOf(input: { action: string } & Record<string, unknown>): Gated | n
   return null;
 }
 
-/** Whether the deploy target is a production environment's, by the project document's tiers. */
-async function deploysProduction(projectId: string, target: string): Promise<boolean> {
+/** The production environment the deploy target is the binding of, by the project document's
+ *  tiers, named as the document names it; null where it deploys none. */
+async function productionOf(projectId: string, target: string): Promise<string | null> {
   const environments = (await readProjectDocument(projectId))?.document.environments ?? {};
-  return Object.values(environments).some(
-    (e) =>
+  const hit = Object.entries(environments).find(
+    ([, e]) =>
       e.tier === 'production' &&
       e.deployment !== undefined &&
       'binding' in e.deployment &&
       e.deployment.binding === target,
   );
+  return hit?.[0] ?? null;
 }
 
 /**
@@ -77,17 +79,24 @@ async function toolWords(
   };
 }
 
-/** Which class the act falls in, or null for an act no class names. */
-async function classOf(projectId: string, act: Gated): Promise<AgentDenyClass | null> {
-  if (act.action === 'deploy')
-    return (await deploysProduction(projectId, act.target)) ? 'production_deploy' : null;
+/** Which class the act falls in and what it does in the words a person reads, or null for an act
+ *  no class names. A deploy is named by its environment, never its binding's id. */
+async function classOf(
+  projectId: string,
+  act: Gated,
+): Promise<{ found: AgentDenyClass; what: string } | null> {
+  if (act.action === 'deploy') {
+    const environment = await productionOf(projectId, act.target);
+    return environment ? { found: 'production_deploy', what: `deploy to ${environment}` } : null;
+  }
   const { words, del } =
     act.action === 'command'
       ? { words: act.command, del: false }
       : await toolWords(projectId, act.tool);
-  if (del || DATA_DELETION.test(words)) return 'data_deletion';
-  if (MONEY.test(words)) return 'money_movement';
-  if (CREDENTIAL.test(words)) return 'credential_change';
+  const what = act.action === 'command' ? act.command : act.tool;
+  if (del || DATA_DELETION.test(words)) return { found: 'data_deletion', what };
+  if (MONEY.test(words)) return { found: 'money_movement', what };
+  if (CREDENTIAL.test(words)) return { found: 'credential_change', what };
   return null;
 }
 
@@ -106,14 +115,9 @@ export async function deniedActRefusal(
 ): Promise<Outcome<never> | null> {
   const act = gatedOf(input);
   if (!act) return null;
-  const found = await classOf(room.projectId, act);
-  if (!found || !(await deniedClassesOf(room.projectId)).includes(found)) return null;
-  const what =
-    act.action === 'deploy'
-      ? `deploy ${act.target}`
-      : act.action === 'command'
-        ? act.command
-        : act.tool;
+  const classed = await classOf(room.projectId, act);
+  if (!classed || !(await deniedClassesOf(room.projectId)).includes(classed.found)) return null;
+  const { found, what } = classed;
   const raised = await raiseTechnical(
     room,
     {
