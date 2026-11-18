@@ -449,7 +449,8 @@ impl Panes for TmuxPanes {
     }
 
     async fn gone(&self, name: &str) -> bool {
-        crate::recovery_ports::pane_presence(name).await == crate::recovery::MasterPresence::Gone
+        // a job runs in a tmux pane; the bg master roster never lists it (ISS-1323)
+        terminal::job_pane_ended(name).await
     }
 
     async fn kill(&self, name: &str) -> Result<()> {

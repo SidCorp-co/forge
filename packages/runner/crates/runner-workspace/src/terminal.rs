@@ -229,6 +229,13 @@ pub async fn alive(name: &str) -> bool {
     has_session(name).await == Presence::Present
 }
 
+/// Whether a pool job's pane has ended: the tmux server it runs on says it holds no such session.
+/// A job pane is a tmux pane, never a background session, so the bg roster is no witness to it
+/// (ISS-1323), and a tmux that could not be asked is no ending.
+pub async fn job_pane_ended(name: &str) -> bool {
+    has_session(name).await == Presence::Absent
+}
+
 const SESSION_UNIT: &str = "forge-sessions";
 
 fn unit_for(dir: &std::path::Path) -> String {
@@ -561,3 +568,6 @@ pub(crate) mod tests;
 
 #[cfg(all(test, unix))]
 mod wake_tests;
+
+#[cfg(all(test, unix))]
+mod job_pane_tests;
