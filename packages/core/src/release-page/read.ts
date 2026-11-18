@@ -37,6 +37,7 @@ import { digestOf, highlightFacts, highlightsRow, shownHighlights } from './high
 import { namingDraftStale, namingRow, namingStanding } from './naming-store.js';
 import { releaseNamer } from './ports.js';
 import { actionsOf, buildOf, changesOf, headerOf, technicalOf } from './sections.js';
+import { cardOf, withVisuals } from './visuals.js';
 
 export const refusePage = refuser<ReleasePageRefusalCode>(RELEASE_PAGE_REFUSAL_CODES[0]);
 
@@ -197,23 +198,30 @@ export async function readReleasePage(args: {
   const namer = named ? null : await releaseNamer(projectId);
   if (!named && (drafting === null || namingDraftStale(drafting)))
     args.onNamingOwed?.({ projectId, version: detail.version });
-  const changes = withScreens(changesOf(detail, view), await screensOf(detail));
+  const changes = await withVisuals(
+    detail,
+    withScreens(changesOf(detail, view), await screensOf(detail)),
+    view,
+  );
+  const header = { ...headerOf(detail), naming, ...(namer ? { namer } : {}) };
   const range = await readRange(projectId, detail.version, page.build, detail.runId);
   const { shipped } = range;
   const map = view === 'developer' && range.changed ? await readSurfaceMap(projectId) : null;
   return {
     view,
     projectId,
-    header: {
-      ...headerOf(detail),
-      naming,
-      ...(namer ? { namer } : {}),
-    },
+    header,
     highlights: linked(shown.highlights),
     requirements: requirementsOf(page.requirements, page.claims),
     untraced: untracedOf(page.requirements, page.claims),
     improvements: changes.improvements,
     fixes: changes.fixes,
+    visualsOwed: changes.visualsOwed,
+    card: await cardOf(projectId, {
+      header,
+      improvements: changes.improvements,
+      fixes: changes.fixes,
+    }),
     internal: changes.internal,
     withoutNotes: changes.withoutNotes,
     actionRequired: actionsOf(detail.changes, shipped, detail.notes, detail.state),

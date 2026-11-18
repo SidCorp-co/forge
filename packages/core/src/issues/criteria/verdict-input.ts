@@ -40,6 +40,7 @@ import {
   parseStorefrontDraftRuntime,
   writerIdOfLine,
 } from '../../messaging/verdict-identity.js';
+import type { ReleaseVisualMark } from './release-visual-mark.js';
 
 export type VerdictIdentity =
   | { readonly kind: 'commit'; readonly sha: string }
@@ -89,6 +90,11 @@ export interface VerdictDraft {
    * a release reads it accepted, never proven (`verdict-acceptance.ts`). Only the REST door sends one.
    */
   readonly acceptedOn?: string | null | undefined;
+  /**
+   * The attachments that show this issue's line on a release page (ISS-1308), marked by the judge on a
+   * pass (`release-visual-mark.ts`). Only the REST door sends one.
+   */
+  readonly releaseVisual?: ReleaseVisualMark | null | undefined;
 }
 
 export interface VerdictRefusal {

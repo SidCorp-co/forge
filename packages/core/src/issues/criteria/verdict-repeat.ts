@@ -24,6 +24,11 @@ const IDENTITY_KEYS = [
   'releaseVersion',
   'storefrontEnvironment',
   'acceptedOn',
+  'visualDesktopId',
+  'visualPhoneId',
+  'visualStillId',
+  'visualSeconds',
+  'withoutClip',
 ] as const satisfies ReadonlyArray<keyof VerdictColumns>;
 
 /** JSON with its object keys sorted, so two equal values compare equal whatever order they were sent in. */

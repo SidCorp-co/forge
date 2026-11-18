@@ -86,6 +86,10 @@ export const VERDICT_REFUSAL_CODES = [
 	"VERDICT_ACCEPTANCE_NOT_PASS",
 	/** An `acceptedOn` on a verdict whose identity is not a commit: the proof accepted is a test run at one. */
 	"VERDICT_ACCEPTANCE_NOT_COMMIT",
+	/** A `releaseVisual` naming a file that is no attachment of this issue (ISS-1308). */
+	"VERDICT_RELEASE_VISUAL_FOREIGN",
+	/** A `releaseVisual` naming no frame, a file no release page shows, or marked on a verdict that is not a pass (ISS-1308). */
+	"VERDICT_RELEASE_VISUAL_SHAPE",
 	...VERDICT_JUDGE_REFUSAL_CODES,
 	...STOREFRONT_DRAFT_REFUSAL_CODES,
 	...PROBE_REFUSAL_CODES,

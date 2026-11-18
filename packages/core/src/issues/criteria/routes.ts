@@ -244,6 +244,7 @@ issueCriteriaRoutes.post(
         probe: body.probe,
         withoutClip: body.withoutClip ?? null,
         acceptedOn: body.acceptedOn ?? null,
+        releaseVisual: body.releaseVisual ?? null,
       },
       author: {
         userId: c.get('userId'),

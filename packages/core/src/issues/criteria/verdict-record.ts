@@ -27,6 +27,7 @@ import { clipFault } from './clip-citation.js';
 import { probeNote } from './probe-rules.js';
 import { probeOfVerdict } from './probes.js';
 import { recordingSessionOf } from './recording-session.js';
+import { releaseVisualColumns } from './release-visual-mark.js';
 import { liveRows } from './store.js';
 import {
   corroborationOf,
@@ -69,6 +70,10 @@ const IDENTITY_FIELDS: ReadonlyArray<readonly [keyof VerdictColumns, string]> = 
   ['contractVersion', 'contract-version'],
   ['releaseVersion', 'release'],
   ['acceptedOn', 'accepted-on'],
+  ['visualDesktopId', 'visual-desktop'],
+  ['visualPhoneId', 'visual-phone'],
+  ['visualStillId', 'visual-still'],
+  ['visualSeconds', 'visual-seconds'],
   ['storefrontEnvironment', 'environment'],
   ['corroboration', 'corroboration'],
 ];
@@ -366,6 +371,8 @@ export async function recordVerdict(
   const identity = {
     ...(await identityColumns(tx, issue, draft, args.readDraft ?? readSourceDrafts)),
     ...(await acceptedOnOf(tx, issue.id, draft)),
+    ...(await releaseVisualColumns(tx, issue.id, draft)),
+    withoutClip: draft.withoutClip?.trim() || null,
   };
   const noClip = await clipFault(tx, issue.id, draft, route?.class ?? null);
   if (noClip) throw verdictRefused(noClip);

@@ -6,6 +6,7 @@ import { REASON_TEXT_MAX } from '@forge/contracts/comments';
 import { criterionProbeSchema } from '@forge/contracts/criterion-probes';
 import { criterionTitleSchema } from '@forge/contracts/criterion-title';
 import { CRITERION_JUDGES, ISSUE_CRITERIA_MAX } from '@forge/contracts/issue-design';
+import { RELEASE_VISUAL_SECONDS_MAX } from '@forge/contracts/release-visual';
 import {
   storefrontDraftIdentitySchema,
   verdictEvidenceSchema,
@@ -164,5 +165,18 @@ export const verdictPostSchema = z
      * the release reads it accepted, never proven, and owes no live verdict on it.
      */
     acceptedOn: z.uuid().optional(),
+    /**
+     * The attachments of this issue that show its line on a release page (ISS-1308): each frame by its
+     * id or download URL, checked against the issue's files by name (`release-visual-mark.ts`).
+     */
+    releaseVisual: z
+      .object({
+        desktop: z.string().trim().min(1).max(300).optional(),
+        phone: z.string().trim().min(1).max(300).optional(),
+        still: z.string().trim().min(1).max(300).optional(),
+        seconds: z.number().int().min(1).max(RELEASE_VISUAL_SECONDS_MAX).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();

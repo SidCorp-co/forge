@@ -4334,6 +4334,13 @@
       "when": 1841875200000,
       "tag": "0682_each_lessons_pass_leaves_its_outcome_on_a_read",
       "breakpoints": true
+    },
+    {
+      "idx": 683,
+      "version": "7",
+      "when": 1841961600000,
+      "tag": "0683_a_verdict_marks_its_lines_release_visual",
+      "breakpoints": true
     }
   ]
 }

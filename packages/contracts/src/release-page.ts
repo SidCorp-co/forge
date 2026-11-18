@@ -26,6 +26,7 @@ import {
 	type ReleaseState,
 	type ReleaseVerified,
 } from "./releases.js";
+import type { ReleaseCard, ReleaseVisualsOwed } from "./release-visual.js";
 import type { ReleaseStalls } from "./stalls.js";
 import {
 	digestWordCount,
@@ -143,6 +144,37 @@ export const ReleaseMediaRefSchema = z
 		},
 	);
 export type ReleaseMediaRef = z.infer<typeof ReleaseMediaRefSchema>;
+
+// ---- a line's visual: what its judge marked (ISS-1308) ----
+
+/** One file a judge marked as a line's visual: an attachment of the line's issue. */
+export const ReleaseVisualFileSchema = z.strictObject({
+	attachmentId: z.uuid(),
+	name: z.string().min(1).max(180),
+	kind: z.enum(RELEASE_MEDIA_KINDS),
+	mime: z.enum([...RELEASE_CLIP_MIMES, ...RELEASE_PICTURE_MIMES]),
+	bytes: z.number().int().positive(),
+	/** Where a reader fetches it: set when the page is served or a share is opened, never stored. */
+	url: z.string().min(1).optional(),
+});
+export type ReleaseVisualFile = z.infer<typeof ReleaseVisualFileSchema>;
+
+/**
+ * The clip or shots a New or Fixed line shows: the files the judge marked on a passing verdict of
+ * its issue (`POST /api/issues/:id/verdicts`, `releaseVisual`), never a file core picked. `desktop`
+ * shows at 16:10 and `phone` at 9:19.5; each is a clip or a picture, at least one is set. `still` is
+ * the picture a clip opens on and `seconds` the clip's length, as the judge's recorder wrote them.
+ */
+export const ReleaseLineVisualSchema = z.strictObject({
+	desktop: ReleaseVisualFileSchema.nullable(),
+	phone: ReleaseVisualFileSchema.nullable(),
+	still: ReleaseVisualFileSchema.nullable(),
+	seconds: z.number().int().min(1).nullable(),
+	/** The verdict that marked it, and its criterion's number on the issue. */
+	verdictId: z.uuid(),
+	criterion: z.number().int().min(1),
+});
+export type ReleaseLineVisual = z.infer<typeof ReleaseLineVisualSchema>;
 
 // ---- the truth rule (BC-13, BC-8) ----
 
@@ -666,6 +698,8 @@ export interface ReleasePageChange {
 	 * on a share frozen before screens were read.
 	 */
 	screen?: string | null;
+	/** The clip or shots its judge marked (ISS-1308); null where none is marked, absent on a share frozen before. */
+	visual?: ReleaseLineVisual | null;
 }
 
 /**
@@ -861,6 +895,13 @@ export interface ReleasePage {
 	untraced: ReleasePageCriteria | null;
 	improvements: ReleasePageChange[];
 	fixes: ReleasePageChange[];
+	/** The developer view's lines that touched a screen and show nothing, counted (ISS-1308); null on the user view. */
+	visualsOwed: ReleaseVisualsOwed | null;
+	/**
+	 * What a master's release post in the project's thread carries (ISS-1308,
+	 * `release-visual.ts:releaseCardOf`); null on a share, which no master posts from.
+	 */
+	card: ReleaseCard | null;
 	internal: ReleasePageInternals;
 	withoutNotes: ReleasePageUnnoted[];
 	actionRequired: ReleaseActionItem[];
@@ -902,6 +943,8 @@ const ChangeSchema = z.strictObject({
 	detail: z.string().min(1).nullable().default(null),
 	requirementKey: z.string().min(1).nullable().default(null),
 	screen: z.string().min(1).nullable().default(null),
+	// a share frozen before lines carried their judge's visual shows none
+	visual: ReleaseLineVisualSchema.nullable().default(null),
 });
 
 /**
@@ -990,6 +1033,9 @@ export const ReleasePageSnapshotSchema = z.strictObject({
 		.default(null),
 	improvements: z.array(ChangeSchema),
 	fixes: z.array(ChangeSchema),
+	/** A share is the user view, which counts no owed visual, and no master posts from it. */
+	visualsOwed: z.null().default(null),
+	card: z.null().default(null),
 	/** A share counts its internal changes and never lists them; one frozen before they were counted reads none. */
 	internal: z
 		.strictObject({ count: z.number().int().min(0), changes: z.null() })

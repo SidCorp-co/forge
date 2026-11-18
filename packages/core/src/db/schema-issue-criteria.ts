@@ -33,7 +33,7 @@ import { activityLog } from './schema-activity.js';
 import { agentSessions } from './schema-agent-sessions.js';
 import { users } from './schema-auth.js';
 import { comments } from './schema-comments.js';
-import { issues } from './schema-issues.js';
+import { issueAttachments, issues } from './schema-issues.js';
 import { criterionTitleCheck, requirementCriteria, requirements } from './schema-requirements.js';
 import { projectWorkflows } from './schema-workflows.js';
 
@@ -181,6 +181,20 @@ export const criterionVerdicts = pgTable(
     /** The owner's `decision` record on this issue a commit pass names as accepting its proof (0651,
      *  REQ-36 BC-22): a release reads it accepted, never proven. Null on every other verdict. */
     acceptedOn: uuid('accepted_on').references(() => activityLog.id),
+    /** The attachments the judge marked as its issue's line on the release page (0683, ISS-1308):
+     *  a desktop and a phone frame, the still a clip opens on, and the clip's length as recorded. */
+    visualDesktopId: uuid('visual_desktop_id').references(() => issueAttachments.id, {
+      onDelete: 'set null',
+    }),
+    visualPhoneId: uuid('visual_phone_id').references(() => issueAttachments.id, {
+      onDelete: 'set null',
+    }),
+    visualStillId: uuid('visual_still_id').references(() => issueAttachments.id, {
+      onDelete: 'set null',
+    }),
+    visualSeconds: integer('visual_seconds'),
+    /** Why a judgement of an observable criterion cites no clip (REQ-40 BC-4), kept as a column since 0683. */
+    withoutClip: text('without_clip'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
@@ -226,6 +240,10 @@ export const criterionVerdicts = pgTable(
     acceptedChk: check(
       'criterion_verdicts_accepted_chk',
       sql`${t.acceptedOn} IS NULL OR (${t.verdict} = 'pass' AND ${t.identityKind} = 'commit')`,
+    ),
+    visualSecondsChk: check(
+      'criterion_verdicts_visual_seconds_chk',
+      sql`${t.visualSeconds} IS NULL OR (${t.visualSeconds} >= 1 AND ${t.visualSeconds} <= 3600)`,
     ),
     coversChk: check(
       'criterion_verdicts_covers_chk',

@@ -8,6 +8,7 @@
 import type { ActorAgency } from '@forge/contracts/permissions';
 import {
   type ReleaseHighlights,
+  type ReleasePageChange,
   type ReleasePageSnapshot,
   ReleasePageSnapshotSchema,
 } from '@forge/contracts/release-page';
@@ -23,6 +24,7 @@ import { createDownloadTicket } from '../uploads/index.js';
 import { nameInBackground } from './naming-refresh.js';
 import { readReleasePage, userKnownIssues } from './read.js';
 import { refreshInBackground } from './refresh.js';
+import { relinkedVisual } from './visuals.js';
 
 const refuseShare = refuser<ShareRefusalCode>('SHARE_REFUSED');
 
@@ -53,6 +55,34 @@ async function relinked(
   return { ...highlights, highlights: out };
 }
 
+type Line = Pick<ReleasePageChange, 'visual'>;
+
+/** Each line's visual with every link taken out, or each replaced by `link(attachmentId)`. */
+async function relinkedLines<C extends Line>(
+  lines: { improvements: readonly C[]; fixes: readonly C[] },
+  link: (attachmentId: string) => Promise<string> | null,
+): Promise<{ improvements: C[]; fixes: C[] }> {
+  const on = async (c: C): Promise<C> => ({ ...c, visual: await relinkedVisual(c.visual, link) });
+  return {
+    improvements: await Promise.all(lines.improvements.map(on)),
+    fixes: await Promise.all(lines.fixes.map(on)),
+  };
+}
+
+/** A download ticket for one attachment, minted now for `readerId` alone. */
+const ticketFor =
+  (projectId: string, readerId: string | null) =>
+  async (attachmentId: string): Promise<string> => {
+    const ticket = await createDownloadTicket({
+      targetType: 'issue',
+      attachmentId,
+      projectId,
+      issuedToUserId: readerId,
+      issuedToDeviceId: null,
+    });
+    return `/api/uploads/download/${ticket.id}`;
+  };
+
 /**
  * The highlights with each clip or picture behind a short-lived download ticket minted now for
  * `readerId` and that file alone: a reader who holds no right to the project's attachments, a share's
@@ -63,16 +93,7 @@ export async function ticketedHighlights(
   projectId: string,
   readerId: string | null,
 ): Promise<ReleaseHighlights> {
-  return relinked(highlights, async (attachmentId) => {
-    const ticket = await createDownloadTicket({
-      targetType: 'issue',
-      attachmentId,
-      projectId,
-      issuedToUserId: readerId,
-      issuedToDeviceId: null,
-    });
-    return `/api/uploads/download/${ticket.id}`;
-  });
+  return relinked(highlights, ticketFor(projectId, readerId));
 }
 
 async function freeze(input: {
@@ -118,6 +139,10 @@ async function freeze(input: {
     view: 'user' as const,
     technical: null,
     highlights: await relinked(page.highlights, () => null),
+    ...(await relinkedLines(page, () => null)),
+    // the user view counts no owed visual, and no master posts from a share
+    visualsOwed: null,
+    card: null,
     can: { share: false, export: true, approve: false },
   };
   return ReleasePageSnapshotSchema.parse(frozen);
@@ -132,6 +157,7 @@ async function opened(
   return {
     ...page,
     highlights: await ticketedHighlights(page.highlights, ctx.projectId, ctx.openerId),
+    ...(await relinkedLines(page, ticketFor(ctx.projectId, ctx.openerId))),
     // a share frozen before the user view stopped carrying QA's reasons still opens without them
     knownIssues: userKnownIssues(page.knownIssues, 'user'),
   };
