@@ -270,10 +270,15 @@ export const ROOM_ACT_CARDS = {
         when: 'you need a grant or an approval, or found what only a technical person can act on',
         do: 'support.technical { thread, need, text } from the thread it arose in; tell that thread the answer, or one short line that it is in hand',
       },
+      {
+        when: 'your raise was held because he wrote in that thread within the half hour, naming his message',
+        do: 'if his words already rule on it, make the act as him with support.owner_forge_act and post no ask; if the thread promised it, say what came of the promise; then raise with answers set to his message',
+      },
     ],
     practice: [
       'The channel is the project’s own thread of the organization’s shared operations room, opened the first time it is needed; a direct message to the owner only where the project names one or the organization has no such room.',
       'The work thread hears nothing of a grant you lack.',
+      'The channel hears your words alone, in its reader’s language, to him in the second person: never a “<project> asks:” lead, never him in the third person.',
     ],
     example: {
       thread: THREAD,
@@ -443,7 +448,10 @@ export const ROOM_ACT_CARDS = {
         do: 'support.raise_owed { thread, text }: put it to him in plain words, its options and your recommendation, once',
       },
     ],
-    practice: ['His reply settles it: make the act he chose with support.owner_forge_act.'],
+    practice: [
+      'His reply settles it: make the act he chose with support.owner_forge_act.',
+      'Write it in the language and to the person your task names, in the second person; a held raise names his last message: act on it, or raise again with answers.',
+    ],
     example: {
       thread: 'owed-release-0-19-0',
       text: 'adminhub-api 0.19.0 waits on your approval: approve it (recommended, every check is green) or return it.',

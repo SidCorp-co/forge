@@ -70,7 +70,7 @@ export { shippedNotice, verifyAskNotice } from './reporter-notices.js';
 export { requirementFeedbackAs } from './requirement-feedback.js';
 export { sweepDeclinedFeedback } from './retention.js';
 export { proposedTriageRefusal } from './rules.js';
-export { createFeedback, lockFeedback } from './service.js';
+export { createFeedback, lockFeedback, reopenFeedback, verifyFeedback } from './service.js';
 export { fileSignalFeedback, joinSignalFeedback, type SignalFiling } from './signal-filing.js';
 export {
   feedbackCarriedBy,

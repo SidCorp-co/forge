@@ -169,7 +169,7 @@ export type SupportActInput =
   | ({ action: 'release_decision' } & SupportReleaseDecisionRequest)
   | ({ action: 'ask_master' } & SupportAskMasterRequest)
   | { action: 'in_flight'; thread: string }
-  | { action: 'raise_owed'; thread: string; text: string }
+  | { action: 'raise_owed'; thread: string; text: string; answers?: string | undefined }
   | { action: 'asker'; thread: string; message: string }
   | { action: 'guide' }
   | ({ action: 'technical' } & SupportTechnicalRequest)
@@ -297,6 +297,8 @@ const SHARED = new Set<SupportActInput['action']>([
   'raise_owed',
   // every room agent raises what it needs in its project's technical channel (ISS-1243)
   'technical',
+  // and makes the Forge act a person asks for as them, from their own message (ISS-1299)
+  'owner_forge_act',
   // every room agent audits its own reply right after posting it (ISS-1250)
   'audit',
   // and reads who wrote a message and the thread around it (ISS-1250), and its guide (ISS-1251)
@@ -454,7 +456,7 @@ async function act(
     case 'in_flight':
       return inFlightOf(room, input.thread);
     case 'raise_owed':
-      return raiseOwed(room, { thread: input.thread, text: input.text });
+      return raiseOwed(room, { thread: input.thread, text: input.text, answers: input.answers });
     case 'technical': {
       const { action: _, ...request } = input;
       return raiseTechnical(room, request);

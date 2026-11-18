@@ -1625,9 +1625,9 @@
     "by": "ISS-1251"
   },
   "support.owner_forge_act": {
-    "hash": "a9ca787789e8955a",
-    "on": "2026-11-16",
-    "by": "ISS-1251"
+    "hash": "92be94a79f389166",
+    "on": "2026-11-18",
+    "by": "ISS-1299"
   },
   "support.owner_sign_in": {
     "hash": "b5127efc72a53204",
@@ -1655,9 +1655,9 @@
     "by": "ISS-1251"
   },
   "support.raise_owed": {
-    "hash": "0de2d7c0191e05e8",
-    "on": "2026-11-16",
-    "by": "ISS-1251"
+    "hash": "9f8327e8387827d0",
+    "on": "2026-11-18",
+    "by": "ISS-1299"
   },
   "support.read": {
     "hash": "3b3fe536972bb37d",
@@ -1740,9 +1740,9 @@
     "by": "ISS-1251"
   },
   "support.technical": {
-    "hash": "ef57f41a21ddb9cd",
-    "on": "2026-11-17",
-    "by": "ISS-1271"
+    "hash": "af0bffb9352f8a0e",
+    "on": "2026-11-18",
+    "by": "ISS-1299"
   },
   "support.term": {
     "hash": "5a1b14059e67bba5",

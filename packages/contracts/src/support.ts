@@ -1795,6 +1795,12 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_FORGE_ACT_SHAPE",
 	/** An act the owner asks for that Forge makes as him from chat through no door (ISS-1243). */
 	"SUPPORT_FORGE_ACT_NO_CONSENT_PATH",
+	/** An act the owner's Needs you can owe that no door from chat makes yet, naming the page that makes it (ISS-1299). */
+	"SUPPORT_FORGE_ACT_NO_DOOR",
+	/** A raise into a technical thread where a person spoke within the turn, naming no answer to his message (ISS-1299). */
+	"SUPPORT_RAISE_THREAD_UNREAD",
+	/** A raise whose words are not in the language the technical thread's reader writes (ISS-1299). */
+	"SUPPORT_RAISE_NOT_IN_THREAD_LANGUAGE",
 	/** A consent naming no product the project binds, or none where it binds several (ISS-1013). */
 	"SUPPORT_OWNER_PRODUCT_UNKNOWN",
 	/** No owner credential kept for the product, or one that cannot be used (ISS-1013). */
@@ -1963,6 +1969,9 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_FORGE_ACT_NO_OWNER: 403,
 	SUPPORT_FORGE_ACT_SHAPE: 400,
 	SUPPORT_FORGE_ACT_NO_CONSENT_PATH: 409,
+	SUPPORT_FORGE_ACT_NO_DOOR: 409,
+	SUPPORT_RAISE_THREAD_UNREAD: 409,
+	SUPPORT_RAISE_NOT_IN_THREAD_LANGUAGE: 400,
 	SUPPORT_OWNER_PRODUCT_UNKNOWN: 404,
 	SUPPORT_OWNER_CREDENTIAL_MISSING: 409,
 	SUPPORT_DIRECT_TURN_NEEDS_ADMIN: 403,

@@ -8,10 +8,11 @@
 // received from a member in the thread named, its author the account the room's binding names as
 // owner (`grants.owner`), mapped to his Forge account by a confirmed speaker link or the address the
 // chat server verified (`ops-asker.ts:forgeUserOfWriter`). A message by anyone else acts as nobody,
-// whatever it says of who wrote it. The act then goes through its item's own door
-// (`assistant/tools/item-act-doors.ts`, the one the item page and the web chat call) as him, so his
-// own grants decide and the door's refusal is passed on by its own name. The reason it records
-// quotes his message by id and thread, and the room's record keeps the act beside it.
+// whatever it says of who wrote it. In an operations room, the team's own, each writer acts as
+// himself under his own grants, as its other writes do (ISS-1299). The act then goes through its
+// item's own door (`assistant/tools/item-act-doors.ts`, the one the item page and the web chat call)
+// as him, so his own grants decide and the door's refusal is passed on by its own name. The reason
+// it records quotes his message by id and thread, and the room's record keeps the act beside it.
 
 import { ITEM_ACT_NAMES, type ItemAct } from '@forge/contracts/item-acts';
 import { SUPPORT_FORGE_ACTS, type SupportForgeActRequest } from '@forge/contracts/support-channel';
@@ -30,6 +31,7 @@ import type { OpsOutcome } from './ops-types.js';
 import { asAsker } from './ops-writes.js';
 import { no } from './outcome.js';
 import { doorOfDecision } from './owner-acts-reach.js';
+import { decisionForgeAct, isDecisionForgeAct } from './owner-decision-acts.js';
 import { insertAction, type RoomRow } from './store.js';
 
 /** How much of his message the act's reason quotes. */
@@ -53,14 +55,14 @@ const NO_REASON = new Set<string>([
   'release.cut',
   'config.write',
   'binding.write',
-  'ecosystem.invite',
+  'membership.invite',
   'membership.accept',
   'membership.decline',
 ]);
 
 /** The ecosystem membership acts (ISS-1299), each the verb its own service takes. */
 const MEMBERSHIP: Readonly<Record<string, MembershipAct>> = {
-  'ecosystem.invite': 'invite',
+  'membership.invite': 'invite',
   'membership.accept': 'accept',
   'membership.decline': 'decline',
   'membership.leave': 'leave',
@@ -83,7 +85,10 @@ async function ownerOfMessage(
       `${input.message} is ${said ? `a message in thread ${said.thread}, not ${input.thread}` : "no member's message this room received"}: the owner's Forge act is his own word, so cite his own message in the thread you name (\`message\` in what you were handed). Nothing was done`,
     );
   }
-  const owner = grantsOf(await supportConfigOf(room)).owner;
+  // an operations room is the team's own: each writer acts as himself, his own Forge account's grants
+  // deciding, as its other writes run (ISS-1299: the owner's word there had no door at all)
+  const owner =
+    room.kind === 'operations' ? said.authorKey : grantsOf(await supportConfigOf(room)).owner;
   if (!owner) {
     return no(
       'SUPPORT_FORGE_ACT_NO_OWNER',
@@ -317,7 +322,9 @@ async function act(room: RoomRow, input: SupportForgeActRequest): Promise<OpsOut
         ? markMerged(input, reason, at)
         : MEMBERSHIP[input.act]
           ? membershipAct(input, reason, { ...at, projectSlug: project.value.slug })
-          : writeDocument(input, at),
+          : isDecisionForgeAct(input.act)
+            ? decisionForgeAct(input.act, input.item, reason, at)
+            : writeDocument(input, at),
   );
   if (!made.ok) return made;
   return {

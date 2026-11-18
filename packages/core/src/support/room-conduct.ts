@@ -28,9 +28,14 @@ export const ROOM_MAP_ACTS = [
 
 /**
  * The acts the map carries where the owner speaks to the agent: an operations room and a channel
- * agent's groups, never a support group of the product's users.
+ * agent's groups, never a support group of the product's users. His Forge act is among them
+ * (ISS-1299): an operations room told none promised the owner an act it had no door for.
  */
-export const OWNER_MAP_ACTS = ['reference_add', 'term'] as const satisfies readonly SupportAction[];
+export const OWNER_MAP_ACTS = [
+  'reference_add',
+  'term',
+  'owner_forge_act',
+] as const satisfies readonly SupportAction[];
 
 /** A person-facing link opens Forge's web app, never its API host (ISS-1250): no act, so no card. */
 export const linksOnWeb = (web: string): string =>

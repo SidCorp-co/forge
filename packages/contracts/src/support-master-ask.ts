@@ -6,6 +6,7 @@
 
 import { z } from "zod";
 import { supportProjectSlugSchema, supportThreadIdSchema } from "./support.js";
+import { technicalAnswersSchema } from "./support-technical.js";
 
 /**
  * How long a room agent's ask may wait for its master before it reads as a breach. The person is
@@ -62,4 +63,5 @@ export const supportRaiseOwedRequestSchema = z.strictObject({
 		.describe(
 			"the item in plain words, its options and your recommendation, as he reads it",
 		),
+	answers: technicalAnswersSchema.optional(),
 });

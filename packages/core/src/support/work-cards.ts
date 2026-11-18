@@ -295,7 +295,7 @@ export const WORK_ACT_CARDS = {
   },
   owner_forge_act: {
     purpose:
-      'Makes the Forge act the owner asks for in chat (accept, approve, cut, mark merged, change config) as him, citing his message.',
+      'Makes the Forge act the owner asks for in chat (accept, approve, cut, mark merged, change config, link a project into an ecosystem) as him, citing his message.',
     situations: [
       {
         when: 'the owner asks you, in any words, for a Forge act, or settles one you put to him',
@@ -304,6 +304,8 @@ export const WORK_ACT_CARDS = {
     ],
     practice: [
       'config.write and binding.write take the whole document: read it, make his change, pass it with the revision you read as baseRevision.',
+      'Linking a project into an ecosystem is membership.invite then membership.accept, item the ecosystem’s slug, project the member; in an operations room the writer acts as himself.',
+      'An act no door makes is refused naming where it is made: tell him that act is missing, in one line, and do the rest; never say it is being done.',
     ],
     example: {
       thread: THREAD,
@@ -314,8 +316,10 @@ export const WORK_ACT_CARDS = {
     },
     // ISS-1250, 16/11 03:15: the bot told the owner to press "Add varnish to the forge-ops deploy
     // job" to close a question it could have closed as him
+    // ISS-1299, 18/11 02:46: the owner gave the ops room full rights to link ePOD; it answered
+    // that it was being done, for an act it had no door to, and a raise re-asked him a minute later
     redFlag:
-      'Telling the owner to press a button to settle something he just decided: on 16/11 the bot sent him to click an answer it could record as him.',
+      'Telling the owner to press a button to settle something he just decided, or that an act is being done with no door to make it: on 18/11 the bot promised him an ecosystem link it could not make.',
     family: 'room.owner',
     audience: ['bot'],
     scenarios: ['a question the owner owes sent to him to click, after the work settled it'],

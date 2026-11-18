@@ -212,7 +212,7 @@ export async function answerMasterAsk(
     kind: 'message_in',
     actorKind: 'core',
     input: {
-      note: `The master answered your ask (${answered.question}): ${answer}. Answer the person in this thread yourself now, in your own words, with what this settles.`,
+      note: `The master answered your ask (${answered.question}): ${answer}. Answer the person in this thread yourself now, in your own words and in the language they write, to them in the second person, with what this settles; the master's words are for you, never posted as they are. Where they already ruled on it, make the act as them and say it is done; never ask them again.`,
       ask: answered.id,
     },
     externalId: `master-ask:${answered.id}`,

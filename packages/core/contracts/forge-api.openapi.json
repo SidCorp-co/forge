@@ -54540,7 +54540,7 @@
                 "additionalProperties": false,
                 "properties": {
                   "act": {
-                    "description": "the act, as the item's page names it: requirement.propose, requirement.agree, requirement.accept, requirement.return, requirement.defer, requirement.undefer, requirement.drop, requirement.accept_delivery, workflow.propose, workflow.approve, workflow.return, release.cut, release.approve, release.return, issue.merge, config.write, binding.write; any other is refused by name, saying where it is made",
+                    "description": "the act, as the item's page names it: requirement.propose, requirement.agree, requirement.accept, requirement.return, requirement.defer, requirement.undefer, requirement.drop, requirement.accept_delivery, workflow.propose, workflow.approve, workflow.return, release.cut, release.approve, release.return, issue.merge, config.write, binding.write, membership.invite, membership.accept, membership.decline, membership.leave, feedback.verify, feedback.reopen, suggestion.accept, suggestion.reject, mockup.accept, mockup.return; any other is refused by name, saying where it is made",
                     "maxLength": 64,
                     "minLength": 1,
                     "type": "string"
@@ -54623,7 +54623,7 @@
                     "type": "object"
                   },
                   "item": {
-                    "description": "the item: REQ-n, a workflow's flow such as chat-turn, a release version such as 0.19.0, an issue ISS-n, a binding's id, or the project's slug for config.write",
+                    "description": "the item: REQ-n, FB-n, a workflow's flow such as chat-turn, a release version such as 0.19.0, an issue ISS-n, a suggestion's id, a mockup's key, a binding's id, the project's slug for config.write, or the ecosystem's slug for membership.* (project is then the member project)",
                     "maxLength": 200,
                     "minLength": 1,
                     "type": "string"
@@ -54642,7 +54642,7 @@
                     "type": "string"
                   },
                   "reason": {
-                    "description": "his why in a few words, where the act carries one; his message is quoted beside it either way",
+                    "description": "his why in a few words, where the act carries one (membership.leave requires it); his message is quoted beside it either way",
                     "maxLength": 300,
                     "minLength": 1,
                     "type": "string"
@@ -55466,6 +55466,13 @@
               "schema": {
                 "additionalProperties": false,
                 "properties": {
+                  "answers": {
+                    "description": "the message id a held raise named (his latest in the technical thread): pass it once you read it, and your words answer him rather than ask him again",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9_-]+$",
+                    "type": "string"
+                  },
                   "text": {
                     "description": "the item in plain words, its options and your recommendation, as he reads it",
                     "maxLength": 2000,
@@ -57473,6 +57480,13 @@
               "schema": {
                 "additionalProperties": false,
                 "properties": {
+                  "answers": {
+                    "description": "the message id a held raise named (his latest in the technical thread): pass it once you read it, and your words answer him rather than ask him again",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9_-]+$",
+                    "type": "string"
+                  },
                   "need": {
                     "description": "what it is: a permission or an approval you need, a technical finding, or an ask of the owner",
                     "enum": [
@@ -57484,6 +57498,7 @@
                     "type": "string"
                   },
                   "text": {
+                    "description": "your words to the person who reads the channel, in its language, to them in the second person",
                     "maxLength": 2000,
                     "minLength": 3,
                     "type": "string"

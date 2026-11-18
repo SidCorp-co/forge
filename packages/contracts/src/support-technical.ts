@@ -33,6 +33,15 @@ export const TECHNICAL_NEEDS = [
 ] as const;
 export type TechnicalNeed = (typeof TECHNICAL_NEEDS)[number];
 
+/**
+ * The latest message a person wrote in the technical thread that a raise answers (ISS-1299): a raise
+ * into a thread where someone spoke within the turn is held until it names that message, so its words
+ * answer what he said rather than ask him again.
+ */
+export const technicalAnswersSchema = supportThreadIdSchema.describe(
+	"the message id a held raise named (his latest in the technical thread): pass it once you read it, and your words answer him rather than ask him again",
+);
+
 /** support.technical: one need, raised from the thread it arose in, posted only in the technical channel. */
 export const supportTechnicalRequestSchema = z.strictObject({
 	thread: supportThreadIdSchema,
@@ -41,7 +50,15 @@ export const supportTechnicalRequestSchema = z.strictObject({
 		.describe(
 			"what it is: a permission or an approval you need, a technical finding, or an ask of the owner",
 		),
-	text: z.string().trim().min(3).max(2000),
+	text: z
+		.string()
+		.trim()
+		.min(3)
+		.max(2000)
+		.describe(
+			"your words to the person who reads the channel, in its language, to them in the second person",
+		),
+	answers: technicalAnswersSchema.optional(),
 });
 export type SupportTechnicalRequest = z.infer<
 	typeof supportTechnicalRequestSchema

@@ -254,8 +254,9 @@ export type SupportReleaseDecisionRequest = z.infer<
 
 /**
  * The Forge acts the owner asks for in chat that his room's agent makes as him (ISS-1243 item 24):
- * each the act an item's page offers (`item-acts.ts`), the merge mark, a document write, or an
- * ecosystem membership act (ISS-1299), made through its own door.
+ * each the act an item's page offers (`item-acts.ts`), the merge mark, a document write, an
+ * ecosystem membership act, or a decision his Needs you owes that no item page offers (ISS-1299),
+ * made through its own door.
  */
 export const SUPPORT_FORGE_ACTS = [
 	"requirement.propose",
@@ -276,10 +277,17 @@ export const SUPPORT_FORGE_ACTS = [
 	"config.write",
 	"binding.write",
 	// the steward's invite into an ecosystem and the member project's answer or leave (ISS-1299)
-	"ecosystem.invite",
+	"membership.invite",
 	"membership.accept",
 	"membership.decline",
 	"membership.leave",
+	// the rest of what his Needs you can owe, each its own button's door (ISS-1299)
+	"feedback.verify",
+	"feedback.reopen",
+	"suggestion.accept",
+	"suggestion.reject",
+	"mockup.accept",
+	"mockup.return",
 ] as const;
 export type SupportForgeAct = (typeof SUPPORT_FORGE_ACTS)[number];
 
@@ -310,7 +318,7 @@ export const supportForgeActRequestSchema = z.strictObject({
 		.min(1)
 		.max(200)
 		.describe(
-			"the item: REQ-n, a workflow's flow such as chat-turn, a release version such as 0.19.0, an issue ISS-n, a binding's id, the project's slug for config.write, or the ecosystem's slug for ecosystem.invite and membership.* (project is then the member project)",
+			"the item: REQ-n, FB-n, a workflow's flow such as chat-turn, a release version such as 0.19.0, an issue ISS-n, a suggestion's id, a mockup's key, a binding's id, the project's slug for config.write, or the ecosystem's slug for membership.* (project is then the member project)",
 		),
 	reason: z
 		.string()

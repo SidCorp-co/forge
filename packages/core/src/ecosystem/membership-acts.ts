@@ -76,7 +76,7 @@ async function made(input: {
     return refused(
       'MEMBERSHIP_NONE',
       '/item',
-      `${input.projectSlug} holds no open membership in ${eco.slug}: it is ${input.act === 'leave' ? 'no member' : 'not invited'}. ${input.act === 'leave' ? 'Nothing to leave' : `The steward invites it first (ecosystem.invite), then ${input.act} answers the invitation`}. Nothing was done.`,
+      `${input.projectSlug} holds no open membership in ${eco.slug}: it is ${input.act === 'leave' ? 'no member' : 'not invited'}. ${input.act === 'leave' ? 'Nothing to leave' : `The steward invites it first (membership.invite), then ${input.act} answers the invitation`}. Nothing was done.`,
     );
   }
   return transition({

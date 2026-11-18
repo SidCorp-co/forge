@@ -22,7 +22,9 @@ import { deliverWaiting } from './dispatch.js';
 import { grantsOf, supportConfigOf } from './grants.js';
 import { forgeUserOfWriter } from './ops-asker.js';
 import { knownThread, no, type Outcome } from './outcome.js';
+import { ownerUsername } from './owner-consent.js';
 import { insertAction, type RoomRow, roomsHoldingSessions } from './store.js';
+import { readTechnicalTurn, speakTo } from './technical-turn.js';
 import { roomAuth, threadConversationOf } from './thread.js';
 
 /** The prefix of a thread an owed item is handed in. */
@@ -35,7 +37,7 @@ const PER_SWEEP = 10;
 /** The raise of builder B's technical channel, as `technical-channel.ts:raiseTechnical` takes it. */
 export type TechnicalRaise = (
   room: RoomRow,
-  input: { thread: string; need: 'approval'; text: string },
+  input: { thread: string; need: 'approval'; text: string; answers?: string | undefined },
 ) => Promise<Outcome<{ channel: 'thread' | 'dm'; rid: string; messageId: string | null }>>;
 
 let raise: TechnicalRaise | null = null;
@@ -49,8 +51,11 @@ export function provideTechnicalRaise(r: TechnicalRaise): void {
 export const owedThreadOf = (decisionId: string): string =>
   `${OWED}${createHash('sha256').update(decisionId).digest('hex').slice(0, 24)}`;
 
-/** The task the agent reads: what to do first, then the item as the Needs-you read holds it. */
-function taskNote(thread: string, project: string, d: NeedsYouDecision): string {
+/**
+ * The task the agent reads: what to do first, then the item as the Needs-you read holds it. It names
+ * the language he reads and his name before the agent writes a word (ISS-1299).
+ */
+function taskNote(thread: string, project: string, d: NeedsYouDecision, to: string): string {
   const answers = d.answers.map(
     (a) =>
       `${a.id} "${a.label}"${a.effect ? ` (${a.effect})` : ''}${a.needsReason ? ', takes his reason' : ''}`,
@@ -59,8 +64,8 @@ function taskNote(thread: string, project: string, d: NeedsYouDecision): string 
     ? `Recommended: ${d.recommended.answerId}, because ${d.recommended.why}`
     : `No recommendation from the record (${d.noRecommendation}); give yours from what you read.`;
   return [
-    `An item on ${project} waits on the owner (${d.key}, ${d.id}). Put it to him now with support.raise_owed { thread: "${thread}", text }: in his language, plain words with no code, what it is, the options and your recommendation, short. It is posted in the project's technical channel, once; post it nowhere else.`,
-    'When he answers, in any words, settle it as him citing his own message (support.answer_question for a question, support.release_decision for a release decision, support.owner_forge_act for any other Forge act he asks: a requirement, a design, a release cut or approval with carry, a merge mark, config); never send him to a page.',
+    `An item on ${project} waits on the owner (${d.key}, ${d.id}). Put it to him now with support.raise_owed { thread: "${thread}", text }: ${to}; plain words with no code, what it is, the options and your recommendation, short. It is posted in the project's technical channel, once; post it nowhere else.`,
+    'When he answers, in any words, settle it as him citing his own message (support.answer_question for a question, support.release_decision for a release decision, support.owner_forge_act for any other Forge act he asks: a requirement, a design, a release cut or approval with carry, a merge mark, config, an ecosystem invite or a membership answer); never send him to a page. An act no door makes from chat is refused naming where it is made: tell him that in one line, never that it is being done.',
     `What is asked: ${d.question}`,
     `What it changes: ${d.changes}. Impact: ${d.impact}.`,
     `Options: ${answers.join('; ')}.`,
@@ -92,6 +97,12 @@ export async function handOwnerOwed(room: RoomRow): Promise<{ handed: number }> 
   const decisions = await readNeedsYouDecisions(room.projectId, person.value.userId);
   const { namespace } = await roomAuth(room);
   const slug = (await findProjectSlugs([room.projectId])).get(room.projectId) ?? room.projectId;
+  const to = speakTo(
+    await readTechnicalTurn(room, null, {
+      key: owner,
+      name: await ownerUsername(room.projectId, owner),
+    }),
+  );
   let handed = 0;
   for (const d of decisions) {
     if (handed >= PER_SWEEP) break;
@@ -117,7 +128,7 @@ export async function handOwnerOwed(room: RoomRow): Promise<{ handed: number }> 
       thread,
       kind: 'message_in',
       actorKind: 'core',
-      input: { note: taskNote(thread, slug, d), owed: d.id, key: d.key },
+      input: { note: taskNote(thread, slug, d, to), owed: d.id, key: d.key },
       externalId: thread,
     });
     if (row) handed += 1;
@@ -148,7 +159,7 @@ export async function handAllOwnerOwed(): Promise<void> {
  */
 export async function raiseOwed(
   room: RoomRow,
-  input: { thread: string; text: string },
+  input: { thread: string; text: string; answers?: string | undefined },
 ): Promise<Outcome<{ raised: true; channel: 'thread' | 'dm'; next: string }>> {
   const [task] = input.thread.startsWith(OWED)
     ? await db
@@ -194,7 +205,12 @@ export async function raiseOwed(
       'support: no technical channel raise was provided; registerSupportRooms wires provideTechnicalRaise(raiseTechnical)',
     );
   }
-  const out = await raise(room, { thread: input.thread, need: 'approval', text: input.text });
+  const out = await raise(room, {
+    thread: input.thread,
+    need: 'approval',
+    text: input.text,
+    answers: input.answers,
+  });
   if (!out.ok) return out;
   const owed = (task.input as { owed?: unknown } | null)?.owed;
   await insertAction({
@@ -205,7 +221,7 @@ export async function raiseOwed(
     kind: 'operation',
     actorKind: 'session',
     tool: RAISE,
-    input: { owed },
+    input: { owed, ...(input.answers ? { answers: input.answers } : {}) },
     output: out.value,
   });
   return {

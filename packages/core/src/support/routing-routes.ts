@@ -48,7 +48,7 @@ export function mountRoutingRoutes(app: Hono<{ Variables: AuthVars }>): void {
     SESSION_ONLY,
     strictBody(
       supportTechnicalRequestSchema,
-      '{ thread, need: permission | approval | finding | ask, text }',
+      '{ thread, need: permission | approval | finding | ask, text, answers? }',
     ),
     (c) => act(c, c.req.valid('param').id, { action: 'technical', ...c.req.valid('json') }),
   );

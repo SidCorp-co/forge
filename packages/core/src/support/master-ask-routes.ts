@@ -47,7 +47,7 @@ export function mountMasterAskRoutes(app: Hono<{ Variables: AuthVars }>): void {
     '/:id/support/session/owed-raises',
     projectParam,
     SESSION_ONLY,
-    strictBody(supportRaiseOwedRequestSchema, '{ thread, text }'),
+    strictBody(supportRaiseOwedRequestSchema, '{ thread, text, answers? }'),
     (c) => act(c, c.req.valid('param').id, { action: 'raise_owed', ...c.req.valid('json') }),
   );
   // who wrote a member's message and the thread around it (ISS-1250), read on the agent's call

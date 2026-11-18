@@ -143,7 +143,6 @@ export async function askOwner(
   const admitted = await screenedTechnical(
     room,
     { conversationId, thread: input.thread, tool: ASK },
-    'ask',
     words,
     username,
   );

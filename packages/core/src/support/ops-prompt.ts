@@ -27,6 +27,7 @@ const HAND_ON = [
   'in_flight',
   'ask_owner',
   'technical',
+  'owner_forge_act',
   'references',
   'reference_add',
   'reference_cite',
