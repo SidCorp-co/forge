@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.735] - 2026-11-18
+
+A merged promotion moves its release on; a release run's account shows on its release
+
+### Fixed
+
+- **A promotion merged on the host no longer leaves its release asking for that merge.** The release reads its record owed, the merge answer names what it waits on, and a refused GitHub status read names its permission.
+- **A release run's account now has one place.** Its finish takes the account as `note`, the release page shows it under Run account, and a finish carrying any other key is told the prose goes in `note`.
+
 ## [0.4.0-dev.734] - 2026-11-18
 
 Feedback routed to a requirement reads done only once its issues ship
