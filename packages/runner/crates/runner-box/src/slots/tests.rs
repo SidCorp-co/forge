@@ -246,3 +246,84 @@ async fn a_box_that_fails_to_start_is_reported_start_failed_and_leaves_nothing_h
         serde_json::from_slice(&std::fs::read(root.path().join("held.json")).unwrap()).unwrap();
     assert!(held.is_empty());
 }
+
+/// A WebSocket server standing in for agent-browser's stream, accepting one client.
+fn accept_one(listener: tokio::net::TcpListener) -> tokio::task::JoinHandle<bool> {
+    tokio::spawn(async move {
+        let Ok((sock, _)) = listener.accept().await else {
+            return false;
+        };
+        tokio_tungstenite::accept_async(sock).await.is_ok()
+    })
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_box_opened_for_a_person_admits_their_input_stream_from_the_open() {
+    let root = Scratch::new("slots");
+    let said = Arc::new(Said::default());
+    let b = boxes(&root, said.clone());
+    // agent-browser that answers every command, its daemon (this test) serving a stream port
+    root.script(
+        "tools/agent-browser/0.43.0/node_modules/.bin/agent-browser",
+        "exit 0",
+    );
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+        .await
+        .unwrap();
+    let dir = crate::browser::socket_dir(&b.0.ctx.settings.socket_root, ID).unwrap();
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("b.pid"), std::process::id().to_string()).unwrap();
+    let port = listener.local_addr().unwrap().port();
+    std::fs::write(dir.join("b.stream"), port.to_string()).unwrap();
+
+    b.handle("box.open", json!({ "boxId": ID, "mode": "browser", "warm": false, "viewport": null, "url": null, "openTimeoutSeconds": 30, "asPerson": true }))
+        .await
+        .unwrap();
+    assert_eq!(said.kinds()[0]["state"], "ready", "{:?}", said.kinds());
+    let server = accept_one(listener);
+    let started = std::time::Instant::now();
+    assert!(
+        b.connect(ID, Channel::Input).await.is_ok(),
+        "the person holds it from the open: their input is admitted"
+    );
+    assert!(
+        started.elapsed() < Duration::from_secs(1),
+        "admitted at once, not after a hold frame"
+    );
+    assert!(
+        server.await.unwrap(),
+        "the input reached agent-browser's socket"
+    );
+}
+
+#[tokio::test]
+async fn a_warm_box_handed_to_a_person_admits_their_input_and_one_handed_to_the_agent_does_not() {
+    let root = Scratch::new("slots");
+    let b = boxes(&root, Arc::new(Said::default()));
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+        .await
+        .unwrap();
+    plant_browser(&b, &root, listener.local_addr().unwrap().port());
+
+    b.handle(
+        "box.assign",
+        json!({ "boxId": ID, "url": null, "asPerson": false }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        b.connect(ID, Channel::Input).await.err(),
+        Some(ResetCode::ConnectRefused),
+        "handed to the agent: no person holds it"
+    );
+    b.handle(
+        "box.assign",
+        json!({ "boxId": ID, "url": null, "asPerson": true }),
+    )
+    .await
+    .unwrap();
+    let server = accept_one(listener);
+    assert!(b.connect(ID, Channel::Input).await.is_ok());
+    assert!(server.await.unwrap());
+}

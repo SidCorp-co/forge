@@ -224,6 +224,9 @@ impl Running {
         match self {
             Self::Browser(b) => {
                 let port = b.stream_port().map_err(|l| ViewFault::Lost(l.0))?;
+                tracing::info!(
+                    "[box] {box_id}: a viewer joins agent-browser's stream on 127.0.0.1:{port}"
+                );
                 loopback(port).await
             }
             Self::Android(a) => {

@@ -52,6 +52,7 @@ const openFrame = (row: BoxRow, warm: boolean) => ({
   viewport: row.viewport ?? null,
   url: row.url,
   openTimeoutSeconds: BOX_LIMITS.openTimeoutSeconds,
+  asPerson: row.openedAs === 'person',
 });
 
 /** Place every waiting box of the device, under its lock, and write what the rule said. */

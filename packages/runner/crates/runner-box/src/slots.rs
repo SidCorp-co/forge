@@ -173,7 +173,7 @@ impl Boxes {
                 id.clone(),
                 Slot {
                     running: None,
-                    held: watch::channel(false).0,
+                    held: watch::channel(f.as_person).0,
                     clock: record::Clock::started_now(),
                     closing: false,
                 },
@@ -297,6 +297,7 @@ impl Boxes {
         let Some(running) = self.running(&f.box_id) else {
             return tracing::warn!("[box] {}: box.assign for a box not running here", f.box_id);
         };
+        self.hold(&f.box_id, f.as_person);
         if let Some(url) = f.url.as_deref() {
             if let Err(e) = running.navigate(url).await {
                 tracing::warn!("[box] {}: {e}", f.box_id);

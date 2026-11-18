@@ -34,6 +34,10 @@ pub struct Open {
     #[serde(default)]
     pub url: Option<String>,
     pub open_timeout_seconds: u64,
+    /// Opened for a person to test by hand: they hold it from the start, so their input stream is
+    /// admitted at once. A core that names no holder opens it to the agent.
+    #[serde(default)]
+    pub as_person: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -57,6 +61,9 @@ pub struct Assign {
     pub box_id: String,
     #[serde(default)]
     pub url: Option<String>,
+    /// Handed to a person: they hold it from the hand-out.
+    #[serde(default)]
+    pub as_person: bool,
 }
 
 #[derive(Debug, Deserialize)]
