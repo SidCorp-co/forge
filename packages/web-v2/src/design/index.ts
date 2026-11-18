@@ -43,6 +43,7 @@ export { Radio, RadioGroup } from "./primitives/radio";
 export { Select, NativeSelect, type SelectOption } from "./primitives/select";
 export { ChipPicker, type ChipPickerProps } from "./primitives/chip-picker";
 export { MediaOverlay, type MediaOverlayProps } from "./primitives/media-overlay";
+export { DeviceFrame, DeviceFrames, type DeviceFrameKind, PhoneStage, PlayMark, ThumbSlot } from "./patterns/device-frame";
 export { ChoiceChips, type ChoiceChip, type ChoiceChipsProps } from "./primitives/choice-chips";
 export { IconButton } from "./primitives/icon-button";
 export { Badge, type BadgeProps } from "./primitives/badge";

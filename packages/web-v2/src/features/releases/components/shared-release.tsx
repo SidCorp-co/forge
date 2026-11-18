@@ -21,7 +21,7 @@ export function SharedReleaseView({ snapshot }: { snapshot: ShareReleaseSnapshot
           {snapshot.audience === "members" ? t("releases.page.shared.members") : t("releases.page.shared.link")} · {t("releases.page.shared.until", { at: time.dateTime(snapshot.expiresAt) })}
         </p>
       </header>
-      <ReleaseReport page={page} />
+      <ReleaseReport page={page} authed={false} />
     </article>
   );
 }

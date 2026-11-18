@@ -1,6 +1,6 @@
 import { ReleasePageSnapshotSchema } from "@forge/contracts/release-page";
 import { type ShareReleaseSnapshot, ShareReleaseSnapshotSchema } from "@forge/contracts/shares";
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { releasePage } from "@/test/release-page";
 import { fakeCore, renderWithQuery } from "@/test/render";
@@ -33,8 +33,10 @@ describe("a shared release page", () => {
     expect(calls).toEqual([{ method: "POST", path: "/shares/open", body: { token: TOKEN } }]);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("0.4.0 · Readable releases");
     expect(screen.getByText(/read-only snapshot/)).toBeTruthy();
-    // the same report the app draws: what users see by screen, in the notes' words, and no key on its face (ISS-1001)
-    expect(screen.getByTestId("page-screens")).toHaveTextContent("Releases read as pages");
+    // the same report the app draws: its lines in the notes' words, and no key on its face (ISS-1001)
+    expect(screen.getByTestId("whats-new")).toHaveTextContent("Releases read as pages");
+    // its clip and shots play from the tickets the share was opened with
+    expect(within(screen.getByTestId("whats-new")).getAllByTestId("visual-frame").map((f) => f.dataset.kind)).toEqual(["clip", "picture"]);
     expect(screen.getByTestId("page-unseen")).toHaveTextContent("Changes 1");
     expect(screen.queryByTestId("page-known-issue")).toBeNull();
     expect(rawKeysOnFace(container)).toEqual([]);

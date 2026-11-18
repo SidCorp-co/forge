@@ -1,48 +1,17 @@
-// The body of a release page in the approved report shape (ISS-1001): "What users see" as one table
-// of screens, each with its changes in the words of their release notes, and "Needs attention", the
-// things the decider must weigh, absent when there are none. The page in the app and a page a share
-// link opens both draw it, so the two cannot read differently.
+// The body of a release page (ISS-1001, drawn to mockup MK-13 since ISS-1308): the hero with its cover
+// clip and counts, What's new and Fixed in the words of their release notes, each beside the clip or
+// shots its judge marked, and "Needs attention", the things the decider must weigh, absent when there
+// are none. The page in the app and a page a share link opens both draw it, so the two cannot read
+// differently.
 
 import type { ReleasePage } from "@forge/contracts/release-page";
-import { keyedByContent, Property, PropertyList } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
-import { cn } from "@/lib/utils/cn";
 import { releaseProofOf, unprovenOf } from "../proof";
-import { changesByScreen, removedLines, unseenCount } from "../release-report";
+import { removedLines } from "../release-report";
+import { FixedRows, ReleaseHero, WhatsNew } from "./release-lines";
 
 const HEAD = "mb-1.5 text-11-5 font-semibold uppercase tracking-wide text-muted";
-
-export function WhatUsersSee({ page }: { page: ReleasePage }) {
-  const t = useCopy();
-  const screens = changesByScreen(page);
-  const unseen = unseenCount(page);
-  if (screens.length === 0 && unseen === 0) return null;
-  return (
-    <section aria-label={t("releases.users.title")} data-testid="page-users" data-tour="rel-users">
-      <h2 className={HEAD}>{t("releases.users.title")}</h2>
-      <PropertyList testId="page-screens">
-        {screens.map((s) => (
-          <Property key={s.screen ?? ""} label={s.screen ?? t("releases.users.elsewhere")} testId="page-screen">
-            {keyedByContent(s.lines, (l) => l.text).map(({ key, item: l, index }) => (
-              <span key={key} className="text-14 max-md:block">
-                {index > 0 ? <span className="mr-1.5 text-subtle max-md:hidden">·</span> : null}
-                <span className={cn(l.removed ? "font-medium text-danger-11" : "text-fg")} title={l.detail ?? undefined} data-testid="page-screen-change" data-removed={l.removed}>
-                  {l.text}
-                </span>
-              </span>
-            ))}
-          </Property>
-        ))}
-        {unseen > 0 ? (
-          <Property label={t("releases.users.unseen")} testId="page-unseen">
-            <span className="text-14 text-muted">{t("releases.users.unseenCount", { n: unseen })}</span>
-          </Property>
-        ) : null}
-      </PropertyList>
-    </section>
-  );
-}
 
 /**
  * What the decider must weigh, each in one line: that the master records it rather than cutting it,
@@ -93,10 +62,13 @@ export function NeedsAttention({ page }: { page: ReleasePage }) {
   );
 }
 
-export function ReleaseReport({ page }: { page: ReleasePage }) {
+/** `authed`: the reader is signed in, so each file is fetched with the session; a share's plays from its ticket. */
+export function ReleaseReport({ page, authed = true }: { page: ReleasePage; authed?: boolean }) {
   return (
     <div className="grid gap-6" data-testid="release-report">
-      <WhatUsersSee page={page} />
+      <ReleaseHero page={page} authed={authed} />
+      <WhatsNew page={page} authed={authed} />
+      <FixedRows page={page} authed={authed} />
       <NeedsAttention page={page} />
     </div>
   );

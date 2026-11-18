@@ -1,5 +1,5 @@
-// The release page in the approved report shape (ISS-1001): its one proof number, what users see by
-// screen with no key, commit, branch or change request on its face, what needs attention (absent when
+// The release page in the approved report shape (ISS-1001): its one proof number, What's new and Fixed
+// with no key, commit, branch or change request on its face, what needs attention (absent when
 // nothing does), everything technical behind one collapsed section, and the one act once, at the top.
 // @direct-test-of packages/web-v2/src/features/releases/proof.ts
 // @direct-test-of packages/web-v2/src/features/releases/release-report.ts
@@ -105,16 +105,13 @@ describe("the release page in the report shape (ISS-1001)", () => {
     expect(document.body).not.toHaveTextContent(/checks met|criteria proven/);
   });
 
-  it("groups what users see by screen, in the notes' words, with no key, commit, branch or change request on its face", async () => {
+  it("draws What's new and Fixed in the notes' words, a change's screen beside it, with no key, commit, branch or change request on its face", async () => {
     serve();
     const { container } = renderWithQuery(<ReleasePage projectId="p1" slug="forge" version="0.4.0" />);
-    await screen.findByTestId("page-screens");
-    const screens = screen.getAllByTestId("page-screen").map((s) => s.textContent);
-    expect(screens[0]).toMatch(/^Releases.*Releases read as pages/);
-    expect(screens[1]).toMatch(/Dates show correctly\./);
-    // a change naming no screen reads under a label that says where, never "Elsewhere" (ISS-1179 item 6)
-    expect(screens[1]).toMatch(/^Across the app/);
-    expect(screen.getByTestId("page-users")).not.toHaveTextContent("Elsewhere");
+    await screen.findByTestId("whats-new");
+    const row = screen.getByTestId("whats-new-row");
+    expect(row).toHaveTextContent(/New.*Releases.*Releases read as pages/);
+    expect(screen.getByTestId("fixed-row")).toHaveTextContent("Dates show correctly.");
     expect(rawKeysOnFace(container)).toEqual([]);
     for (const word of ["!2070", "feat(release): page"]) expect(within(screen.getByTestId("release-detail")).queryByText(word, { exact: false })).toBeNull();
   });
@@ -133,7 +130,7 @@ describe("the release page in the report shape (ISS-1001)", () => {
       verified: { level: "criteria", proven: 3, total: 3, check: null, provider: null, judgedOn: null },
     });
     renderWithQuery(<ReleasePage projectId="p1" slug="forge" version="0.4.0" />);
-    await screen.findByTestId("page-screens");
+    await screen.findByTestId("whats-new");
     expect(screen.queryByTestId("page-attention")).toBeNull();
     expect(document.body).not.toHaveTextContent("Needs attention");
   });

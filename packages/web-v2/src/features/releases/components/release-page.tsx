@@ -17,6 +17,7 @@ import type { ReleaseDetail } from "../types";
 import { ContinuedAs, EndedAttempt } from "./release-attempts";
 import { ShippedFailingBanner, shortSha } from "./release-bits";
 import { changeRequestItems, ReleaseMerges, ReleasePromotionBlock } from "./release-merges";
+import { VisualsOwed } from "./release-lines";
 import { ReleasePageActions } from "./release-page-actions";
 import { ReleaseProofBar } from "./release-proof";
 import { ReleaseRecord, ReleaseTagLine } from "./release-record";
@@ -49,6 +50,7 @@ function DeveloperNotes({ projectId, version, slug }: { projectId: string; versi
             <Requirements page={page} slug={slug} />
             <StillOpen page={page} reach={reach} />
             <OtherChanges page={page} reach={reach} />
+            <VisualsOwed page={page} />
             <ReleaseStalls page={page} />
             <Technical page={page} slug={slug} />
           </div>
