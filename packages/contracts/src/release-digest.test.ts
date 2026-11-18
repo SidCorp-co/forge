@@ -36,6 +36,8 @@ function page(over: Partial<ReleasePage> = {}): ReleasePage {
 		untraced: null,
 		improvements: [],
 		fixes: [],
+		visualsOwed: null,
+		card: null,
 		internal: { count: 0, changes: null },
 		withoutNotes: [],
 		actionRequired: [],

@@ -137,6 +137,8 @@ function page(over: Partial<ReleasePage> = {}): ReleasePage {
 				requirementKey: null,
 			},
 		],
+		visualsOwed: null,
+		card: null,
 		internal: { count: 2, changes: null },
 		withoutNotes: [],
 		actionRequired: [],
