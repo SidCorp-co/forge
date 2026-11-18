@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.728] - 2026-11-18
+
+Closing a box you hold is now checked against the hold rule
+
+### Fixed
+
+- **Closing a box you hold stays fixed.** A new check closes a held box directly and fails, naming the rule a leftover hold breaks, if the hold ever survives the close.
+
 ## [0.4.0-dev.727] - 2026-11-18
 
 Closing a box you hold ends your hold instead of failing
