@@ -105,9 +105,9 @@ async function frames(boxId: string, event?: string): Promise<Array<{ event: str
 const box = async (id: string) => (await say('agent', 'GET', `/api/boxes/${id}`)).json.box as Doc;
 
 /** Open a browser box and bring it up as the device would: ready, its recording started. */
-async function runningBox(criterion = 1): Promise<string> {
+async function runningBox(criterion = 1, who = 'agent'): Promise<string> {
   await beat(healthy());
-  const opened = await say('agent', 'POST', `/api/projects/${projectId}/boxes`, {
+  const opened = await say(who, 'POST', `/api/projects/${projectId}/boxes`, {
     mode: 'browser',
     issueId,
     criterion,
@@ -141,22 +141,26 @@ beforeAll(async () => {
     VALUES (${projectId}, 1, 'Redeem points at the counter', 'in_progress', 'high', ${ownerId})
     RETURNING id`)) as unknown as Array<{ id: string }>;
   issueId = (row as { id: string }).id;
-  const mint = async (name: string, device?: string) =>
+  const mint = async (name: string, device?: string, grantEpoch = 99, permissions = ['*']) =>
     (
       await mintPat({
-        permissions: ['*'],
+        permissions,
         userId: ownerId,
         name,
         projectIds: [projectId],
-        grantEpoch: 99,
+        grantEpoch,
         ...(device ? { deviceId: device } : {}),
       })
     ).plaintext;
   deviceToken = await mint('device', deviceId);
+  const named = ['projects:write', 'pipeline:write'];
   say = requester(app as never, {
     agent: await mint('agent'),
     device: deviceToken,
     person: await userToken(ownerId),
+    // a box's checkout credential minted at epoch 2, before /api/boxes joined the menu (FB-745)
+    checkout2: await mint('checkout-2', deviceId, 2, named),
+    agent4: await mint('agent-4', undefined, 4, named),
   }) as Say;
 }, 120_000);
 
@@ -183,6 +187,54 @@ describe('a box mode', () => {
       { n: number },
     ];
     expect(n).toBe(0);
+  });
+});
+
+describe('one grant epoch for the box surface, its open included (ISS-1335)', () => {
+  it('refuses a credential minted before /api/boxes the open, by name, and no box opens', async () => {
+    await beat(healthy());
+    const count = async () =>
+      (
+        (await db.execute(
+          sql`SELECT count(*)::int AS n FROM boxes WHERE project_id = ${projectId}`,
+        )) as unknown as [{ n: number }]
+      )[0].n;
+    const before = await count();
+    const opened = await say('checkout2', 'POST', `/api/projects/${projectId}/boxes`, {
+      mode: 'browser',
+      issueId,
+      criterion: 1,
+    });
+    expect(opened.status, JSON.stringify(opened.json)).toBe(403);
+    expect(opened.json).toMatchObject({
+      code: 'PAT_GRANT_PREDATES_ROUTE',
+      details: { surface: '/api/boxes', routeEpoch: 4, tokenEpoch: 2 },
+    });
+    // the way through: the act that mints a credential at the box surface's epoch, by its door
+    expect(String(opened.json.message)).toContain('re-pairs the box (`forge-runner login`');
+    expect(String(opened.json.message)).toContain('POST /api/projects/<project id>/runners');
+    expect(await count()).toBe(before);
+  });
+
+  it('opens, acts on and closes a box with a credential minted at epoch 4', async () => {
+    const id = await runningBox(1, 'agent4');
+    const reading = say('agent4', 'POST', `/api/boxes/${id}/acts`, { command: ['snapshot', '-i'] });
+    await expect
+      .poll(async () => (await frames(id, 'box.act')).length, { timeout: 10_000 })
+      .toBe(1);
+    const sent = (await frames(id, 'box.act'))[0]?.data as Doc;
+    await say('device', 'POST', `/api/boxes/${id}/report`, {
+      kind: 'act',
+      actId: sent.actId,
+      exitCode: 0,
+      stdout: '',
+      stderr: '',
+      durationMs: 5,
+    });
+    expect((await reading).json).toMatchObject({ act: { state: 'done' } });
+    const closed = await say('agent4', 'POST', `/api/boxes/${id}/close`, {});
+    expect(closed.status, JSON.stringify(closed.json)).toBe(200);
+    expect(closed.json.box).toMatchObject({ state: 'closed' });
   });
 });
 

@@ -24,6 +24,7 @@ const bound = (grant: string[], fence: string[] | null) => ({
   grant,
   fence,
   grantEpoch: 3,
+  holder: { deviceId: null, agency: 'agent' as const },
   tokenId: 'tok',
 });
 
@@ -59,5 +60,39 @@ describe('a tool call refused as account work', () => {
     expect(holds).toContain('ask one with POST /api/questions');
     const lacks = toolCallRefusal(accountTool, {}, bound(['projects:write'], ['p']));
     expect(lacks).toContain("not granted 'questions:write'");
+  });
+});
+
+// ISS-1335 (FB-745): a checkout credential minted before /api/boxes joined the menu was told to mint a
+// token, which no agent does; it is told who mints one at the box surface's epoch, and by which door
+describe('a tool call refused for its grant epoch', () => {
+  const boxTool: GrantedTool = {
+    name: 'forge_box',
+    inputSchema: { type: 'object' },
+    grant: 'pipeline:write',
+    route: '/api/boxes',
+  };
+  const at = (holder: {
+    deviceId: string | null;
+    agency: 'agent' | 'human';
+    oauthGrantId?: string;
+  }) =>
+    toolCallRefusal(boxTool, {}, { ...bound(['pipeline:write'], ['p']), grantEpoch: 2, holder });
+
+  it("names a box's re-pair and its runner's re-bind for a checkout credential", () => {
+    const said = at({ deviceId: 'dev-1', agency: 'agent' });
+    expect(said).toContain('PAT_GRANT_PREDATES_ROUTE');
+    expect(said).toContain('/api/boxes joined');
+    expect(said).toContain('re-pairs the box (`forge-runner login`');
+    expect(said).toContain('POST /api/projects/<project id>/runners');
+    expect(said).not.toContain('Mint a new token');
+  });
+
+  it("names the minting door by the credential's kind", () => {
+    expect(at({ deviceId: null, agency: 'agent' })).toContain('/agents/<agent id>/tokens');
+    expect(at({ deviceId: null, agency: 'human' })).toContain('Settings → API Tokens');
+    expect(at({ deviceId: null, agency: 'human', oauthGrantId: 'g' })).toContain(
+      'reconnect the client',
+    );
   });
 });
