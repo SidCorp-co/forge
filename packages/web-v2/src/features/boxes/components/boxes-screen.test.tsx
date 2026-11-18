@@ -1,6 +1,8 @@
 // ISS-1276 c5, c7, ISS-1321 c2, c4, ISS-1338 c1: a project's Boxes page as a person reads and drives it. Core is stood in for over
 // `fetch` with the contracts' own `BOX_ROUTES`; the view and input sockets are stood in for, so no
 // test reaches a box.
+// @direct-test-of packages/web-v2/src/features/boxes/components/box-live.tsx
+// @direct-test-of packages/web-v2/src/features/boxes/components/box-ended.tsx
 
 import { BOX_ROUTES } from "@forge/contracts/boxes";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";

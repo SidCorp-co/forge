@@ -4,6 +4,7 @@
 // kept none; a box the reader may not see is refused by core's code. ISS-1338 c1, c2: a closed box
 // plays the whole session a person asked to record beside its span clips, and one that could not come
 // says why in its own words, never No clip alone. Core and the sockets are stood in for.
+// @direct-test-of packages/web-v2/src/features/boxes/components/box-ended.tsx
 
 import { BOX_ROUTES, type BoxRecord, type BoxSessionRecording, type BoxSpanRecord } from "@forge/contracts/boxes";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";

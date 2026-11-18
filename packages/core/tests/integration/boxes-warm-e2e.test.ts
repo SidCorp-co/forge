@@ -182,6 +182,7 @@ describe('a warm box handed out records only when its open asked (ISS-1315, ISS-
       state: 'recording',
       why: 'asked',
       startedAt,
+      session: null,
     });
     await w.say('agent', 'POST', `/api/boxes/${askedId}/close`, {});
   });
