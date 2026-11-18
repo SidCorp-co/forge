@@ -159,6 +159,9 @@ describe('a handoff no channel carries is refused by name, with nothing written'
     expect(r.json.detail).toContain(
       `No ecosystem links forge to project ${w.project.internal}, so a finding cannot be handed to its intake`,
     );
+    expect(r.json.detail).toContain(
+      `a handoff reaches only a project shown to forge as a peer in an ecosystem it is active in (GET /api/projects/${w.project.forge}/ecosystems lists them under \`peers\`)`,
+    );
     expect(r.json.detail).toContain('`POST /api/ecosystems/<ecosystem>/invitations`');
     expect(r.json.detail).toContain('`POST /api/memberships/<membership>/accept`');
     const listed = status(
@@ -188,6 +191,18 @@ describe('a handoff no channel carries is refused by name, with nothing written'
     expect(unknown.json.error.code).toBe('HANDOFF_ITEM_UNKNOWN');
     const self = await handoff('ISS-1', w.project.forge);
     expect(self.json.error.code).toBe('HANDOFF_TO_OWN_PROJECT');
+    expect(await pluginFeedbackCount()).toBe(before);
+  });
+
+  // dev.721 judge and a master's first real handoff: `to` sent as a slug read "Invalid UUID" only
+  it('refuses a receiving project named by slug, saying `to` takes its uuid and where it is read', async () => {
+    const before = await pluginFeedbackCount();
+    const slug = await handoff('ISS-1', 'forge-plugin');
+    expect(slug.status, JSON.stringify(slug.json)).toBe(400);
+    expect(slug.json.error.code).toBe('BAD_REQUEST');
+    expect(slug.json.detail).toContain('`to` is the bare string "forge-plugin"');
+    expect(slug.json.detail).toContain(`GET /api/projects/${w.project.forge}/ecosystems lists`);
+    expect(slug.json.detail).toContain('`peers[].project.id`');
     expect(await pluginFeedbackCount()).toBe(before);
   });
 });

@@ -25,8 +25,6 @@ export const channelHandoffRequestSchema = z.strictObject({
 });
 export type ChannelHandoffRequest = z.infer<typeof channelHandoffRequestSchema>;
 
-export const CHANNEL_HANDOFF_SHAPE = `{ to: <the receiving project's uuid>, item: <ISS-n or FB-n of this project>, kind: ${FEEDBACK_KINDS.join(" | ")}, title, whereSeen, body?, severity?: ${FEEDBACK_SEVERITIES.join(" | ")} }`;
-
 /** What a handoff answers: where it went, under which key, and whether this call filed it. */
 export interface ChannelHandoffView {
 	ecosystem: { id: string; slug: string };

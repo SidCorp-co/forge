@@ -83,7 +83,8 @@ export async function handOff(input: {
       path: '/to',
       detail:
         `No ecosystem links ${fromSlug} to project ${request.to}, so a finding cannot be handed to its intake: ` +
-        `the channel hands one only to a project an ecosystem ${fromSlug} is active in shows it. ` +
+        `a handoff reaches only a project shown to ${fromSlug} as a peer in an ecosystem it is active in ` +
+        `(GET /api/projects/${projectId}/ecosystems lists them under \`peers\`). ` +
         `To link them, ${whoLinksSaid([fromSlug], channel.stewards)} (${GUIDE}).`,
     });
   }

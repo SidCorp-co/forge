@@ -1,13 +1,10 @@
-import {
-  CHANNEL_HANDOFF_SHAPE,
-  channelHandoffRequestSchema,
-} from '@forge/contracts/channel-handoff';
+import { channelHandoffRequestSchema } from '@forge/contracts/channel-handoff';
 import { REASON_LINE_MAX } from '@forge/contracts/comments';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
+import { invalid, noQuery, refuseFieldShape, zValidator } from '../middleware/zod-validator.js';
 import { requiresByRule } from '../permissions/index.js';
 import { uuid } from '../project-config/index.js';
 import { openGateQuestionsOf } from '../questions/index.js';
@@ -157,10 +154,21 @@ channelProjectRoutes.post('/:id/channel/drafts', projectParam, WRITES, draftBody
   );
 });
 
+// a receiving project named by its slug read "Invalid UUID" alone (dev.721): `to` says what it takes
+// and where the sender reads it; any other fault is answered at its path with the body accepted
 const handoffBody = zValidator(
   'json',
   channelHandoffRequestSchema,
-  invalid(`a handoff is ${CHANNEL_HANDOFF_SHAPE}`),
+  (r: { success: boolean; error?: z.core.$ZodError; data?: unknown }, c: Context) => {
+    if (r.success || !r.error) return;
+    refuseFieldShape(
+      r.error.issues,
+      r.data,
+      'to',
+      'BAD_REQUEST',
+      `It takes the receiving project's uuid, never its slug or name: GET /api/projects/${c.req.param('id')}/ecosystems lists each project a handoff may go to, as \`peers[].project.id\`.`,
+    );
+  },
 );
 
 // A finding for another project's intake (ISS-1286): filed there as its feedback naming this
