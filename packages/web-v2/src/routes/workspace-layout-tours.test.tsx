@@ -1,4 +1,4 @@
-// Help → Tours is mounted by the rail, outside the page, so the project it resolves has to come
+// Help → Tours is mounted by the rail (a row of its account menu, ISS-1331), outside the page, so the project it resolves has to come
 // from the layout's own chain. This renders that chain over a /projects/<slug>/… route; a panel
 // handed a project by its test cannot show that the rail has none to hand it.
 
@@ -52,7 +52,9 @@ describe("tours in the workspace layout", () => {
     nav.search = "";
     serve();
     const { router } = await renderRoute({ at: "/projects/forge/releases", pattern: "/projects/$slug/releases", page: () => <div />, layout: WorkspaceLayout });
-    await userEvent.click((await screen.findAllByRole("button", { name: /Help/ }))[0]);
+    // Help is a row of the rail's account menu since ISS-1331
+    await userEvent.click(await screen.findByRole("button", { name: /^Account menu/ }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: /^Help/ }));
     const integrations = await screen.findByTestId("tour-row-integrations");
     const release = screen.getByTestId("tour-row-release-what-changes");
     await waitFor(() => expect(within(release).getByRole("button", { name: "Show" })).toBeEnabled());

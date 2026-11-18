@@ -9,6 +9,8 @@
 // @direct-test-of packages/web-v2/src/design/patterns/menu.tsx
 // @direct-test-of packages/web-v2/src/features/whats-new/components/whats-new-button.tsx
 // @direct-test-of packages/web-v2/src/features/tours/components/help-tours-button.tsx
+// @direct-test-of packages/web-v2/src/features/tours/index.ts
+// @direct-test-of packages/web-v2/src/features/shell/components/account-menu.tsx
 
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";

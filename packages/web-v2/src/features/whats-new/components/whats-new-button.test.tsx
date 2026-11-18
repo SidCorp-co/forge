@@ -1,3 +1,5 @@
+// The phone drawer's What's new entry, drawn by the shared RailButton.
+// @direct-test-of packages/web-v2/src/design/patterns/rail-button.tsx
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";

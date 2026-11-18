@@ -9,6 +9,7 @@
 // @direct-test-of packages/web-v2/src/features/shell/components/mobile-nav-drawer.tsx
 // @direct-test-of packages/web-v2/src/design/patterns/bottom-tab-bar.tsx
 // @direct-test-of packages/web-v2/src/routes/_workspace/route.tsx
+// @direct-test-of packages/web-v2/src/features/shell/components/sidebar-version.tsx
 
 import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -26,6 +27,7 @@ vi.mock("@/features/orgs", async (orig) => ({
 
 import { routeEvent } from "@/lib/ws/event-router";
 import { MobileNavDrawer, bottomTabItems } from "@/features/shell";
+import { SidebarVersion } from "@/features/shell/components/sidebar-version";
 import { WorkspaceSidebar } from "@/features/shell/components/workspace-sidebar";
 
 const noop = () => {};
@@ -78,6 +80,7 @@ function Drawer() {
       onOpenProject={noop}
       onCreateProject={noop}
       onViewAllProjects={noop}
+      version={<SidebarVersion onDocs={noop} activeKey="overview" />}
     />
   );
 }
@@ -167,6 +170,8 @@ describe("on a phone", () => {
     const more = screen.getByRole("button", { name: /^More/, hidden: true });
     await waitFor(() => expect(more.textContent).toContain("45"));
     expect(more.getAttribute("aria-label")).toBe("More, 45 waiting on you across 2 projects");
+    // the phone keeps its own foot: the version and the Docs button stay in the drawer (ISS-1331 left the phone as it was)
+    expect(screen.getByRole("button", { name: "Docs" })).toBeTruthy();
   });
 
   it("the More tab draws no count where nothing waits", async () => {
