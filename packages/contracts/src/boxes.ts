@@ -28,7 +28,8 @@ export type BoxUnservedMode = (typeof BOX_UNSERVED_MODES)[number];
  * start it, or to hand a warm one out, and has not said it answers yet. `warm`: running and nobody's yet, kept so the next request of its mode starts at once.
  * `agent`: running, and the agent drives it. `person`: running, and a person holds it; the agent's
  * state-changing acts are refused `BOX_HELD_BY_PERSON`, its reads answer. `closed`: done, and its
- * processes reaped; its recording stays on the device until its issue ends. `failed`: it could not
+ * processes reaped; its recording stays on the device until its issue ends, and one a person asked for
+ * is sent to Forge (ISS-1338). `failed`: it could not
  * start or stopped answering, with a `BoxFailure`.
  */
 export const BOX_STATES = [
@@ -201,6 +202,17 @@ export const BOX_LIMITS = {
 	viewport: { minPx: 240, maxPx: 3840 },
 	url: 2048,
 	reason: 500,
+	/**
+	 * The one ceiling on a kept whole-session recording sent to Forge (ISS-1338): the device encodes
+	 * it within this, once more smaller where the first is over, and past it the recording stays on
+	 * the device and the box says `TOO_LARGE`. An issue attachment's own default ceiling.
+	 */
+	sessionMaxBytes: 10 * 1024 * 1024,
+	/**
+	 * A session recording the device was told to send and has not answered for this long fails
+	 * `NO_ANSWER`, or `DEVICE_GONE` where the device is offline (ISS-1338).
+	 */
+	sessionAnswerSeconds: 1800,
 } as const;
 
 /** Who drives a box: the agent's run, or a person. Its wire form is `agent:<run>` / `person:<user>`. */
@@ -237,6 +249,56 @@ export type BoxClosedWhy = (typeof BOX_CLOSED_WHY)[number];
 export const BOX_RECORDING_WHY = ["asked", "span", "person"] as const;
 export type BoxRecordingWhy = (typeof BOX_RECORDING_WHY)[number];
 
+/**
+ * A kept whole-session recording on its way to Forge (ISS-1338). Only one a person or the open asked
+ * for (`asked`, `person`) is sent, once its box ends; a span's own recording never is, its clips
+ * carry it. `sending`: the device was told to send it; `attached`: it is an attachment of the box's
+ * issue, with its opening still; `failed`: it could not come, and `fault` says why.
+ */
+export const BOX_SESSION_STATES = ["sending", "attached", "failed"] as const;
+export type BoxSessionState = (typeof BOX_SESSION_STATES)[number];
+
+/**
+ * Why a kept recording did not reach Forge (ISS-1338): `TOO_LARGE`, over `BOX_LIMITS.sessionMaxBytes`
+ * at its smallest; `DEVICE_GONE`, the device no longer holds it, or went offline before sending it;
+ * `NO_ANSWER`, the device said nothing within `BOX_LIMITS.sessionAnswerSeconds`; `CUT_FAILED`, the
+ * device could not encode it; `SEND_FAILED`, its upload did not reach core or was refused;
+ * `NO_ISSUE`, the box tests no issue, so nothing holds the attachment.
+ */
+export const BOX_SESSION_FAULTS = [
+	"TOO_LARGE",
+	"DEVICE_GONE",
+	"NO_ANSWER",
+	"CUT_FAILED",
+	"SEND_FAILED",
+	"NO_ISSUE",
+] as const;
+export type BoxSessionFault = (typeof BOX_SESSION_FAULTS)[number];
+
+/** The faults the device itself reports (`./box-wire.ts` `session_failed`); core finds the rest. */
+export const BOX_DEVICE_SESSION_FAULTS = [
+	"TOO_LARGE",
+	"DEVICE_GONE",
+	"CUT_FAILED",
+	"SEND_FAILED",
+] as const satisfies readonly BoxSessionFault[];
+
+/** What the clip upload names in a span's place for the kept whole-session recording (`BOX_ROUTES.clip`). */
+export const BOX_SESSION_CLIP = "session";
+
+/** A box's kept whole-session recording as Forge holds it (ISS-1338). */
+export interface BoxSessionRecording {
+	state: BoxSessionState;
+	/** The issue attachments it became, once `attached`: play the clip, cite either. */
+	clipAttachmentId: string | null;
+	stillAttachmentId: string | null;
+	fault: BoxSessionFault | null;
+	/** The device's or core's words for a fault. */
+	detail: string | null;
+	/** When it last moved. */
+	at: string;
+}
+
 /** The record every door answers with. */
 export interface BoxRecord {
 	id: string;
@@ -260,12 +322,15 @@ export interface BoxRecord {
 	 * Its recording (ISS-1321): null while nothing was ever recorded. `state` is `recording` while
 	 * the device records, `kept` once it stopped with what it recorded still on the device, `dropped`
 	 * once its issue ended. `why` says who wants it recording now (null when it does not record);
-	 * `startedAt` is when the device began the recording now running, or the last one.
+	 * `startedAt` is when the device began the recording now running, or the last one. `session` is
+	 * the whole kept recording brought to Forge once the box ended (ISS-1338): null where nobody asked
+	 * for the recording, or the box still runs.
 	 */
 	recording: {
 		state: "recording" | "kept" | "dropped";
 		why: BoxRecordingWhy | null;
 		startedAt: string | null;
+		session: BoxSessionRecording | null;
 	} | null;
 	failure: BoxFailure | null;
 	detail: string | null;
@@ -440,6 +505,11 @@ export const BOX_REFUSAL_CODES = [
 	 * back when a person takes the box, or its device reported none (a runner older than ISS-1322).
 	 */
 	"BOX_ATTACH_UNAVAILABLE",
+	/**
+	 * A session recording sent for a box that owes none: nobody asked for its recording, or it has
+	 * not ended (ISS-1338). Nothing is attached.
+	 */
+	"BOX_SESSION_NOT_OWED",
 ] as const;
 export type BoxRefusalCode = (typeof BOX_REFUSAL_CODES)[number];
 
@@ -458,6 +528,7 @@ export const BOX_REFUSAL_STATUSES = {
 	BOX_NO_DEVICE: 409,
 	BOX_ATTACH_REMOTE: 409,
 	BOX_ATTACH_UNAVAILABLE: 409,
+	BOX_SESSION_NOT_OWED: 409,
 } as const satisfies RefusalStatuses<BoxRefusalCode>;
 
 /** The REST and WebSocket doors. `:id` is a box (a project under `/api/projects`). */
@@ -485,7 +556,10 @@ export const BOX_ROUTES = {
 	ticket: "/api/boxes/:id/ticket",
 	/** Runner only: what the box did (`./box-wire.ts` `boxReportSchema`). */
 	report: "/api/boxes/:id/report",
-	/** Runner only, multipart `clip` + `still`: the span's cut, which core attaches to the criterion. */
+	/**
+	 * Runner only, multipart `clip` + `still`: the span's cut, which core attaches to the criterion;
+	 * with `session` (`BOX_SESSION_CLIP`) in the span's place, the box's whole kept recording (ISS-1338).
+	 */
 	clip: "/api/boxes/:id/spans/:spanId/clip",
 	/** A viewer's socket, `?ticket=<t>&fps=<n>`: watch-only, many at once. */
 	view: "/ws/boxes/view",

@@ -61,6 +61,17 @@ function recordOf(row: BoxRow, name: string | null): BoxRecord {
           state: row.recordingState,
           why: row.recordingState === 'recording' ? row.recordingWhy : null,
           startedAt: iso(row.recordingStartedAt),
+          session:
+            row.sessionState && row.sessionAt
+              ? {
+                  state: row.sessionState,
+                  clipAttachmentId: row.sessionClipId,
+                  stillAttachmentId: row.sessionStillId,
+                  fault: row.sessionFault,
+                  detail: row.sessionDetail,
+                  at: row.sessionAt.toISOString(),
+                }
+              : null,
         }
       : null,
     failure: row.failure,

@@ -5,12 +5,15 @@ import {
   BOX_FAILURES,
   BOX_MODES,
   BOX_RECORDING_WHY,
+  BOX_SESSION_FAULTS,
+  BOX_SESSION_STATES,
   BOX_STATES,
   type BoxMode,
   type BoxQueuePlace,
 } from '@forge/contracts/boxes';
 import { sql } from 'drizzle-orm';
 import {
+  boolean,
   check,
   index,
   integer,
@@ -76,6 +79,22 @@ export const boxes = pgTable(
      */
     recordingWhy: text('recording_why', { enum: BOX_RECORDING_WHY }),
     recordingStartedAt: timestamp('recording_started_at', { withTimezone: true }),
+    /**
+     * A person or the open asked for its recording (ISS-1338): only such a recording is sent to Forge
+     * once the box ends, never a span's own.
+     */
+    recordingAsked: boolean('recording_asked').notNull().default(false),
+    /** The kept recording sent to Forge (ISS-1338): sending, attached (clip and still), or failed. */
+    sessionState: text('session_state', { enum: BOX_SESSION_STATES }),
+    sessionAt: timestamp('session_at', { withTimezone: true }),
+    sessionClipId: uuid('session_clip_id').references(() => issueAttachments.id, {
+      onDelete: 'set null',
+    }),
+    sessionStillId: uuid('session_still_id').references(() => issueAttachments.id, {
+      onDelete: 'set null',
+    }),
+    sessionFault: text('session_fault', { enum: BOX_SESSION_FAULTS }),
+    sessionDetail: text('session_detail'),
     failure: text('failure', { enum: BOX_FAILURES }),
     detail: text('detail'),
     actSeq: integer('act_seq').notNull().default(0),
@@ -112,6 +131,10 @@ export const boxes = pgTable(
     closedWhyChk: check(
       'boxes_closed_why_chk',
       sql`(${t.state} = 'closed') = (${t.closedWhy} IS NOT NULL) AND (${t.closedWhy} IS NULL OR ${t.closedWhy} IN (${inList(BOX_CLOSED_WHY)}))`,
+    ),
+    sessionChk: check(
+      'boxes_session_chk',
+      sql`(${t.sessionState} IS NULL OR ${t.sessionState} IN (${inList(BOX_SESSION_STATES)})) AND (${t.sessionState} IS NULL) = (${t.sessionAt} IS NULL) AND (${t.sessionState} IS NOT DISTINCT FROM 'failed') = (${t.sessionFault} IS NOT NULL) AND (${t.sessionFault} IS NULL OR ${t.sessionFault} IN (${inList(BOX_SESSION_FAULTS)}))`,
     ),
     recordingWhyChk: check(
       'boxes_recording_why_chk',

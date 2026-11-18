@@ -14,6 +14,7 @@
 
 import { z } from "zod";
 import {
+	BOX_DEVICE_SESSION_FAULTS,
 	BOX_LIMITS,
 	BOX_MODES,
 	BOX_UNSERVED_MODES,
@@ -167,6 +168,14 @@ export interface BoxControlFrames {
 	};
 	/** The issue ended (closed or dropped): delete the box's recording from the device. */
 	"box.recording.drop": { boxId: string };
+	/**
+	 * Send the box's whole kept recording to Forge (ISS-1338): every segment in order, encoded to one
+	 * clip within `maxBytes` (`BOX_LIMITS.sessionMaxBytes`) with its opening still, uploaded to
+	 * `BOX_ROUTES.clip` with `session` in the span's place, as a span's cut is. Core sends it after
+	 * `box.close`, only for a recording a person or the open asked for; one that cannot be sent
+	 * answers a `session_failed` report.
+	 */
+	"box.recording.upload": { boxId: string; maxBytes: number };
 }
 
 // ---------- runner → core: `POST /api/boxes/:id/report` ----------
@@ -187,6 +196,7 @@ const offerSchema = z.strictObject({
  * - `act`: what a `box.act` did.
  * - `mark`: the recording offset a `box.span.mark` landed at.
  * - `clip_failed`: a `box.recording.fetch` could not be cut or exceeded the ceiling.
+ * - `session_failed`: a `box.recording.upload` could not be sent, `fault` saying why (ISS-1338).
  * - `recording`: the recording started (`on`, at `at`) or stopped, or could not (`failed`, with the
  *   tool's words in `detail`), after `box.recording.set` or a span's `recording`.
  * - `cdp`: what sessions attached to a browser box's CDP did (ISS-1322): each method that is not a
@@ -241,6 +251,11 @@ export const boxReportSchema = z.discriminatedUnion("kind", [
 	z.strictObject({
 		kind: z.literal("clip_failed"),
 		spanId: z.uuid(),
+		detail: z.string().max(4000),
+	}),
+	z.strictObject({
+		kind: z.literal("session_failed"),
+		fault: z.enum(BOX_DEVICE_SESSION_FAULTS),
 		detail: z.string().max(4000),
 	}),
 	z.strictObject({

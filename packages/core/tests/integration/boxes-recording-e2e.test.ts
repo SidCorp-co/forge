@@ -71,6 +71,7 @@ describe('a box records only when asked', () => {
       state: 'recording',
       why: 'asked',
       startedAt: at,
+      session: null,
     });
   });
 });
@@ -88,7 +89,12 @@ describe("a criterion's span records its own clip", () => {
       state: 'on',
       at,
     });
-    expect((await w.box(id)).recording).toEqual({ state: 'recording', why: 'span', startedAt: at });
+    expect((await w.box(id)).recording).toEqual({
+      state: 'recording',
+      why: 'span',
+      startedAt: at,
+      session: null,
+    });
 
     // a second span joins the running recording; the first's end leaves it for the second
     await span(id, 2, 'start');
@@ -98,7 +104,12 @@ describe("a criterion's span records its own clip", () => {
     expect((await w.box(id)).recording).toMatchObject({ state: 'recording' });
     await span(id, 2, 'end');
     expect(await lastMark(id)).toMatchObject({ criterion: 2, edge: 'end', recording: 'stop' });
-    expect((await w.box(id)).recording).toEqual({ state: 'kept', why: null, startedAt: at });
+    expect((await w.box(id)).recording).toEqual({
+      state: 'kept',
+      why: null,
+      startedAt: at,
+      session: null,
+    });
 
     // the clip is still ordered from what the span recorded
     const spanId = (first.json.span as Doc).id as string;

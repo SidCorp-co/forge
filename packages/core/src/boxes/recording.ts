@@ -2,7 +2,8 @@
 // records by default and a warm box never does. It runs when an open asks (`record: true`), when its
 // holder or a project writer turns it on (`POST /api/boxes/:id/recording`), or while a criterion's
 // span needs it (`spans.ts`). The record says whether it records and why; the device says when it
-// started and whether it could.
+// started and whether it could. One turned on here, or asked by the open, is sent to Forge once the
+// box ends (`session.ts`, ISS-1338); a span's own is not.
 
 import type { BoxReport } from '@forge/contracts/box-wire';
 import type { BoxRecord, BoxRecordingWhy } from '@forge/contracts/boxes';
@@ -35,7 +36,7 @@ export async function setBoxRecording(
   if (!on && !recording) return boxRecord(row);
   await db.transaction(async (tx) => {
     const set = on
-      ? { recordingState: 'recording' as const, recordingWhy: why }
+      ? { recordingState: 'recording' as const, recordingWhy: why, recordingAsked: true }
       : { recordingState: 'kept' as const, recordingWhy: null };
     const [moved] = await tx.update(boxes).set(set).where(eq(boxes.id, row.id)).returning();
     if (on !== recording) {

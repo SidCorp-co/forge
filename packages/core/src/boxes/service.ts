@@ -29,6 +29,7 @@ import { allocateDevice } from './allocate.js';
 import { handBack } from './hold.js';
 import { boxById, boxRecord, personName } from './read.js';
 import { deviceModeFault, modeFault } from './rules.js';
+import { sendSession, sessionAtEnd } from './session.js';
 
 export async function rowOf(id: string): Promise<BoxRow> {
   const row = await boxById(id);
@@ -136,8 +137,9 @@ export async function openBox(
       openedAs: asPerson ? ('person' as const) : ('agent' as const),
       url: req.url ?? null,
       createdBy: actor.userId,
-      // nothing records unless the open asks (ISS-1321)
+      // nothing records unless the open asks (ISS-1321), and only what was asked is sent (ISS-1338)
       recordingWhy: req.record === true ? ('asked' as const) : null,
+      recordingAsked: req.record === true,
     };
     if (warm) {
       // handed out, it opens again until the device says its screen still answers (ISS-1324): a
@@ -201,12 +203,14 @@ export async function readBox(id: string, actor: BoxActor): Promise<BoxRecord> {
 }
 
 /**
- * Close a box: the device reaps every process it started; its recording stays until the issue ends.
- * A person's hold ends with it in the same write (`boxes_held_chk`, ISS-1317).
+ * Close a box: the device reaps every process it started; its recording stays until the issue ends,
+ * and one a person or the open asked for is sent to Forge (ISS-1338). A person's hold ends with it in
+ * the same write (`boxes_held_chk`, ISS-1317).
  */
 export async function closeBox(id: string, actor: BoxActor, reason?: string): Promise<BoxRecord> {
   const row = await ownedRow(id, actor, 'close a box');
   if (row.state === 'closed' || row.state === 'failed') return boxRecord(row);
+  const session = sessionAtEnd(row);
   const moved = await transition(db, BOX_MACHINE, {
     to: 'closed',
     expect: row.state,
@@ -219,6 +223,7 @@ export async function closeBox(id: string, actor: BoxActor, reason?: string): Pr
       heldSince: null,
       recordingState: row.recordingState === 'recording' ? 'kept' : row.recordingState,
       recordingWhy: null,
+      ...session.set,
     },
     reason: reason ?? null,
     actor: kernelActorOf(actor),
@@ -227,6 +232,7 @@ export async function closeBox(id: string, actor: BoxActor, reason?: string): Pr
       for (const r of rows) {
         if (row.state !== 'waiting') {
           await pushBox(tx, row.deviceId, 'box.close', { boxId: r.id, why: 'done' });
+          if (session.send) await sendSession(tx, row);
         }
         await tellChanged(tx, { ...row, ...r, state: 'closed' });
       }

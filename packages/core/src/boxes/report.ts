@@ -15,6 +15,7 @@ import { allocateDevice, failBox } from './allocate.js';
 import { recordCdpActs } from './attach.js';
 import { boxById, boxRecord } from './read.js';
 import { recordingReport } from './recording.js';
+import { sessionReport } from './session.js';
 import { failSpan, recordMark } from './spans.js';
 
 /**
@@ -87,6 +88,7 @@ async function deviceGone(row: BoxRow, said: string | undefined, device: KernelA
         url: row.url,
         viewport: row.viewport,
         recordingWhy: row.recordingWhy === 'asked' ? 'asked' : null,
+        recordingAsked: row.recordingWhy === 'asked',
         createdBy: row.createdBy,
       });
     });
@@ -134,6 +136,9 @@ export async function reportBox(
       break;
     case 'cdp':
       await recordCdpActs(row, report);
+      break;
+    case 'session_failed':
+      await sessionReport(row, report);
       break;
   }
   return boxRecord((await boxById(boxId)) ?? row);

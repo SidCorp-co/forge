@@ -5,6 +5,7 @@
 
 import { boxReportSchema } from '@forge/contracts/box-wire';
 import {
+  BOX_SESSION_CLIP,
   boxActRequestSchema,
   boxAttachRequestSchema,
   boxCloseRequestSchema,
@@ -26,12 +27,16 @@ import { boxActsAfter, boxSpansOf, projectBoxes } from './read.js';
 import { setBoxRecording } from './recording.js';
 import { reportBox } from './report.js';
 import { closeBox, openBox, readBox, releaseBox, takeBox } from './service.js';
+import { attachSession } from './session.js';
 import { attachSpanClip, markSpan } from './spans.js';
 import { mintBoxTicket } from './viewer.js';
 
 const projectParam = z.strictObject({ id: z.uuid() });
 const boxParam = z.strictObject({ id: z.uuid() });
-const clipParam = z.strictObject({ id: z.uuid(), spanId: z.uuid() });
+const clipParam = z.strictObject({
+  id: z.uuid(),
+  spanId: z.union([z.uuid(), z.literal(BOX_SESSION_CLIP)]),
+});
 const PATH = invalid('invalid path: /api/boxes/<box id>');
 const ON_BOX = 'the project of the box the path names';
 
@@ -85,7 +90,7 @@ boxRoutes.post(
     'json',
     boxReportSchema,
     invalid(
-      'invalid body: { kind: state | offer | act | mark | clip_failed | cdp | recording, … } (`@forge/contracts/box-wire`)',
+      'invalid body: { kind: state | offer | act | mark | clip_failed | session_failed | cdp | recording, … } (`@forge/contracts/box-wire`)',
     ),
   ),
   async (c) =>
@@ -98,10 +103,14 @@ boxRoutes.post(
   '/:id/spans/:spanId/clip',
   requireDevice(),
   DEVICE_OWN,
-  zValidator('param', clipParam, invalid('invalid path: /api/boxes/<box id>/spans/<span id>/clip')),
+  zValidator(
+    'param',
+    clipParam,
+    invalid('invalid path: /api/boxes/<box id>/spans/<span id | session>/clip'),
+  ),
   rawBody(
     'multipart/form-data',
-    "The span's cut: `clip` (video/webm or video/mp4, within the release page ceiling) and `still` (image/png).",
+    "The span's cut: `clip` (video/webm or video/mp4, within the release page ceiling) and `still` (image/png). With `session` for the span, the box's whole kept recording within `BOX_LIMITS.sessionMaxBytes` (ISS-1338).",
   ),
   async (c) => {
     const body = await c.req.parseBody();
@@ -119,14 +128,15 @@ boxRoutes.post(
       );
     }
     const { id, spanId } = c.req.valid('param');
-    const span = await attachSpanClip(
-      c.get('device').id,
-      id,
-      spanId,
-      { bytes: Buffer.from(await clip.arrayBuffer()), mime: clip.type },
-      { bytes: Buffer.from(await still.arrayBuffer()), mime: still.type || 'image/png' },
-    );
-    return c.json({ span });
+    const cut = { bytes: Buffer.from(await clip.arrayBuffer()), mime: clip.type };
+    const opening = {
+      bytes: Buffer.from(await still.arrayBuffer()),
+      mime: still.type || 'image/png',
+    };
+    if (spanId === BOX_SESSION_CLIP) {
+      return c.json({ box: await attachSession(c.get('device').id, id, cut, opening) });
+    }
+    return c.json({ span: await attachSpanClip(c.get('device').id, id, spanId, cut, opening) });
   },
 );
 

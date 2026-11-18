@@ -17,6 +17,7 @@ import { type KernelActor, transition } from '../lifecycle/index.js';
 import { pushBox, SOURCE, tellChanged } from './access.js';
 import { handBack } from './hold.js';
 import { idleAgentBoxes, recordingsOfEndedIssues, unusedSince } from './read.js';
+import { sendSession, sessionAtEnd, sweepSessions } from './session.js';
 
 /** The devices kernel's port: every box on the device that is not over. */
 export async function boxDemand(
@@ -114,6 +115,7 @@ export async function failBox(
   onFailed?: (tx: Tx) => Promise<void>,
 ): Promise<void> {
   if (row.state === 'closed' || row.state === 'failed' || row.state === 'waiting') return;
+  const session = sessionAtEnd(row);
   await transition(db, BOX_MACHINE, {
     to: 'failed',
     expect: row.state,
@@ -126,6 +128,7 @@ export async function failBox(
       heldSince: null,
       recordingState: row.recordingState === 'recording' ? 'kept' : row.recordingState,
       recordingWhy: null,
+      ...session.set,
     },
     reason: failure,
     actor,
@@ -133,6 +136,7 @@ export async function failBox(
     afterWrite: async (tx, rows) => {
       for (const r of rows) {
         await pushBox(tx, row.deviceId, 'box.close', { boxId: r.id, why: 'failed' });
+        if (session.send) await sendSession(tx, row);
         await tellChanged(tx, { ...row, ...r, state: 'failed' });
       }
       if (rows.length > 0) await onFailed?.(tx);
@@ -173,6 +177,7 @@ export async function boxHealthBeat(deviceId: string): Promise<void> {
  * it (ISS-1335): its opener may be gone, or refused every call after its open.
  */
 async function closeIdle(row: BoxRow, since: Date, actor: KernelActor): Promise<boolean> {
+  const session = sessionAtEnd(row);
   const moved = await transition(db, BOX_MACHINE, {
     to: 'closed',
     expect: 'agent',
@@ -184,6 +189,7 @@ async function closeIdle(row: BoxRow, since: Date, actor: KernelActor): Promise<
       queue: null,
       recordingState: row.recordingState === 'recording' ? 'kept' : row.recordingState,
       recordingWhy: null,
+      ...session.set,
     },
     reason: `nothing used it for ${BOX_LIMITS.agentIdleSeconds}s: closed idle`,
     actor,
@@ -191,6 +197,7 @@ async function closeIdle(row: BoxRow, since: Date, actor: KernelActor): Promise<
     afterWrite: async (tx, rows) => {
       for (const r of rows) {
         await pushBox(tx, row.deviceId, 'box.close', { boxId: r.id, why: 'idle' });
+        if (session.send) await sendSession(tx, row);
         await tellChanged(tx, { ...row, ...r, state: 'closed' });
       }
     },
@@ -199,7 +206,10 @@ async function closeIdle(row: BoxRow, since: Date, actor: KernelActor): Promise<
   return moved.rows.length > 0;
 }
 
-/** The sweep: idle holds expire, idle agent boxes close, boxes that never came up fail, ended issues' recordings go. */
+/**
+ * The sweep: idle holds expire, idle agent boxes close, boxes that never came up fail, recordings a
+ * device never sent say why (ISS-1338), ended issues' recordings go.
+ */
 export async function sweepBoxes(now = new Date()): Promise<{ moved: number }> {
   let moved = 0;
   const sweeper: KernelActor = { type: 'sweeper' };
@@ -238,6 +248,7 @@ export async function sweepBoxes(now = new Date()): Promise<{ moved: number }> {
     );
     moved++;
   }
+  moved += await sweepSessions(now);
   for (const r of await recordingsOfEndedIssues()) {
     await db.transaction(async (tx) => {
       await tx.update(boxes).set({ recordingState: 'dropped' }).where(eq(boxes.id, r.id));
