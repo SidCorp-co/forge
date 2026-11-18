@@ -155,7 +155,11 @@ export function tallyDoors(
   catalog: DoorCatalog,
   rows: readonly CallRow[],
   misses: readonly MissRow[] = [],
-): { doors: DoorUseRow[]; unmatched: { door: string; calls: number }[] } {
+): {
+  doors: DoorUseRow[];
+  unmatched: { door: string; calls: number }[];
+  unserved: { door: string; misses: number }[];
+} {
   const names = doorNames(catalog.doors);
   const doors = new Map<string, DoorUseRow>(
     catalog.doors.map((d) => [
@@ -190,9 +194,13 @@ export function tallyDoors(
     const last = iso(row.last_at);
     if (last && (!door.lastAt || last > door.lastAt)) door.lastAt = last;
   }
+  const unserved = new Map<string, number>();
   for (const m of misses) {
     const found = doors.get(m.door) ?? missedDoor(catalog, m.door, doors);
-    if (!found) continue;
+    if (!found) {
+      unserved.set(m.door, (unserved.get(m.door) ?? 0) + m.n);
+      continue;
+    }
     found.misses += m.n;
     found.missedBy[m.agent] = (found.missedBy[m.agent] ?? 0) + m.n;
   }
@@ -201,7 +209,24 @@ export function tallyDoors(
     unmatched: [...unmatched]
       .map(([door, calls]) => ({ door, calls }))
       .sort((a, b) => b.calls - a.calls || a.door.localeCompare(b.door)),
+    unserved: [...unserved]
+      .map(([door, misses]) => ({ door, misses }))
+      .sort((a, b) => b.misses - a.misses || a.door.localeCompare(b.door)),
   };
+}
+
+/**
+ * The limits a read answers with: every standing one, and, where a kept miss names a door the
+ * catalog no longer serves, which ones, since they are counted in no row and no total.
+ */
+export function doorUseLimits(unserved: readonly { door: string; misses: number }[]): string[] {
+  if (unserved.length === 0) return DOOR_USE_LIMITS;
+  const n = unserved.reduce((sum, u) => sum + u.misses, 0);
+  const named = unserved.map((u) => `${u.door} (${u.misses})`).join(', ');
+  return [
+    ...DOOR_USE_LIMITS,
+    `${n} miss${n === 1 ? '' : 'es'} named a door the catalog no longer serves, counted in no row and no total: ${named}.`,
+  ];
 }
 
 /** A miss named by a REST twin's route: the door the catalog folds it into. */
@@ -289,7 +314,7 @@ export async function readDoorUse(
     readRows(projectId, since),
     lessonRows(projectId, since),
   ]);
-  const { doors, unmatched } = tallyDoors(catalog, calls, misses);
+  const { doors, unmatched, unserved } = tallyDoors(catalog, calls, misses);
   const maps = await tier0Maps(projectId, catalog, new Map(doors.map((d) => [d.door, d.calls])));
   for (const d of doors) {
     for (const audience of d.card?.audience ?? []) {
@@ -316,7 +341,7 @@ export async function readDoorUse(
     unmatched,
     reads,
     lessonsApplied,
-    limits: DOOR_USE_LIMITS,
+    limits: doorUseLimits(unserved),
   };
 }
 

@@ -1,10 +1,11 @@
 // ISS-1251: the door use tally counts each logged call on its door by agent kind and refusal code,
 // a REST twin's call on the door it folds into, the misses agents' own audits named on each door, and
-// lists a door no call named with 0.
+// lists a door no call named with 0; a miss naming a door the catalog no longer serves is named in
+// the read's limits, never dropped in silence.
 
 import { describe, expect, it } from 'vitest';
 import { catalogOf } from '../mcp/door-catalog.js';
-import { tallyDoors } from './door-use.js';
+import { DOOR_USE_LIMITS, doorUseLimits, tallyDoors } from './door-use.js';
 
 const catalog = catalogOf([
   {
@@ -26,7 +27,7 @@ const at = '2026-11-16T01:00:00.000Z';
 
 describe('the door use tally', () => {
   it('counts calls by agent kind, refusals by code, a twin’s calls and the misses agents named', () => {
-    const { doors, unmatched } = tallyDoors(
+    const { doors, unmatched, unserved } = tallyDoors(
       catalog,
       [
         {
@@ -76,6 +77,7 @@ describe('the door use tally', () => {
         // a miss named by the twin's route counts on the door it folds into
         { door: 'POST /api/projects/:id/support/session/members', agent: 'room:agent', n: 1 },
         { door: 'support.gone', agent: 'room:support', n: 4 },
+        { door: 'support.gone', agent: 'session:master', n: 1 },
       ],
     );
     expect(doors[0]).toMatchObject({
@@ -98,5 +100,10 @@ describe('the door use tally', () => {
       card: null,
     });
     expect(unmatched).toEqual([{ door: 'forge_gone.x', calls: 1 }]);
+    expect(unserved).toEqual([{ door: 'support.gone', misses: 5 }]);
+    expect(doorUseLimits(unserved).at(-1)).toBe(
+      '5 misses named a door the catalog no longer serves, counted in no row and no total: support.gone (5).',
+    );
+    expect(doorUseLimits([])).toEqual(DOOR_USE_LIMITS);
   });
 });
