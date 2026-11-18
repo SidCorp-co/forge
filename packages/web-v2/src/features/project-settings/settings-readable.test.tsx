@@ -10,7 +10,7 @@ import type { V1Read } from "@/features/project-config";
 import { fakeCore } from "@/test/render";
 import { railBeside } from "@/test/rail-beside";
 import { ProjectSettingsScreen } from "./components/project-settings-screen";
-import { TestingSettings } from "./components/testing-tab";
+import { giveOf, TestingSettings } from "./components/testing-tab";
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
@@ -184,6 +184,23 @@ describe("Replace value is write-only", () => {
     expect(put?.path).toBe(`/projects/${P}/secrets/dev/admin`);
     expect(put?.body).toEqual({ value: "typed-new-value" });
     expect(calls.filter((c) => c.method === "GET" && /\/secrets\/[^/?]+\/[^/?]+/.test(c.path)), "a read of one secret's value").toEqual([]);
+  });
+
+  // ISS-1328: a room agent's secret link opens the one credential it names with its value field open
+  it("opens the value field of the one credential a secret link names", () => {
+    window.history.replaceState(null, "", "/projects/hop/settings?tab=testing&profile=dev-accounts&service=catalog-api#profile-dev-accounts");
+    fakeCore(() => ({ hang: true }));
+    testing();
+    expect(within(rowOf("catalog-api")).getByLabelText("New value")).toHaveAttribute("type", "password");
+    expect(within(rowOf("admin")).queryByLabelText("New value")).toBeNull();
+    expect(screen.getAllByLabelText("New value")).toHaveLength(1);
+  });
+
+  it("opens nothing from a link naming both an actor and a service, or none", () => {
+    expect(giveOf("?profile=p&actor=a&service=s")).toBeNull();
+    expect(giveOf("?profile=p")).toBeNull();
+    expect(giveOf("?actor=a")).toBeNull();
+    expect(giveOf("?profile=p&actor=a")).toEqual({ profile: "p", kind: "actor", name: "a" });
   });
 
   it("is not offered to a reader who cannot edit", () => {

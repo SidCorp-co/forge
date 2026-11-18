@@ -23,6 +23,22 @@ interface SecretName {
   updatedAt: string;
 }
 
+/** The one credential a link names to give its value (ISS-1328): `?profile=<id>&actor=<name>` or `&service=<name>`. */
+interface Give {
+  profile: string;
+  kind: "actor" | "service";
+  name: string;
+}
+
+export function giveOf(search: string): Give | null {
+  const q = new URLSearchParams(search);
+  const profile = q.get("profile");
+  const actor = q.get("actor");
+  const service = q.get("service");
+  if (!profile || (actor === null) === (service === null)) return null;
+  return actor !== null ? { profile, kind: "actor", name: actor } : { profile, kind: "service", name: service ?? "" };
+}
+
 /** The environments whose `testing` names each profile, read off the project document. */
 function environmentsByProfile(project: V1Read | undefined): Map<string, string[]> {
   const out = new Map<string, string[]>();
@@ -43,6 +59,7 @@ function CredentialLine({
   usedIn,
   stored,
   canEdit,
+  open = false,
 }: {
   projectId: string;
   name: string;
@@ -51,10 +68,12 @@ function CredentialLine({
   usedIn: string[];
   stored: ReadonlyMap<string, SecretName> | null;
   canEdit: boolean;
+  /** A room agent's secret link names this credential: its value field opens at once (ISS-1328). */
+  open?: boolean;
 }) {
   const t = useCopy();
   const time = useTimeFormat();
-  const [replacing, setReplacing] = useState(false);
+  const [replacing, setReplacing] = useState(open && canEdit);
   const ref = SECRET_REF.exec(credential);
   const held = stored?.get(credential);
   const standing =
@@ -104,6 +123,7 @@ function ProfileAccounts({
   stored,
   canEdit,
   onReload,
+  give = null,
 }: {
   projectId: string;
   profileId: string;
@@ -112,6 +132,7 @@ function ProfileAccounts({
   stored: ReadonlyMap<string, SecretName> | null;
   canEdit: boolean;
   onReload: () => unknown;
+  give?: Give | null;
 }) {
   const t = useCopy();
   const doc = read?.declared ? read.document : {};
@@ -131,7 +152,17 @@ function ProfileAccounts({
       ) : (
         <RowList label={t("settings.project.testing.accounts")}>
           {actors.map((a) => (
-            <CredentialLine key={a.name} projectId={projectId} name={a.name} kind={sentenceCase(a.role.replace(/-/g, " "))} credential={a.credential} usedIn={usedIn} stored={stored} canEdit={canEdit} />
+            <CredentialLine
+              key={a.name}
+              projectId={projectId}
+              name={a.name}
+              kind={sentenceCase(a.role.replace(/-/g, " "))}
+              credential={a.credential}
+              usedIn={usedIn}
+              stored={stored}
+              canEdit={canEdit}
+              open={give?.kind === "actor" && give.name === a.name}
+            />
           ))}
           {services.map((s) => (
             <CredentialLine
@@ -143,6 +174,7 @@ function ProfileAccounts({
               usedIn={usedIn}
               stored={stored}
               canEdit={canEdit}
+              open={give?.kind === "service" && give.name === s.name}
             />
           ))}
         </RowList>
@@ -171,6 +203,7 @@ export function TestingSettings({ projectId, canEdit }: { projectId: string; can
   const secrets = useSecretNames(projectId);
   const project = useProjectDocument(projectId);
   const [adding, setAdding] = useState<string[]>([]);
+  const [give] = useState(() => giveOf(window.location.search));
   if (profiles.isLoading) return <Skeleton className="h-64 w-full rounded-md" />;
   if (!profiles.data) return <ErrorState message={formatApiError(profiles.error)} onRetry={() => void profiles.refetch()} />;
   const byProfile = environmentsByProfile(project.data);
@@ -186,7 +219,17 @@ export function TestingSettings({ projectId, canEdit }: { projectId: string; can
       <SettingsGroup id="test-accounts" title={t("settings.project.testing.title")}>
         {profiles.data.profiles.length + pending.length === 0 ? <p className="fg-body-sm text-muted">{t("settings.project.raw.noProfiles")}</p> : null}
         {profiles.data.profiles.map((p) => (
-          <ProfileAccounts key={p.profileId} projectId={projectId} profileId={p.profileId} read={p} usedIn={byProfile.get(p.profileId) ?? []} stored={stored} canEdit={canEdit} onReload={() => profiles.refetch()} />
+          <ProfileAccounts
+            key={p.profileId}
+            projectId={projectId}
+            profileId={p.profileId}
+            read={p}
+            usedIn={byProfile.get(p.profileId) ?? []}
+            stored={stored}
+            canEdit={canEdit}
+            onReload={() => profiles.refetch()}
+            give={give?.profile === p.profileId ? give : null}
+          />
         ))}
         {pending.map((id) => (
           <ProfileAccounts key={id} projectId={projectId} profileId={id} read={null} usedIn={byProfile.get(id) ?? []} stored={stored} canEdit={canEdit} onReload={() => profiles.refetch()} />
