@@ -1,8 +1,7 @@
 
-// An act at the foot of the navigation rail: an icon and its name, the name under the icon on the
-// collapsed rail, and a dot while something there is owed to the reader.
+// An act in the phone's navigation drawer: an icon and its name, and a dot while something there is
+// owed to the reader. On the desktop rail these acts are rows of the account chip's menu (ISS-1331).
 
-import { cn } from "@/lib/utils/cn";
 import { Icon, type IconName } from "../icons/icon";
 
 export function RailButton({
@@ -11,7 +10,6 @@ export function RailButton({
   ariaLabel = label,
   dot = false,
   dotTestId,
-  compact = false,
   tour,
   onClick,
 }: {
@@ -21,8 +19,6 @@ export function RailButton({
   /** Something there is owed to the reader. */
   dot?: boolean;
   dotTestId?: string;
-  /** The collapsed rail: the icon alone, named on hover and to a screen reader, never text under it (ISS-1073). */
-  compact?: boolean;
   /** The `data-tour` anchor a tour step points at. */
   tour?: string;
   onClick: () => void;
@@ -33,15 +29,11 @@ export function RailButton({
       onClick={onClick}
       data-tour={tour}
       aria-label={ariaLabel}
-      title={compact ? label : undefined}
-      className={cn(
-        "relative flex items-center rounded-md text-muted transition-colors hover:bg-hover hover:text-fg max-md:min-h-11",
-        compact ? "size-9 justify-center" : "w-full gap-2.5 px-1.5 py-1.5 text-13",
-      )}
+      className="relative flex w-full items-center gap-2.5 rounded-md px-1.5 py-1.5 text-13 text-muted transition-colors hover:bg-hover hover:text-fg max-md:min-h-11"
     >
-      <Icon name={icon} size={compact ? 17 : 16} />
-      {compact ? null : <span className="flex-1 text-left">{label}</span>}
-      {dot ? <span data-testid={dotTestId} aria-hidden className={cn("size-2 rounded-pill bg-accent", compact ? "absolute right-1 top-1" : "flex-none")} /> : null}
+      <Icon name={icon} size={16} />
+      <span className="flex-1 text-left">{label}</span>
+      {dot ? <span data-testid={dotTestId} aria-hidden className="size-2 flex-none rounded-pill bg-accent" /> : null}
     </button>
   );
 }

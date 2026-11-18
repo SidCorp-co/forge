@@ -266,7 +266,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
           collapsed={sidebar.collapsed}
           onToggleCollapsed={sidebar.toggleCollapsed}
           groupOpen={sidebar.groupOpen}
-          onToggleGroup={sidebar.toggleGroup}
+          onChooseGroups={sidebar.chooseGroups}
           activeKey={activeKey}
           attentionCount={attentionCount}
           railSlug={railSlug}

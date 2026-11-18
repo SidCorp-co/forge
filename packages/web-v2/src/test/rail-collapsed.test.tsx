@@ -2,18 +2,17 @@
 // round 2 made its nav rows icons, but its top and foot still drew "SidCorp", "Search", "PROJECT",
 // "SPACE", "What's new" on two lines, "Help" and a version cut to "v0.4....". Collapsed, the org is its
 // avatar, the tiers are named only to a screen reader, each button is its icon named on hover, and
-// the version is the Docs button's hover. Expanded, every word stays.
+// the version is the Docs button's hover. Expanded, every word stays. Since ISS-1331 the foot is one
+// row at both widths, the account chip and the collapse toggle: What's new, Help, the guides and the
+// version are in the chip's menu.
 // @direct-test-of packages/web-v2/src/design/patterns/nav-rail.tsx
-// @direct-test-of packages/web-v2/src/design/patterns/rail-button.tsx
-// @direct-test-of packages/web-v2/src/features/shell/components/sidebar-version.tsx
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { NavRail, type NavEntry, RailButton } from "@/design";
+import { NavRail, type NavEntry } from "@/design";
 import { OrgSwitcher } from "@/features/orgs";
 import { ProjectSwitcher } from "@/features/shell/components/project-switcher";
 import { SidebarSearch } from "@/features/shell/components/sidebar-search";
-import { SidebarVersion } from "@/features/shell/components/sidebar-version";
 import { Seeded } from "@/test/vi-chrome-requirements";
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
@@ -62,13 +61,12 @@ function rail(compact: boolean) {
         activeKey="overview"
         orgSwitcher={<OrgSwitcher variant={compact ? "compact" : "brand"} />}
         search={<SidebarSearch onOpen={() => {}} compact={compact} icon={!compact} />}
-        version={
-          <>
-            <RailButton icon="star" label="What's new" compact={compact} onClick={() => {}} />
-            <RailButton icon="help" label="Help" compact={compact} onClick={() => {}} />
-            <SidebarVersion onDocs={() => {}} activeKey="overview" compact={compact} />
-          </>
-        }
+        menu={[
+          { label: "What's new", icon: "star", onSelect: () => {} },
+          { label: "Help", icon: "help", onSelect: () => {} },
+          { label: "Docs", icon: "book", onSelect: () => {} },
+        ]}
+        version="Forge v0.4.0-dev.571"
         user={{ initials: "QA" }}
         onToggleCollapsed={() => {}}
       />
@@ -85,22 +83,24 @@ describe("the collapsed rail", () => {
     expect(screen.getByTestId("org-avatar")).toHaveTextContent("SI");
   });
 
-  it("names every control it draws to a reader and on hover, the version on the Docs button's", () => {
+  it("names every control it draws to a reader and on hover, its foot the account chip and the toggle", () => {
     rail(true);
-    expect(screen.getByRole("button", { name: "Docs · Forge v0.4.0-dev.571" })).toBeTruthy();
     // the project's live runs: a dot on its mark, counted in its name
     expect(screen.getByRole("button", { name: /Hop.*3 live/ })).toBeTruthy();
-    for (const name of ["What's new", "Help", "Search"]) {
-      const b = screen.getByRole("button", { name: new RegExp(name, "i") });
-      expect(b.getAttribute("title") ?? "", name).toMatch(new RegExp(name, "i"));
-    }
+    const search = screen.getByRole("button", { name: /Search/i });
+    expect(search.getAttribute("title") ?? "").toMatch(/Search/i);
+    expect(screen.getByRole("button", { name: "Account menu" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Expand sidebar" })).toBeTruthy();
+    // What's new, Help, the guides and the version are rows of the chip's menu, never buttons of the rail
+    for (const name of ["What's new", "Help", "Docs"]) expect(screen.queryByRole("button", { name: new RegExp(name, "i") }), name).toBeNull();
     expect(screen.getByRole("group", { name: /project/i })).toBeTruthy();
     expect(screen.getByRole("group", { name: /workspace/i })).toBeTruthy();
   });
 
-  it("keeps every word where the rail is expanded", () => {
+  it("keeps the rail's words where it is expanded, its foot one chip", () => {
     const { container } = rail(false);
     const said = words(container.querySelector("nav") as HTMLElement).join(" ");
-    for (const w of ["What's new", "Help", "Forge v0.4.0-dev.571", "3 live"]) expect(said).toContain(w);
+    for (const w of ["3 live", "You"]) expect(said).toContain(w);
+    for (const w of ["What's new", "Help", "Forge v0.4.0-dev.571"]) expect(said).not.toContain(w);
   });
 });

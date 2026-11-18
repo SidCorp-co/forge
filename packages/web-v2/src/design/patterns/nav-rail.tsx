@@ -5,6 +5,7 @@ import { Icon, type IconName } from "@/design/icons/icon";
 import { Kicker } from "@/design/primitives/kicker";
 import { Tooltip } from "@/design/primitives/tooltip";
 import { Menu, type MenuItem } from "./menu";
+import { type GroupChoice, useNavAccordion } from "./nav-rail-groups";
 import { useCopy, useNavLabel } from "@/lib/i18n/interface-language";
 
 export interface NavItem {
@@ -26,7 +27,7 @@ export interface NavItemGroup {
   icon: IconName;
   items: NavItem[];
   badge?: number;
-  /** Open until the reader closes it; a group holding the current page is open regardless. */
+  /** Open where the reader chose nothing in its tier yet; the group holding the current page opens on arrival. */
   defaultOpen?: boolean;
 }
 
@@ -42,13 +43,19 @@ interface NavRailProps {
   projectItems?: NavEntry[];
   activeKey: string;
   onNavigate?: (key: string) => void;
-  /** The reader's open/closed choice per group key. */
-  groupOpen?: Record<string, boolean>;
-  onToggleGroup?: (key: string, open: boolean) => void;
+  /** The reader's open/closed choice per group key; one group per tier is open (ISS-1331). */
+  groupOpen?: GroupChoice;
+  /** The choices to merge over `groupOpen`: opening a group writes it open and its siblings closed. */
+  onChooseGroups?: (patch: GroupChoice) => void;
   projectSwitcher?: React.ReactNode;
   orgSwitcher?: React.ReactNode;
   search?: React.ReactNode;
   bell?: React.ReactNode;
+  /** Rows of the account menu between Account and Sign out: What's new, Help, the guides. */
+  menu?: MenuItem[];
+  /** Something in the account menu is new: a dot on its chip, these words its name to a screen reader. */
+  menuDot?: string;
+  /** The account menu's last line, muted: the product's version. */
   version?: React.ReactNode;
   user?: { initials: string };
   onAccount?: () => void;
@@ -111,16 +118,19 @@ function Row({
   const hint = count > 0 ? item.badgeHint : undefined;
   const text = useNavLabel()(item.key, item.label);
   if (compact) {
+    // the row's name leads what its count means, so a count never stands for the row it is on (ISS-1330)
+    const name = hint ? `${text}, ${hint}` : text;
     return (
       <button
         type="button"
         onClick={onClick}
         aria-current={active ? "page" : undefined}
-        aria-label={hint ?? text}
-        title={hint ?? text}
+        aria-label={name}
+        title={name}
         className={cn(
-          // icons only: the label is the row's name and its hover title, never text the rail clips (ISS-1073)
-          "relative grid h-11 place-items-center rounded-md transition-colors duration-[120ms]",
+          // icons only: the label is the row's name and its hover title, never text the rail clips (ISS-1073);
+          // 36px rows, so the Workspace tier stands in a 900px window under any one open group (ISS-1331)
+          "relative grid h-9 place-items-center rounded-md transition-colors duration-[120ms]",
           nested ? "w-[56px]" : "w-[64px]",
           FOCUS,
           active ? "bg-accent-tint" : "text-subtle hover:bg-hover",
@@ -129,7 +139,7 @@ function Row({
         {active && (
           <span
             aria-hidden
-            className="absolute bottom-[9px] left-[-6px] top-[9px] w-[3px] rounded-r-3"
+            className="absolute bottom-[7px] left-[-6px] top-[7px] w-[3px] rounded-r-3"
             style={{ background: "var(--accent)" }}
           />
         )}
@@ -193,7 +203,7 @@ function Group({
           aria-label={groupText}
           title={groupText}
           className={cn(
-            "relative grid h-11 w-[64px] place-items-center rounded-md text-subtle transition-colors duration-[120ms] hover:bg-hover",
+            "relative grid h-9 w-[64px] place-items-center rounded-md text-subtle transition-colors duration-[120ms] hover:bg-hover",
             FOCUS,
           )}
         >
@@ -236,16 +246,20 @@ function Footer({
   onAccount,
   onSignOut,
   onToggleCollapsed,
+  menu = [],
+  menuDot,
   version,
-}: Pick<NavRailProps, "user" | "onAccount" | "onSignOut" | "onToggleCollapsed" | "version"> & { compact: boolean }) {
+}: Pick<NavRailProps, "user" | "onAccount" | "onSignOut" | "onToggleCollapsed" | "menu" | "menuDot" | "version"> & { compact: boolean }) {
   const t = useCopy();
   const items: MenuItem[] = [];
   if (onAccount) items.push({ label: t("common.nav.account"), icon: "settings", onSelect: onAccount });
-  if (onSignOut) items.push({ label: t("common.nav.signOut"), icon: "logOut", danger: true, onSelect: onSignOut });
+  items.push(...menu);
+  if (onSignOut) items.push({ label: t("common.nav.signOut"), icon: "logOut", danger: true, onSelect: onSignOut, separatorBefore: items.length > 0 });
+  const menuName = menuDot ? `${t("common.nav.accountMenu")}, ${menuDot}` : t("common.nav.accountMenu");
   const chip = (
     <button
       type="button"
-      aria-label={t("common.nav.accountMenu")}
+      aria-label={menuName}
       aria-haspopup={items.length > 0 ? "menu" : undefined}
       className={cn(
         "flex items-center rounded-md transition-colors hover:bg-hover max-md:min-h-[44px]",
@@ -254,10 +268,18 @@ function Footer({
       )}
     >
       <span
-        className="inline-flex size-7 flex-none items-center justify-center rounded-pill font-bold"
+        className="relative inline-flex size-7 flex-none items-center justify-center rounded-pill font-bold"
         style={{ background: "var(--cobalt-100)", color: "var(--cobalt-700)", fontSize: "var(--text-12)" }}
       >
         {user?.initials ?? <Icon name="user" size={15} />}
+        {menuDot ? (
+          <span
+            aria-hidden
+            data-testid="account-dot"
+            className="absolute -right-0.5 -top-0.5 size-2.5 rounded-pill bg-accent"
+            style={{ border: "2px solid var(--bg-shell)" }}
+          />
+        ) : null}
       </span>
       {!compact && (
         <>
@@ -268,30 +290,28 @@ function Footer({
     </button>
   );
   const toggle = compact ? t("common.nav.expand") : t("common.nav.collapse");
+  // one row, the account chip and the collapse toggle: What's new, Help, the guides and the version are in the chip's menu (ISS-1331)
   return (
-    <div className="mt-auto flex w-full flex-col gap-1 border-t border-line-subtle pt-3">
-      <div className={cn("flex items-center", compact ? "justify-center gap-0.5" : "gap-1")}>
-        <div className={cn(!compact && "min-w-0 flex-1")}>
-          {items.length > 0 ? (
-            <Menu trigger={chip} items={items} side="top" align="left" className="w-full" triggerClassName="block w-full" />
-          ) : (
-            chip
-          )}
-        </div>
-        {onToggleCollapsed && (
-          <Tooltip label={toggle} side="top">
-            <button
-              type="button"
-              onClick={onToggleCollapsed}
-              aria-label={toggle}
-              className="inline-flex size-8 flex-none items-center justify-center rounded-md text-subtle transition-colors hover:bg-hover hover:text-fg max-md:size-11"
-            >
-              <Icon name="panelLeft" size={16} />
-            </button>
-          </Tooltip>
+    <div data-testid="rail-footer" className={cn("mt-auto flex w-full items-center border-t border-line-subtle pt-2", compact ? "justify-center gap-0.5" : "gap-1")}>
+      <div className={cn(!compact && "min-w-0 flex-1")}>
+        {items.length > 0 ? (
+          <Menu trigger={chip} items={items} side="top" align="left" className="w-full" triggerClassName="block w-full" footnote={version} />
+        ) : (
+          chip
         )}
       </div>
-      {version ? <div className={compact ? "w-full px-0.5" : "px-1.5 pt-1"}>{version}</div> : null}
+      {onToggleCollapsed && (
+        <Tooltip label={toggle} side="top">
+          <button
+            type="button"
+            onClick={onToggleCollapsed}
+            aria-label={toggle}
+            className="inline-flex size-8 flex-none items-center justify-center rounded-md text-subtle transition-colors hover:bg-hover hover:text-fg max-md:size-11"
+          >
+            <Icon name="panelLeft" size={16} />
+          </button>
+        </Tooltip>
+      )}
     </div>
   );
 }
@@ -303,8 +323,8 @@ export function NavRail({
   projectItems,
   activeKey,
   onNavigate,
-  groupOpen,
-  onToggleGroup,
+  groupOpen = {},
+  onChooseGroups,
   projectSwitcher,
   orgSwitcher,
   search,
@@ -313,21 +333,14 @@ export function NavRail({
 }: NavRailProps) {
   const t = useCopy();
   const go = (key: string) => onNavigate?.(key);
+  const hasProject = Boolean(projectItems && projectItems.length > 0);
+  const groups = useNavAccordion(hasProject && projectItems ? [projectItems, workspaceItems] : [workspaceItems], activeKey, groupOpen, onChooseGroups);
   const entry = (e: NavEntry) => {
     if (!isNavGroup(e)) {
       return <Row key={e.key} item={e} active={e.key === activeKey} compact={compact} onClick={() => go(e.key)} />;
     }
-    const chosen = groupOpen?.[e.key] ?? e.defaultOpen ?? false;
     return (
-      <Group
-        key={e.key}
-        group={e}
-        compact={compact}
-        activeKey={activeKey}
-        open={chosen || e.items.some((it) => it.key === activeKey)}
-        onToggle={() => onToggleGroup?.(e.key, !chosen)}
-        onNavigate={go}
-      />
+      <Group key={e.key} group={e} compact={compact} activeKey={activeKey} open={groups.isOpen(e.key)} onToggle={() => groups.toggle(e.key)} onNavigate={go} />
     );
   };
   // collapsed, a tier is named to a screen reader and set apart by a rule, never by a word the rail draws (ISS-1073)
@@ -341,7 +354,6 @@ export function NavRail({
       {entries.map(entry)}
     </div>
   );
-  const hasProject = Boolean(projectItems && projectItems.length > 0);
 
   return (
     <nav

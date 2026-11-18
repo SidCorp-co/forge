@@ -67,7 +67,7 @@ createRoot(document.getElementById("root") as HTMLElement).render(
               activeKey={buildActiveKey("/projects/hop/approvals", "hop")}
               onNavigate={noop}
               groupOpen={{}}
-              onToggleGroup={noop}
+              onChooseGroups={noop}
             />
           </div>
         )}

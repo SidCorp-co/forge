@@ -2,6 +2,7 @@
   "en": {
     "help.nav": "Help",
     "help.title": "Help · Tours",
+    "help.updated": "a tour changed",
     "tour.integrations.hint.new": "New here: a quick look in {count} steps?",
     "tour.integrations.hint.updated": "This screen just changed",
     "tour.integrations.step1.body": "Each row says what Forge reaches; an unreached one reads Not connected.",

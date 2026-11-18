@@ -32,7 +32,7 @@ const client = new QueryClient({ defaultOptions: { queries: { retry: false } } }
 const phone = window.innerWidth < PHONE;
 const rail = (compact: boolean, id = compact ? "witness-compact" : "witness-labelled", groupOpen: Record<string, boolean> = {}) => (
   <div style={{ height: "100vh" }} data-testid={id}>
-    <NavRail compact={compact} workspaceItems={workspaceNavItems(0, undefined)} projectItems={projectMenu({})} activeKey="proj-requirements" onNavigate={noop} groupOpen={groupOpen} onToggleGroup={noop} />
+    <NavRail compact={compact} workspaceItems={workspaceNavItems(0, undefined)} projectItems={projectMenu({})} activeKey="proj-requirements" onNavigate={noop} groupOpen={groupOpen} onChooseGroups={noop} />
   </div>
 );
 

@@ -63,7 +63,7 @@ describe.each([
     expect(head.textContent).toContain("5");
   });
 
-  it("opens a group that holds the current page even when the reader closed it", () => {
+  it("opens the group holding the current page on arrival, whatever the reader stored", () => {
     rail(compact, { activeKey: "proj-issues", groupOpen: { development: false } });
     const issues = button(/Issues/);
     expect(issues.getAttribute("aria-current")).toBe("page");
@@ -77,15 +77,12 @@ describe.each([
     expect(head.textContent).toContain("1");
   });
 
-  it("toggles a group to the opposite of what the reader sees, defaults included", () => {
-    const onToggleGroup = vi.fn();
-    rail(compact, { onToggleGroup });
+  it("toggles a group to the opposite of what the reader sees, defaults included, each tier its own", () => {
+    const onChooseGroups = vi.fn();
+    rail(compact, { onChooseGroups });
     fireEvent.click(within(screen.getByTestId("rail-group-development")).getAllByRole("button")[0]);
     fireEvent.click(within(screen.getByTestId("rail-group-ecosystem")).getAllByRole("button")[0]);
-    expect(onToggleGroup.mock.calls).toEqual([
-      ["development", true],
-      ["ecosystem", false],
-    ]);
+    expect(onChooseGroups.mock.calls).toEqual([[{ development: true }], [{ ecosystem: false }]]);
   });
 
   it("navigates by key and hides the project tier when it has no entries", () => {

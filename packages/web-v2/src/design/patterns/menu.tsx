@@ -1,5 +1,5 @@
 
-import { Fragment, type ReactElement } from "react";
+import { Fragment, type ReactElement, type ReactNode } from "react";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -22,6 +22,8 @@ export interface MenuItem {
   separatorBefore?: boolean;
   checked?: boolean;
   group?: string;
+  /** Something new there: a dot after the label, these words its name to a screen reader. */
+  dot?: string;
 }
 
 interface MenuProps {
@@ -34,6 +36,8 @@ interface MenuProps {
   side?: "top" | "bottom";
   className?: string;
   triggerClassName?: string;
+  /** A muted line under the last item that does nothing, as the version the account menu ends on. */
+  footnote?: ReactNode;
 }
 
 function groupsOf(items: MenuItem[]) {
@@ -80,6 +84,12 @@ function Row({ it }: { it: MenuItem }) {
     >
       {icon}
       {it.label}
+      {it.dot ? (
+        <>
+          <span aria-hidden data-testid="menu-item-dot" className="ml-auto size-2 flex-none rounded-pill bg-accent" />
+          <span className="sr-only">, {it.dot}</span>
+        </>
+      ) : null}
     </DropdownMenuItem>
   );
 }
@@ -91,6 +101,7 @@ export function Menu({
   side = "bottom",
   className,
   triggerClassName,
+  footnote,
 }: MenuProps) {
   return (
     <div className={cn("relative inline-flex", className)}>
@@ -119,6 +130,14 @@ export function Menu({
               </DropdownMenuGroup>
             );
           })}
+          {footnote ? (
+            <>
+              <DropdownMenuSeparator className="mx-0 my-1 bg-line" />
+              <div className="fg-caption px-2.5 pb-1 pt-0.5 text-subtle" data-testid="menu-footnote">
+                {footnote}
+              </div>
+            </>
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>

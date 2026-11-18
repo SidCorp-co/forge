@@ -102,7 +102,7 @@ createRoot(document.getElementById("root") as HTMLElement).render(
         <div style={{ display: "flex", minHeight: "100vh" }} className="bg-app">
           {phone ? null : (
             <div style={{ height: "100vh", flex: "none", position: "sticky", top: 0 }}>
-              <NavRail compact={false} workspaceItems={workspaceNavItems(0, undefined)} projectItems={projectMenu({})} activeKey={buildActiveKey(at, "orvio")} onNavigate={noop} groupOpen={{ delivery: true }} onToggleGroup={noop} />
+              <NavRail compact={false} workspaceItems={workspaceNavItems(0, undefined)} projectItems={projectMenu({})} activeKey={buildActiveKey(at, "orvio")} onNavigate={noop} groupOpen={{ delivery: true }} onChooseGroups={noop} />
             </div>
           )}
           <div className="flex min-w-0 flex-1 flex-col">

@@ -42,7 +42,7 @@ function Sidebar() {
       collapsed={false}
       onToggleCollapsed={noop}
       groupOpen={{}}
-      onToggleGroup={noop}
+      onChooseGroups={noop}
       activeKey="overview"
       attentionCount={0}
       railSlug={null}

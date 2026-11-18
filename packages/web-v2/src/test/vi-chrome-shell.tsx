@@ -55,7 +55,7 @@ function Sidebar({ compact }: { compact: boolean }) {
       collapsed={compact}
       onToggleCollapsed={noop}
       groupOpen={{}}
-      onToggleGroup={noop}
+      onChooseGroups={noop}
       activeKey="proj-feedback"
       attentionCount={3}
       railSlug="hop"

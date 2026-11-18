@@ -75,7 +75,7 @@ describe("the What's new rail entry", () => {
     renderWithQuery(
       <>
         <WhatsNewButton />
-        <WhatsNewButton compact />
+        <WhatsNewButton />
       </>,
     );
     await screen.findByTestId("whats-new-release");

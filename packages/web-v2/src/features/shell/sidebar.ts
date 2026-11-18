@@ -11,7 +11,8 @@ export interface SidebarState {
   collapse: () => void;
   /** The reader's open/closed choice per rail group; a group with no entry takes its own default. */
   groupOpen: Record<string, boolean>;
-  toggleGroup: (key: string, open: boolean) => void;
+  /** Merges the rail's choices: opening a group writes it open and the rest of its tier closed (ISS-1331). */
+  chooseGroups: (patch: Record<string, boolean>) => void;
 }
 
 interface Persisted {
@@ -35,8 +36,8 @@ export function useSidebar(): SidebarState {
     [setState],
   );
 
-  const toggleGroup = useCallback(
-    (key: string, open: boolean) => setState((s) => ({ ...s, groupOpen: { ...s.groupOpen, [key]: open } })),
+  const chooseGroups = useCallback(
+    (patch: Record<string, boolean>) => setState((s) => ({ ...s, groupOpen: { ...s.groupOpen, ...patch } })),
     [setState],
   );
 
@@ -45,6 +46,6 @@ export function useSidebar(): SidebarState {
     toggleCollapsed,
     collapse,
     groupOpen: state.groupOpen ?? {},
-    toggleGroup,
+    chooseGroups,
   };
 }
