@@ -13,6 +13,8 @@ describe('a credential field is told from prose by its value', () => {
     'password: required',
     'token = none',
     'secret: not-set',
+    'the secret key: required',
+    'api key: missing',
   ])('admits a field followed by an ordinary word: %s', (text) => {
     expect(scrubLogText(text)).toBe(text);
     expect(containsSecret(text)).toBe(false);
@@ -24,6 +26,11 @@ describe('a credential field is told from prose by its value', () => {
     ['a character outside a word', 'token=a.b.c', `token=${FILTERED}`],
     ['24 characters', `secret: ${'q'.repeat(24)}`, `secret: ${FILTERED}`],
     ['a JSON field', '{"apiKey":"k3y-value"}', `{"apiKey":"${FILTERED}"}`],
+    // ISS-1326's builder: the label is two words, then the value
+    ['a two-word secret key label', 'secret key: 3f9a8c1d2e4b5a69', `secret key: ${FILTERED}`],
+    ['a secret_key label', 'SECRET_KEY: 3f9a8c1d2e4b5a69', `SECRET_KEY: ${FILTERED}`],
+    ['a secretKey JSON field', '{"secretKey":"3f9a8c1d2e4b"}', `{"secretKey":"${FILTERED}"}`],
+    ['a two-word api key label', 'the api key = 3f9a8c1d2e4b5a69', `the api key = ${FILTERED}`],
   ])('refuses a value with %s', (_shape, text, scrubbed) => {
     expect(scrubLogText(text)).toBe(scrubbed);
     expect(containsSecret(text)).toBe(true);

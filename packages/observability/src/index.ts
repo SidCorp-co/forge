@@ -36,7 +36,13 @@ const SCRUB_BODY_KEYS: ReadonlySet<string> = new Set([
 	"private_key",
 	"serviceAccountJson",
 	"service_account_json",
+	"secretKey",
+	"secret_key",
 ]);
+
+/** Labels a secret is written under in prose, two words where a body key is one (ISS-1326's
+ *  builder found `secret key: <hex>` read as text). Read in text only, never as an object key. */
+const PROSE_LABELS: readonly string[] = ["secret key", "secret-key", "api key", "api-key"];
 
 /** Matches `?token=...` / `?jwt=...` / `?access_token=...` / `?api_key=...` query params. */
 const URL_TOKEN_PATTERN =
@@ -342,7 +348,7 @@ function scrubHeaderValue(line: string, headerRe: RegExp): string {
 	return line;
 }
 
-const BODY_RES = Array.from(SCRUB_BODY_KEYS).map(
+const BODY_RES = [...SCRUB_BODY_KEYS, ...PROSE_LABELS].map(
 	(k) =>
 		new RegExp(
 			`(\\b${escapeRegExp(k)}\\b\\\\?"?\\s*[:=]\\s*\\\\?"?)([^\\s"\\\\,}&]+)`,
