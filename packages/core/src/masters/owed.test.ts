@@ -93,10 +93,10 @@ const askOf = (actId: string, ask: string, subject: StewardAsk['subject']): Stew
 
 /**
  * ISS-785: the body the events route takes, never top-level `decision` and `why` keys; and ISS-607's
- * `until`, read only as an ISO 8601 date, as decision-until.ts reads it.
+ * `until`, a date or a condition, as decision-until.ts reads it.
  */
 const ISSUE_DECISION_BODY =
-  '`{"kind":"decision","contract":1,"fields":[{"key":"decision","value":"…"},{"key":"why","value":"…"}]}`, plus a field `until` only as an ISO 8601 date such as 2026-11-01';
+  '`{"kind":"decision","contract":1,"fields":[{"key":"decision","value":"…"},{"key":"why","value":"…"}]}`, plus a field `until` holding a date (ISO 8601, such as 2026-11-01) or a condition';
 
 describe('owedLine: what a pass is told it owes besides issues', () => {
   // hop 2026-10-07: six answers moved their parks back with nothing on the nudge, and the master
@@ -160,7 +160,9 @@ describe('owedLine: what a pass is told it owes besides issues', () => {
     expect(line).toContain(
       'on a requirement (REQ-23), `forge-runner api projects/<projectId>/requirements/<key>/comments -X POST`',
     );
-    expect(line).toContain('`reversedWhen` only as an ISO 8601 date such as 2026-11-01');
+    expect(line).toContain(
+      '`reversedWhen` inside `decision` holding a date (ISO 8601, such as 2026-11-01) or a condition',
+    );
     expect(line).not.toContain('issues/<id>/events');
     const issue = askOf('a4', 'ISS-9: take it', { kind: 'issue', key: 'ISS-9' });
     const mixed = owedLine({ ...none, stewardAsks: [issue, fb] });

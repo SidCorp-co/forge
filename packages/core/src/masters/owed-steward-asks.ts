@@ -10,5 +10,5 @@ const askWithItems = (a: StewardAsk) =>
 export function stewardAsksLine(asks: readonly StewardAsk[]): string {
   if (asks.length === 0) return '';
   const kinds = decisionDoors(asks.flatMap((a) => a.answeredOn));
-  return ` The project's steward asks you to act on ${asks.length} item${agrees(asks.length, '', 's')} (${asks.map(askWithItems).join('; ')}): read each item's standing (\`forge-runner api projects/<projectId>/standings\`) and take the act it waits on, or record why it waits as a decision on an item that answers it, at its own door: ${kinds.join('; ')} (other text there is a condition, held until the standing moves); the ask stands until the item's standing moves or such a decision answers it, one with a date until that date.`;
+  return ` The project's steward asks you to act on ${asks.length} item${agrees(asks.length, '', 's')} (${asks.map(askWithItems).join('; ')}): read each item's standing (\`forge-runner api projects/<projectId>/standings\`) and take the act it waits on, or record why it waits as a decision on an item that answers it, at its own door: ${kinds.join('; ')} (a condition holds until the standing moves); the ask stands until the item's standing moves or such a decision answers it, one with a date until that date.`;
 }

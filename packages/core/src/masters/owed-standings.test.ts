@@ -21,28 +21,28 @@ const DOOR: Record<StandingSubjectKind, { item: StandingActOwed; door: string[] 
     door: [
       'on an issue (ISS-7), `forge-runner api issues/<id>/events -X POST`',
       '{"kind":"decision","contract":1,',
-      'plus a field `until`',
+      'plus a field `until` holding a date (ISO 8601, such as 2026-11-01) or a condition',
     ],
   },
   requirement: {
     item: act('requirement', 'REQ-23'),
     door: [
       'on a requirement (REQ-23), `forge-runner api projects/<projectId>/requirements/<key>/comments -X POST` with `intent: decision`',
-      'plus `reversedWhen`',
+      '`decision: { decision, reason, reversedWhen }`, `reversedWhen` inside `decision` holding a date (ISO 8601, such as 2026-11-01) or a condition',
     ],
   },
   feedback: {
     item: act('feedback', 'FB-36'),
     door: [
       'on a feedback item (FB-36), `forge-runner api projects/<projectId>/feedback/<key>/comments -X POST` with `intent: decision`',
-      'plus `reversedWhen`',
+      '`decision: { decision, reason, reversedWhen }`, `reversedWhen` inside `decision` holding a date (ISO 8601, such as 2026-11-01) or a condition',
     ],
   },
   workflow: {
     item: act('workflow', 'refunds'),
     door: [
       'on a workflow (refunds), `forge-runner api projects/<projectId>/workflows/<flow>/comments -X POST` with `intent: decision`',
-      'plus `reversedWhen`',
+      '`decision: { decision, reason, reversedWhen }`, `reversedWhen` inside `decision` holding a date (ISO 8601, such as 2026-11-01) or a condition',
     ],
   },
 };
@@ -63,6 +63,9 @@ describe('standingActsLine: the decision door of each kind it lists (ISS-1282)',
     for (const part of DOOR.requirement.door) expect(line).toContain(part);
     expect(line).not.toContain(PATHS.issue);
     expect(line).toContain('a decision with a date to come or a condition takes the item off');
+    // a dev.719 judge read "only as an ISO 8601 date" and then "other text there is a condition"
+    expect(line).not.toContain('only as an ISO 8601 date');
+    expect(line).not.toContain('other text there');
   });
 
   it.each(KINDS)(
