@@ -35,12 +35,15 @@ impl Clock {
         }
     }
 
-    /// The offset a mark made now lands at, from the evidence's start.
+    /// The offset a mark made now lands at, from the evidence's start, rounded up to the next
+    /// millisecond: a span that began its own recording marks after the recording's start, and a
+    /// floored offset could land before it, where no segment holds it (ISS-1321).
     pub fn mark_now(&self) -> u64 {
-        SystemTime::now()
+        let micros = SystemTime::now()
             .duration_since(self.evidence_start)
             .unwrap_or_default()
-            .as_millis() as u64
+            .as_micros();
+        micros.div_ceil(1000) as u64
     }
 
     /// The instant an evidence offset names.
@@ -235,6 +238,26 @@ async fn ffmpeg_run(ffmpeg: &Path, args: &[&str]) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_mark_made_after_its_recording_began_lands_inside_it() {
+        let root = crate::testkit::Scratch::new("record");
+        for _ in 0..200 {
+            let evidence = SystemTime::now();
+            std::thread::sleep(Duration::from_micros(300));
+            let file_start = SystemTime::now();
+            let clock = Clock {
+                file_start,
+                evidence_start: evidence,
+            };
+            let at = clock.at(clock.mark_now());
+            assert!(at >= file_start, "{at:?} lands before {file_start:?}");
+            std::fs::write(root.path().join("session.webm"), b"x").unwrap();
+            let seg = seal(&root.path().join("session.webm"), file_start).unwrap();
+            assert!(pick(root.path(), &clock, at).is_some_and(|(p, _)| p == seg));
+            std::fs::remove_file(seg).unwrap();
+        }
+    }
 
     #[test]
     fn a_warm_boxs_evidence_counts_from_its_assignment_not_its_file() {
