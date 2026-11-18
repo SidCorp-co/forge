@@ -213,6 +213,7 @@ export async function closeBox(id: string, actor: BoxActor, reason?: string): Pr
     where: eq(boxes.id, row.id),
     set: {
       closedAt: new Date(),
+      closedWhy: 'done',
       queue: null,
       heldBy: null,
       heldSince: null,

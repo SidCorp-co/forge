@@ -16,7 +16,7 @@ import { logger } from '../lib/logger.js';
 import { type KernelActor, transition } from '../lifecycle/index.js';
 import { pushBox, SOURCE, tellChanged } from './access.js';
 import { handBack } from './hold.js';
-import { recordingsOfEndedIssues } from './read.js';
+import { idleAgentBoxes, recordingsOfEndedIssues, unusedSince } from './read.js';
 
 /** The devices kernel's port: every box on the device that is not over. */
 export async function boxDemand(
@@ -162,7 +162,38 @@ export async function boxHealthBeat(deviceId: string): Promise<void> {
   await allocateDevice(deviceId);
 }
 
-/** The sweep: idle holds expire, boxes that never came up fail, ended issues' recordings go. */
+/**
+ * Close an agent's box nothing used for `agentIdleSeconds`, on the record, and have its device reap
+ * it (ISS-1335): its opener may be gone, or refused every call after its open.
+ */
+async function closeIdle(row: BoxRow, since: Date, actor: KernelActor): Promise<boolean> {
+  const moved = await transition(db, BOX_MACHINE, {
+    to: 'closed',
+    expect: 'agent',
+    recovery: true,
+    where: and(eq(boxes.id, row.id), unusedSince(since)),
+    set: {
+      closedAt: new Date(),
+      closedWhy: 'idle',
+      queue: null,
+      recordingState: row.recordingState === 'recording' ? 'kept' : row.recordingState,
+      recordingWhy: null,
+    },
+    reason: `nothing used it for ${BOX_LIMITS.agentIdleSeconds}s: closed idle`,
+    actor,
+    source: SOURCE,
+    afterWrite: async (tx, rows) => {
+      for (const r of rows) {
+        await pushBox(tx, row.deviceId, 'box.close', { boxId: r.id, why: 'idle' });
+        await tellChanged(tx, { ...row, ...r, state: 'closed' });
+      }
+    },
+  });
+  // a box used or taken since the select is left as it stands: its move matched no row
+  return moved.rows.length > 0;
+}
+
+/** The sweep: idle holds expire, idle agent boxes close, boxes that never came up fail, ended issues' recordings go. */
 export async function sweepBoxes(now = new Date()): Promise<{ moved: number }> {
   let moved = 0;
   const sweeper: KernelActor = { type: 'sweeper' };
@@ -178,6 +209,10 @@ export async function sweepBoxes(now = new Date()): Promise<{ moved: number }> {
   for (const row of idle) {
     await handBack(row, 'expired', sweeper);
     moved++;
+  }
+  const unusedFrom = new Date(now.getTime() - BOX_LIMITS.agentIdleSeconds * 1000);
+  for (const row of await idleAgentBoxes(unusedFrom)) {
+    if (await closeIdle(row, unusedFrom, sweeper)) moved++;
   }
   const stuck = await db
     .select()

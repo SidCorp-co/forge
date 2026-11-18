@@ -104,7 +104,7 @@ export interface BoxControlFrames {
 		asPerson: boolean;
 	};
 	/** Stop it and reap every process it started. The recording stays until `box.recording.drop`. */
-	"box.close": { boxId: string; why: "done" | "failed" | "superseded" };
+	"box.close": { boxId: string; why: "done" | "failed" | "superseded" | "idle" };
 	/** Run one driver command (`kind` as core classed it) and answer an `act` report with `actId`. */
 	"box.act": {
 		boxId: string;

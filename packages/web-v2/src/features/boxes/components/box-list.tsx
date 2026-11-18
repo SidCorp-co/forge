@@ -1,6 +1,6 @@
 // The project's boxes (ISS-1276 c7, mockup MK-12): each row names what it tests (the issue, or By
 // hand), its mode and size, who holds it and for how long, and the criterion under test or why it
-// stopped. The waiting ones are the queue below, each with its place and the health reason it waits on.
+// stopped: failed, or closed by the sweep once nothing used it (ISS-1335). The waiting ones are the queue below, each with its place and the health reason it waits on.
 
 import type { BoxRecord } from "@forge/contracts/boxes";
 import { StatusChip, ToneBadge, useNow } from "@/design";
@@ -24,7 +24,7 @@ function BoxEntry({ box, me, selected, onSelect }: { box: BoxRecord; me: string 
   // an agent's hold is the state's own word on the badge; only a person is named
   const who = box.holder?.kind === "person" ? holderWords(box, me, t) : null;
   const line = [t(`boxes.mode.${box.mode}`), who, held].filter(Boolean).join(" · ");
-  const why = box.failure ? t(`boxes.failure.${box.failure}`) : box.criterion ? t("boxes.row.criterion", { n: box.criterion }) : null;
+  const why = box.failure ? t(`boxes.failure.${box.failure}`) : box.closedWhy === "idle" ? t("boxes.closedWhy.idle") : box.criterion ? t("boxes.row.criterion", { n: box.criterion }) : null;
   return (
     <li>
       <button

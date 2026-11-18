@@ -4355,6 +4355,13 @@
       "when": 1842134400000,
       "tag": "0685_a_warm_box_whose_device_is_gone_fails_by_name",
       "breakpoints": true
+    },
+    {
+      "idx": 686,
+      "version": "7",
+      "when": 1842220800000,
+      "tag": "0686_a_box_nothing_used_closes_idle_and_says_why",
+      "breakpoints": true
     }
   ]
 }

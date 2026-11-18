@@ -11,7 +11,7 @@ export const BOXES_GUIDE: CoreGuide = {
   title: 'Forge Box: use a screen as a person would, where a person can watch',
   summary:
     "A screen is proven by being used: its builder opens a box (browser, android or desktop) on its worktree's dev server from the first UI change, and its judge on the running build. Drive it with `forge-runner box act` or forge_box, screenshot and look after each change, mark each criterion's span so it records its own clip and attaches it to the issue, and close it. Nothing records unless asked. A person may take control: your writes are refused BOX_HELD_BY_PERSON, your reads still answer; wait, read what they did, go on.",
-  version: 3,
+  version: 4,
   doors: [
     'POST /api/projects/:id/boxes',
     'POST /api/boxes/:id/acts',
@@ -36,7 +36,11 @@ its screen answers, a warm box handed to you included; read it until it stands a
 
 - **A builder opens one at its first UI change**, not at the end: a browser box whose \`url\` is its
   worktree's dev server on localhost (start it on a port of your own; the box shares your device),
-  or an android box on the dev build. Keep it open while you build.
+  or an android box on the dev build. Keep it open while you build: a box nothing used for
+  ${BOX_LIMITS.agentIdleSeconds / 60} minutes (no act, span or recording change) closes on the record and
+  reads \`closedWhy: idle\`; open a new one.
+- **A credential that cannot drive a box is refused its open** \`PAT_GRANT_PREDATES_ROUTE\`, as it
+  is every box call: the refusal names who mints one that reaches the box, and by which door.
 
 - **Nothing records unless asked.** Recording costs the device's CPU and disk, so a box records
   only while something needs it: a criterion's span (step 4) records itself. Add \`record: true\`

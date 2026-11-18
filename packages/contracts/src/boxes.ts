@@ -58,13 +58,14 @@ export const BOX_HOLDING_STATES = [
 
 /**
  * The box's moves. `box.take` and `box.released` are a person's; `box.expired` is the kernel's, when a
- * person's hold went idle for `BOX_LIMITS.holdIdleSeconds`, taken as the recovery move. `box.started` (waiting → opening) is
+ * person's hold went idle for `BOX_LIMITS.holdIdleSeconds`, taken as the recovery move; `box.idle` is
+ * the kernel's close of an agent's box nothing used for `BOX_LIMITS.agentIdleSeconds`. `box.started` (waiting → opening) is
  * core's allocation, never a caller's. Every move is recorded with who made it and when, in
  * `kernel_transitions` (`entity: "box"`).
  */
 export const BOX_MACHINE = defineMachine({
 	entity: "box",
-	shapes: ["3ee3cdb7", "8238685f"],
+	shapes: ["3ee3cdb7", "8238685f", "06721e94"],
 	design: null,
 	states: BOX_STATES,
 	initial: ["waiting", "opening"],
@@ -132,6 +133,16 @@ export const BOX_MACHINE = defineMachine({
 			guards: [],
 			recovery: true,
 		},
+		// the kernel's close of an agent's box nothing used for `BOX_LIMITS.agentIdleSeconds` (ISS-1335):
+		// its opener may be gone or refused every later call, and the box held the device's headroom
+		{
+			from: "agent",
+			to: "closed",
+			act: "box.idle",
+			permission: null,
+			guards: [],
+			recovery: true,
+		},
 		...(["waiting", "opening", "warm", "agent", "person"] as const).map(
 			(from) => ({
 				from,
@@ -173,6 +184,11 @@ export type BoxFailure = (typeof BOX_FAILURES)[number];
 export const BOX_LIMITS = {
 	/** A person's hold with no input this long expires back to the agent, on the record. */
 	holdIdleSeconds: 300,
+	/**
+	 * An agent's box with no act, span, recording change or hold this long is closed `idle` by the
+	 * sweep (ISS-1335): a builder keeps one open while it builds, so it is long.
+	 */
+	agentIdleSeconds: 3600,
 	/** A viewer ticket is spent once within this. */
 	ticketSeconds: 60,
 	/** A watch-only viewer's default frame rate; each viewer names its own within the bounds. */
@@ -218,6 +234,13 @@ export interface BoxQueuePlace {
  * an agent turned it on. `span`: a criterion's span began it, and the last open span's end stops it.
  * `person`: a person turned it on from the Boxes page. Only a `span` recording ends with a span.
  */
+/**
+ * Why a box closed: `done`, closed by a caller (its agent, a person); `idle`, closed by the sweep once
+ * nothing used it for `BOX_LIMITS.agentIdleSeconds` (ISS-1335). Null on a box not closed.
+ */
+export const BOX_CLOSED_WHY = ["done", "idle"] as const;
+export type BoxClosedWhy = (typeof BOX_CLOSED_WHY)[number];
+
 export const BOX_RECORDING_WHY = ["asked", "span", "person"] as const;
 export type BoxRecordingWhy = (typeof BOX_RECORDING_WHY)[number];
 
@@ -256,6 +279,8 @@ export interface BoxRecord {
 	openedBy: string;
 	createdAt: string;
 	closedAt: string | null;
+	/** Why it closed, once `closed`: by a caller, or by the sweep when idle. */
+	closedWhy: BoxClosedWhy | null;
 }
 
 /** One act on a box: the agent's command, or the person's input, in the order the box got them. */

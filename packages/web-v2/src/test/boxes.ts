@@ -42,6 +42,7 @@ function box(now: number, over: Partial<BoxRecord> & Pick<BoxRecord, "id" | "mod
     openedBy: "agent:run-qa",
     createdAt: ago(now, 260_000),
     closedAt: null,
+    closedWhy: null,
     ...over,
   };
 }
@@ -70,7 +71,7 @@ export function projectBoxes(now = Date.now(), heldByMe = false): BoxRecord[] {
       view: { codec: "jpeg-frames", width: 390, height: 844 },
     }),
     box(now, { id: BOX.admin, mode: "browser", state: "agent", issueId: ISSUE.report, criterion: 1, viewport: { width: 1440, height: 900 }, view: { codec: "jpeg-frames", width: 1440, height: 900 } }),
-    box(now, { id: BOX.done, mode: "android", state: "closed", issueId: ISSUE.login, recording: { state: "kept", why: null, startedAt: ago(now, 3_600_000) }, closedAt: ago(now, 1_800_000) }),
+    box(now, { id: BOX.done, mode: "android", state: "closed", issueId: ISSUE.login, recording: { state: "kept", why: null, startedAt: ago(now, 3_600_000) }, closedAt: ago(now, 1_800_000), closedWhy: "done" }),
     box(now, { id: BOX.waitB, mode: "browser", state: "waiting", issueId: ISSUE.menu, queue: { position: 2, reason: "CPU pressure 82% is over the 70% ceiling" } }),
     box(now, { id: BOX.waitA, mode: "android", state: "waiting", issueId: ISSUE.print, queue: { position: 1, reason: "available memory 12 GB is under the 16 GB reserve" } }),
   ];

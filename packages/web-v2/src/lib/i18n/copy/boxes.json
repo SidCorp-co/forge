@@ -77,6 +77,7 @@
     "boxes.failure.BOX_GONE": "Gone",
     "boxes.failure.DEVICE_OFFLINE": "Device offline",
     "boxes.failure.BOX_DEVICE_GONE": "Screen gone",
+    "boxes.closedWhy.idle": "Closed idle",
     "boxes.issue.label": "Box",
     "boxes.issue.reproduce": "Reproduce in a box",
     "boxes.issue.watch": "Watch"

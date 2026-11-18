@@ -1,5 +1,6 @@
 import type { BoxViewCodec } from '@forge/contracts/box-wire';
 import {
+  BOX_CLOSED_WHY,
   BOX_FAILURES,
   BOX_MODES,
   BOX_RECORDING_WHY,
@@ -79,6 +80,8 @@ export const boxes = pgTable(
     openedAt: timestamp('opened_at', { withTimezone: true }),
     readyAt: timestamp('ready_at', { withTimezone: true }),
     closedAt: timestamp('closed_at', { withTimezone: true }),
+    /** Why it closed: by a caller (`done`), or by the sweep once nothing used it (`idle`, ISS-1335). */
+    closedWhy: text('closed_why', { enum: BOX_CLOSED_WHY }),
   },
   (t) => ({
     deviceStateIdx: index('boxes_device_state_idx').on(t.deviceId, t.state),
@@ -99,6 +102,10 @@ export const boxes = pgTable(
     failureChk: check(
       'boxes_failure_chk',
       sql`${t.failure} IS NULL OR ${t.failure} IN (${inList(BOX_FAILURES)})`,
+    ),
+    closedWhyChk: check(
+      'boxes_closed_why_chk',
+      sql`(${t.state} = 'closed') = (${t.closedWhy} IS NOT NULL) AND (${t.closedWhy} IS NULL OR ${t.closedWhy} IN (${inList(BOX_CLOSED_WHY)}))`,
     ),
     recordingWhyChk: check(
       'boxes_recording_why_chk',

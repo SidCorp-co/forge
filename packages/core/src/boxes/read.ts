@@ -3,7 +3,7 @@
 
 import type { BoxActRecord, BoxHolder, BoxRecord, BoxSpanRecord } from '@forge/contracts/boxes';
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
-import { and, asc, desc, eq, gt, inArray, isNotNull, or } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNotNull, or, type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issues, users } from '../db/schema.js';
 import {
@@ -68,6 +68,7 @@ function recordOf(row: BoxRow, name: string | null): BoxRecord {
     openedBy: row.createdBy,
     createdAt: row.askedAt.toISOString(),
     closedAt: iso(row.closedAt),
+    closedWhy: row.closedWhy ?? null,
   };
 }
 
@@ -168,6 +169,26 @@ export async function boxSpansOf(boxId: string): Promise<BoxSpanRecord[]> {
     .where(eq(boxSpans.boxId, boxId))
     .orderBy(asc(boxSpans.startedAt));
   return rows.map(spanRecord);
+}
+
+/**
+ * A box nothing has used since `before`: its newest act, span edge, recording start, person's input
+ * or start is older (ISS-1335). The sweep's select and its close both read it, so a box used in
+ * between is not closed.
+ */
+export function unusedSince(before: Date): SQL {
+  const lastAct = sql`(SELECT max(greatest(a.created_at, a.done_at)) FROM box_acts a WHERE a.box_id = ${boxes.id})`;
+  const lastSpan = sql`(SELECT max(greatest(s.started_at, s.ended_at)) FROM box_spans s WHERE s.box_id = ${boxes.id})`;
+  return sql`greatest(${boxes.readyAt}, ${boxes.openedAt}, ${boxes.lastInputAt}, ${boxes.recordingStartedAt}, ${lastAct}, ${lastSpan}) < ${before.toISOString()}::timestamptz`;
+}
+
+/** The agent's boxes nothing used since `before`: what the sweep closes `idle`. */
+export async function idleAgentBoxes(before: Date, executor: Reader = db): Promise<BoxRow[]> {
+  return executor
+    .select()
+    .from(boxes)
+    .where(and(eq(boxes.state, 'agent'), unusedSince(before)))
+    .limit(200);
 }
 
 /** The boxes still holding a recording on their device whose issue ended: what the sweep drops. */
