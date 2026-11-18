@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.727] - 2026-11-18
+
+Closing a box you hold ends your hold instead of failing
+
+### Fixed
+
+- **Closing a box you hold works again.** It no longer answers a server error; your hold ends with the box.
+
 ## [0.4.0-dev.726] - 2026-11-18
 
 Release pages open on a hero with the judge's clips and screenshots
