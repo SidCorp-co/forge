@@ -47,7 +47,7 @@ export function turnFor(p: Part, s: Shared, criteria: Weighed) {
     runId: p.runId,
     // only a request not merged yet is a merge owed (ISS-1207), as its own row reads it (ISS-1333);
     // at none the settle's own wait reads
-    merges: p.mergeSteps ? unmergedSteps(p.mergeSteps, s.mergeStates ?? new Map()).length : null,
+    merges: p.mergeSteps ? unmergedSteps(p.mergeSteps, s.mergeStates).length : null,
     promotion: Boolean((p.runMetadata as { promotion?: unknown } | null | undefined)?.promotion),
     unmarked: unmarkedIn(p, s),
     landedOn: p.landedOn,

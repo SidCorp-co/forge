@@ -179,6 +179,7 @@ describe('a landed release whose work a later production release carries', () =>
     contentLanguage: 'en',
     provider: null,
     changeRequestLinks: [],
+    mergeStates: new Map(),
   });
 
   it('reads done naming the release production serves it through, and asks no one to promote it', () => {

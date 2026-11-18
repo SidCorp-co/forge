@@ -146,6 +146,7 @@ const shared = (n: number, isAdmin = true): Shared => ({
   contentLanguage: 'en',
   provider: null,
   changeRequestLinks: [],
+  mergeStates: new Map(),
 });
 
 describe('splitting an oversize draft', () => {

@@ -116,8 +116,8 @@ export interface Shared {
   provider: string | null;
   /** Every change request linked to an issue these releases carry (REQ-63 BC-5). */
   changeRequestLinks: readonly ChangeRequestLinkRow[];
-  /** The state of each request these releases merge as steps, from its own row (ISS-1333); absent, none reads merged. */
-  mergeStates?: ReadonlyMap<string, ChangeRequestState>;
+  /** The state of each request these releases merge as steps, from its own row (ISS-1333). */
+  mergeStates: ReadonlyMap<string, ChangeRequestState>;
   /** Production deploys on request through Coolify, so its deploy waits on a person's confirm (ISS-1096). */
   confirmsProduction?: boolean;
   /** Each production site production declares now, its own first (ISS-1077); absent, none is read. */
