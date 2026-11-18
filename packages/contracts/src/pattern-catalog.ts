@@ -192,8 +192,8 @@ export const PATTERN_CATALOG: readonly PatternEntry[] = [
 			"packages/web-v2/src/lib/i18n/product-copy.ts"
 		],
 		tests: [
-			"packages/web-v2/src/features/suggestions/components/suggestion-list.test.tsx",
-			"packages/web-v2/src/lib/i18n/copy-readers.test.ts"
+			"packages/web-v2/src/lib/i18n/copy-readers.test.ts",
+			"packages/web-v2/src/lib/api/error.test.ts"
 		],
 		checklist: [
 			"The feature keeps the module layout: **api.ts**, **hooks.ts**, **types.ts**, **components/**, and **routes.ts** only where it owns pages.",
@@ -203,7 +203,8 @@ export const PATTERN_CATALOG: readonly PatternEntry[] = [
 			"Badges use `StatusBadge` or `EnumBadge` with tones from contracts; the feature declares no colour map.",
 			"New words are copy keys in English only; none is written inline in the component, and no Vietnamese is added. Each obeys the Copy rule above: at most 12 words, and the page it lands on stays inside the first-screen budget.",
 			"A mutation invalidates every query its effect changes.",
-			"The screen is reachable: a route or a parent component renders it, and it works at phone width."
+			"The screen is reachable: a route or a parent component renders it, and its builder used it in a box at desktop and phone width, each criterion's span marked.",
+			"No render test stands in for using the screen: a test added beside it pins a rule a person cannot see."
 		]
 	}
 ];

@@ -21,16 +21,22 @@ builds on [API route](api-route.md) for the reads and writes it calls, and on
 
 ## Test shape
 
-- `packages/web-v2/src/features/suggestions/components/suggestion-list.test.tsx` — the component rendered with `renderWithQuery` over a `fakeCore` that answers what core answers, asserting what a person sees and what a click sends
-- `packages/web-v2/src/lib/i18n/copy-readers.test.ts` — a copy reader asked for any language but English throws naming it, never drawing English in its place
+- `packages/web-v2/src/lib/i18n/copy-readers.test.ts` — a rule a person cannot see: a copy reader asked for any language but English throws naming it, never drawing English in its place
+- `packages/web-v2/src/lib/api/error.test.ts` — a rule over every refusal, which no one screen shows whole: an instant a refusal carries is never printed raw, and a 401 under an unmapped code never shows core's words
 
-A new screen gets a `*.test.tsx` beside its component, collected by `packages/web-v2/vitest.config.ts`
-under jsdom (`pnpm --filter web-v2 test`). It renders the component with
-`packages/web-v2/src/test/render.tsx:renderWithQuery`, stubs core with `fakeCore` answering the
-contracts shape the read model serves, and asserts on text and roles a person meets: the rows
-shown, the refusal line for a refused write, the request body a button sends. It never asserts a
-class name or a copy key. The direct tests of a screen change are the test files of the components
-it touched.
+A screen is proven by its builder using it as a person would, not by a render test: jsdom lays
+nothing out. From the first UI change the builder opens a browser box on its worktree's dev server,
+at desktop and 390×844 (an android box on the dev build for an app), and after each change walks
+each criterion: snapshot to find, act, then screenshot and look at the layout, the copy, the empty,
+error and loading states and phone width. It marks the criterion's span when it shows it, so the
+clip is the evidence (the `boxes` guide, `packages/core/src/guides/boxes-guide.ts:BOXES_GUIDE`).
+
+A test is written beside a screen only to pin a rule a person cannot see: the request a button
+sends, how a refusal code is drawn, a guard in a copy reader, a derivation in **derive.ts**. It runs
+under jsdom (`pnpm --filter web-v2 test`), renders with
+`packages/web-v2/src/test/render.tsx:renderWithQuery` over a `fakeCore` answering the contracts
+shape the read model serves, and never asserts a class name or a copy key. The direct tests of a
+screen change are the test files of the components it touched, where it has any.
 
 ## Review checklist
 
@@ -41,7 +47,8 @@ it touched.
 5. Badges use `StatusBadge` or `EnumBadge` with tones from contracts; the feature declares no colour map.
 6. New words are copy keys in English only; none is written inline in the component, and no Vietnamese is added. Each obeys the Copy rule above: at most 12 words, and the page it lands on stays inside the first-screen budget.
 7. A mutation invalidates every query its effect changes.
-8. The screen is reachable: a route or a parent component renders it, and it works at phone width.
+8. The screen is reachable: a route or a parent component renders it, and its builder used it in a box at desktop and phone width, each criterion's span marked.
+9. No render test stands in for using the screen: a test added beside it pins a rule a person cannot see.
 
 ## Copy rule
 
