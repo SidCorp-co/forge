@@ -9,6 +9,7 @@
  *
  * It reaches its subject over HTTP, so it names what it guards:
  * @direct-test-of packages/core/src/issues/merge-check.ts
+ * @direct-test-of packages/core/src/issues/merge-check-coverage.ts
  * @direct-test-of packages/core/src/issues/merge-check-rules.ts
  * @direct-test-of packages/core/src/issues/merge-marker.ts
  * @direct-test-of packages/core/src/issues/merge-routes.ts

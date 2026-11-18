@@ -41,7 +41,7 @@ import { recordVerdict } from './criteria/verdict-record.js';
 import { issueDesignOf } from './design-record.js';
 import { issueDisplayIds } from './display-ids.js';
 import { issueGateOf } from './gates.js';
-import { passingHeads } from './merge-check-rules.js';
+import { passingHeads } from './merge-check-coverage.js';
 import { liveOnBox, runOfCall } from './pattern-runs.js';
 import { catalogOf } from './patterns.js';
 import { listRecordEvents, type RecordEvent, writeCoreRecord } from './record-events/store.js';

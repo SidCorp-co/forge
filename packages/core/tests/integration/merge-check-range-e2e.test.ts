@@ -11,6 +11,7 @@
  * that issue's mark MERGE_CHECK_MISSING.
  *
  * @direct-test-of packages/core/src/issues/merge-check.ts
+ * @direct-test-of packages/core/src/issues/merge-check-coverage.ts
  * @direct-test-of packages/core/src/issues/merge-check-rules.ts
  * @direct-test-of packages/core/src/issues/check-run-rules.ts
  * @direct-test-of packages/core/src/issues/check-runs.ts

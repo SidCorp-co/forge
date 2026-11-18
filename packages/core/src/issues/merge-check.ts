@@ -43,13 +43,11 @@ import { readIssueGates } from './gates.js';
 import { reportForIssue } from './merge-check-batch.js';
 import {
   type CheckOwedBy,
-  checkRefusal,
   missingCheckDetail,
   passingRanges,
-  probeRefusals,
   rangeCovers,
-  recordFields,
-} from './merge-check-rules.js';
+} from './merge-check-coverage.js';
+import { checkRefusal, probeRefusals, recordFields } from './merge-check-rules.js';
 import { catalogPageFields, hasApprovedNewPattern, patternEntryRefusal } from './pattern-entry.js';
 import { fastLaneMergeRefusal, readProjectDocument, recordMergeCheckCleanup } from './ports.js';
 import { listRecordEvents, type RecordEvent, writeCoreRecord } from './record-events/store.js';

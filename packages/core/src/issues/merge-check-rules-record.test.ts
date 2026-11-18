@@ -12,8 +12,8 @@ import {
   passingHeads,
   passingRanges,
   rangeCovers,
-  recordFields,
-} from './merge-check-rules.js';
+} from './merge-check-coverage.js';
+import { recordFields } from './merge-check-rules.js';
 
 const HEAD = 'a'.repeat(40);
 const BASE = 'b'.repeat(40);
