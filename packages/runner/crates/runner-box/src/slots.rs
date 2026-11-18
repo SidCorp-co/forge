@@ -165,6 +165,10 @@ impl Boxes {
                     .await
             }
             "box.recording.drop" => self.drop_recording(&id),
+            "box.recording.upload" => {
+                self.upload_session(serde_json::from_value(data).map_err(read)?)
+                    .await
+            }
             "box.recording.set" => {
                 let f: frames::RecordingSet = serde_json::from_value(data).map_err(read)?;
                 let body = self.set_recording(&f.box_id, f.on).await;

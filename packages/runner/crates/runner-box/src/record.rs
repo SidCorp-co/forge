@@ -13,6 +13,10 @@
 //! ffmpeg buffer), so a running box closes its segment before every cut, and its close ends the
 //! last; the cut reads the segment its span starts in. Everything a cut needs is on disk, so a
 //! clip is still cut after the box closed, until its recording is dropped.
+//!
+//! A recording a person asked for is also sent whole once its box ended (ISS-1338): every segment
+//! and the live file a close left, in the order they were recorded, encoded as one clip within the
+//! ceiling core names, through the span clip's own upload.
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
@@ -91,8 +95,18 @@ pub fn seal(live: &Path, file_start: SystemTime) -> Result<PathBuf, String> {
 
 /// The recording that holds instant `at`: the latest segment, or the live file, begun by then.
 pub fn pick(dir: &Path, clock: &Clock, at: SystemTime) -> Option<(PathBuf, SystemTime)> {
-    let mut found: Vec<(PathBuf, SystemTime)> = std::fs::read_dir(dir)
-        .ok()?
+    recorded(dir, clock)
+        .into_iter()
+        .rfind(|(_, start)| *start <= at)
+}
+
+/// Every file of the box's recording with when it began, in the order it was recorded: its closed
+/// segments, then the live file where it holds anything.
+pub fn recorded(dir: &Path, clock: &Clock) -> Vec<(PathBuf, SystemTime)> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut found: Vec<(PathBuf, SystemTime)> = entries
         .flatten()
         .filter_map(|e| {
             let p = e.path();
@@ -105,10 +119,9 @@ pub fn pick(dir: &Path, clock: &Clock, at: SystemTime) -> Option<(PathBuf, Syste
                 name.starts_with("session.") && std::fs::metadata(&p).is_ok_and(|m| m.len() > 0);
             live.then_some((p, clock.file_start))
         })
-        .filter(|(_, start)| *start <= at)
         .collect();
     found.sort_by_key(|(_, start)| *start);
-    found.pop()
+    found
 }
 
 /// An ISO-8601 instant in UTC with milliseconds, as core reads one.
@@ -155,20 +168,95 @@ pub async fn cut(
         .unwrap_or_default();
     let length = Duration::from_millis(to_ms - from_ms).min(Duration::from_secs(max_seconds));
     let (clip_path, still_path) = (work.join("clip.mp4"), work.join("still.png"));
+    let input = [
+        "-ss".to_string(),
+        secs(start),
+        "-i".into(),
+        recording.to_string_lossy().into_owned(),
+        "-t".into(),
+        secs(length),
+    ];
+    let clip = encode(ffmpeg, &input, &clip_path, max_bytes, CUT_WITHIN).await?;
+    if clip.len() as u64 > max_bytes {
+        return Err(format!(
+            "the clip is {} bytes at its smallest, over the {max_bytes} the release page takes",
+            clip.len()
+        ));
+    }
+    let still = still_of(ffmpeg, &[secs(start)], recording, &still_path).await?;
+    Ok(Cut { clip, still })
+}
+
+/// How long ffmpeg gets for a span's cut, and for a whole session, which can run an hour.
+const CUT_WITHIN: Duration = Duration::from_secs(180);
+const WHOLE_WITHIN: Duration = Duration::from_secs(900);
+
+/// Why a whole session was not encoded: over `max_bytes` at its smallest, or ffmpeg failed. The
+/// fault is the wire's (`box-wire.ts` `session_failed`).
+pub type WholeFault = (&'static str, String);
+
+/// The whole kept recording, `files` in the order they were recorded, encoded as one mp4 within
+/// `max_bytes` and its opening frame as a png (ISS-1338).
+pub async fn whole(
+    ffmpeg: &Path,
+    files: &[PathBuf],
+    max_bytes: u64,
+    work: &Path,
+) -> Result<Cut, WholeFault> {
+    let failed = |e: String| ("CUT_FAILED", e);
+    let first = files.first().ok_or_else(|| {
+        (
+            "DEVICE_GONE",
+            "no recording is left on this device".to_string(),
+        )
+    })?;
+    std::fs::create_dir_all(work)
+        .map_err(|e| failed(format!("cannot make {}: {e}", work.display())))?;
+    let list = work.join("session.txt");
+    let lines: String = files
+        .iter()
+        .map(|f| format!("file '{}'\n", f.to_string_lossy().replace('\'', "'\\''")))
+        .collect();
+    std::fs::write(&list, lines)
+        .map_err(|e| failed(format!("cannot write {}: {e}", list.display())))?;
+    let input = ["-f", "concat", "-safe", "0", "-i"].map(String::from);
+    let input = [&input[..], &[list.to_string_lossy().into_owned()]].concat();
+    let clip_path = work.join("session.mp4");
+    let clip = encode(ffmpeg, &input, &clip_path, max_bytes, WHOLE_WITHIN)
+        .await
+        .map_err(failed)?;
+    if clip.len() as u64 > max_bytes {
+        return Err((
+            "TOO_LARGE",
+            format!(
+                "the recording is {} bytes at its smallest, over the {max_bytes} a box sends to Forge",
+                clip.len()
+            ),
+        ));
+    }
+    let still = still_of(ffmpeg, &[], first, &work.join("still.png"))
+        .await
+        .map_err(failed)?;
+    Ok(Cut { clip, still })
+}
+
+/// `input` (ffmpeg's input arguments) encoded to an mp4 at `out`, once more smaller where the first
+/// is over `max_bytes`: the smallest try's bytes, which may still be over.
+async fn encode(
+    ffmpeg: &Path,
+    input: &[String],
+    out: &Path,
+    max_bytes: u64,
+    within: Duration,
+) -> Result<Vec<u8>, String> {
     let mut clip = Vec::new();
     for (crf, scale) in [
         ("28", "scale='min(1280,iw)':-2"),
         ("36", "scale='min(720,iw)':-2"),
     ] {
-        ffmpeg_run(
-            ffmpeg,
-            &[
-                "-ss",
-                &secs(start),
-                "-i",
-                &recording.to_string_lossy(),
-                "-t",
-                &secs(length),
+        let mut args = input.to_vec();
+        args.extend(
+            [
                 "-an",
                 "-vf",
                 scale,
@@ -182,48 +270,51 @@ pub async fn cut(
                 "yuv420p",
                 "-movflags",
                 "+faststart",
-                &clip_path.to_string_lossy(),
-            ],
-        )
-        .await?;
-        clip = std::fs::read(&clip_path).map_err(|e| format!("the cut clip: {e}"))?;
+            ]
+            .map(String::from),
+        );
+        args.push(out.to_string_lossy().into_owned());
+        ffmpeg_run(ffmpeg, &args, within).await?;
+        clip = std::fs::read(out).map_err(|e| format!("the encoded clip: {e}"))?;
         if (clip.len() as u64) <= max_bytes {
             break;
         }
     }
-    if clip.len() as u64 > max_bytes {
-        return Err(format!(
-            "the clip is {} bytes at its smallest, over the {max_bytes} the release page takes",
-            clip.len()
-        ));
-    }
-    ffmpeg_run(
-        ffmpeg,
-        &[
-            "-ss",
-            &secs(start),
-            "-i",
-            &recording.to_string_lossy(),
-            "-frames:v",
-            "1",
-            &still_path.to_string_lossy(),
-        ],
-    )
-    .await?;
-    let still = std::fs::read(&still_path).map_err(|e| format!("the cut still: {e}"))?;
-    Ok(Cut { clip, still })
+    Ok(clip)
+}
+
+/// The frame at `seek` (none: the first) of `recording`, as a png at `out`.
+async fn still_of(
+    ffmpeg: &Path,
+    seek: &[String],
+    recording: &Path,
+    out: &Path,
+) -> Result<Vec<u8>, String> {
+    let mut args: Vec<String> = seek
+        .iter()
+        .flat_map(|s| ["-ss".to_string(), s.clone()])
+        .collect();
+    args.extend([
+        "-i".into(),
+        recording.to_string_lossy().into_owned(),
+        "-frames:v".into(),
+        "1".into(),
+        out.to_string_lossy().into_owned(),
+    ]);
+    ffmpeg_run(ffmpeg, &args, CUT_WITHIN).await?;
+    std::fs::read(out).map_err(|e| format!("the still: {e}"))
 }
 
 fn secs(d: Duration) -> String {
     format!("{:.3}", d.as_secs_f64())
 }
 
-async fn ffmpeg_run(ffmpeg: &Path, args: &[&str]) -> Result<(), String> {
+async fn ffmpeg_run(ffmpeg: &Path, args: &[String], within: Duration) -> Result<(), String> {
     let mut cmd = tokio::process::Command::new(ffmpeg);
     cmd.args(["-y", "-nostdin", "-loglevel", "error"])
         .args(args)
         .kill_on_drop(true);
-    let o = act::run(cmd, Duration::from_secs(180)).await;
+    let o = act::run(cmd, within).await;
     if o.exit_code == 0 {
         Ok(())
     } else {

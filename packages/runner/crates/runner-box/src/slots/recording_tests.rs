@@ -269,3 +269,133 @@ async fn a_recording_set_on_and_off_is_reported_and_never_started_twice() {
     assert_eq!(last["state"], "failed");
     assert!(last["detail"].as_str().unwrap().contains("not running"));
 }
+
+// each test sends its own box: a close reaps every process naming its box, in any test (`proc::reap`)
+const SENT: &str = "1a5e7a52-3c4d-4e6f-8a1b-2c3d4e5f6a7b";
+const LARGE: &str = "2b5e7a52-3c4d-4e6f-8a1b-2c3d4e5f6a7b";
+const GONE: &str = "3c5e7a52-3c4d-4e6f-8a1b-2c3d4e5f6a7b";
+
+/// ffmpeg as a script that writes its last argument and keeps the concat list it was handed.
+#[cfg(unix)]
+fn ffmpeg_keeping_its_list(root: &Scratch) -> PathBuf {
+    let kept = root.path().join("concat-list");
+    root.script(
+        "bin/ffmpeg",
+        &format!(
+            r#"prev=; for a; do if [ "$prev" = -i ] && [ "${{a%.txt}}" != "$a" ]; then cp "$a" {kept}; fi; prev=$a; last=$a; done
+printf cut > "$last""#,
+            kept = kept.display()
+        ),
+    );
+    kept
+}
+
+/// ISS-1338: a recording a person asked for, kept as segments and the live file the close left, is
+/// sent whole, in the order it was recorded, through the span clip's upload with `session` in the
+/// span's place.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_kept_recording_is_sent_whole_through_the_clip_upload_once_its_box_closed() {
+    let root = Scratch::new("rec");
+    let said = Arc::new(Said::default());
+    let b = boxes(&root, said.clone());
+    fake_tools(&root, &b, &[SENT]);
+    let kept = ffmpeg_keeping_its_list(&root);
+    b.handle("box.open", open(SENT, false, Some(true)))
+        .await
+        .unwrap();
+    for on in [false, true] {
+        b.handle("box.recording.set", json!({ "boxId": SENT, "on": on }))
+            .await
+            .unwrap();
+    }
+    b.handle("box.close", json!({ "boxId": SENT, "why": "done" }))
+        .await
+        .unwrap();
+    let dir = b.0.ctx.box_dir(SENT);
+    b.handle(
+        "box.recording.upload",
+        json!({ "boxId": SENT, "maxBytes": 1_000_000 }),
+    )
+    .await
+    .unwrap();
+
+    let clips = said.1.lock().unwrap().clone();
+    assert_eq!(
+        clips,
+        vec![(SENT.to_string(), "session".to_string(), b"cut".to_vec())],
+        "{:?}",
+        said.kinds()
+    );
+    let list = std::fs::read_to_string(&kept).unwrap();
+    let named: Vec<&str> = list.lines().collect();
+    assert_eq!(named.len(), 2, "the segment and the live file: {list}");
+    assert!(
+        named[0].contains(&format!("{}/seg-", dir.display())),
+        "the closed segment first: {list}"
+    );
+    assert!(
+        named[1].ends_with("session.webm'"),
+        "the live file the close left, last: {list}"
+    );
+    assert!(
+        !dir.join("cuts").join("session").exists(),
+        "the encode's work is cleared: {:?}",
+        files(&dir)
+    );
+    assert!(said.kinds().iter().all(|k| k["kind"] != "session_failed"));
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_recording_past_the_ceiling_is_said_too_large_and_never_sent() {
+    let root = Scratch::new("rec");
+    let said = Arc::new(Said::default());
+    let b = boxes(&root, said.clone());
+    fake_tools(&root, &b, &[LARGE]);
+    b.handle("box.open", open(LARGE, false, Some(true)))
+        .await
+        .unwrap();
+    b.handle("box.close", json!({ "boxId": LARGE, "why": "done" }))
+        .await
+        .unwrap();
+    b.handle(
+        "box.recording.upload",
+        json!({ "boxId": LARGE, "maxBytes": 2 }),
+    )
+    .await
+    .unwrap();
+    assert!(said.1.lock().unwrap().is_empty(), "nothing sent");
+    let failed = said.kinds().pop().unwrap();
+    assert_eq!(
+        (failed["kind"].as_str(), failed["fault"].as_str()),
+        (Some("session_failed"), Some("TOO_LARGE")),
+        "{failed}"
+    );
+    assert!(
+        failed["detail"].as_str().unwrap().contains("over the 2"),
+        "{failed}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_recording_no_longer_on_the_device_is_said_gone() {
+    let root = Scratch::new("rec");
+    let said = Arc::new(Said::default());
+    let b = boxes(&root, said.clone());
+    fake_tools(&root, &b, &[]);
+    b.handle(
+        "box.recording.upload",
+        json!({ "boxId": GONE, "maxBytes": 1_000_000 }),
+    )
+    .await
+    .unwrap();
+    assert!(said.1.lock().unwrap().is_empty());
+    let failed = said.kinds().pop().unwrap();
+    assert_eq!(
+        (failed["kind"].as_str(), failed["fault"].as_str()),
+        (Some("session_failed"), Some("DEVICE_GONE")),
+        "{failed}"
+    );
+}

@@ -3,7 +3,7 @@
 
 use serde::Deserialize;
 
-pub const FRAMES: [&str; 10] = [
+pub const FRAMES: [&str; 11] = [
     "box.open",
     "box.close",
     "box.act",
@@ -14,6 +14,7 @@ pub const FRAMES: [&str; 10] = [
     "box.recording.fetch",
     "box.recording.drop",
     "box.recording.set",
+    "box.recording.upload",
 ];
 
 #[derive(Debug, Deserialize)]
@@ -105,6 +106,17 @@ pub struct Fetch {
     pub max_seconds: u64,
     pub max_bytes: u64,
 }
+
+/// Send the box's whole kept recording to core within `max_bytes` (ISS-1338).
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Upload {
+    pub box_id: String,
+    pub max_bytes: u64,
+}
+
+/// What the clip upload names in a span's place for the whole kept recording (`BOX_SESSION_CLIP`).
+pub const SESSION_CLIP: &str = "session";
 
 /// A uuid, as every box id is: the id names a directory on this device, so nothing else passes.
 pub fn is_uuid(s: &str) -> bool {

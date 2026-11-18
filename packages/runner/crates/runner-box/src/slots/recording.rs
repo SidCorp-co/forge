@@ -1,12 +1,16 @@
 //! A box's recording on this device (ISS-1321): nothing records until core asks, by `box.open` or
 //! `box.assign` naming `record`, `box.recording.set`, or a span's mark that begins or ends it. A
-//! span's clip is cut from what was recorded, sealed into segments (see `record`).
+//! span's clip is cut from what was recorded, sealed into segments (see `record`), and a recording a
+//! person asked for is sent whole once its box ended, when core says (`box.recording.upload`).
 
 use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
 
 use super::{cut, Boxes};
+
+/// How long a send waits for the box's close to seal its recording.
+const CLOSE_WAIT: std::time::Duration = std::time::Duration::from_secs(120);
 use crate::{frames, record};
 
 impl Boxes {
@@ -155,6 +159,58 @@ impl Boxes {
             )
         })?;
         Ok((rec, clock))
+    }
+
+    /// Send the box's whole kept recording to core through the span clip's own upload, `session` in
+    /// the span's place (ISS-1338), once its close has sealed it; what stops it is said as a
+    /// `session_failed` report naming why.
+    pub(super) async fn upload_session(&self, f: frames::Upload) {
+        if let Err((fault, detail)) = self.send_session(&f.box_id, f.max_bytes).await {
+            let body = json!({ "kind": "session_failed", "fault": fault, "detail": cut(&detail) });
+            self.report(&f.box_id, body).await;
+        }
+    }
+
+    async fn send_session(&self, id: &str, max_bytes: u64) -> Result<(), record::WholeFault> {
+        // core sends this after `box.close`, but each frame runs on its own: the close seals first
+        let until = tokio::time::Instant::now() + CLOSE_WAIT;
+        while self.slots().contains_key(id) {
+            if tokio::time::Instant::now() >= until {
+                let why = format!(
+                    "box {id} still runs on this device, so its recording is not closed to send"
+                );
+                return Err(("CUT_FAILED", why));
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        }
+        let dir = self.0.ctx.box_dir(id);
+        let files: Vec<PathBuf> = record::load_clock(&dir)
+            .map(|c| {
+                record::recorded(&dir, &c)
+                    .into_iter()
+                    .map(|(p, _)| p)
+                    .collect()
+            })
+            .unwrap_or_default();
+        if files.is_empty() {
+            return Err((
+                "DEVICE_GONE",
+                format!("box {id} has no recording on this device"),
+            ));
+        }
+        let ffmpeg = self.0.ctx.env.which("ffmpeg").ok_or((
+            "CUT_FAILED",
+            "this device has no ffmpeg to encode the recording with".to_string(),
+        ))?;
+        let work = dir.join("cuts").join(frames::SESSION_CLIP);
+        let made = record::whole(&ffmpeg, &files, max_bytes, &work).await;
+        let _ = std::fs::remove_dir_all(&work);
+        let c = made?;
+        self.0
+            .core
+            .clip(id, frames::SESSION_CLIP, c.clip, c.still)
+            .await
+            .map_err(|e| ("SEND_FAILED", e))
     }
 
     pub(super) fn drop_recording(&self, id: &str) {
