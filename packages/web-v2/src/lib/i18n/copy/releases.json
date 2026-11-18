@@ -301,7 +301,7 @@
     "releases.visual.close": "Close",
     "releases.owed.title": "Visuals owed",
     "releases.owed.tag": "Visual owed",
-    "releases.owed.why": "Changes a screen and shows no clip or shot: its judge marks one, or says why none.",
+    "releases.owed.why": "Changed a screen; its judge marked no clip or shot.",
     "releases.attention.title": "Needs attention",
     "releases.attention.removed": "Removes: {list}",
     "releases.attention.unproven": "{n} of {total} criteria not proven",
