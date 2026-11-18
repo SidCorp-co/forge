@@ -236,7 +236,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:screenshot field:json:args
     field:json:impact field:json:debts field:json:cleared field:json:remains field:json:ci
     field:json:set field:json:failed field:json:missed
-    field:json:door field:json:mode`,
+    field:json:door field:json:mode field:json:acts field:json:attach`,
   'a time, a version or a time zone': words`
     field:json:agentVersion field:json:dueAt field:json:dueBy field:json:expectedEditedAt
     field:json:expiresAt field:json:minVersion field:json:parkDeadlineAt field:json:readAt

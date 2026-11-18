@@ -73,7 +73,7 @@ describe('an attach (ISS-1322)', () => {
   it('refuses a caller on another device or on none BOX_ATTACH_REMOTE, naming the act door', () => {
     const elsewhere = attachFault(browser, '0a1d0c3a-1b2c-4d5e-8f90-a1b2c3d4e5f6');
     expect(elsewhere?.code).toBe('BOX_ATTACH_REMOTE');
-    expect(elsewhere?.detail).toContain('no tunnel carries it yet');
+    expect(elsewhere?.detail).toContain('which no tunnel carries yet');
     expect(elsewhere?.detail).toContain('forge-runner box act');
     expect(attachFault(browser, null)?.detail).toMatch(
       /^the credential you call with is bound to no device/,
