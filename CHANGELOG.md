@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.738] - 2026-11-18
+
+Watch a test box full screen or open just its screen from its own link
+
+### Added
+
+- **Watch a box full screen, or from its own link.** Full screen fills your display; a box's link opens just its screen, on a phone too, and you can take control there. A closed box plays its clip.
+
 ## [0.4.0-dev.737] - 2026-11-18
 
 An agent can attach its own browser tools to a Forge Box
