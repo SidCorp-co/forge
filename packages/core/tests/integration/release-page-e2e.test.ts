@@ -295,6 +295,9 @@ describe('the page reads off the release record', () => {
         detail: 'Nurses see a reminder before each visit.',
         requirementKey: 'REQ-1',
         screen: 'Visits',
+        // its landing names data and config, no screen, and no judge marked a visual (ISS-1308)
+        ui: false,
+        visual: null,
       },
     ]);
     expect(p.fixes).toEqual([
@@ -306,6 +309,9 @@ describe('the page reads off the release record', () => {
         detail: 'A visit report keeps its filter after a reload.',
         requirementKey: 'REQ-1',
         screen: null,
+        // its landing names nothing, so whether it touched a screen is not said
+        ui: null,
+        visual: null,
       },
     ]);
     expect(p.actionRequired.map((x) => [x.kind, x.ref])).toEqual([

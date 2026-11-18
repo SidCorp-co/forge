@@ -260,7 +260,7 @@
     "by": "ISS-1251"
   },
   "POST /api/issues/:id/verdicts": {
-    "hash": "cf084919be8bea61",
+    "hash": "0c864300a8d0830e",
     "on": "2026-11-18",
     "by": "ISS-1308"
   },

@@ -57,12 +57,7 @@ export const ISSUE_REST_CARDS = {
       },
       {
         when: 'a criterion the design classes observable passed or fell short',
-        do: 'send the probe you ran with it, and a clip or `withoutClip` saying why none',
-      },
-      {
-        when: 'the pass shows a screen change its release line should carry',
-        do: 'mark its clip or shots in `releaseVisual` ({ desktop, phone, still, seconds }), each by attachment id',
-        watch: 'a file of another issue is refused VERDICT_RELEASE_VISUAL_FOREIGN; a name, never',
+        do: 'send its probe, a clip or `withoutClip`, and mark what shows its line in `releaseVisual`',
       },
       {
         when: 'you review a change you did not build and judge a code-property criterion',

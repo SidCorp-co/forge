@@ -229,7 +229,10 @@ describe('a judge marks the release visual and a master posts the card (ISS-1308
       expect(text).toContain('"visual owed"');
       expect(text).toContain('`withoutClip`');
       const codes = [...new Set(text.match(/VERDICT_RELEASE_VISUAL_[A-Z_]+/g) ?? [])];
-      expect(codes.sort()).toEqual(['VERDICT_RELEASE_VISUAL_FOREIGN', 'VERDICT_RELEASE_VISUAL_SHAPE']);
+      expect(codes.sort()).toEqual([
+        'VERDICT_RELEASE_VISUAL_FOREIGN',
+        'VERDICT_RELEASE_VISUAL_SHAPE',
+      ]);
       for (const code of codes) expect(VERDICT_REFUSAL_CODES).toContain(code);
     },
   );
