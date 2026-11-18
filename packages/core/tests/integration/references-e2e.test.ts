@@ -367,8 +367,8 @@ describe("a followed source's releases digested (c2)", () => {
     const source = await sourceNamed('coollabsio/coolify');
     const open = (await timeline(source))['v4.7.3']?.idea as string;
     const out = await followSource(source, coolify('v4.7.6', 'v4.7.5'));
-    expect(out).toMatchObject({ ideas: [open], declined: 0 });
     expect(await ideaCount()).toBe(2);
+    expect(out).toMatchObject({ ideas: [open], declined: 0 });
     expect((await timeline(source))['v4.7.6']).toMatchObject({ outcome: 'idea', idea: open });
     const [said] = await rows<{ said: string }>(
       sql`SELECT o.said FROM feedback_occurrences o JOIN feedback f ON f.id = o.feedback_id
@@ -477,14 +477,14 @@ describe('a version declined for an item (ISS-1289)', () => {
 
     const read = coolify('v4.7.7', 'v4.7.6', 'v4.7.3', 'v4.7.2', 'v4.7.1', 'v4.7.0');
     const out = await followSource(again, read);
-    expect(out).toMatchObject({ declined: 5 });
-    expect(out.ideas).toHaveLength(1);
-    expect(await ideaCount()).toBe(3);
     const idea = await newestIdea();
-    expect(idea?.title).toMatch(/^coollabsio\/coolify v4\.7\.7 may help with ISS-1082/);
     for (const tag of ['v4.7.6', 'v4.7.3', 'v4.7.2', 'v4.7.1', 'v4.7.0']) {
       expect(idea?.body, tag).not.toContain(`releases/tag/${tag}`);
     }
+    expect(idea?.title).toMatch(/^coollabsio\/coolify v4\.7\.7 may help with ISS-1082/);
+    expect(await ideaCount()).toBe(3);
+    expect(out.ideas).toHaveLength(1);
+    expect(out).toMatchObject({ declined: 5 });
     // each declined version stays on the new entry's timeline against the idea that declined it
     const byTag = await timeline(again);
     expect(byTag['v4.7.7']).toMatchObject({ outcome: 'idea', idea: out.ideas[0] });
