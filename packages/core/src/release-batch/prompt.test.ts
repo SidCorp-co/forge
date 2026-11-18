@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ReleasePath } from '../project-config/index.js';
+import { FINISH_ACCOUNT_KEY, finishBodySchema } from './finish-body.js';
 import type { ReleasePlan } from './plan.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
 
@@ -115,5 +116,59 @@ describe('the release prompt over production sites (ISS-1077)', () => {
     const text = over([channel('live', 'b-mail', 'https://mail.example.test')]);
     expect(text).toContain('- coolify, binding b-mail\n');
     expect(text).not.toContain('sites');
+  });
+});
+
+// ISS-1334 (FB-744): the brief asked the run to say things "in what you record", a place no door
+// took, so the run sent `summary` to finish, was refused, and commented on every roster issue. Each
+// thing the brief asks the run to say names the key a release-batch door takes it in.
+describe('the release brief names the door that takes each thing it asks the run to say (ISS-1334)', () => {
+  const brief = buildReleaseBatchPrompt({
+    runId: 'run-1',
+    projectId: 'project-1',
+    defaultBranch: 'dev',
+    path,
+    plan: {
+      ...plan,
+      releaseRunnerLabel: 'release-box',
+      channels: [
+        {
+          environment: 'live',
+          site: 'live',
+          url: null,
+          bindingId: 'b-live',
+          provider: 'coolify',
+          label: '',
+          instructions: null,
+          releaseRunnerLabel: null,
+          verify: null,
+          verifySource: 'none',
+          rollback: null,
+        },
+      ],
+    },
+    releaseRunnerPreferenceMet: false,
+    issues: [],
+  });
+  const sentences = brief.split(/(?<=\.)\s+/);
+
+  it('asks for nothing "in what you record", the place no door takes', () => {
+    expect(brief).not.toMatch(/in what you record/i);
+  });
+
+  it('names `note` on `finish` wherever it asks for the run’s account, a key finish takes', () => {
+    const asks = sentences.filter((s) => /\bsay\b|\byour account\b/i.test(s));
+    expect(asks.length).toBeGreaterThanOrEqual(3);
+    // each ask names its door's key: the account on finish, or what an abort carried on abort
+    for (const ask of asks) {
+      expect(ask.includes(`\`${FINISH_ACCOUNT_KEY}\``) || ask.includes('"carried"'), ask).toBe(
+        true,
+      );
+    }
+    expect(Object.keys(finishBodySchema.shape)).toContain(FINISH_ACCOUNT_KEY);
+    expect(brief).toContain(
+      'whether the preference was honoured in your account, `note` on `finish`',
+    );
+    expect(brief).toContain('what you took from each in your account, `note` on `finish`');
   });
 });

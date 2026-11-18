@@ -978,6 +978,11 @@ export interface ReleaseDetail extends ReleaseSummary {
 	 * included, is in `cuts`.
 	 */
 	attempts: ReleaseAttemptView[];
+	/**
+	 * The run's own account of this release in its words (ISS-1334): the `note` its finish carried,
+	 * else the account its record took; null where it gave none. Absent on a reply before ISS-1334.
+	 */
+	account?: string | null;
 	/** Every attempt at this release, first first (ADR 0011), each with how it ended. */
 	cuts: ReleaseCutView[];
 	production: { name: string | null; url: string | null } | null;

@@ -51,6 +51,7 @@ import {
   type ViewerFacts,
   viewerDecides,
 } from './release-view.js';
+import { runAccountOf } from './run-account.js';
 
 const NOBODY = nobodyWaits(say('releases.rule.issueShipped'));
 
@@ -440,6 +441,8 @@ export function detailOf(
     approvalRequired: s.required,
     unapproved: p.unapproved,
     attempts: p.attempts.map(attemptView),
+    // the run's own account: its finish's note, else what the record door took (ISS-1334)
+    account: runAccountOf(p.runMetadata) ?? p.attempts.find((a) => a.account)?.account ?? null,
     cuts: p.cuts,
     production,
     ownerDeploys: s.ownerDeploys,

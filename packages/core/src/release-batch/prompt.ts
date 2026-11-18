@@ -3,6 +3,7 @@
 
 import { markUntrusted } from '../lib/untrusted-text.js';
 import { describeCrossings, type ReleasePath } from '../project-config/index.js';
+import { FINISH_ACCOUNT_KEY } from './finish-body.js';
 import { RELEASE_BATCH_SKILL, type ReleasePlan, releaseBatchPath } from './plan.js';
 
 interface IssueSummary {
@@ -84,7 +85,7 @@ export function buildReleaseBatchPrompt(args: BuildReleaseBatchPromptArgs): stri
     ? `\nrelease runner: this project prefers a box labelled \`${plan.releaseRunnerLabel}\`${
         args.releaseRunnerPreferenceMet
           ? ''
-          : ' — no box eligible to release carried it when this batch was cut. Read `releaseRunner` in the batch context for the box this job was claimed on, and say in what you record whether the preference was honoured.'
+          : ` — no box eligible to release carried it when this batch was cut. Read \`releaseRunner\` in the batch context for the box this job was claimed on, and say whether the preference was honoured in your account, \`${FINISH_ACCOUNT_KEY}\` on \`finish\`.`
       }`
     : '';
   const channelLines =
@@ -115,7 +116,7 @@ function renderReach(projectId: string, runId: string): string {
   const path = releaseBatchPath(projectId, runId);
   return `
 ### How you reach Forge
-Every call below is \`forge-runner api ${path}[/...]\`: \`${path}\` reads the batch, \`${path}/method -X POST\` announces your method, \`${path}/finish -X POST\` records the release, \`${path}/state\` reads its outcome, \`${path}/abort -X POST\` gives the batch back. It runs on the credential this session was started with. Right after you push the release commit, before you deploy it, \`forge-runner release range --project-id ${projectId} --run ${runId} --head <sha>\`, run in the checkout you cut the release in, reports what its commit range ships on the same credential: the release page reads what an admin must do from it, and Forge tags that commit \`v<version>\` on the source host, so the build you deploy can read its version.
+Every call below is \`forge-runner api ${path}[/...]\`: \`${path}\` reads the batch, \`${path}/method -X POST\` announces your method, \`${path}/finish -X POST\` records the release and takes your account of it in \`${FINISH_ACCOUNT_KEY}\`, which the release page shows, \`${path}/state\` reads its outcome, \`${path}/abort -X POST\` gives the batch back. It runs on the credential this session was started with. Right after you push the release commit, before you deploy it, \`forge-runner release range --project-id ${projectId} --run ${runId} --head <sha>\`, run in the checkout you cut the release in, reports what its commit range ships on the same credential: the release page reads what an admin must do from it, and Forge tags that commit \`v<version>\` on the source host, so the build you deploy can read its version.
 
 If the first call is refused, STOP before you touch any branch, tag or deployment: nothing you did could be recorded. End the turn saying so, with the refusal's text. Do not look for another credential on this machine.
 
@@ -170,7 +171,7 @@ function renderProcedure(plan: ReleasePlan): string {
 }
 
 const RECORD_CLOSES = `### Your finish is the release's record
-Call \`finish\` once you have watched the deploy go live: your finish is the record of this release under the version it was cut with, and it closes the roster (owner ruling 2026-11-01). The server reads no probe, no deployment record and no provider report, and replays no kept probe. Pass \`commit\`, the SHA you pushed, as your evidence: it is kept, never compared. Read the outcome with \`state\`: \`finish.verification\` reads \`recorded\`. Never call \`finish\` for a deploy you did not see land.`;
+Call \`finish\` once you have watched the deploy go live: your finish is the record of this release under the version it was cut with, and it closes the roster (owner ruling 2026-11-01). The server reads no probe, no deployment record and no provider report, and replays no kept probe. Pass \`commit\`, the SHA you pushed, as your evidence: it is kept, never compared. Pass \`${FINISH_ACCOUNT_KEY}\`, your account of the release (the tag, what you read, what you did), which the release page shows; comments on the roster's issues are not where it goes. Read the outcome with \`state\`: \`finish.verification\` reads \`recorded\`. Never call \`finish\` for a deploy you did not see land.`;
 
 const UNDECLARED_PROCEDURE = `### This project's release procedure
 This project has declared none to Forge.
@@ -179,7 +180,7 @@ The method is where this project keeps it. Read it there:
 - the repository you are releasing — its release and deploy scripts, its CI workflows, its branch and changelog conventions;
 - the project's own configuration, which the batch context above carries;
 - what this session already knows about this project.
-Say in what you record which of those you read and what you took from each.`;
+Say which of those you read and what you took from each in your account, \`${FINISH_ACCOUNT_KEY}\` on \`finish\`.`;
 
 function renderRepairForward(plan: ReleasePlan): string {
   const texts = plan.channels

@@ -8,6 +8,7 @@ import type { ContentsItem } from "@/design";
 import { ViewHeading } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
+import { Written } from "@/lib/i18n/written";
 import type { ReleaseDetail } from "../types";
 import { GateLine } from "./release-bits";
 import { ReleaseHistory } from "./release-checks";
@@ -71,6 +72,12 @@ export function ReleaseRecord({ r, slug }: { r: ReleaseDetail; slug: string }) {
         <p className="break-words text-13 text-muted" data-testid="release-tag-why">
           {t("releases.tagWhy", { name: r.tag.name, reason: r.tag.reason })}
         </p>
+      ) : null}
+      {r.account ? (
+        <details className="text-13" data-testid="release-account">
+          <summary className="cursor-pointer text-muted">{t("releases.account")}</summary>
+          <Written className="mt-1 block whitespace-pre-wrap text-12 text-muted" text={r.account} lang={null} />
+        </details>
       ) : null}
       <DemoNotesWarning r={r} />
       {r.gates.length > 0 ? (

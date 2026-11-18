@@ -18,6 +18,7 @@ import { createReleaseBatch } from './create.js';
 import { requireReleaseActAs } from './cut-as.js';
 import { CUTS_BY_MASTER_ACT } from './declarations.js';
 import { abortReleaseBatch } from './finish.js';
+import { FINISH_BODY_HINT, finishBodySchema, sitesSchema } from './finish-body.js';
 import { acceptReleaseBatchFinish } from './finish-job.js';
 import { announceMethod } from './method.js';
 import {
@@ -30,6 +31,7 @@ import { loadReleaseReadiness } from './readiness.js';
 import { recordRelease } from './record-door.js';
 import { readReleaseRecord } from './recorded.js';
 import { refuseRelease } from './refuse.js';
+import { writeRunAccount } from './run-account.js';
 import { attachShippedCommit } from './shipped-commit.js';
 import { recordShippedIn } from './shipped-in.js';
 import { correctShippedIn } from './shipped-in-correct.js';
@@ -174,18 +176,6 @@ releaseBatchRoutes.get(
 
 const runParamSchema = z.object({ projectId: z.uuid(), runId: z.uuid() });
 
-/** One production site a record names shipped, with what its own runtime verification read it serving (ISS-1077). */
-const siteRecordSchema = z
-  .object({
-    name: z.string().trim().min(1).max(63),
-    serves: z.string().trim().min(1).max(200),
-  })
-  .strict();
-const sitesSchema = z.array(siteRecordSchema).min(1).max(10);
-
-const finishBodySchema = z
-  .object({ commit: z.string().trim().max(200).optional(), sites: sitesSchema.optional() })
-  .strict();
 const abortBodySchema = z
   .object({
     reason: z.string().trim().max(REASON_PARAGRAPH_MAX).optional(),
@@ -290,13 +280,16 @@ releaseBatchRoutes.post(
   '/:projectId/release-batches/:runId/finish',
   zValidator('param', runParamSchema),
   RUN_WRITE,
-  zValidator('json', finishBodySchema),
+  zValidator('json', finishBodySchema, invalid(FINISH_BODY_HINT)),
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
     const userId = c.get('userId');
     await loadRunForProject(runId, projectId, userId);
 
-    const accepted = await acceptReleaseBatchFinish(runId, restActor(c), c.req.valid('json'));
+    const body = c.req.valid('json');
+    const accepted = await acceptReleaseBatchFinish(runId, restActor(c), body);
+    // the account is kept once the finish is taken: a refused finish records nothing (ISS-1334)
+    if (body.note) await writeRunAccount(runId, body.note);
     return c.json(
       { runId, finish: accepted.finish },
       accepted.finish.state === 'finished' ? 200 : 202,

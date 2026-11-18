@@ -19,6 +19,7 @@
     "releases.attemptN": "Attempt {n}",
     "releases.attemptRefused": "Refused:",
     "releases.attemptWore": "wore {v}",
+    "releases.account": "Run account",
     "releases.attempts": "Attempts",
     "releases.batchRun": "Batch run",
     "releases.carried.none": "Not carried",
