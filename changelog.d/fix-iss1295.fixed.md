@@ -1,1 +1,0 @@
-**A feedback item whose fix was already cut into a release now names that release's next step.** It reads, for example, approve on release 0.28.0 by its approvers, instead of asking for the cut again.

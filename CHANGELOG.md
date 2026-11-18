@@ -9,6 +9,17 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.724] - 2026-11-18
+
+Batch merge checks, carrier waits, quieter master wakes, safe tmux-to-background moves
+
+### Fixed
+
+- **One merge check covers a whole batch.** `pnpm merge-check --probes <issue id>=<file>`, once per issue, runs every issue's probes; its one report is recorded on each issue, and an issue it does not name is refused by name.
+- **A feedback item whose fix was already cut into a release now names that release's next step.** It reads, for example, approve on release 0.28.0 by its approvers, instead of asking for the cut again.
+- **The master's wake stops repeating issues it cannot take.** While every run slot is busy it says once how many wait, and an issue passed over until a date or condition leaves the list meanwhile.
+- **Masters move from tmux to background sessions safely.** An idle master is moved under the same conversation; a busy one waits in its pane, no duplicate copy is left running, and config writes keep every setting.
+
 ## [0.4.0-dev.723] - 2026-11-18
 
 A park citing a shipped issue asks a person; no close without a release note
