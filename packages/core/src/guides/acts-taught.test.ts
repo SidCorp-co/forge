@@ -108,6 +108,7 @@ describe('the issue-flow method teaches the acts that name what they wait on', (
       "a merge check runs the issue's kept probes and is refused by name without them (REQ-36 BC-9)",
       [
         '`pnpm merge-check --probes <file>`',
+        '`--probes <issue id>=<file>`',
         '`GET /api/issues/:id/criteria`',
         'MERGE_PROBE_MISSING',
         'MERGE_PROBE_RED',

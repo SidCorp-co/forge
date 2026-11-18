@@ -280,13 +280,14 @@ and what each is refused, is the transition card below.
   rebased onto the latest base, and record what it wrote before you land:
   \`POST /api/issues/:id/merge-check\` with its report
   \`{ base: { branch, sha }, head, mode, touched, checks, probes, standing }\`. The check runs the
-  kept probe of each criterion the change claims (here \`pnpm merge-check --probes <file>\`, the file
-  holding \`GET /api/issues/:id/criteria\` read after your verdicts), and \`probes\` names the check
-  that ran each one. A criterion whose latest verdict is a pass, short or fail at a commit the base
-  already carries stands and owes none, and \`standing\` names it with that verdict; a fail standing
-  so is a standing fail, named apart and left a fail. A skipped one owes none. A criterion the change
-  claims is one with no verdict yet or a latest verdict at a commit the base does not carry, so a
-  fix round claims a fail by judging it at its head.
+  kept probe of each criterion the change claims (here \`pnpm merge-check --probes <file>\`, the
+  file holding \`GET /api/issues/:id/criteria\` read after your verdicts; a batch runs it once,
+  naming each issue it lands \`--probes <issue id>=<file>\`, and records that one report on each),
+  and \`probes\` names the check that ran each one. A criterion whose latest verdict is a pass,
+  short or fail at a commit the base already carries stands and owes none, and \`standing\` names it
+  with that verdict; a fail standing so is a standing fail, named apart and left a fail. A skipped
+  one owes none. A criterion the change claims is one with no verdict yet or a latest verdict at a
+  commit the base does not carry, so a fix round claims a fail by judging it at its head.
   A report missing a check every merge needs is refused \`MERGE_CHECK_INCOMPLETE\`, one filing a
   check under another kind \`MERGE_CHECK_KIND_MISMATCH\`, one behind its base \`MERGE_BEHIND_BASE\`,
   one with a red check \`MERGE_CHECK_RED\`, one that did not run a claimed criterion's kept probe,
