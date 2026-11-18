@@ -18,6 +18,7 @@ import type { Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { issueCriteria } from '../db/schema-issue-criteria.js';
 import { readAdoptionDelivery } from './adoption-delivery.js';
+import { closeNoteFault } from './close-note-guard.js';
 import { renderCriteriaText } from './criteria/criteria-text.js';
 import { listCriteria } from './criteria/store.js';
 import { designShortfall, readDesignDelivery } from './design-delivered-guard.js';
@@ -335,7 +336,8 @@ export async function postMovedOut(
  * (`issues.release_batch_run_id`) and answers its own criteria hold; a design-only issue needs no one,
  * its approved revisions being what it delivered (REQ-45 BC-4), and neither does an adoption-only one
  * while its record holds (REQ-5 BC-17). Otherwise the close is the holding run's (`notTheHolder`, as
- * its move here was, `held` naming who else holds it), and each criterion it did not meet is moved out on the record first
+ * its move here was, `held` naming who else holds it), over its release note (`close-note-guard.ts`),
+ * and each criterion it did not meet is moved out on the record first
  * (`close-in-scope.ts`); `moved` takes the moves for the close to write.
  */
 export async function inScopeGuard(
@@ -364,6 +366,8 @@ export async function inScopeGuard(
       details: { ...held.details, designOnly: design.designOnly, adopted: adoption.refs },
     };
   }
+  const unnoted = await closeNoteFault(ctx);
+  if (unnoted) return unnoted;
   const scope = await closeScopeOf(
     ctx.executor,
     ctx.issue,

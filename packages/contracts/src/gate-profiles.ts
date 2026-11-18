@@ -431,7 +431,7 @@ export const isGateId = (id: string): id is GateId => (GATE_IDS as readonly stri
 export const KERNEL_RULES = [
 	{ id: "transition_evidence", holds: "no status move without its evidence: a legal edge, its reason, its waiting kind", codes: ["ILLEGAL_TRANSITION", "TRANSITION_REASON_REQUIRED", "WAITING_KIND_REQUIRED"] },
 	{ id: "merged", holds: "no awaiting_release without a recorded merge", codes: ["MERGE_NOT_RECORDED", "MERGE_DESIGN_ONLY"] },
-	{ id: "close_in_scope", holds: "no close without its recorded merge and every criterion met in scope or moved out on the record, by the run holding the issue or a release that claimed it", codes: ["CLOSE_CRITERION_UNPLACED", "CLOSE_REQUIRES_SHIPPED", "CLOSE_ONLY_BY_RELEASE", "DESIGN_NOT_DELIVERED"] },
+	{ id: "close_in_scope", holds: "no close without its recorded merge, a holder's close without its release note, and every criterion met in scope or moved out on the record, by the run holding the issue or a release that claimed it", codes: ["CLOSE_CRITERION_UNPLACED", "CLOSE_RELEASE_NOTE_MISSING", "CLOSE_REQUIRES_SHIPPED", "CLOSE_ONLY_BY_RELEASE", "DESIGN_NOT_DELIVERED"] },
 	{ id: "run_holder", holds: "only the holding run, or releases.approve, moves an issue to in_progress, awaiting_release or closed", codes: ["NOT_THE_HOLDER", "NO_HOLDER"] },
 	{ id: "review_by_builder", holds: "a recorded review is never the builder's own", codes: ["REVIEW_BY_BUILDER"] },
 	{ id: "verdict_shape", holds: "a verdict names a known criterion and carries no secret", codes: ["VERDICT_CRITERION_UNKNOWN", "VERDICT_SECRET"] },

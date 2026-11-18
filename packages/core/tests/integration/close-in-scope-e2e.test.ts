@@ -108,7 +108,14 @@ afterAll(async () => {
 });
 
 let seq = 300;
-/** An issue its run landed: at `status` with its merge recorded, and `criteria` as its live rows. */
+/** The note its run wrote before the close, as the close asks (ISS-1293). */
+const NOTE = JSON.stringify({
+  section: 'Changed',
+  title: 'The catalog lists the new field',
+  userFacing: 'The catalog now lists the new field.',
+});
+
+/** An issue its run landed: at `status` with its merge and release note recorded, and `criteria` as its live rows. */
 async function landed(
   criteria: string[],
   status = 'awaiting_release',
@@ -116,8 +123,8 @@ async function landed(
   seq += 1;
   const id = randomUUID();
   await rows(sql`
-    INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, merged_at, merged_commit_sha)
-    VALUES (${id}, ${projectId}, ${seq}, ${`catalog work ${seq}`}, ${status}, ${ownerId}, now(), ${SHA})`);
+    INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, merged_at, merged_commit_sha, release_notes)
+    VALUES (${id}, ${projectId}, ${seq}, ${`catalog work ${seq}`}, ${status}, ${ownerId}, now(), ${SHA}, ${NOTE}::jsonb)`);
   for (const [i, statement] of criteria.entries()) {
     await rows(sql`
       INSERT INTO issue_criteria (issue_id, n, statement, position)

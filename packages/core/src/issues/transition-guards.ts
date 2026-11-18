@@ -44,6 +44,8 @@
  *                      its newest verdict a fail) moved out on the record, to an
  *                      issue or the requirement (`close-in-scope.ts`); a release's
  *                      close answers its own criteria hold
+ *                      the holder's close: a release note recorded, `Skip`       CLOSE_RELEASE_NOTE_MISSING
+ *                      included (`close-note-guard.ts`); a release's is not asked
  *                      from any other live status, or from awaiting_release      DESIGN_NOT_DELIVERED
  *                      held by no run and claimed by no release, a design-only
  *                      issue whose design revisions are all approved (REQ-45 BC-4)

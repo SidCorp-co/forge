@@ -69,6 +69,8 @@ export const ISSUE_TRANSITION_REFUSAL_CODES = [
 	"CLOSE_CRITERION_UNPLACED",
 	/** `unmet` on a move whose target is not `closed`: only a close moves criteria out. */
 	"UNMET_NOT_APPLICABLE",
+	/** A holder's close of an issue that ships, with no release note recorded on it (ISS-1293). */
+	"CLOSE_RELEASE_NOTE_MISSING",
 	"DESIGN_NOT_DELIVERED",
 	"TRANSITION_REASON_REQUIRED",
 	"WAITING_KIND_REQUIRED",
