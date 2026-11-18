@@ -119,26 +119,28 @@ function SpanChip({ span }: { span: BoxSpanRecord }) {
   );
 }
 
-function BoxFoot({ box }: { box: BoxRecord }) {
+/** Whether the box records, its clock and why (ISS-1321), read at a glance in the box's head. */
+function RecordingLine({ box }: { box: BoxRecord }) {
   const t = useCopy();
-  const spans = useBoxSpans(box.id).data ?? [];
   const on = box.recording?.state === "recording";
   const recording = on && box.recording?.startedAt ? box.recording.startedAt : null;
   const why = on && box.recording?.why ? t(`boxes.rec.why.${box.recording.why}`) : null;
   const now = useNow(1000, !!recording && isLive(box));
+  if (!isLive(box) && !on) return null;
   return (
-    <footer className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-line-subtle px-3 py-2 text-12 text-muted" data-testid="box-foot">
+    <span className={`text-12 tabular-nums ${on ? "text-danger-11" : "text-muted"}`} data-testid="box-recording" data-on={on} data-why={on ? (box.recording?.why ?? "") : undefined}>
+      {on ? [`● ${recording ? t("boxes.foot.recording", { at: clock(now - Date.parse(recording)) }) : t("boxes.rec.on")}`, why].filter(Boolean).join(" · ") : t("boxes.rec.off")}
+    </span>
+  );
+}
+
+function BoxFoot({ box }: { box: BoxRecord }) {
+  const spans = useBoxSpans(box.id).data ?? [];
+  return (
+    <footer className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-line-subtle px-3 py-2 text-12 text-muted empty:hidden" data-testid="box-foot">
       {spans.map((s) => (
         <SpanChip key={s.id} span={s} />
       ))}
-      <span className="flex-1" />
-      {isLive(box) || on ? (
-        <span className="tabular-nums" data-testid="box-recording" data-on={on} data-why={on ? (box.recording?.why ?? "") : undefined}>
-          {on
-            ? [`● ${recording ? t("boxes.foot.recording", { at: clock(now - Date.parse(recording)) }) : t("boxes.rec.on")}`, why].filter(Boolean).join(" · ")
-            : t("boxes.rec.off")}
-        </span>
-      ) : null}
     </footer>
   );
 }
@@ -157,6 +159,7 @@ export function BoxLive(props: LiveProps) {
         <ToneBadge tone={STATE_TONE[box.state]} label={t(`boxes.state.${box.state}`)} title={t(`boxes.state.${box.state}`)} value={box.state} pulse={isLive(box)} />
         <span className="text-12 text-muted">{meta}</span>
         {isLive(box) && !mine ? <span className="text-12 text-muted">{t("boxes.live.watchOnly")}</span> : null}
+        <RecordingLine box={box} />
         <span className="flex-1" />
         <BoxActs {...props} fps={fps} onFps={setFps} />
         <span className="basis-full empty:hidden">

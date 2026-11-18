@@ -1,7 +1,8 @@
 // A project's Boxes page (ISS-1276 c7, mockup MK-12) witnessed as drawn, at desktop width and on a
 // phone (390×844): the overview, the boxes and the waiting queue, and the box a person holds selected,
 // its live view, who holds it and since when, the idle countdown, the command feed with the agent's act
-// refused while they hold it, and the footer. The records are `src/test/boxes.ts`, the ones the page's
+// refused while they hold it, and the footer saying it records and why, with the toggle that stops it
+// (ISS-1321), in light and dark, then stopped. The records are `src/test/boxes.ts`, the ones the page's
 // tests use; core and the view socket are stood in for, and the view's one frame is drawn here, so the
 // screenshot shows the page, never a box. Each case logs its first view's word count.
 //
@@ -23,9 +24,18 @@ const PHONE = 600;
 const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
 const route = (r: string, id: string) => r.replace(":id", id).replace(/^\/api/, "");
 
-window.fetch = async (input: RequestInfo | URL) => {
+/** Whether the held box still records: the toggle's POST stops it, and the list reads it back. */
+let recording = true;
+const boxesNow = () =>
+  projectBoxes().map((b) => (b.id === BOX.held && !recording ? { ...b, recording: b.recording && { ...b.recording, state: "kept" as const, why: null } } : b));
+
+window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const path = new URL(String(input), "http://forge.invalid").pathname.replace(/^.*?\/api/, "");
-  if (path === route(BOX_ROUTES.ofProject, PROJECT_ID)) return json({ boxes: projectBoxes() });
+  if (init?.method === "POST" && path === route(BOX_ROUTES.recording, BOX.held)) {
+    recording = (JSON.parse(String(init.body)) as { on: boolean }).on;
+    return json({ box: boxesNow().find((b) => b.id === BOX.held) });
+  }
+  if (path === route(BOX_ROUTES.ofProject, PROJECT_ID)) return json({ boxes: boxesNow() });
   const issue = /^\/issues\/([^/]+)$/.exec(path)?.[1];
   if (issue && ISSUE_LABELS[issue]) return json(ISSUE_LABELS[issue]);
   if (path === route(BOX_ROUTES.acts, BOX.held)) return json({ acts: heldActs() });
@@ -108,6 +118,41 @@ createRoot(document.getElementById("root") as HTMLElement).render(
 );
 
 const q = (sel: string) => document.querySelector<HTMLElement>(sel);
+const settle = () => new Promise((r) => setTimeout(r, 400));
+const theme = (t: "light" | "dark") => {
+  document.documentElement.dataset.theme = t;
+  document.documentElement.classList.toggle("dark", t === "dark");
+};
+const button = (name: string) => [...document.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.trim() === name);
+
+/** What the page owes at every stage: its parts drawn, nothing sideways, the live view inside the window. */
+function drawn(): string[] {
+  const wrong: string[] = [];
+  const page = q("[data-testid=witness-page]");
+  if (page) {
+    const first = firstScreenWords(page);
+    const whole = firstScreenWords(page, { whole: true });
+    console.log(`${window.innerWidth}px: ${first.count} words on the first view, ${whole.count} on the whole page: ${first.words.join(" ")}`);
+  }
+  if (document.documentElement.scrollWidth > window.innerWidth) wrong.push(`the page scrolls sideways: ${document.documentElement.scrollWidth} px in ${window.innerWidth}`);
+  for (const id of ["boxes-band", "box-list", "box-queue", "box-live", "box-held-by", "box-idle", "box-foot", "box-recording", "box-open-record"]) if (!q(`[data-testid=${id}]`)) wrong.push(`no ${id} drawn`);
+  if (!document.body.textContent?.includes("Open a box to test by hand")) wrong.push("no Open a box to test by hand");
+  if (!q("[data-testid=box-feed-line][data-state=refused]")) wrong.push("the feed shows no refused act");
+  const view = q("[data-testid=box-view] img")?.getBoundingClientRect();
+  if (!view || view.width < 150) wrong.push(`the live view is ${Math.round(view?.width ?? 0)} px wide`);
+  else if (view.right > window.innerWidth + 0.5) wrong.push(`the live view runs past the window: ${Math.round(view.right)} in ${window.innerWidth}`);
+  return wrong;
+}
+
+/** The foot says whether the box records and why, and the toggle offers the move that changes it. */
+function says(on: boolean): string[] {
+  const wrong: string[] = [];
+  const said = q("[data-testid=box-recording]")?.textContent ?? "";
+  if (on && !/^● Recording · \d+:\d{2} · Turned on$/.test(said)) wrong.push(`the foot says "${said}", not that a person turned recording on`);
+  if (!on && said !== "Not recording") wrong.push(`the foot says "${said}", not Not recording`);
+  if (!button(on ? "Stop recording" : "Record")) wrong.push(`no ${on ? "Stop recording" : "Record"} toggle`);
+  return wrong;
+}
 
 window.__witness = {
   cases: [
@@ -115,21 +160,17 @@ window.__witness = {
     { name: "phone", width: 390, height: 844 },
   ],
   ready: () => !!q("[data-testid=box-queue]") && !!q("[data-testid=box-feed-line]") && q("[data-testid=box-view]")?.dataset.phase === "live" && !!q("[data-testid=box-view] img")?.getAttribute("src"),
-  probe: () => {
-    const wrong: string[] = [];
-    const page = q("[data-testid=witness-page]");
-    if (page) {
-      const first = firstScreenWords(page);
-      const whole = firstScreenWords(page, { whole: true });
-      console.log(`${window.innerWidth}px: ${first.count} words on the first view, ${whole.count} on the whole page: ${first.words.join(" ")}`);
-    }
-    if (document.documentElement.scrollWidth > window.innerWidth) wrong.push(`the page scrolls sideways: ${document.documentElement.scrollWidth} px in ${window.innerWidth}`);
-    for (const id of ["boxes-band", "box-list", "box-queue", "box-live", "box-held-by", "box-idle", "box-foot"]) if (!q(`[data-testid=${id}]`)) wrong.push(`no ${id} drawn`);
-    if (!document.body.textContent?.includes("Open a box to test by hand")) wrong.push("no Open a box to test by hand");
-    if (!q("[data-testid=box-feed-line][data-state=refused]")) wrong.push("the feed shows no refused act");
-    const view = q("[data-testid=box-view] img")?.getBoundingClientRect();
-    if (!view || view.width < 150) wrong.push(`the live view is ${Math.round(view?.width ?? 0)} px wide`);
-    else if (view.right > window.innerWidth + 0.5) wrong.push(`the live view runs past the window: ${Math.round(view.right)} in ${window.innerWidth}`);
-    return wrong;
-  },
+  stages: [
+    { name: "light", run: async () => (theme("light"), await settle(), [...drawn(), ...says(true)]) },
+    { name: "dark", run: async () => (theme("dark"), await settle(), [...drawn(), ...says(true)]) },
+    {
+      name: "stopped",
+      run: async () => {
+        theme("light");
+        button("Stop recording")?.click();
+        for (let i = 0; i < 30 && q("[data-testid=box-recording]")?.dataset.on !== "false"; i++) await settle();
+        return [...drawn(), ...says(false)];
+      },
+    },
+  ],
 };

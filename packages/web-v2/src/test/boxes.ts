@@ -65,6 +65,7 @@ export function projectBoxes(now = Date.now(), heldByMe = false): BoxRecord[] {
       issueId: ISSUE.order,
       holder: heldByMe ? { kind: "person", userId: ME, name: "Me" } : { kind: "person", userId: OWNER, name: "Chuong" },
       heldSince: ago(now, 100_000),
+      recording: { state: "recording", why: "person", startedAt: ago(now, 95_000) },
       viewport: { width: 390, height: 844 },
       view: { codec: "jpeg-frames", width: 390, height: 844 },
     }),
