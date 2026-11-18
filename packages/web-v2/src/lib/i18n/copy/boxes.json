@@ -94,6 +94,10 @@
     "boxes.session.fault.CUT_FAILED": "Encode failed",
     "boxes.session.fault.SEND_FAILED": "Upload failed",
     "boxes.session.fault.NO_ISSUE": "No issue",
-    "boxes.screen.refused": "Can't open box"
+    "boxes.screen.refused": "Can't open box",
+    "boxes.screen.refusedWhy.notFound": "Not found",
+    "boxes.screen.refusedWhy.badLink": "Bad link",
+    "boxes.screen.refusedWhy.noAccess": "No access",
+    "boxes.screen.refusedWhy.unavailable": "Not available"
   }
 }

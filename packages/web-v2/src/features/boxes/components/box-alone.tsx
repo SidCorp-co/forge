@@ -1,14 +1,14 @@
 // A box at its own address, `/projects/<slug>/boxes/<box id>` (ISS-1325): its screen alone, full
 // viewport, with the bar the full screen keeps, so a link from an issue, a release, a posted message
 // or a phone opens straight on the screen. A closed box says so and plays its session recording and
-// its spans' clips (`BoxEnded`, ISS-1338); a box the reader may not see is refused with core's own
-// words for why. Exit opens the Boxes
+// its spans' clips (`BoxEnded`, ISS-1338); a box the reader may not see, or an address naming none,
+// says why in a few words of its own, core's code on hover, never a raw id. Exit opens the Boxes
 // page on it. It moves live on its project's room, as the page does.
 
 import { BOX_LIMITS, type BoxRecord } from "@forge/contracts/boxes";
 import { useState } from "react";
 import { LoadingState, PageContainer } from "@/design";
-import { RefusalLine } from "@/lib/api/refusal-line";
+import { ApiError } from "@/lib/api/client";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useRouter } from "@/lib/navigation/router";
 import { projectRoom } from "@/lib/ws/rooms";
@@ -42,6 +42,17 @@ function Alone({ box, slug, canWrite }: { box: BoxRecord; slug: string; canWrite
   );
 }
 
+/** Why a box read was refused, as the screen words it: core's detail names raw ids, so it stays off the page (ISS-1325 c5). */
+function refusedWhy(err: unknown): "notFound" | "badLink" | "noAccess" | "unavailable" {
+  if (!(err instanceof ApiError)) return "unavailable";
+  if (err.status === 404) return "notFound";
+  if (err.status === 400) return "badLink";
+  if (err.status === 401 || err.status === 403) return "noAccess";
+  return "unavailable";
+}
+
+const refusedCode = (err: unknown): string | null => (err instanceof ApiError ? (err.code ?? null) : null);
+
 /** The box `boxId` alone; `canWriteIn` says whether the reader may write in the box's project. */
 export function BoxAlone({ boxId, slug, canWriteIn }: { boxId: string; slug: string; canWriteIn: (projectId: string) => boolean }) {
   const t = useCopy();
@@ -50,7 +61,9 @@ export function BoxAlone({ boxId, slug, canWriteIn }: { boxId: string; slug: str
     return (
       <PageContainer className="grid gap-2" data-testid="box-alone-refused">
         <p className="text-14 font-semibold">{t("boxes.screen.refused")}</p>
-        <RefusalLine error={boxQ.error} testid="box-alone-refusal" />
+        <p className="fg-caption" title={refusedCode(boxQ.error) ?? undefined} data-testid="box-alone-refusal">
+          {t(`boxes.screen.refusedWhy.${refusedWhy(boxQ.error)}`)}
+        </p>
       </PageContainer>
     );
   }

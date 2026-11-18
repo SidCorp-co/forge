@@ -152,15 +152,25 @@ describe("a box at its own address", () => {
   });
 
   // core answers a reader outside the box's project as it answers a box that is not there: not found
-  it("refuses a box the reader may not see by core's code, in the app's words for it, never a blank page", async () => {
-    boxCore([], (c) => (c.path === routeOf(BOX_ROUTES.get, BOX.admin) ? { status: 404, body: { error: { code: "NOT_FOUND", message: "box not found" } } } : undefined));
+  it("refuses a box the reader may not see in its own words, core's code on hover, never a blank page or a raw id", async () => {
+    boxCore([], (c) => (c.path === routeOf(BOX_ROUTES.get, BOX.admin) ? { status: 404, body: { error: { code: "BOX_NOT_FOUND", message: `no box ${BOX.admin}` } } } : undefined));
     renderWithQuery(<BoxAlone boxId={BOX.admin} slug="orvio" canWriteIn={() => true} />);
     const refused = await screen.findByTestId("box-alone-refused");
     expect(within(refused).getByText("Can't open box")).toBeTruthy();
     const line = within(refused).getByTestId("box-alone-refusal");
-    expect(line).toHaveTextContent("NOT_FOUND");
-    expect(line).toHaveTextContent("Not found.");
+    expect(line).toHaveTextContent("Not found");
+    expect(line).toHaveAttribute("title", "BOX_NOT_FOUND");
+    expect(refused).not.toHaveTextContent(BOX.admin);
+    expect(refused).not.toHaveTextContent("BOX_NOT_FOUND");
     expect(screen.queryByTestId("box-screen")).toBeNull();
+  });
+
+  it("says a malformed box address is a bad link, without core's validation words", async () => {
+    boxCore([], (c) => (c.path === routeOf(BOX_ROUTES.get, BOX.admin) ? { status: 400, body: { error: { code: "BAD_REQUEST", message: "Invalid UUID (/id)" } } } : undefined));
+    renderWithQuery(<BoxAlone boxId={BOX.admin} slug="orvio" canWriteIn={() => true} />);
+    const refused = await screen.findByTestId("box-alone-refused");
+    expect(within(refused).getByTestId("box-alone-refusal")).toHaveTextContent("Bad link");
+    expect(refused).not.toHaveTextContent("Invalid UUID");
   });
 
   it("is where an issue's Watch link and its Reproduce lead: the box's screen, not the whole Boxes page", async () => {
