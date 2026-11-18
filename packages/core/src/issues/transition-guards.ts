@@ -487,7 +487,7 @@ export function issueGuards(base: IssueGuardContext): Record<IssueGuard, Guard<'
     in_scope: async (input) => {
       const ctx = ctxOf(input);
       const held = notTheHolder(ctx, await runHoldersOf(ctx.executor, ctx.issue));
-      return refusalOf(await inScopeGuard(ctx, held, base.closeMoves));
+      return refusalOf(await inScopeGuard(ctx, held, base.closeMoves, input.tx));
     },
     design_delivered: async (input) => refusalOf(await designDeliveredGuard(ctxOf(input))),
     filing_released: async (input) =>

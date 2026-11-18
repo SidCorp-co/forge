@@ -279,6 +279,7 @@ describe('REQ-74 r3 BC-3: a criterion a close moved out fails on the issue it we
         sessionContext: {
           lease: { holder: 'master-of-iss-1', renewedAt: new Date().toISOString(), minutes: 60 },
         },
+        releaseNotes: { section: 'Skip', userFacing: '-' },
       }),
     );
     const res = await api(token, 'POST', `/api/issues/${closed}/transition`, {

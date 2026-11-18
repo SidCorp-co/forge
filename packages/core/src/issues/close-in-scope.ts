@@ -338,12 +338,13 @@ export async function postMovedOut(
  * while its record holds (REQ-5 BC-17). Otherwise the close is the holding run's (`notTheHolder`, as
  * its move here was, `held` naming who else holds it), over its release note (`close-note-guard.ts`),
  * and each criterion it did not meet is moved out on the record first
- * (`close-in-scope.ts`); `moved` takes the moves for the close to write.
+ * (`close-in-scope.ts`); `moved` takes the moves for the close to write, and `tx` is the move's own.
  */
 export async function inScopeGuard(
   ctx: GuardContext,
   held: GuardFault | null,
   moved: { moves: MovedCriterion[] } | undefined,
+  tx: Tx,
 ): Promise<GuardFault | null> {
   const rows = (await ctx.executor.execute(
     sql`SELECT release_batch_run_id FROM issues WHERE id = ${ctx.issue.id}`,
@@ -366,7 +367,7 @@ export async function inScopeGuard(
       details: { ...held.details, designOnly: design.designOnly, adopted: adoption.refs },
     };
   }
-  const unnoted = await closeNoteFault(ctx);
+  const unnoted = await closeNoteFault(ctx, tx);
   if (unnoted) return unnoted;
   const scope = await closeScopeOf(
     ctx.executor,

@@ -258,6 +258,11 @@ describe('an adoption record never stands in for a commit (REQ-5 BC-18)', () => 
     const id = await issue(w.project.plugin);
     ok(await say('plugin', 'POST', `/api/issues/${id}/merge`, { target: 'dev' }));
     ok(await move(id, 'awaiting_release'));
+    ok(
+      await say('plugin', 'PATCH', `/api/issues/${id}`, {
+        releaseNotes: { section: 'Skip', userFacing: '-' },
+      }),
+    );
     ok(await move(id, 'closed'));
     expect(await statusOf(id)).toBe('closed');
   });

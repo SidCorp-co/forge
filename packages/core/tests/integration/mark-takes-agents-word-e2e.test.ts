@@ -300,6 +300,11 @@ describe('a close rests on the mark alone (outcome 4)', () => {
     const { id } = await issue(gitProject);
     ok(await mark(agent, id, { liveReading: READ_LIVE }));
     ok(await move(id, 'awaiting_release'));
+    ok(
+      await agent('PATCH', `/api/issues/${id}`, {
+        releaseNotes: { section: 'Skip', userFacing: '-' },
+      }),
+    );
     ok(await move(id, 'closed'));
     expect((await row(id))?.status).toBe('closed');
   });

@@ -13,6 +13,7 @@
 import { RELEASE_NOTE_TITLE_WORDS_MAX, releaseNotesSections } from '@forge/contracts/release-notes';
 import { sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
+import { mergeNotRecorded } from './merged-at.js';
 import type { GuardContext, GuardFault } from './transition-guards.js';
 
 /** The sections a note a user reads goes under: every one but `Skip`. */
@@ -26,9 +27,14 @@ async function hasReleaseNote(executor: Pick<Tx, 'execute'>, issueId: string): P
   return rows[0]?.noted === true;
 }
 
-/** The holder's close of an issue that ships, refused while no release note stands on it. */
-export async function closeNoteFault(ctx: GuardContext): Promise<GuardFault | null> {
-  if (await hasReleaseNote(ctx.executor, ctx.issue.id)) return null;
+/**
+ * The holder's close of an issue that ships, refused while no release note stands on it. A close the
+ * `merged` guard refuses (no landing recorded, or an adoption record that no longer holds) is left to
+ * it: that guard runs next on the edge, and a close with nothing landed is told that first.
+ */
+export async function closeNoteFault(ctx: GuardContext, tx: Tx): Promise<GuardFault | null> {
+  if (await hasReleaseNote(tx, ctx.issue.id)) return null;
+  if (await mergeNotRecorded(tx, { issueId: ctx.issue.id, to: 'closed' })) return null;
   const door = `PATCH /api/issues/${ctx.issue.id}`;
   return {
     code: 'CLOSE_RELEASE_NOTE_MISSING',
