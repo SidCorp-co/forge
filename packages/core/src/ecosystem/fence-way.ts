@@ -1,8 +1,9 @@
 // The door that works where a credential's fence refuses another project (ISS-1279): adminhub-api's
 // master, fenced to its own project, was refused PAT_PROJECT_OUTSIDE_FENCE writing adminhub-fe's half
 // of ISS-243, heard nothing of the channel, and handed the act to a person. The fence stands; its
-// refusal names the channel act toward that project where the two are counterparties in an ecosystem
-// the credential's projects are in, and who links them where none carries a document between them.
+// refusal names the channel's acts toward a project an ecosystem the credential's projects are in
+// shows them: the handoff door for a finding (ISS-1286), and a change request where the two are
+// counterparties; and who links them where no ecosystem shows it.
 // It says nothing about the named project that its own projects cannot already read: a peer is named
 // only where the ecosystem shows it to them (`party.ts:visibleMembers`), and the rest reads the same
 // whether or not the named project exists.
@@ -40,26 +41,35 @@ export interface FenceChannel {
 
 const GUIDE = 'GET /api/guides/ecosystem-inbox.md';
 
+/** The handoff door (ISS-1286): a finding in the named project's part, filed at its intake. */
+function handoffSaid(way: FenceWay): string {
+  return (
+    `a finding in ${way.to.slug}'s part (a defect, a question, an idea) goes to its intake by the ` +
+    `handoff door, \`POST /api/projects/${way.from.id}/channel/handoffs\` { "to": "${way.to.id}", ` +
+    `"item": <the ISS-n or FB-n of ${way.from.slug} it came from>, "kind", "title", "whereSeen" }`
+  );
+}
+
 function actSaid(way: FenceWay & { contract: string }): string {
   const own = `/api/projects/${way.from.id}/channel`;
   return (
     `${way.from.slug} and ${way.to.slug} are counterparties in ecosystem ${way.ecosystem.slug}, so ` +
-    `hand ${way.to.slug} its part through the channel instead, as ${way.from.slug}: send it a change ` +
-    `request, \`POST ${own}/drafts\` { "ecosystem": "${way.ecosystem.id}", "type": "change-request", ` +
-    `"to": ["${way.to.id}"], "subject", "body": { "contract": "${way.contract}", "need", "rationale", ` +
-    `"impactIfDeclined", "urgency" } }, then \`POST ${own}/documents/<the draft's id>/submit\`. It ` +
-    `reaches ${way.to.slug}'s channel inbox as a document its master owes a decision on, with no ` +
+    `the channel carries it instead, as ${way.from.slug}: ${handoffSaid(way)}; a part of the work ` +
+    `for ${way.to.slug} to build goes as a change request, \`POST ${own}/drafts\` { "ecosystem": ` +
+    `"${way.ecosystem.id}", "type": "change-request", "to": ["${way.to.id}"], "subject", "body": ` +
+    `{ "contract": "${way.contract}", "need", "rationale", "impactIfDeclined", "urgency" } }, then ` +
+    `\`POST ${own}/documents/<the draft's id>/submit\`. Either reaches ${way.to.slug} with no ` +
     `person carrying it (${GUIDE}).`
   );
 }
 
 function strangersSaid(way: FenceWay): string {
   return (
-    `${way.from.slug} and ${way.to.slug} are both in ecosystem ${way.ecosystem.slug}, but neither ` +
-    `consumes from the other there, and its channel carries a document only between counterparties ` +
-    `(RECIPIENT_NOT_COUNTERPARTY): the consumer's interface naming the provider's contract under ` +
-    `\`consumes\` (\`PUT /api/projects/<consumer>/interface\`) makes them counterparties, and then a ` +
-    `change request carries the part (${GUIDE}).`
+    `${way.from.slug} and ${way.to.slug} are both in ecosystem ${way.ecosystem.slug}, so ` +
+    `${handoffSaid(way)}. A change request for its part of the work goes only between ` +
+    `counterparties (RECIPIENT_NOT_COUNTERPARTY), and neither consumes from the other there: the ` +
+    `consumer's interface naming the provider's contract under \`consumes\` ` +
+    `(\`PUT /api/projects/<consumer>/interface\`) makes them counterparties (${GUIDE}).`
   );
 }
 

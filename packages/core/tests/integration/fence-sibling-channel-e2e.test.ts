@@ -94,6 +94,19 @@ describe('an API master hands its sibling the UI part through the channel (ISS-1
     way = refused.ways[0] as FenceWay;
   });
 
+  // a master refused filing feedback on another project learnt of the handoff door only from its guide
+  it('is refused filing a finding as feedback on the sibling, and the refusal names the handoff door', async () => {
+    const refused = refusalOf(
+      await say('masterForge', 'POST', `/api/projects/${w.project.plugin}/feedback`, {
+        kind: 'bug',
+        title: uiPart.title,
+        body: uiPart.description,
+      }),
+    );
+    expect(refused.detail).toContain(`POST /api/projects/${w.project.forge}/channel/handoffs`);
+    expect(refused.detail).toContain(`"to": "${w.project.plugin}"`);
+  });
+
   it('sends the change request the refusal named, published with no person approving it', async () => {
     await settleOutbox();
     publish.mockClear();
