@@ -1,11 +1,13 @@
-// A Forge Box world for integration tests (ISS-1276, ISS-1321, ISS-1324): a project bound to one
-// device, an issue, and three callers (an agent's token, a person's session, the device's
-// credential). The device's frames are read off the outbox, as the runner reads them off its socket.
+// A Forge Box world for integration tests (ISS-1276, ISS-1321, ISS-1324, ISS-1322): a project bound
+// to one device, an issue, and its callers: an agent's token, a person's session, the device's
+// credential, an agent's checkout credential on that device, one on another device, and one minted
+// at grant epoch 2, before /api/boxes joined the menu. The device's frames are read off the outbox, as the runner reads them off its socket.
 
 import type { BoxHealthReport } from '@forge/contracts/box-wire';
 import { sql } from 'drizzle-orm';
 import type { Hono } from 'hono';
 import { expect } from 'vitest';
+import type { StatedPatGrant } from '../../src/credentials/pat-permissions.js';
 import { db } from '../../src/db/client.js';
 import { userToken } from './api.js';
 import { type Doc, type Reply, requester, startQueue, testEnv } from './ecosystem-world.js';
@@ -94,14 +96,14 @@ export async function boxWorld(): Promise<BoxWorld> {
     INSERT INTO issues (project_id, iss_seq, title, status, priority, created_by_id)
     VALUES (${projectId}, 1, 'Redeem points at the counter', 'in_progress', 'high', ${ownerId})
     RETURNING id`)) as unknown as Array<{ id: string }>;
-  const mint = async (name: string, device?: string) =>
+  const mint = async (name: string, device?: string, at = 99, grant: StatedPatGrant = ['*']) =>
     (
       await mintPat({
-        permissions: ['*'],
+        permissions: grant,
         userId: ownerId,
         name,
         projectIds: [projectId],
-        grantEpoch: 99,
+        grantEpoch: at,
         ...(device ? { deviceId: device } : {}),
       })
     ).plaintext;
@@ -110,6 +112,9 @@ export async function boxWorld(): Promise<BoxWorld> {
     agent: await mint('agent'),
     device: deviceToken,
     person: await userToken(ownerId),
+    checkout: await mint('checkout', deviceId),
+    elsewhere: await mint('elsewhere', await createTestDevice(ownerId)),
+    checkout2: await mint('checkout-2', deviceId, 2, ['projects:write', 'pipeline:write']),
   }) as Say;
   return {
     app,

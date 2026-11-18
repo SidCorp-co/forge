@@ -30,6 +30,16 @@ export const BOX_SCENARIOS: readonly CardScenario[] = [
     teaches: [/wait and read/i, /\?by=person/, /never retry the write in a loop/i],
   },
   {
+    name: 'a Playwright flow that launched its own headless Chrome nobody could watch',
+    card: 'box.attach',
+    source:
+      'ISS-1322, 2026-11-18 (owner: agents should use the box instead of their own headless browsers, and reuse Playwright, Chrome MCP and the drivers they have)',
+    situation: 'A run that already has a Playwright flow must show a page a person should watch',
+    bad: 'the run launched a private headless Chrome for its flow, so nobody saw it and the hold never bound it',
+    good: 'attach to the box and connect the flow to the CDP URL it answers',
+    teaches: [/attach to your box/i, /never a private headless browser/i, /BOX_HELD_BY_PERSON/],
+  },
+  {
     name: "a criterion's span marked on a box",
     card: 'box.span',
     source: `${ISSUE}: a verdict owes a clip (VERDICT_CLIP_REQUIRED) that a judge cut by hand`,

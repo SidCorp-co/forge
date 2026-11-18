@@ -11,6 +11,7 @@ import { type KernelActor, transition } from '../lifecycle/index.js';
 import { refuse, SOURCE, tellChanged } from './access.js';
 import { completeAct } from './acts.js';
 import { allocateDevice, failBox } from './allocate.js';
+import { recordCdpActs } from './attach.js';
 import { boxById, boxRecord } from './read.js';
 import { recordingReport } from './recording.js';
 import { failSpan, recordMark } from './spans.js';
@@ -36,6 +37,7 @@ async function ready(
     set: {
       readyAt: now,
       view: report.offer ?? row.view,
+      ...(report.attach ? { attach: report.attach } : {}),
       ...(recorded
         ? { recordingState: 'recording' as const, recordingStartedAt: recorded }
         : { recordingWhy: null }),
@@ -126,6 +128,9 @@ export async function reportBox(
       break;
     case 'clip_failed':
       await failSpan(row, report.spanId, report.detail);
+      break;
+    case 'cdp':
+      await recordCdpActs(row, report);
       break;
   }
   return boxRecord((await boxById(boxId)) ?? row);

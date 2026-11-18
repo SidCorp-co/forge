@@ -98,6 +98,7 @@ export const REST_TWINS: Readonly<Record<string, readonly string[]>> = {
   // a Forge Box's acts (ISS-1276): `forge-runner box act` and forge_box call the same services
   'box.open': ['POST /api/projects/:id/boxes'],
   'box.act': ['POST /api/boxes/:id/acts'],
+  'box.attach': ['POST /api/boxes/:id/attach'],
   'box.span': ['POST /api/boxes/:id/spans'],
   'box.record': ['POST /api/boxes/:id/recording'],
   'box.close': ['POST /api/boxes/:id/close'],

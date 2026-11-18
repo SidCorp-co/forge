@@ -26,7 +26,10 @@ export interface AgentActAnswer {
   personActed?: { inputs: number; feed: string };
 }
 
-async function lockedRow(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], id: string) {
+export async function lockedRow(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  id: string,
+) {
   await lockXact(tx, 'boxes', `acts:${id}`);
   const [row] = await tx.select().from(boxes).where(eq(boxes.id, id)).for('update').limit(1);
   if (!row) throw refuse('BOX_NOT_FOUND', `no box ${id}`);
@@ -95,6 +98,7 @@ export async function agentAct(
         actor: actorKey,
         actorUserId: actor.userId,
         kind,
+        via: 'act',
         command,
         state: fault ? 'refused' : 'pending',
         refusal: fault?.code ?? null,
@@ -185,6 +189,7 @@ export async function recordPersonInput(
       actor: `person:${userId}`,
       actorUserId: userId,
       kind: 'input',
+      via: 'input',
       command: [JSON.stringify(input)],
       state: 'done',
       doneAt: now,

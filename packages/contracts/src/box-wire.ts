@@ -130,9 +130,15 @@ export interface BoxControlFrames {
 	 * Stopping closes what was recorded into a segment a span's cut still reads.
 	 */
 	"box.recording.set": { boxId: string; on: boolean };
-	/** A person holds it: the runner accepts `input` channel streams for it from now. */
+	/**
+	 * A person holds it: the runner accepts `input` channel streams for it from now, and its CDP
+	 * proxy refuses an attached session's writes `BOX_HELD_BY_PERSON` (ISS-1322).
+	 */
 	"box.take": { boxId: string; userId: string; name: string | null };
-	/** Back to the agent (`released`, or `expired` by idle): the runner refuses input streams again. */
+	/**
+	 * Back to the agent (`released`, or `expired` by idle): the runner refuses input streams again,
+	 * and attached sessions' writes pass again.
+	 */
 	"box.release": { boxId: string; why: "released" | "expired" };
 	/**
 	 * Note where a criterion's span starts or ends on the recording; answered by a `mark` report.
@@ -183,6 +189,12 @@ const offerSchema = z.strictObject({
  * - `clip_failed`: a `box.recording.fetch` could not be cut or exceeded the ceiling.
  * - `recording`: the recording started (`on`, at `at`) or stopped, or could not (`failed`, with the
  *   tool's words in `detail`), after `box.recording.set` or a span's `recording`.
+ * - `cdp`: what sessions attached to a browser box's CDP did (ISS-1322): each method that is not a
+ *   read, in order, a run of one method as one line with its `count`, `refused` where the person's
+ *   hold refused it. Core writes each into the act feed `via: cdp`.
+ *
+ * A browser box's `ready` carries `attach.cdp`, the loopback URL of the device's CDP proxy, which
+ * core hands only to an agent on that device (`BOX_ROUTES.attach`).
  */
 export const boxReportSchema = z.discriminatedUnion("kind", [
 	z.strictObject({
@@ -190,6 +202,16 @@ export const boxReportSchema = z.discriminatedUnion("kind", [
 		state: z.enum(["ready", "failed", "gone"]),
 		offer: offerSchema.optional(),
 		recordingStartedAt: z.iso.datetime().optional(),
+		attach: z
+			.strictObject({
+				cdp: z
+					.string()
+					.regex(
+						/^http:\/\/127\.0\.0\.1:\d{1,5}$/,
+						"the device's loopback proxy: http://127.0.0.1:<port>",
+					),
+			})
+			.optional(),
 		failure: z
 			.enum([
 				"START_FAILED",
@@ -220,6 +242,19 @@ export const boxReportSchema = z.discriminatedUnion("kind", [
 		kind: z.literal("clip_failed"),
 		spanId: z.uuid(),
 		detail: z.string().max(4000),
+	}),
+	z.strictObject({
+		kind: z.literal("cdp"),
+		acts: z
+			.array(
+				z.strictObject({
+					method: z.string().min(1).max(120),
+					count: z.number().int().min(1).max(1_000_000),
+					refused: z.boolean(),
+				}),
+			)
+			.min(1)
+			.max(100),
 	}),
 	z.strictObject({
 		kind: z.literal("recording"),

@@ -114,6 +114,7 @@ export function actRecord(row: BoxActRow): BoxActRecord {
     by: row.by,
     actor: row.actor,
     kind: row.kind,
+    via: row.via,
     command: row.command,
     state: row.state,
     exitCode: row.exitCode,

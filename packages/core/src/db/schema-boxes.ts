@@ -1,5 +1,6 @@
 import type { BoxViewCodec } from '@forge/contracts/box-wire';
 import {
+  BOX_ACT_VIA,
   BOX_CLOSED_WHY,
   BOX_FAILURES,
   BOX_MODES,
@@ -63,6 +64,11 @@ export const boxes = pgTable(
     viewport: jsonb('viewport').$type<{ width: number; height: number }>(),
     url: text('url'),
     view: jsonb('view').$type<{ codec: BoxViewCodec; width: number; height: number }>(),
+    /**
+     * Where the device's CDP proxy answers for a browser box (ISS-1322), as its `ready` said: a
+     * loopback URL, handed only to an agent on that device (`attachBox`), never on the record.
+     */
+    attach: jsonb('attach').$type<{ cdp: string }>(),
     recordingState: text('recording_state', { enum: BOX_RECORDING_STATES }),
     /**
      * Who wants it recording (ISS-1321): an open or an agent that asked, a criterion's span, or a
@@ -127,6 +133,8 @@ export const boxActs = pgTable(
     actor: text('actor').notNull(),
     actorUserId: uuid('actor_user_id').references(() => users.id, { onDelete: 'set null' }),
     kind: text('kind', { enum: BOX_ACT_KINDS }).notNull(),
+    /** How it reached the box: the act door, a person's input socket, or an attached CDP session. */
+    via: text('via', { enum: BOX_ACT_VIA }).notNull(),
     command: jsonb('command').$type<string[]>().notNull(),
     state: text('state', { enum: BOX_ACT_STATES }).notNull(),
     exitCode: integer('exit_code'),
@@ -141,6 +149,7 @@ export const boxActs = pgTable(
     seqUq: uniqueIndex('box_acts_seq_uq').on(t.boxId, t.seq),
     byChk: check('box_acts_by_chk', sql`${t.by} IN (${inList(BOX_ACT_BY)})`),
     kindChk: check('box_acts_kind_chk', sql`${t.kind} IN (${inList(BOX_ACT_KINDS)})`),
+    viaChk: check('box_acts_via_chk', sql`${t.via} IN (${inList(BOX_ACT_VIA)})`),
     stateChk: check('box_acts_state_chk', sql`${t.state} IN (${inList(BOX_ACT_STATES)})`),
   }),
 );

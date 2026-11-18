@@ -6,6 +6,7 @@
 import { boxReportSchema } from '@forge/contracts/box-wire';
 import {
   boxActRequestSchema,
+  boxAttachRequestSchema,
   boxCloseRequestSchema,
   boxRecordingRequestSchema,
   boxSpanRequestSchema,
@@ -20,6 +21,7 @@ import { invalid, noQuery, rawBody, zValidator } from '../middleware/zod-validat
 import { requiresNoPermission, requiresOnResolved } from '../permissions/index.js';
 import type { BoxActor } from './access.js';
 import { agentAct } from './acts.js';
+import { attachBox } from './attach.js';
 import { boxActsAfter, boxSpansOf, projectBoxes } from './read.js';
 import { setBoxRecording } from './recording.js';
 import { reportBox } from './report.js';
@@ -135,6 +137,7 @@ for (const at of [
   '/:id/release',
   '/:id/recording',
   '/:id/acts',
+  '/:id/attach',
   '/:id/spans',
   '/:id/ticket',
 ]) {
@@ -186,6 +189,22 @@ boxRoutes.post(
   async (c) => {
     const { command, runId } = c.req.valid('json');
     return c.json(await agentAct(actorOf(c), c.req.valid('param').id, command, runId));
+  },
+);
+
+// an agent on the box's own device takes the mode's native endpoint (ISS-1322); the credential's
+// device is where it calls from, and one bound to none is no agent on that device
+boxRoutes.post(
+  '/:id/attach',
+  zValidator('param', boxParam, PATH),
+  requiresOnResolved('project.write', ON_BOX),
+  zValidator('json', boxAttachRequestSchema, invalid('invalid body: { runId? }')),
+  async (c) => {
+    c.header('Cache-Control', 'no-store');
+    const { runId } = c.req.valid('json');
+    return c.json(
+      await attachBox(actorOf(c), c.get('patDeviceId') ?? null, c.req.valid('param').id, runId),
+    );
   },
 );
 

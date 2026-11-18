@@ -283,6 +283,14 @@ export interface BoxRecord {
 	closedWhy: BoxClosedWhy | null;
 }
 
+/**
+ * How an act reached the box: `act`, an agent's command through the act door (`forge-runner box
+ * act`, forge_box `act`); `input`, a person's input socket; `cdp`, a session an agent attached to a
+ * browser box's CDP (`attach`, ISS-1322), whose writes the device reports by method name.
+ */
+export const BOX_ACT_VIA = ["act", "input", "cdp"] as const;
+export type BoxActVia = (typeof BOX_ACT_VIA)[number];
+
 /** One act on a box: the agent's command, or the person's input, in the order the box got them. */
 export interface BoxActRecord {
 	id: string;
@@ -292,7 +300,12 @@ export interface BoxActRecord {
 	/** The run or the person, as `holderKey` writes it. */
 	actor: string;
 	kind: "read" | "write" | "input";
-	/** The driver argv for an agent's act; for a person's input, its `BoxInput` as JSON. */
+	via: BoxActVia;
+	/**
+	 * The driver argv for an agent's act; for a person's input, its `BoxInput` as JSON; for an
+	 * attached session (`via: cdp`), the CDP method and, where it ran several times in a row, `×n`
+	 * (`attach` itself reads `["attach"]`).
+	 */
 	command: string[];
 	state: "pending" | "done" | "failed" | "refused";
 	exitCode: number | null;
@@ -382,6 +395,11 @@ export const boxActRequestSchema = z.strictObject({
 	runId: z.string().trim().min(1).max(120).optional(),
 });
 
+/** Attach to a box's native endpoint (ISS-1322): `runId` is the run the feed's `attach` line names. */
+export const boxAttachRequestSchema = z.strictObject({
+	runId: z.string().trim().min(1).max(120).optional(),
+});
+
 /** Mark where a criterion's demonstration starts or ends on the box's recording. */
 export const boxSpanRequestSchema = z.strictObject({
 	criterion: z.number().int().min(1),
@@ -418,6 +436,17 @@ export const BOX_REFUSAL_CODES = [
 	"BOX_SPAN_INVALID",
 	/** No device the project may use reports box health or a box-capable runner. */
 	"BOX_NO_DEVICE",
+	/**
+	 * An attach from a caller not on the box's device (another device, or a credential bound to
+	 * none): the endpoint is the device's loopback and no tunnel carries it yet. The act door works
+	 * from anywhere.
+	 */
+	"BOX_ATTACH_REMOTE",
+	/**
+	 * The box hands out no native endpoint: its mode's (an adb serial, an X display) cannot be taken
+	 * back when a person takes the box, or its device reported none (a runner older than ISS-1322).
+	 */
+	"BOX_ATTACH_UNAVAILABLE",
 ] as const;
 export type BoxRefusalCode = (typeof BOX_REFUSAL_CODES)[number];
 
@@ -434,6 +463,8 @@ export const BOX_REFUSAL_STATUSES = {
 	BOX_TICKET_INVALID: 403,
 	BOX_SPAN_INVALID: 409,
 	BOX_NO_DEVICE: 409,
+	BOX_ATTACH_REMOTE: 409,
+	BOX_ATTACH_UNAVAILABLE: 409,
 } as const satisfies RefusalStatuses<BoxRefusalCode>;
 
 /** The REST and WebSocket doors. `:id` is a box (a project under `/api/projects`). */
@@ -450,6 +481,11 @@ export const BOX_ROUTES = {
 	acts: "/api/boxes/:id/acts",
 	/** POST: mark a criterion's span start or end. GET: the box's spans and their clips. */
 	spans: "/api/boxes/:id/spans",
+	/**
+	 * POST: the mode's native endpoint for an agent on the box's own device (ISS-1322): a browser
+	 * box's CDP URL, served by the device's proxy where the person's hold binds. `BoxAttachAnswer`.
+	 */
+	attach: "/api/boxes/:id/attach",
 	/** POST `{ on }`: start or stop the box's recording (ISS-1321). */
 	recording: "/api/boxes/:id/recording",
 	/** POST: a one-minute ticket for the view or input socket. */
@@ -463,6 +499,19 @@ export const BOX_ROUTES = {
 	/** The holder's input socket, `?ticket=<t>`: one person's `BoxInput` lines to the box. */
 	input: "/ws/boxes/input",
 } as const;
+
+/**
+ * The modes whose native endpoint an agent may attach to: those whose device takes back what an
+ * attached tool sends when a person takes the box. A browser's CDP goes through the device's proxy;
+ * an adb serial or an X display has no such door yet, so those modes attach nothing.
+ */
+export const BOX_ATTACH_MODES = ["browser"] as const satisfies readonly BoxMode[];
+
+/** What `attach` answers: the box, and the URL `connectOverCDP` or `--browserUrl` takes. */
+export interface BoxAttachAnswer {
+	box: BoxRecord;
+	attach: { mode: "browser"; cdp: string };
+}
 
 /** Pushed to the project room when a box moves or is acted on; the Boxes page refetches. */
 export interface BoxChangedFrame {

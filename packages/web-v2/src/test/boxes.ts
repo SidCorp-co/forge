@@ -85,6 +85,7 @@ function act(now: number, boxId: string, seq: number, over: Partial<BoxActRecord
     by: "agent",
     actor: "agent:run-qa",
     kind: "write",
+    via: "act",
     state: "done",
     exitCode: 0,
     stdout: "",
@@ -110,7 +111,7 @@ export function androidActs(now = Date.now()): BoxActRecord[] {
 /** The held box's feed: the person's tap, and the agent's click refused while they hold it. */
 export function heldActs(now = Date.now()): BoxActRecord[] {
   return [
-    act(now, BOX.held, 1, { by: "person", actor: `person:${OWNER}`, kind: "input", command: [JSON.stringify({ t: "tap", x: 0.42, y: 0.61 })], at: ago(now, 40_000) }),
+    act(now, BOX.held, 1, { by: "person", actor: `person:${OWNER}`, kind: "input", via: "input", command: [JSON.stringify({ t: "tap", x: 0.42, y: 0.61 })], at: ago(now, 40_000) }),
     act(now, BOX.held, 2, { command: ["click", "@e9"], state: "refused", exitCode: null, refusal: "BOX_HELD_BY_PERSON", at: ago(now, 20_000) }),
   ];
 }

@@ -3,6 +3,7 @@
 
 import type { BoxModeReport } from '@forge/contracts/box-wire';
 import {
+  type BOX_ATTACH_MODES,
   BOX_MODES,
   BOX_UNSERVED_MODES,
   type BoxMode,
@@ -80,6 +81,50 @@ export function actFault(
     return {
       code: 'BOX_HELD_BY_PERSON',
       detail: `${who}, so your state-changing act was refused and nothing on the box changed. Your reads (snapshot, get, screenshot) still answer: follow along, and act again once the box is handed back (its state reads agent). What the person did is in GET /api/boxes/:id/acts?by=person`,
+    };
+  }
+  return null;
+}
+
+/** Why each mode outside `BOX_ATTACH_MODES` attaches nothing: what an attached tool would hold. */
+const UNGUARDED: Record<Exclude<BoxMode, (typeof BOX_ATTACH_MODES)[number]>, string> = {
+  android: "an android box's adb serial",
+  desktop: "a desktop box's DISPLAY and AT-SPI bus",
+};
+
+const ACT_DOOR =
+  'Drive it through the act door instead (`forge-runner box act <box> -- <command>`, forge_box act), which works from anywhere and where the hold binds';
+
+/**
+ * Whether an agent calling from `caller` (the device its credential is bound to, or none) may attach
+ * to a box (ISS-1322): it runs, the caller is on its device, its mode's endpoint can be taken back
+ * when a person takes the box, and the device reported one.
+ */
+export function attachFault(
+  box: { state: BoxState; mode: BoxMode; deviceId: string; attach: { cdp: string } | null },
+  caller: string | null,
+): BoxFault | null {
+  const state = actFault(box.state, 'read', null);
+  if (state) return state;
+  if (caller !== box.deviceId) {
+    const from = caller
+      ? `you call from device ${caller}`
+      : 'the credential you call with is bound to no device';
+    return {
+      code: 'BOX_ATTACH_REMOTE',
+      detail: `${from}, and the box runs on device ${box.deviceId}: its endpoint is that device's loopback, which no tunnel carries yet, so only an agent on that device attaches. ${ACT_DOOR}`,
+    };
+  }
+  if (box.mode !== 'browser') {
+    return {
+      code: 'BOX_ATTACH_UNAVAILABLE',
+      detail: `${UNGUARDED[box.mode]} cannot be taken back when a person takes the box, so Forge hands out no native endpoint for it. ${ACT_DOOR}`,
+    };
+  }
+  if (!box.attach) {
+    return {
+      code: 'BOX_ATTACH_UNAVAILABLE',
+      detail: `the device reported no CDP endpoint for this box: its runner predates attach (ISS-1322) or its proxy did not start (the runner's log says why). ${ACT_DOOR}`,
     };
   }
   return null;

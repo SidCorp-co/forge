@@ -10,11 +10,12 @@ export const BOXES_GUIDE: CoreGuide = {
   audience: 'agent',
   title: 'Forge Box: use a screen as a person would, where a person can watch',
   summary:
-    "A screen is proven by being used: its builder opens a box (browser, android or desktop) on its worktree's dev server from the first UI change, and its judge on the running build. Drive it with `forge-runner box act` or forge_box, screenshot and look after each change, mark each criterion's span so it records its own clip and attaches it to the issue, and close it. Nothing records unless asked. A person may take control: your writes are refused BOX_HELD_BY_PERSON, your reads still answer; wait, read what they did, go on.",
-  version: 4,
+    "A screen is proven by being used: its builder opens a box (browser, android or desktop) on its worktree's dev server from the first UI change, and its judge on the running build. Drive it with `forge-runner box act` or forge_box; an agent on the box's device with a Playwright or MCP flow attaches it to the box's browser instead of a private headless one. Screenshot and look after each change, mark each criterion's span so it records its own clip and attaches it to the issue, and close it. Nothing records unless asked. A person may take control: your writes are refused BOX_HELD_BY_PERSON, your reads still answer; wait, read what they did, go on.",
+  version: 5,
   doors: [
     'POST /api/projects/:id/boxes',
     'POST /api/boxes/:id/acts',
+    'POST /api/boxes/:id/attach',
     'POST /api/boxes/:id/spans',
     'POST /api/boxes/:id/recording',
     'POST /api/boxes/:id/close',
@@ -25,7 +26,7 @@ A box is a screen Forge gives you to use a UI in: a web page (\`browser\`), an A
 (\`android\`) or a Linux desktop app (\`desktop\`). The owner opens Forge and watches it live, takes
 control, tests by hand, and hands it back. A screen is proven by being used there, not by a render
 test that lays nothing out: its builder uses it while building, its judge on the running build. A
-criterion you show there gets its clip from its span (step 4). Nothing refuses work done without a
+criterion you show there gets its clip from its span (step 5). Nothing refuses work done without a
 box; a screen line its judge marked no visual for reads "visual owed" on its release.
 
 ### 1. Open one
@@ -43,7 +44,7 @@ its screen answers, a warm box handed to you included; read it until it stands a
   is every box call: the refusal names who mints one that reaches the box, and by which door.
 
 - **Nothing records unless asked.** Recording costs the device's CPU and disk, so a box records
-  only while something needs it: a criterion's span (step 4) records itself. Add \`record: true\`
+  only while something needs it: a criterion's span (step 5) records itself. Add \`record: true\`
   only when the whole session is the evidence, and never record exploratory work. A recording you
   asked for runs until you stop it (\`POST /api/boxes/:id/recording\` \`{ on: false }\`, forge_box
   \`record\`) or close the box; a person may turn it on or off from the Boxes page.
@@ -74,7 +75,28 @@ agent-desktop for desktop. Every act goes through Forge, which keeps the box's o
   phone width (\`set viewport 390 844\`, then back to \`1440 900\`). What you see there is the proof; a
   private Playwright or headless-Chrome script is not.
 
-### 3. When a person holds it
+### 3. Bring a tool you already use: attach
+The act door comes first: agent-browser's snapshot and refs are compact for an agent, and every act
+is on the record. When you already drive browsers with Playwright or chrome-devtools-mcp, attach it
+to the box rather than start a browser of your own: \`forge-runner box attach <box>\`
+(\`POST /api/boxes/:id/attach\`, forge_box \`attach\`) answers a browser box's CDP URL, served by
+the device's proxy. Connect to it (\`chromium.connectOverCDP(url)\`, \`chrome-devtools-mcp
+--browserUrl url\`) and your tool drives the browser the person watches.
+
+- **Never start a private headless browser for a UI a person should see**: nobody watches it, takes
+  it or reads what it did.
+- **Only an agent on the box's device attaches**: the URL is that device's loopback, and a caller
+  elsewhere is refused \`BOX_ATTACH_REMOTE\`. An android or desktop box is refused
+  \`BOX_ATTACH_UNAVAILABLE\`, since its adb serial or display cannot be taken back when a person
+  takes the box: drive those with act.
+- **The hold binds:** while a person holds the box, every call that is not a read (\`Input.*\`,
+  \`Page.navigate\`, \`Runtime.evaluate\` and the rest) answers a CDP error naming
+  \`BOX_HELD_BY_PERSON\` and the page does not move; reads (a domain's \`enable\`, \`get…\`,
+  screenshots) still answer. Do as step 4 says.
+- **The feed sees it:** each write your tool makes is in the act feed \`via: cdp\` by its method
+  name, a refused one as refused.
+
+### 4. When a person holds it
 While a person holds the box your writes are refused \`BOX_HELD_BY_PERSON\`, naming who and since
 when, and nothing on the box changes. Wait and read: snapshot to follow along. When the box reads
 \`agent\` again, read what they did (\`GET /api/boxes/:id/acts?by=person\`; your next act's answer
@@ -82,7 +104,7 @@ also says \`personActed\`) and go on from the screen as they left it. Never retr
 a loop, and never open a second box to get around a hold. A hold with no input for
 ${BOX_LIMITS.holdIdleSeconds}s expires back to you on the record.
 
-### 4. Mark each criterion's span
+### 5. Mark each criterion's span
 Record a span when the clip is a criterion's evidence, never exploratory work: explore first, then
 mark it and show the criterion. Before you show it, \`POST /api/boxes/:id/spans\`
 \`{ criterion, edge: "start" }\`; after, \`{ criterion, edge: "end" }\`. A span begun on a box
@@ -94,7 +116,7 @@ span's clip there like any clip attached to the issue. A span longer than
 ${RELEASE_CLIP_MAX_SECONDS}s keeps its last ${RELEASE_CLIP_MAX_SECONDS}s, so keep each demonstration
 short.
 
-### 5. Close it
+### 6. Close it
 \`POST /api/boxes/:id/close\` once the criteria are shown: the device reaps every process it started
 and the room goes to the next request. What it recorded stays on the device until the issue ends.`,
 };

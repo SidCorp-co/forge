@@ -10,20 +10,21 @@ import { type ContextScopedMcpToolFactory, sourceOf, zodToMcpSchema } from '../l
 import { need } from '../lib/tool-args.js';
 import { onArg, onResolved } from '../permissions/index.js';
 import { agentAct } from './acts.js';
+import { attachBox } from './attach.js';
 import { setBoxRecording } from './recording.js';
 import { closeBox, openBox, readBox } from './service.js';
 import { markSpan } from './spans.js';
 
-const ACTIONS = ['open', 'act', 'span', 'record', 'close', 'read'] as const;
+const ACTIONS = ['open', 'act', 'attach', 'span', 'record', 'close', 'read'] as const;
 
 const inputSchema = z.strictObject({
   action: z.enum(ACTIONS),
   projectId: z.uuid().optional().describe('open: the project'),
-  boxId: z.uuid().optional().describe('act, span, record, close, read: the box'),
+  boxId: z.uuid().optional().describe('act, attach, span, record, close, read: the box'),
   mode: z.string().optional().describe('open: browser, android or desktop'),
   issueId: z.uuid().optional().describe('open: the issue the box tests'),
   criterion: z.number().int().min(1).optional().describe('open, span: the criterion number'),
-  runId: z.string().optional().describe('open, act: your run (FORGE_RUN)'),
+  runId: z.string().optional().describe('open, act, attach: your run (FORGE_RUN)'),
   viewport: z
     .strictObject({ width: z.number().int(), height: z.number().int() })
     .optional()
@@ -92,6 +93,29 @@ export const BOX_CARDS = {
     family: 'issue-work',
     audience: ['master', 'run', 'person'],
     scenarios: ['an agent click while a person held the box'],
+  },
+  attach: {
+    purpose:
+      "Gives an agent on the box's device a browser box's CDP URL, so its Playwright or MCP flow drives the browser the person watches.",
+    situations: [
+      {
+        when: 'you already drive browsers with Playwright or chrome-devtools-mcp and the screen is one a person should see',
+        do: 'attach to your box and connect the tool to the URL it answers (`chromium.connectOverCDP(url)`, `chrome-devtools-mcp --browserUrl url`), never a private headless browser',
+        watch:
+          'while a person holds the box your tool’s input and navigation answer BOX_HELD_BY_PERSON and the page does not move; reads still answer',
+      },
+    ],
+    practice: [
+      'The act door comes first: agent-browser’s snapshot and refs are compact for an agent. Attach only when a flow you already have is worth keeping.',
+      'Only an agent on the box’s device attaches (BOX_ATTACH_REMOTE elsewhere), and only a browser box (BOX_ATTACH_UNAVAILABLE for android and desktop): use act for those.',
+      'Every write your tool makes reaches the box’s feed `via: cdp` by its method name; a refused one reads refused.',
+    ],
+    example: { boxId: '<box id>', runId: '<your run>' },
+    redFlag:
+      'A private headless Chrome launched for a UI a person should watch, or a refused CDP write retried in a loop while a person holds the box.',
+    family: 'issue-work',
+    audience: ['master', 'run'],
+    scenarios: ['a Playwright flow that launched its own headless Chrome nobody could watch'],
   },
   span: {
     purpose:
@@ -177,6 +201,7 @@ const DESCRIPTION = [
   'Forge Box: a browser, Android or desktop screen you test a UI in, which a person watches live from Forge and can take over.',
   'open {projectId, mode, issueId, criterion, runId, viewport?, url?, record?}: a box, opening until it is ready, or BOX_SLOT_UNAVAILABLE naming its place and why while it waits.',
   'act {boxId, command, runId}: one driver command; a write is refused BOX_HELD_BY_PERSON while a person holds the box, a read always answers.',
+  'attach {boxId, runId}: for an agent on the box’s device, a browser box’s CDP URL for Playwright connectOverCDP or chrome-devtools-mcp --browserUrl; the hold still binds and its writes reach the feed via cdp.',
   "span {boxId, criterion, edge}: mark a criterion's demonstration; a span records its own clip, which attaches to the issue with its still.",
   'record {boxId, record}: start or stop recording; nothing records unless asked, so record a span, not exploratory work.',
   'close {boxId}; read {boxId}.',
@@ -195,6 +220,7 @@ export const forgeBoxTool: ContextScopedMcpToolFactory = (ctx) => ({
     byAction: {
       open: onArg('project.write'),
       act: onResolved('project.write', "the box's project, found from the box"),
+      attach: onResolved('project.write', "the box's project, found from the box"),
       span: onResolved('project.write', "the box's project, found from the box"),
       record: onResolved('project.write', "the box's project, found from the box"),
       close: onResolved('project.write', "the box's project, found from the box"),
@@ -233,6 +259,8 @@ export const forgeBoxTool: ContextScopedMcpToolFactory = (ctx) => ({
           need({ command: input.command }, 'act', 'command').command,
           input.runId,
         );
+      case 'attach':
+        return attachBox(actor, ctx.principal.deviceId ?? null, boxId(), input.runId);
       case 'span':
         return {
           span: await markSpan(
