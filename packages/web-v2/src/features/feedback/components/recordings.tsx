@@ -18,6 +18,7 @@ import { Timeline } from "@/features/previews";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { coreFileUrl } from "@/lib/utils/core-url";
+import { clockOf } from "@/lib/utils/format";
 import { useItemRecordings } from "../hooks";
 import type { FeedbackView } from "../types";
 
@@ -121,13 +122,6 @@ function ReproduceState({ recording }: { recording: RecordingRecord }) {
 /** A file's type as a person names it: its format, not its media type. */
 const FORMATS: Record<string, string> = { "video/mp4": "MP4", "video/webm": "WebM", "video/quicktime": "MOV" };
 export const formatOf = (mime: string) => FORMATS[mime] ?? (mime.split("/")[1] ?? mime).toUpperCase();
-
-/** A length in seconds as m:ss, or h:mm:ss past the hour. */
-export function clockOf(seconds: number): string {
-  const s = Math.round(seconds);
-  const mmss = `${Math.floor((s % 3600) / 60)}:${String(s % 60).padStart(2, "0")}`;
-  return s >= 3600 ? `${Math.floor(s / 3600)}:${mmss.padStart(5, "0")}` : mmss;
-}
 
 /** How long a video runs, read from its metadata alone; null until read, or where it cannot be. */
 function useVideoLength(src: string): number | null {

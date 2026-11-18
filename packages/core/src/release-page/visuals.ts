@@ -15,8 +15,9 @@ import {
   releaseCardOf,
 } from '@forge/contracts/release-visual';
 import type { ReleaseDetail } from '@forge/contracts/releases';
-import { inArray, type SQL, sql } from 'drizzle-orm';
+import { inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { uuidArray } from '../db/raw-sql.js';
 import { issueAttachments } from '../db/schema.js';
 import { env } from '../lib/env.js';
 import { findProjectSlugs } from '../projects/index.js';
@@ -42,24 +43,18 @@ export interface LineVisualFacts {
   saidNone: Set<string>;
 }
 
-const listOf = (ids: readonly string[]): SQL =>
-  sql.join(
-    ids.map((id) => sql`${id}::uuid`),
-    sql`, `,
-  );
-
 /**
  * The newest pass of each issue marking a visual, on a live criterion whose latest verdict is not a
  * fail: a re-judge that only restates a pass keeps the mark, and a fail since takes it down.
  */
 async function markRows(issueIds: readonly string[]): Promise<MarkRow[]> {
-  const issues = listOf(issueIds);
+  const issues = uuidArray(issueIds);
   return (await db.execute(sql`
     WITH latest AS (
       SELECT DISTINCT ON (v.criterion_id) v.criterion_id, v.verdict
         FROM criterion_verdicts v
         JOIN issue_criteria c ON c.id = v.criterion_id
-       WHERE c.issue_id IN (${issues}) AND c.retired_at IS NULL
+       WHERE c.issue_id = ANY(${issues}) AND c.retired_at IS NULL
        ORDER BY v.criterion_id, v.created_at DESC, v.id DESC
     )
     SELECT DISTINCT ON (c.issue_id) c.issue_id::text AS issue_id, c.n, v.id::text AS v_id,
@@ -68,7 +63,7 @@ async function markRows(issueIds: readonly string[]): Promise<MarkRow[]> {
       FROM criterion_verdicts v
       JOIN issue_criteria c ON c.id = v.criterion_id
       JOIN latest l ON l.criterion_id = v.criterion_id
-     WHERE c.issue_id IN (${issues}) AND c.retired_at IS NULL
+     WHERE c.issue_id = ANY(${issues}) AND c.retired_at IS NULL
        AND v.verdict = 'pass' AND l.verdict <> 'fail'
        AND (v.visual_desktop_id IS NOT NULL OR v.visual_phone_id IS NOT NULL)
      ORDER BY c.issue_id, v.created_at DESC, v.id DESC`)) as unknown as MarkRow[];
@@ -79,7 +74,7 @@ async function saidNoneOf(issueIds: readonly string[]): Promise<Set<string>> {
     SELECT DISTINCT c.issue_id::text AS issue_id
       FROM criterion_verdicts v
       JOIN issue_criteria c ON c.id = v.criterion_id
-     WHERE c.issue_id IN (${listOf(issueIds)}) AND c.retired_at IS NULL
+     WHERE c.issue_id = ANY(${uuidArray(issueIds)}) AND c.retired_at IS NULL
        AND coalesce(v.without_clip, '') ~ '[^[:space:]]'`)) as unknown as { issue_id: string }[];
   return new Set(rows.map((r) => r.issue_id));
 }

@@ -3,7 +3,7 @@
 
 import type { BoxModeReport } from '@forge/contracts/box-wire';
 import {
-  type BOX_ATTACH_MODES,
+  BOX_ATTACH_MODES,
   BOX_MODES,
   BOX_UNSERVED_MODES,
   type BoxMode,
@@ -92,6 +92,9 @@ const UNGUARDED: Record<Exclude<BoxMode, (typeof BOX_ATTACH_MODES)[number]>, str
   desktop: "a desktop box's DISPLAY and AT-SPI bus",
 };
 
+const attachable = (mode: BoxMode): mode is (typeof BOX_ATTACH_MODES)[number] =>
+  (BOX_ATTACH_MODES as readonly BoxMode[]).includes(mode);
+
 const ACT_DOOR =
   'Drive it through the act door instead (`forge-runner box act <box> -- <command>`, forge_box act), which works from anywhere and where the hold binds';
 
@@ -115,7 +118,7 @@ export function attachFault(
       detail: `${from}, and the box runs on device ${box.deviceId}: its endpoint is that device's loopback, which no tunnel carries yet, so only an agent on that device attaches. ${ACT_DOOR}`,
     };
   }
-  if (box.mode !== 'browser') {
+  if (!attachable(box.mode)) {
     return {
       code: 'BOX_ATTACH_UNAVAILABLE',
       detail: `${UNGUARDED[box.mode]} cannot be taken back when a person takes the box, so Forge hands out no native endpoint for it. ${ACT_DOOR}`,

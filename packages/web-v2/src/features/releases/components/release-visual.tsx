@@ -8,15 +8,13 @@ import { useState } from "react";
 import { DeviceFrame, type DeviceFrameKind, DeviceFrames, MediaOverlay, PhoneStage, PlayMark, SegmentedControl, Skeleton, ThumbSlot } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { captionsOf } from "@/lib/utils/captions";
+import { clockOf } from "@/lib/utils/format";
 import { useMediaSrc } from "@/lib/utils/use-media-src";
 
 type Frame = "desktop" | "phone";
 
-/** A clip's length as a reader reads it: 0:20, 12:05. */
-export const lengthOf = (seconds: number): string => `${Math.floor(seconds / 60)}:${String(Math.round(seconds) % 60).padStart(2, "0")}`;
-
 /** What a clip's play mark says: a lead word where one is given, then its length where it is known. */
-export const playWords = (seconds: number | null, lead?: string): string => [lead, seconds !== null ? lengthOf(seconds) : null].filter(Boolean).join(" ");
+export const playWords = (seconds: number | null, lead?: string): string => [lead, seconds !== null ? clockOf(seconds) : null].filter(Boolean).join(" ");
 
 /** The picture a frame shows: a picture as itself, a clip as its still, or its first frame where none was kept. */
 function FramePicture({ file, still, authed }: { file: ReleaseVisualFile; still: ReleaseVisualFile | null; authed: boolean }) {

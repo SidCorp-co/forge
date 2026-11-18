@@ -2,6 +2,7 @@
 // first, each in priority order, filtered by an area or by words; one source by id, address or name;
 // and a source's timeline of the releases the project read from it.
 
+import { feedbackKey } from '@forge/contracts/feedback';
 import type {
   ReferenceReleaseView,
   ReferenceSearchQuery,
@@ -221,7 +222,7 @@ export async function declinedVersions(
   const declined = new Map(
     ideas
       .filter((r) => phaseIn(r, linked) === 'declined')
-      .map((r) => [r.id, { id: r.id, key: `FB-${r.fbSeq}` }]),
+      .map((r) => [r.id, { id: r.id, key: feedbackKey(r.fbSeq) }]),
   );
   for (const r of rows) {
     const idea = r.feedbackId ? declined.get(r.feedbackId) : undefined;

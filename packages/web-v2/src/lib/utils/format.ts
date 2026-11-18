@@ -54,3 +54,10 @@ export function formatAge(iso: string, now: number = Date.now()): string {
 
 /** The absolute time, in the reader's locale, for a tooltip beside a relative one. */
 export const formatStamp = (iso: string) => new Date(iso).toLocaleString();
+
+/** A length in seconds as m:ss, or h:mm:ss past the hour: a clip's or a recording's. */
+export function clockOf(seconds: number): string {
+  const s = Math.round(seconds);
+  const mmss = `${Math.floor((s % 3600) / 60)}:${String(s % 60).padStart(2, "0")}`;
+  return s >= 3600 ? `${Math.floor(s / 3600)}:${mmss.padStart(5, "0")}` : mmss;
+}

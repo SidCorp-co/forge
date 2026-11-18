@@ -39,6 +39,12 @@ describe("a release opens on its hero (ISS-1308)", () => {
 });
 
 describe("each What's new line shows its judge's clip and shots (ISS-1308)", () => {
+  it("writes a clip of an hour or more as h:mm:ss", () => {
+    const page = releasePage();
+    render(<WhatsNew page={{ ...page, improvements: page.improvements.map((c) => ({ ...c, visual: c.visual && { ...c.visual, seconds: 3600 } })) }} authed />);
+    expect(screen.getByTestId("visual-play")).toHaveTextContent("1:00:00");
+  });
+
   it("sets the phone frame beside the desktop one, toggles to the phone alone, and opens the clip large", async () => {
     const { container } = render(<WhatsNew page={releasePage()} authed />);
     const row = screen.getByTestId("whats-new-row");

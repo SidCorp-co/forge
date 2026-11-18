@@ -9,7 +9,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import type { FeedbackView } from "../types";
 import { atOf } from "@/features/previews";
-import { clockOf, Recordings } from "./recordings";
+import { clockOf } from "@/lib/utils/format";
+import { Recordings } from "./recordings";
 
 const replayed = vi.hoisted(() => ({ events: [] as unknown[], played: 0 }));
 vi.mock("rrweb", () => ({
