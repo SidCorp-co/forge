@@ -2,7 +2,12 @@
 import { describe, expect, it } from 'vitest';
 import { issuesNamedBy, parkOwedBy } from './park-owed.js';
 
-const base = { awaitsMerge: false, prefixes: ['ISS', 'EPOD'], ownSeq: 63, shipped: new Set<number>() };
+const base = {
+  awaitsMerge: false,
+  prefixes: ['ISS', 'EPOD'],
+  ownSeq: 63,
+  shipped: new Set<number>(),
+};
 
 describe('who owes the question a park mints (ISS-1127)', () => {
   it('a resource is the master’s, whatever its words', () => {
@@ -38,7 +43,8 @@ describe('who owes the question a park mints (ISS-1127)', () => {
     });
     expect(mixed).toEqual({
       blockerKind: 'master_or_peer',
-      because: "it waits on EPOD-70, another issue's delivery not yet landed, which the master follows",
+      because:
+        "it waits on EPOD-70, another issue's delivery not yet landed, which the master follows",
     });
   });
 

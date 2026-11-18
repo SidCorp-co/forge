@@ -308,15 +308,10 @@ async function moveIssue(
     leftStatus,
     defect: caused.defect,
   });
-  const updated = txResult.row;
-
   const terminal = TERMINAL_FOR_DISPATCH.has(toStatus);
 
   return {
-    id: updated.id,
-    status: updated.status as IssueStatus,
-    reopenCount: updated.reopenCount,
-    updatedAt: updated.updatedAt,
+    ...txResult.row,
     terminal,
     unblockedDependents: txResult.unblockedDependents,
     step,
