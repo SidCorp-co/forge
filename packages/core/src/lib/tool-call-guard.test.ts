@@ -80,13 +80,17 @@ describe('a tool call refused for its grant epoch', () => {
   }) =>
     toolCallRefusal(boxTool, {}, { ...bound(['pipeline:write'], ['p']), grantEpoch: 2, holder });
 
-  it("names a box's re-pair and its runner's re-bind for a checkout credential", () => {
-    const said = at({ deviceId: 'dev-1', agency: 'agent' });
+  it("names a runner device's re-pair and its runner's re-bind for a checkout credential", () => {
+    const said = at({ deviceId: '7d2f4c1e-9b8a-4e6f-a1c3-5d7e9f0b2a4c', agency: 'agent' });
     expect(said).toContain('PAT_GRANT_PREDATES_ROUTE');
     expect(said).toContain('/api/boxes joined');
-    expect(said).toContain('re-pairs the box (`forge-runner login`');
+    expect(said).toContain('re-pairs the runner device (`forge-runner login`');
     expect(said).toContain('POST /api/projects/<project id>/runners');
     expect(said).not.toContain('Mint a new token');
+    // the device is never called a box right after a Forge Box was refused, nor named by its id
+    expect(said).not.toMatch(/\bbox\b/);
+    expect(said).not.toContain('7d2f4c1e');
+    expect(String(said).length, String(said)).toBeLessThan(800);
   });
 
   it("names the minting door by the credential's kind", () => {
