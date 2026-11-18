@@ -313,6 +313,27 @@ fixed-interval restart loop. When you re-`login`, the daemon detects the new
 token (within ~30s) and performs a single controlled restart to apply it across
 every client (WebSocket + HTTP) — no manual `systemctl restart` needed.
 
+## Deploying onto a box whose masters run in tmux (ISS-1304)
+
+Masters run as `claude --bg` sessions since ISS-1268. A box upgraded from a runner whose masters
+ran in tmux panes is moved over in this order:
+
+1. **Pin.** `forge-runner config show` lists `[runner] claude_version`, which a passing
+   `forge-runner claude canary <version>` moves. Unpinned, every placement is refused
+   `CLAUDE_VERSION_UNPINNED`. A build from ISS-1304 on keeps the keys it does not know when it
+   writes the file; an older one's `bind` or `config set` can still drop the pin, so read it again.
+2. **Install** the new binary.
+3. **Restart** the runner's service.
+4. **Watch the cutover.** Each sweep, a master whose pane is idle (its session `idle` in
+   `claude agents --json`, no background child or child run open) has its pane ended and its
+   conversation resumed as a background session under the same id; the log says `its tmux pane
+   was idle and is ended`. A busy one stays in tmux (`BG_CUTOVER_WAITS` in the log) and moves on
+   a later sweep.
+
+A copy is two live rows for one master in `claude agents --json`, or one background row beside
+the pane holding its conversation. The runner stops one at once (`BG_RESUME_COPIED`);
+`BG_COPY_LEFT_RUNNING` means its stop did not take, and `claude stop <id>` ends it.
+
 ## Auto-update (ISS-392)
 
 The daemon checks `{core}/api/install/latest.json` ~30s after start and every 6h.
