@@ -200,7 +200,10 @@ export async function readBox(id: string, actor: BoxActor): Promise<BoxRecord> {
   return boxRecord(row);
 }
 
-/** Close a box: the device reaps every process it started; its recording stays until the issue ends. */
+/**
+ * Close a box: the device reaps every process it started; its recording stays until the issue ends.
+ * A person's hold ends with it in the same write (`boxes_held_chk`, ISS-1317).
+ */
 export async function closeBox(id: string, actor: BoxActor, reason?: string): Promise<BoxRecord> {
   const row = await ownedRow(id, actor, 'close a box');
   if (row.state === 'closed' || row.state === 'failed') return boxRecord(row);
@@ -211,6 +214,8 @@ export async function closeBox(id: string, actor: BoxActor, reason?: string): Pr
     set: {
       closedAt: new Date(),
       queue: null,
+      heldBy: null,
+      heldSince: null,
       recordingState: row.recordingState === 'recording' ? 'kept' : row.recordingState,
     },
     reason: reason ?? null,

@@ -311,6 +311,41 @@ describe('take control and hand back', () => {
   });
 });
 
+describe('a hold ends with its box (ISS-1317)', () => {
+  it('closes a box a person holds, its hold cleared and the move on the record', async () => {
+    const id = await runningBox();
+    expect((await say('person', 'POST', `/api/boxes/${id}/take`)).status).toBe(200);
+    const closed = await say('person', 'POST', `/api/boxes/${id}/close`, {});
+    expect(closed.status, JSON.stringify(closed.json)).toBe(200);
+    expect(closed.json.box).toMatchObject({ state: 'closed' });
+    const [row] = (await db.execute(
+      sql`SELECT state, held_by, held_since FROM boxes WHERE id = ${id}`,
+    )) as unknown as Doc[];
+    expect(row).toEqual({ state: 'closed', held_by: null, held_since: null });
+    const moves = (await db.execute(sql`
+      SELECT from_status, to_status FROM kernel_transitions
+       WHERE entity = 'box' AND entity_id = ${id} ORDER BY created_at`)) as unknown as Doc[];
+    expect(moves.at(-1)).toEqual({ from_status: 'person', to_status: 'closed' });
+    expect((await frames(id, 'box.close')).at(-1)?.data).toEqual({ boxId: id, why: 'done' });
+  });
+
+  it('fails a box a person holds with its hold cleared', async () => {
+    const id = await runningBox();
+    await say('person', 'POST', `/api/boxes/${id}/take`);
+    const { failBox } = await import('../../src/boxes/allocate.js');
+    const { boxes } = await import('../../src/db/schema-boxes.js');
+    const { eq } = await import('drizzle-orm');
+    const [row] = await db.select().from(boxes).where(eq(boxes.id, id));
+    expect(row?.state).toBe('person');
+    if (!row) throw new Error(`no box ${id}`);
+    await failBox(row, 'BOX_GONE', 'gone', { type: 'runner', id: deviceId });
+    const [after] = (await db.execute(
+      sql`SELECT state, held_by, held_since FROM boxes WHERE id = ${id}`,
+    )) as unknown as Doc[];
+    expect(after).toEqual({ state: 'failed', held_by: null, held_since: null });
+  });
+});
+
 describe("a criterion's span becomes its evidence", () => {
   it('cuts the span into a clip and still attached to the issue under the criterion', async () => {
     const id = await runningBox(2);
