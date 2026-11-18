@@ -43,6 +43,9 @@ const LEFT_OUT: Readonly<Record<string, string>> = {
   'issues.standing.act.takeOnOrDrop': 'a draft issue, counted by the requests and carriers reads',
   // a requirement's or feedback item's wait on its issue: that issue's own standing, in this read
   'standing.act.onIssue': "the issue's own act, counted once on the issue",
+  // a feedback item's wait on the release run carrying its carriers: the release's own act, which
+  // the releases' read counts (`release-batch/master-owed-acts.ts`, ISS-1295)
+  'standing.act.onRelease': "the release's own act, counted once on the release",
   // a feedback item's draft carrier: the carrier issue's own act, which the carriers read names (ISS-840)
   'standing.act.takeOn': "the draft carrier's own act, counted once on the carrier",
   // the carrier issue waits on a person's answer or act first; its own standing names the master

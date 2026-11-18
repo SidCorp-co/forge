@@ -27,6 +27,7 @@ import {
 import { PLAIN_DECISION_MAX } from "./plain-decision.js";
 import { questionSubjectSchema } from "./questions.js";
 import { CHANGE_REQUEST_STATES, RELEASE_ROSTER_LIMIT } from "./releases.js";
+import { ACTS_ON_ANOTHER_RECORD } from "./standing.js";
 
 /** What a decision asks for, in the order the home and the chat list them. */
 export const NEEDS_YOU_DECISION_GROUPS = [
@@ -604,12 +605,12 @@ const isSaidAct = (v: unknown): v is SaidAct =>
 	typeof v === "object" && v !== null && "key" in v;
 
 /**
- * The decision acts a wait's act is taken by: a requirement's wait on one of its issues reads the
- * issue's act, and several acts said as one (`standing.acts`) are taken by each of theirs. Null
+ * The decision acts a wait's act is taken by: a wait on another record's act (`ACTS_ON_ANOTHER_RECORD`)
+ * reads that act, and several acts said as one (`standing.acts`) are taken by each of theirs. Null
  * where any of them is no person's decision.
  */
 export function decisionActsOf(act: SaidAct): DecisionActOfSaid[] | null {
-	const inner = act.key === "standing.act.onIssue" ? act.vars?.act : undefined;
+	const inner = ACTS_ON_ANOTHER_RECORD.has(act.key) ? act.vars?.act : undefined;
 	if (isSaidAct(inner)) return decisionActsOf(inner);
 	const many = act.key === "standing.acts" ? act.vars?.acts : undefined;
 	if (Array.isArray(many)) {
@@ -665,13 +666,13 @@ export function rowSpaceOf(
 }
 
 /**
- * Whether a wait's act is taken on another record than the one that names it: an issue's act a
- * requirement waits on (`standing.act.onIssue`), or an act only another record decides (a release's
- * cut, `DECISION_ACT_KEYS_ON`). That record lists it for the viewer, so the one naming it is no
+ * Whether a wait's act is taken on another record than the one that names it: an issue's or a
+ * release's act a requirement or feedback item waits on (`ACTS_ON_ANOTHER_RECORD`), or an act only
+ * another record decides (a release's cut, `DECISION_ACT_KEYS_ON`). That record lists it for the viewer, so the one naming it is no
  * second Needs you row (REQ-48 BC-11, ISS-924).
  */
 export function actTakenElsewhere(act: SaidAct): boolean {
-	if (act.key === "standing.act.onIssue") return true;
+	if (ACTS_ON_ANOTHER_RECORD.has(act.key)) return true;
 	return Object.values(DECISION_ACT_KEYS_ON).some((keys) => keys?.has(act.key));
 }
 

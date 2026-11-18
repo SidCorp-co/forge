@@ -80,6 +80,16 @@ export interface WaitingOn<K extends WaitingKind = WaitingKind> {
 	says: WaitingSays;
 }
 
+/**
+ * The acts that name another record's own act inside theirs: an issue's, on a requirement or feedback
+ * item it carries (`standing.act.onIssue`), and a release's, on a feedback item whose carriers it
+ * carries (`standing.act.onRelease`, ISS-1295). The act inside is the one taken, on that record.
+ */
+export const ACTS_ON_ANOTHER_RECORD: ReadonlySet<string> = new Set([
+	"standing.act.onIssue",
+	"standing.act.onRelease",
+]);
+
 /** A wait's sentences as said: the English fields are built from these. */
 export interface WaitingSays {
 	who: Said;

@@ -5,7 +5,11 @@
  */
 
 import type { Said } from '@forge/contracts/said';
-import type { WaitingKind, WaitingOn } from '@forge/contracts/standing';
+import {
+  ACTS_ON_ANOTHER_RECORD,
+  type WaitingKind,
+  type WaitingOn,
+} from '@forge/contracts/standing';
 import type { StandingActClass } from '@forge/contracts/steward';
 
 const BY_KIND: Record<WaitingKind, StandingActClass> = {
@@ -70,9 +74,9 @@ const BY_KEY: Readonly<Record<string, StandingActClass>> = {
   'issues.standing.act.landedWaitsJudge': 'judge',
 };
 
-/** A requirement's wait on one of its issues names that issue's act inside its own. */
+/** A wait on another record's act (an issue's, a release's) names that act inside its own. */
 function innerAct(act: Said): Said {
-  const inner = act.key === 'standing.act.onIssue' ? act.vars?.act : undefined;
+  const inner = ACTS_ON_ANOTHER_RECORD.has(act.key) ? act.vars?.act : undefined;
   return inner && typeof inner === 'object' && 'key' in inner ? innerAct(inner) : act;
 }
 
@@ -92,7 +96,7 @@ export function actClassOf(w: Pick<WaitingOn, 'kind' | 'says'>): StandingActClas
   return BY_KEY[key] ?? BY_KIND[w.kind];
 }
 
-/** The key of the act a wait names, read through a requirement's wait on one of its issues. */
+/** The key of the act a wait names, read through a wait on another record's act. */
 export function innerActKey(w: Pick<WaitingOn, 'says'>): string {
   return innerAct(w.says.act).key;
 }

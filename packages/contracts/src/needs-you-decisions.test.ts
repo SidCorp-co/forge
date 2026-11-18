@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	actTakenElsewhere,
 	byDecisionOrder,
 	DECISION_ACT_KEYS,
 	DECISION_ACT_OF_SAID,
@@ -427,6 +428,17 @@ describe("the act a wait names is taken by a decision act (ISS-758)", () => {
 			vars: { act: { key: "issues.standing.act.answer" } },
 		};
 		expect(decisionActsOf(onIssue)).toEqual([{ act: "question.answer" }]);
+	});
+
+	// ISS-1295: a feedback item whose carriers a cut release carries waits on that release's act,
+	// which its holders take on the release, so the item is no second Needs you row for it
+	it("reads a release's act through a feedback item's wait on it, taken on the release", () => {
+		const onRelease = {
+			key: "standing.act.onRelease",
+			vars: { act: { key: "standing.act.approveOrReturn" }, v: "0.28.0" },
+		};
+		expect(decisionActsOf(onRelease)).toEqual([{ act: "release.decide" }]);
+		expect(actTakenElsewhere(onRelease)).toBe(true);
 	});
 
 	it("names no act where any of several is no person's decision", () => {

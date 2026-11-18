@@ -6,7 +6,7 @@
  */
 
 import type { Said } from '@forge/contracts/said';
-import type { WaitingOn } from '@forge/contracts/standing';
+import { ACTS_ON_ANOTHER_RECORD, type WaitingOn } from '@forge/contracts/standing';
 
 /** The names a wait gives the project's master: "Master", and "The project's master" on feedback and designs. */
 const MASTER_WHO: ReadonlySet<string> = new Set([
@@ -19,10 +19,10 @@ export function waitNamesMaster(w: Pick<WaitingOn, 'kind' | 'says'>): boolean {
   return w.kind === 'agent' && MASTER_WHO.has(w.says.who.key);
 }
 
-/** The wrappers a wait's act may sit in: an issue's act on a requirement or feedback, "… and N more", nobody holding it. */
+/** The wrappers a wait's act may sit in: another record's act (an issue's, a release's), "… and N more", nobody holding it. */
 const WRAPS: ReadonlySet<string> = new Set([
   'standing.act.andMore',
-  'standing.act.onIssue',
+  ...ACTS_ON_ANOTHER_RECORD,
   'standing.act.noHolder',
 ]);
 
