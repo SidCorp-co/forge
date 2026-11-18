@@ -488,8 +488,8 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     ws/server.ts WebSocket handed to @types/node:emit in attachWs
     ws/server.ts WebSocket.on(message) in attachWs`,
   'a box socket, opened once its ticket was spent, and its frames: a viewer’s, dropped; a holder’s BoxInput lines; the device’s screen frames (ISS-1276)': lines`
+    boxes/frame-relay.ts WebSocket.on(message) in relayFrames
     boxes/viewer.ts IncomingMessage handed to @types/ws:handleUpgrade in acceptBoxUpgrade
-    boxes/viewer.ts WebSocket.on(message) in relayFrames
     boxes/viewer.ts WebSocket.on(message) in serveInput
     boxes/viewer.ts WebSocket.on(message) in serveView`,
 };
