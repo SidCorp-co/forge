@@ -260,7 +260,7 @@ describe('a planned item waits on every carrier still owed, each named', () => {
       AT,
     ).waitingOn;
     expect(w.act).toBe('cut the release that carries ISS-4 and ISS-7');
-    expect(w.rule).toContain('ISS-4 and ISS-7 wait at awaiting_release');
+    expect(w.rule).toContain('ISS-4 and ISS-7 wait for a release');
   });
 });
 

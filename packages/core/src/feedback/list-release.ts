@@ -6,6 +6,7 @@ import { releaseNotesOf, waitingIssueIds } from '../issues/index.js';
 import { holderNames } from '../permissions/index.js';
 import { shippedReleasesOf } from '../pipeline/index.js';
 import { readReleaseMode } from '../project-config/index.js';
+import { type CarryingRelease, feedbackDependents } from './dependents.js';
 import type { CarrierRelease } from './standing.js';
 
 export type ReleaseGate = {
@@ -13,22 +14,35 @@ export type ReleaseGate = {
   releaseHolders: string[];
   /** Who owes the `manual` model's cut (`releaseCutOf`); null under any other model. */
   releaseCut: OwedBy | null;
+  /** The cut release holding an act that carries each carrier a run claims, by issue id (ISS-1295). */
+  carryingRuns: ReadonlyMap<string, CarryingRelease>;
 };
 
-/** How this project's release is made, read only where a routed issue waits at the gate, who holds the permission its person act takes, and who owes a manual cut. */
+const NO_RUNS: ReadonlyMap<string, CarryingRelease> = new Map();
+
+/**
+ * How this project's release is made, read only where a routed issue waits at the gate (`atGate`, the
+ * carriers there), who holds the permission its person act takes, who owes a manual cut, and, only
+ * where a release run claims a carrier there, the release carrying it, whose act it waits on now and
+ * never its cut (ISS-1295).
+ */
 export async function releaseGateOf(
   projectId: string,
-  atGate: boolean,
+  atGate: readonly { id: string; releaseVersion: string | null }[],
   policy: Promise<OwedPolicy>,
 ): Promise<ReleaseGate> {
-  const release = atGate ? await readReleaseMode(projectId) : null;
-  const [releaseHolders, releaseCut] = await Promise.all([
+  const release = atGate.length > 0 ? await readReleaseMode(projectId) : null;
+  const claimed = atGate.flatMap((i) => (i.releaseVersion ? [i.id] : []));
+  const [releaseHolders, releaseCut, carryingRuns] = await Promise.all([
     release && release !== 'automatic'
       ? holderNames(RELEASE_ACT_PERMISSION[release], projectId)
       : [],
     release === 'manual' ? policy.then((p) => releaseCutOf(projectId, p)) : null,
+    release && claimed.length > 0
+      ? feedbackDependents().releaseRunsCarrying(projectId, claimed)
+      : NO_RUNS,
   ]);
-  return { release, releaseHolders, releaseCut };
+  return { release, releaseHolders, releaseCut, carryingRuns };
 }
 
 /**

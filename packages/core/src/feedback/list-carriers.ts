@@ -13,6 +13,7 @@ import { memoizedPerId, rowsPerId } from '../db/read-memo.js';
 import { issues, pipelineRuns } from '../db/schema.js';
 import { issueCriteria } from '../db/schema-issue-criteria.js';
 import { closedUnreleasedSql } from '../issues/index.js';
+import type { CarryingRelease } from './dependents.js';
 import type { Row } from './read.js';
 
 /** Each issue a page of feedback names, with the release claiming it and whether it waits for one. */
@@ -62,6 +63,22 @@ export function owedCarriers(
   return route.carriers.filter(
     (c) => !finished.includes(c.status) || (c.key !== null && unreleased.has(c.key)),
   );
+}
+
+/**
+ * The cut release an item's owed carriers wait on: the first one's, where a cut release carries every
+ * one of them; null where any is in none, so the item still waits on the cut (ISS-1295).
+ */
+export function carrierRunOf(
+  carrierIds: readonly string[],
+  owed: readonly FeedbackCarrierView[],
+  issues: ReadonlyMap<string, { key: string }>,
+  runs: ReadonlyMap<string, CarryingRelease>,
+): CarryingRelease | null {
+  const keys = new Set(owed.map((c) => c.key));
+  const owedIds = carrierIds.filter((id) => keys.has(issues.get(id)?.key ?? null));
+  const carried = owedIds.flatMap((id) => runs.get(id) ?? []);
+  return owedIds.length > 0 && carried.length === owedIds.length ? (carried[0] ?? null) : null;
 }
 
 /** A carrier's live criteria by their latest verdict: `fail` (ISS-1159) and `skipped`, owed live (ISS-1234). */

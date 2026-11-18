@@ -7,11 +7,13 @@
 import type { FeedbackWaitingKind } from '@forge/contracts/feedback';
 import { RELEASE_ACT_PERMISSION } from '@forge/contracts/forecast';
 import type { IssueWaitingKind } from '@forge/contracts/issue-standing';
+import type { ReleaseWaitingKind } from '@forge/contracts/releases';
 import { type Said, say } from '@forge/contracts/said';
 import { holdersWho, nobodyHoldsAct, type WaitingOn, waitingOn } from '@forge/contracts/standing';
 import { STANDING_DUE_WORKING_DAYS, type StuckReading } from '@forge/contracts/steward';
 import { issuesNamed } from '../lib/named-items.js';
 import { addWorkingDays } from '../lib/working-days.js';
+import type { CarryingRelease } from './dependents.js';
 import type { Owed, PhaseFacts, StandingFacts, StandingViewer } from './standing.js';
 
 type FeedbackWaitingOn = WaitingOn<FeedbackWaitingKind>;
@@ -181,6 +183,7 @@ export function issueWait(
 ): Owed {
   const carrier = carriersPhrase(carriers);
   const issue = carrier ?? say('feedback.who.theLinkedIssue');
+  if (facts.carrierRun) return releaseRunWait(issue, facts.carrierRun);
   const ref = { ref: carriers[0] ?? null };
   const waits = carriers.length > 1 ? 'wait' : 'waits';
   const release = facts.carrierRelease;
@@ -224,6 +227,35 @@ export function issueWait(
     },
   }[release];
   return personRelease(release, facts, owed);
+}
+
+/** A release's party as a feedback item's: the release run itself, moving or held by its gate, is the carrier's. */
+const RELEASE_KIND_OF: Record<ReleaseWaitingKind, FeedbackWaitingKind> = {
+  you: 'person',
+  person: 'person',
+  agent: 'agent',
+  system: 'issue',
+  none: 'none',
+};
+
+/**
+ * Carriers a cut release carries wait on that release's act now, as its own page says it (its
+ * approval, its promotion, its deploy), owed by whoever holds it there, never on the cut it already
+ * had (ISS-1295: gwork FB-89 asked for the cut of 0.28.0 while it awaited approval). The act is the
+ * release's, on the release's holders' Needs you, so it is on no one's here.
+ */
+function releaseRunWait(issue: Said, run: CarryingRelease): Owed {
+  const w = run.waitingOn;
+  return {
+    wait: wait(
+      RELEASE_KIND_OF[w.kind],
+      w.says.who,
+      say('standing.act.onRelease', { act: w.says.act, v: run.version }),
+      say('feedback.rule.releaseCarries', { v: run.version, issue, rule: w.says.rule }),
+      { ref: run.version, dueAt: w.dueAt },
+    ),
+    yours: false,
+  };
 }
 
 /**

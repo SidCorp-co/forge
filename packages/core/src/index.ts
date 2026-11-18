@@ -150,6 +150,7 @@ import {
   registerDeployWorker,
   registerReleaseBatchFinish,
   releasedLineReads,
+  releaseRunsCarrying,
 } from './release-batch/index.js';
 import { releaseShareSource } from './release-page/index.js';
 import { provideReportPorts } from './report-ports.js';
@@ -336,7 +337,11 @@ provideRequirementDependents({
 });
 provideKeptPreviewWriter({ write: writeKeptPreview });
 provideRoomSettleWriter(roomSettleWriter);
-provideFeedbackDependents({ redactSuggestions: redactFeedbackSuggestions, ...mockupsForFeedback });
+provideFeedbackDependents({
+  redactSuggestions: redactFeedbackSuggestions,
+  ...mockupsForFeedback,
+  releaseRunsCarrying,
+});
 
 export const app = new Hono<{ Variables: RequestIdVars }>();
 

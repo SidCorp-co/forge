@@ -1131,6 +1131,10 @@ export const SAID = {
 		en: "{act} on {issue}",
 		vars: { act: "said", issue: "name" },
 	},
+	"standing.act.onRelease": {
+		en: "{act} on release {v}",
+		vars: { act: "said", v: "version" },
+	},
 	"standing.act.forIssue": {
 		en: "for {issue}",
 		vars: { issue: "name" },
@@ -1634,23 +1638,23 @@ export const SAID = {
 	"feedback.rule.issuesCarry": { en: "planned: its issues carry it" },
 	"feedback.rule.issueCarries": { en: "planned: its issue carries it" },
 	"feedback.rule.noReleaseModel": {
-		en: "planned: {issue} {waits} at awaiting_release with no release model",
+		en: "planned: {issue} {waits} for a release with no release model",
 		vars: { issue: "said", waits: "agreement" },
 	},
 	"feedback.rule.approvalRequired": {
-		en: "planned: {issue} {waits} at awaiting_release for a releases.approve holder",
+		en: "planned: {issue} {waits} for a releases.approve holder to approve the release",
 		vars: { issue: "said", waits: "agreement" },
 	},
 	"feedback.rule.manualCut": {
-		en: "planned: {issue} {waits} at awaiting_release; {why}, so a project.admin holder cuts it",
+		en: "planned: {issue} {waits} for a release; {why}: a project.admin holder cuts it",
 		vars: { issue: "said", waits: "agreement", why: "text" },
 	},
 	"feedback.rule.masterCuts": {
-		en: "planned: {issue} {waits} at awaiting_release; the project's master cuts it by {date}",
+		en: "planned: {issue} {waits} for a release; the master cuts it by {date}",
 		vars: { issue: "said", waits: "agreement", date: "date" },
 	},
 	"feedback.rule.masterCutLate": {
-		en: "planned: {issue} {waits} at awaiting_release; cut overdue since {date}, admin cuts",
+		en: "planned: {issue} {waits} for a release; cut overdue since {date}, admin cuts",
 		vars: { issue: "said", waits: "agreement", date: "date" },
 	},
 	"feedback.rule.newRequirement": {
@@ -3485,6 +3489,10 @@ export const SAID = {
 	"feedback.rule.carrierWaits": {
 		en: "{key} carries it and waits because {rule}",
 		vars: { key: "key", rule: "said" },
+	},
+	"feedback.rule.releaseCarries": {
+		en: "release {v} carries {issue} and waits because {rule}",
+		vars: { v: "version", issue: "said", rule: "said" },
 	},
 	"feedback.rule.carrierUnread": {
 		en: "{key} carries it, and its own standing could not be read",

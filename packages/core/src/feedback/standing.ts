@@ -21,6 +21,7 @@ import type { SuggestionStatus } from '@forge/contracts/suggestions';
 import type { OwedBy } from '@forge/contracts/who-owes';
 import { attentionGroupOf, type TurnGroup } from '../lib/attention-group.js';
 import { withTimes } from '../lib/standing-times.js';
+import type { CarryingRelease } from './dependents.js';
 import {
   type CarrierStanding,
   carrierWait,
@@ -175,8 +176,17 @@ export interface StandingFacts {
    * 2026-11-08, D5) and nothing waits on anyone; under strict its reporter or a triager confirms it.
    */
   masterVerifies?: boolean;
-  /** Set only where the item is planned on issues every one still owed of which stands at `awaiting_release`. */
+  /**
+   * Set only where the item is planned on issues every one still owed of which waits for a release: at
+   * `awaiting_release`, or closed met in scope and not shipped yet.
+   */
   carrierRelease: CarrierRelease | null;
+  /**
+   * The cut release still holding an act that carries every carrier owed, as its own page reads its
+   * wait (`release-batch/carrying-release.ts:releaseRunsCarrying`); null where a carrier owed is in
+   * no cut release, which then waits on its cut (ISS-1295).
+   */
+  carrierRun?: CarryingRelease | null;
   /** The version of the release a carrier issue is already cut into, when one is; else null. */
   carrierVersion?: string | null;
   /** Who holds the permission the carrier's release act takes (`RELEASE_ACT_PERMISSION`), by name. */

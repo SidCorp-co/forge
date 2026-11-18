@@ -256,7 +256,7 @@ describe('an item planned on an issue at the release gate names who releases it'
       kind: 'person',
       who: 'Ana, Bo',
       act: 'cut the release that carries ISS-9',
-      rule: 'planned: ISS-9 waits at awaiting_release; this project is strict (gates.profile), so a project.admin holder cuts it',
+      rule: 'planned: ISS-9 waits for a release; this project is strict (gates.profile): a project.admin holder cuts it',
     });
     expect(planned('manual', viewer({ canWrite: true })).waitingOn.who).toBe('Ana, Bo');
     expect(planned('manual', viewer({ canAdmin: true })).waitingOn.who).toBe('You');
@@ -270,7 +270,7 @@ describe('an item planned on an issue at the release gate names who releases it'
       kind: 'agent',
       who: "The project's master",
       act: 'cut the release that carries ISS-9',
-      rule: "planned: ISS-9 waits at awaiting_release; the project's master cuts it by 2026-10-05",
+      rule: 'planned: ISS-9 waits for a release; the master cuts it by 2026-10-05',
       dueAt: '2026-10-05T00:00:00.000Z',
     });
     expect(s.attentionGroup).not.toBe('needs_you');
@@ -283,7 +283,7 @@ describe('an item planned on an issue at the release gate names who releases it'
       kind: 'you',
       who: 'You',
       act: 'cut the release that carries ISS-9',
-      rule: 'planned: ISS-9 waits at awaiting_release; cut overdue since 2026-10-05, admin cuts',
+      rule: 'planned: ISS-9 waits for a release; cut overdue since 2026-10-05, admin cuts',
     });
     expect(planned('manual', viewer(), ['Ana', 'Bo'], MASTER_CUT, late).waitingOn.who).toBe(
       'Ana, Bo',

@@ -32,6 +32,7 @@ import {
 } from './linked-rows.js';
 import {
   carrierIssueRows,
+  carrierRunOf,
   heldCriteriaOf,
   owedCarriers,
   shippedCarriersOfTriaged,
@@ -43,7 +44,6 @@ import type { FeedbackActor, Row } from './read.js';
 import { routeIssuesOf } from './relations.js';
 import { NONE_UNTOLD, notToldOf, type UntoldAmong, untoldAmong } from './ship-notice.js';
 import {
-  type CarrierRelease,
   feedbackStandingOf,
   type PhaseFacts,
   phaseOf,
@@ -56,7 +56,7 @@ import { recordCheckOf, verifyHeldOf, verifyWindowDays } from './verify-window.j
 import type { ViewerCan } from './viewer-can.js';
 
 /** Everything the rows point at, loaded once for a page of rows. */
-export interface Linked extends StandingFacts, Pick<ReleaseGate, 'releaseCut'> {
+export interface Linked extends StandingFacts, ReleaseGate {
   prefix: string | null;
   issues: Map<
     string,
@@ -105,10 +105,6 @@ export interface Linked extends StandingFacts, Pick<ReleaseGate, 'releaseCut'> {
   runnerBound: boolean;
   /** Whether the project's master owes a resolved item's confirm (`who-owes.ts:whoOwes`, ISS-1058). */
   masterVerifies: boolean;
-  /** How this project's release is made, read only where a routed issue waits at the gate. */
-  release: CarrierRelease | null;
-  /** Who holds the permission that release's person act takes, by name; empty where none is owed. */
-  releaseHolders: string[];
   /** The project's verify window in days, read only where a triaged item could read resolved. */
   verifyWindowDays: number;
   /** Whose reporter nothing told among these rows (`ship-notice.ts:untoldAmong`). */
@@ -204,7 +200,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
   // an original read only as a root has its own standing read too: its duplicate reads it
   const carrying = new Set([...routeIssues.values()].flat());
   // a carrier closed met in scope waits for the release as one at the gate does
-  const atGate = issueRows.some(
+  const atGate = issueRows.filter(
     (i) => (i.status === AT_RELEASE_GATE || i.unreleased) && carrying.has(i.id),
   );
   const owedPolicy = readOwedPolicy(projectId);
@@ -443,6 +439,7 @@ function ownStandingIn(r: Row, l: Linked, viewer: StandingViewer, now: Date) {
           : null,
       releaseHolders: l.releaseHolders,
       releaseCut: l.releaseCut,
+      carrierRun: carrierRunOf(l.routeIssues.get(r.id) ?? [], owed, l.issues, l.carryingRuns),
       relayOwed: phase === 'resolved' && l.untold.untold.has(r.id),
       relayHolders: l.untold.relayHolders,
       reporterIsAgent: r.reporterAgency === 'agent',

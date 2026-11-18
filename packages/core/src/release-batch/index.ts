@@ -8,7 +8,7 @@ export {
   parseDecision,
 } from './approvals.js';
 export { RELEASE_REST_CARDS } from './cards.js';
-export { holdingReleaseOf, holdsAnAct } from './carrying-release.js';
+export { holdingReleaseOf, holdsAnAct, releaseRunsCarrying } from './carrying-release.js';
 export { admitChangeRequestMerge } from './change-request-merge.js';
 export { releaseEndsRun } from './change-request-roster.js';
 export { settleChangeRequestRelease } from './change-request-settle.js';
