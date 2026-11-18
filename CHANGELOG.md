@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.739] - 2026-11-18
+
+A tidier menu with one section open, and the Activity count in it
+
+### Added
+
+- **Activity in the menu shows what waits on you.** The count matches the Activity page and its tooltip names the projects; on a phone, More shows it too. It updates as you answer.
+
+### Changed
+
+- **The menu keeps one group open.** Opening Product closes Delivery, and the group you are in can be closed. The bottom is one row: What's new, Help, Docs and the version are in your account menu.
+
 ## [0.4.0-dev.738] - 2026-11-18
 
 Watch a test box full screen or open just its screen from its own link
