@@ -9,7 +9,7 @@ import type { BoxRecord } from "@forge/contracts/boxes";
 import { type KeyboardEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { Button, IconButton, MediaOverlay, ToneBadge } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { heldBy, isLive, STATE_TONE } from "../labels";
+import { heldBy, isEnded, isLive, STATE_TONE } from "../labels";
 import { canFullscreen, enterFullscreen, FULLSCREEN_CHANGE, fullscreenElement, leaveFullscreen } from "../view/fullscreen";
 import { FpsSelect, HoldLine, HoldMove } from "./box-controls";
 import { BoxInputLayer } from "./box-input";
@@ -76,9 +76,13 @@ function ScreenBar({ box, projectId, label, me, canWrite, fps, onFps, localInput
   const t = useCopy();
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-line-subtle bg-surface px-3 py-1.5 text-fg" data-testid="box-screen-bar">
-      <ToneBadge tone={STATE_TONE[box.state]} label={t(`boxes.state.${box.state}`)} title={t(`boxes.state.${box.state}`)} value={box.state} pulse={isLive(box)} />
+      {/* an ended box says so on the stage, once */}
+      {isEnded(box) ? null : <ToneBadge tone={STATE_TONE[box.state]} label={t(`boxes.state.${box.state}`)} title={t(`boxes.state.${box.state}`)} value={box.state} pulse={isLive(box)} />}
       <span className="min-w-0 flex-1 truncate text-13 font-semibold">{label}</span>
-      <HoldLine box={box} me={me} localInput={localInput} />
+      {/* on a phone the hold takes its own line, so the label keeps its words */}
+      <span className="empty:hidden max-sm:basis-full">
+        <HoldLine box={box} me={me} localInput={localInput} />
+      </span>
       <div className="flex flex-wrap items-center gap-2">
         {isLive(box) ? <FpsSelect fps={fps} onFps={onFps} /> : null}
         {canWrite ? <HoldMove box={box} projectId={projectId} me={me} /> : null}
