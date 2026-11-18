@@ -17,6 +17,7 @@ export { fenceChannelWay } from './fence-way.js';
 export { interfaceContractsOf } from './interface-contracts.js';
 export { ecosystemJsonSchemas } from './json-schema.js';
 export { openRunsOf } from './link-service.js';
+export { MEMBERSHIP_ACTS, type MembershipAct, membershipActByName } from './membership-acts.js';
 export { isActiveMember } from './membership-store.js';
 export { unansweredDocuments } from './owed.js';
 export { registerSourcePushReactions } from './source-push.js';

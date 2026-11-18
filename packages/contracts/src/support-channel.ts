@@ -254,7 +254,8 @@ export type SupportReleaseDecisionRequest = z.infer<
 
 /**
  * The Forge acts the owner asks for in chat that his room's agent makes as him (ISS-1243 item 24):
- * each the act an item's page offers (`item-acts.ts`) or the merge mark, made through its own door.
+ * each the act an item's page offers (`item-acts.ts`), the merge mark, a document write, or an
+ * ecosystem membership act (ISS-1299), made through its own door.
  */
 export const SUPPORT_FORGE_ACTS = [
 	"requirement.propose",
@@ -274,6 +275,11 @@ export const SUPPORT_FORGE_ACTS = [
 	"issue.merge",
 	"config.write",
 	"binding.write",
+	// the steward's invite into an ecosystem and the member project's answer or leave (ISS-1299)
+	"ecosystem.invite",
+	"membership.accept",
+	"membership.decline",
+	"membership.leave",
 ] as const;
 export type SupportForgeAct = (typeof SUPPORT_FORGE_ACTS)[number];
 
@@ -304,7 +310,7 @@ export const supportForgeActRequestSchema = z.strictObject({
 		.min(1)
 		.max(200)
 		.describe(
-			"the item: REQ-n, a workflow's flow such as chat-turn, a release version such as 0.19.0, an issue ISS-n, a binding's id, or the project's slug for config.write",
+			"the item: REQ-n, a workflow's flow such as chat-turn, a release version such as 0.19.0, an issue ISS-n, a binding's id, the project's slug for config.write, or the ecosystem's slug for ecosystem.invite and membership.* (project is then the member project)",
 		),
 	reason: z
 		.string()
@@ -313,7 +319,7 @@ export const supportForgeActRequestSchema = z.strictObject({
 		.max(300)
 		.optional()
 		.describe(
-			"his why in a few words, where the act carries one; his message is quoted beside it either way",
+			"his why in a few words, where the act carries one (membership.leave requires it); his message is quoted beside it either way",
 		),
 	carry: z
 		.union([
