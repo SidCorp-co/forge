@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.737] - 2026-11-18
+
+An agent can attach its own browser tools to a Forge Box
+
+### Added
+
+- **Agents can drive the box you watch with their own tools.** Playwright or Chrome DevTools MCP on the box's machine attaches to a browser box; while you hold it, their clicks stop, and each shows in the feed.
+
 ## [0.4.0-dev.736] - 2026-11-18
 
 A credential that cannot drive a test box is refused at open; idle boxes close
