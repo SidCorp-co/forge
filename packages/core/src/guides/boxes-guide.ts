@@ -4,14 +4,14 @@ import type { CoreGuide } from './types.js';
 
 const reads = (verbs: readonly string[]) => verbs.map((v) => `\`${v}\``).join(', ');
 
-/** ISS-1276: a UI test runs in a Forge Box a person can watch, take over and hand back. */
+/** ISS-1276, ISS-1320: a screen is used in a Forge Box a person can watch, take over and hand back, by its builder from the first UI change and by its judge. */
 export const BOXES_GUIDE: CoreGuide = {
   slug: 'boxes',
   audience: 'agent',
-  title: 'Forge Box: test a UI where a person can watch',
+  title: 'Forge Box: use a screen as a person would, where a person can watch',
   summary:
-    "Open a box (browser, android or desktop) for the issue and criterion you test, drive it with `forge-runner box act` or forge_box, mark each criterion's span so it records its own clip and attaches it to the issue, and close it. Nothing records unless asked. A person may take control: your writes are refused BOX_HELD_BY_PERSON, your reads still answer; wait, read what they did, go on.",
-  version: 2,
+    "A screen is proven by being used: its builder opens a box (browser, android or desktop) on its worktree's dev server from the first UI change, and its judge on the running build. Drive it with `forge-runner box act` or forge_box, screenshot and look after each change, mark each criterion's span so it records its own clip and attaches it to the issue, and close it. Nothing records unless asked. A person may take control: your writes are refused BOX_HELD_BY_PERSON, your reads still answer; wait, read what they did, go on.",
+  version: 3,
   doors: [
     'POST /api/projects/:id/boxes',
     'POST /api/boxes/:id/acts',
@@ -19,19 +19,24 @@ export const BOXES_GUIDE: CoreGuide = {
     'POST /api/boxes/:id/recording',
     'POST /api/boxes/:id/close',
   ],
-  body: `## Forge Box: test a UI where a person can watch
+  body: `## Forge Box: use a screen as a person would, where a person can watch
 
-A box is a screen Forge gives you to test a UI in: a web page (\`browser\`), an Android app
+A box is a screen Forge gives you to use a UI in: a web page (\`browser\`), an Android app
 (\`android\`) or a Linux desktop app (\`desktop\`). The owner opens Forge and watches it live, takes
-control, tests by hand, and hands it back. A criterion you show there gets its clip from its span
-(step 4), without \`pnpm clip\`. Nothing forces a box on you: you choose to open one when the
-criterion is something a person sees.
+control, tests by hand, and hands it back. A screen is proven by being used there, not by a render
+test that lays nothing out: its builder uses it while building, its judge on the running build. A
+criterion you show there gets its clip from its span (step 4). Nothing refuses work done without a
+box; a screen line its judge marked no visual for reads "visual owed" on its release.
 
 ### 1. Open one
 \`POST /api/projects/:id/boxes\` (or forge_box \`open\`) with the \`mode\`, the \`issueId\`, the
-\`criterion\` you test and your \`runId\`. A browser box takes a \`viewport\` (390×844 for a phone)
-and a \`url\`. The box runs on your run's device. It answers \`opening\` until its screen answers,
-a warm box handed to you included; read it until it stands at \`agent\`.
+\`criterion\` you work and your \`runId\`. A browser box takes a \`viewport\` (1440×900 on a desktop,
+390×844 for a phone) and a \`url\`. The box runs on your run's device. It answers \`opening\` until
+its screen answers, a warm box handed to you included; read it until it stands at \`agent\`.
+
+- **A builder opens one at its first UI change**, not at the end: a browser box whose \`url\` is its
+  worktree's dev server on localhost (start it on a port of your own; the box shares your device),
+  or an android box on the dev build. Keep it open while you build.
 
 - **Nothing records unless asked.** Recording costs the device's CPU and disk, so a box records
   only while something needs it: a criterion's span (step 4) records itself. Add \`record: true\`
@@ -60,6 +65,10 @@ agent-desktop for desktop. Every act goes through Forge, which keeps the box's o
   write.
 - **A slow act answers \`pending\`** after ${BOX_LIMITS.actWaitSeconds}s; read it in
   \`GET /api/boxes/:id/acts\`.
+- **After each change, walk the criterion as a user:** \`snapshot\` to find, act, then
+  \`screenshot\` and look at it. Judge the layout, the copy, the empty, error and loading states, and
+  phone width (\`set viewport 390 844\`, then back to \`1440 900\`). What you see there is the proof; a
+  private Playwright or headless-Chrome script is not.
 
 ### 3. When a person holds it
 While a person holds the box your writes are refused \`BOX_HELD_BY_PERSON\`, naming who and since

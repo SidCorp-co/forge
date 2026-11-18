@@ -206,7 +206,11 @@ describe('a judge records a clip of each observable criterion it judges (REQ-40 
   it('asks why a judgement keeps no clip in withoutClip, never in the reason it gives', () => {
     expect(verdicts).toMatch(/without a clip says why in `withoutClip`/);
     expect(verdicts).toMatch(/never in\s+`reason`/);
-    expect(verdicts).toContain('pnpm --filter web-v2 clip');
+  });
+
+  it("takes the clip from the criterion's span on a box, never a recorder run by hand (ISS-1320)", () => {
+    expect(verdicts).toMatch(/A criterion's span on a box records it and attaches it/);
+    expect(verdicts).not.toMatch(/web-v2 clip|pnpm clip/);
   });
 
   it('states the ceiling a release page shows, read from the contract', () => {

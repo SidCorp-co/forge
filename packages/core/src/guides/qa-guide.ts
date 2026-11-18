@@ -125,8 +125,9 @@ watch the probe go red before its green counts. A verdict is worth what its read
 steps, what you expected, what you observed. Captures go outside the checkout you are judging.
 
 A criterion a person sees is exercised in a Forge Box (${guideRef('boxes')}): open one for the
-issue and criterion, drive it with \`forge-runner box act\` instead of an ad-hoc Playwright script,
-and mark the criterion's span, so the owner can watch you and the clip attaches itself.
+issue and criterion, walk it as the person would with \`forge-runner box act\` (snapshot to find,
+act, then screenshot and look), and mark the criterion's span, so the owner can watch you and the
+clip attaches itself.
 
 A screen is judged at the widths people use it at, not only the one its criterion names: a narrow
 width and the desktop widths 1280x800 and 1440x900, with each side panel the screen has both open

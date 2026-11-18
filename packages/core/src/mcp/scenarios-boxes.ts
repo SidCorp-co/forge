@@ -8,15 +8,16 @@ const ISSUE = 'ISS-1276, 2026-11-17 (sid-xeon-1 measurements and the owner’s b
 
 export const BOX_SCENARIOS: readonly CardScenario[] = [
   {
-    name: 'a UI test a judge recorded by hand with pnpm clip',
+    name: 'a screen proven by a private script and a clip cut by hand',
     card: 'box.open',
-    source: `${ISSUE}: judges ran pnpm clip by hand and nobody could watch an agent's UI session`,
-    situation: 'A run must judge a criterion that shows on a screen of the product',
-    bad: 'the run drove a private Playwright script and recorded a clip by hand',
-    good: 'open a box with the issue and criterion and drive it with forge-runner box act',
+    source: `${ISSUE}: judges cut clips by hand and nobody could watch an agent's UI session; ISS-1320, 2026-11-18: builders proved screens with jsdom render tests and left the box to the judge`,
+    situation: 'A run must build or judge a criterion that shows on a screen of the product',
+    bad: 'the run proved it with a render test and a private Playwright script, and cut a clip by hand',
+    good: "open a box with the issue and criterion from the first UI change, on the worktree's dev server, and drive it with forge-runner box act",
     teaches: [
       /open a box in its mode with the issue and criterion/i,
-      /instead of ad-hoc Playwright/i,
+      /a builder at its first UI change/i,
+      /never a private Playwright script/i,
     ],
   },
   {

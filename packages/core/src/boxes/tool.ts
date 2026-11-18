@@ -40,11 +40,11 @@ const inputSchema = z.strictObject({
 export const BOX_CARDS = {
   open: {
     purpose:
-      'Opens a Forge Box: a browser, Android or desktop screen you test a UI in, which a person can watch live from Forge and take over.',
+      'Opens a Forge Box: a browser, Android or desktop screen you use a UI in as a person would, which a person can watch live from Forge and take over.',
     situations: [
       {
-        when: 'you test a UI (a page, an app screen, a desktop window) to judge or build a criterion',
-        do: 'open a box in its mode with the issue and criterion, then drive it with `forge-runner box act <box> -- <command>` instead of ad-hoc Playwright',
+        when: 'you build or judge a criterion a person sees (a page, an app screen, a desktop window)',
+        do: "open a box in its mode with the issue and criterion (a builder at its first UI change, on its worktree's dev server), then drive it with `forge-runner box act <box> -- <command>`, never a private Playwright script",
         watch:
           'it answers BOX_SLOT_UNAVAILABLE with its place and reason when the device is busy: it starts on its own, read the box until it runs',
       },
@@ -62,10 +62,10 @@ export const BOX_CARDS = {
       url: 'http://localhost:5173',
     },
     redFlag:
-      'A UI test run in a private Playwright script, where nobody can watch it and no clip reaches the criterion.',
+      'A screen proven by a render test or a private Playwright script, where nobody can watch it and no clip reaches the criterion.',
     family: 'issue-work',
     audience: ['master', 'run', 'person'],
-    scenarios: ['a UI test a judge recorded by hand with pnpm clip'],
+    scenarios: ['a screen proven by a private script and a clip cut by hand'],
   },
   act: {
     purpose:
@@ -85,6 +85,7 @@ export const BOX_CARDS = {
     practice: [
       'The answer carries `personActed` after a hand-back: read that feed before your next write.',
       'A slow command answers `pending`; read it later in GET /api/boxes/:id/acts.',
+      'After each change, screenshot and look: layout, copy, the empty, error and loading states, and phone width (`set viewport 390 844`).',
     ],
     example: { command: ['click', '@e22'] },
     redFlag: 'Retrying a refused write while a person holds the box.',
@@ -109,7 +110,7 @@ export const BOX_CARDS = {
       'The clip attaches as box-<box>-c<n>-<span>.mp4 with a .png still; cite it by name, id or download URL (VERDICT_CLIP_REQUIRED reads it there).',
     ],
     example: { criterion: 2, edge: 'start' },
-    redFlag: 'Running pnpm clip by hand for a criterion you just showed on a box.',
+    redFlag: 'Cutting a clip by hand for a criterion you just showed on a box.',
     family: 'issue-work',
     audience: ['master', 'run', 'person'],
     scenarios: ["a criterion's span marked on a box"],

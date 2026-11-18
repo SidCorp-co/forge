@@ -6,6 +6,7 @@
 // the doors this method acts through are taught by their cards, rendered beneath the body
 // (`guides/served.ts:servedGuideBody`), never restated in it.
 
+import { guideRef } from './guide-ref.js';
 import type { CoreGuide } from './types.js';
 
 export const FORGE_MASTER_GUIDE: CoreGuide = {
@@ -53,7 +54,9 @@ already cut.
 **A release post is a card.** Once a release is live, read its page
 (\`forge-runner api 'projects/<projectId>/releases/<version>/page'\`): its \`card\` names the cover (a
 clip's still or a shot), the three leading lines, the criteria count, up to three more shots and the
-page's link, and \`visualsOwed\` (developer view) the screen lines no judge marked. Post it in the
+page's link, and \`visualsOwed\` (developer view) the screen lines no judge marked: each is a
+screen nobody showed in a box (${guideRef('boxes')}), so fix the brief or guide its builder and
+judge read, never refuse the work. Post it in the
 project's thread with \`support/master-posts\`, \`attachments: card.attachments\`, in your own words and
 the owner's language: the cover's line first, the three lines, the count, the link.
 

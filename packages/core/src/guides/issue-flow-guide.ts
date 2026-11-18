@@ -259,6 +259,12 @@ and what each is refused, is the transition card below.
   the integration tests and the suites of what it shares — instead of leaving it to the wide check
   at the release mark; line count is only a secondary signal. A small fix with a clear blast radius
   goes on without waiting for a person.
+- **A screen is proven by using it.** A change a person sees is built with a box open from the first
+  UI change (${guideRef('boxes')}): a browser box on your worktree's dev server, desktop and
+  390×844, or an android box on the dev build. After each change walk the criterion as a user
+  (snapshot, act, screenshot and look) and mark its span when you show it. Unit tests stay for logic
+  a screen does not show (money, permissions, data rules, parsers); a render test pins only a rule a
+  person cannot see.
 - Record each check you ran with how long it took, so the issue shows where its time went:
   \`POST /api/issues/:id/checks\` \`{ head, checks: [{ id, kind, name, scope, command, files, result,
   durationMs, startedAt }] }\`, \`kind\` one of \`tests\`, \`typecheck\`, \`probes\`, \`review\`,
@@ -375,10 +381,9 @@ owes none, and its verdict's record says so.
 
 A judge records a short screen clip of each observable criterion it judges, the run that shows it
 met or not: WebM or MP4, at most ${RELEASE_CLIP_MAX_SECONDS} seconds and ${RELEASE_CLIP_MAX_BYTES / (1024 * 1024)} MiB.
-\`pnpm --filter web-v2 clip <url> --out <dir>\` records one against the running build (Playwright's
-own recorder, no encoder to install) and writes its opening still beside it. Upload both as
-attachments (\`POST /api/issues/:id/attachments\`, field \`file\`; \`forge-runner api
-issues/<id>/attachments -F file=@<dir>/<name>.webm\`) and cite both names in that verdict's
+A criterion's span on a box records it and attaches it and its opening still to the issue
+(${guideRef('boxes')}); a clip made elsewhere is uploaded as an attachment
+(\`POST /api/issues/:id/attachments\`, field \`file\`); cite both names in that verdict's
 \`evidence\`: a release page shows a highlight's clip from there, from a pass on the build it
 describes, opening on the still. A \`pass\`, \`short\` or \`fail\` on an observable criterion judged
 without a clip says why in \`withoutClip\` (a \`without-clip\` line in a record), never in

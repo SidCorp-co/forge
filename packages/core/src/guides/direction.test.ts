@@ -287,3 +287,37 @@ describe('an issue is one outcome, and each defect seen has one place', () => {
     expect(prompt).toContain('Confirmed on the target environment is a separate mark');
   });
 });
+
+// The owner's direction of 2026-11-18 (ISS-1320): a screen is proven by its builder using it in a
+// Forge Box during dev, not by a jsdom render test, and no guide teaches a recorder run by hand.
+describe('a screen is proven by its builder using it in a box, never by a render test', () => {
+  const ALL = ['issue-flow', 'fast-delivery', 'qa', 'dispatch', 'forge-master', 'boxes'] as const;
+
+  it.each(ALL)(
+    '%s sends a screen to a box: no recorder by hand, no private script, no test per screen',
+    async (slug) => {
+      const guide = await served(slug);
+      expect(guide).not.toMatch(/pnpm (--filter web-v2 )?clip/);
+      expect(guide).not.toMatch(/instead of (an )?ad-hoc Playwright/i);
+      expect(guide).not.toMatch(/new screen gets a `\*\.test\.tsx`/i);
+      if (slug !== 'boxes') expect(guide).toContain('/api/guides/boxes.md');
+    },
+  );
+
+  it('the builder opens a box at its first UI change and walks each criterion as a user', async () => {
+    const flow = await served('issue-flow');
+    expect(flow).toContain(
+      '**A screen is proven by using it.** A change a person sees is built with a box open from the first UI change',
+    );
+    expect(flow).toContain(
+      'walk the criterion as a user (snapshot, act, screenshot and look) and mark its span',
+    );
+    expect(flow).toContain('a render test pins only a rule a person cannot see');
+    const boxes = await served('boxes');
+    expect(boxes).toContain('**A builder opens one at its first UI change**');
+    expect(boxes).toContain("worktree's dev server on localhost");
+    expect(boxes).toContain('the empty, error and loading states, and phone width');
+    expect(await served('fast-delivery')).toContain('**Build a UI change in a box.**');
+    expect(await served('dispatch')).toContain('no component render test asked as the screen');
+  });
+});

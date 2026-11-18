@@ -261,7 +261,9 @@ It works in batches, as §4 splits them:
    Keep this session free to triage, answer a room agent's ask before any other work (Answering a room agent's ask) and land; build in it only a change too small to brief. A gap a loose issue leaves is filled by
    judgement, the assumption written as one line on the issue or in the commit body. A screen change a
    person asked for is not filled by judgement: before the build, each workflow they asked for (what
-   they do and see, the keys and widths they named) is written as the issue's criteria. No issue gets
+   they do and see, the keys and widths they named) is written as the issue's criteria, and its
+   builder's brief sends it to a box from its first UI change (${guideRef('boxes')}), with no
+   component render test asked as the screen's proof. No issue gets
    its own plan, its own full suite or its own release. When an issue's build starts, move its step
    to build (\`PATCH /api/issues/:id\` \`{ workState: { step: 'build' } }\`): a builder here writes
    none, and core moves it on itself only at a plan, the merge check and the mark.
