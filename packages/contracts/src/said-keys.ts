@@ -1668,6 +1668,18 @@ export const SAID = {
 	"feedback.rule.newRequirement": {
 		en: "planned: a new requirement carries it",
 	},
+	"feedback.rule.requirementShips": {
+		en: "planned: {req} stands {status}; {issues} carry it until they ship",
+		vars: { req: "key", status: "text", issues: "said" },
+	},
+	"feedback.rule.requirementNothingShips": {
+		en: "triaged: {req} stands {status} with no issue to ship it, so whoever triages it reroutes it",
+		vars: { req: "key", status: "text" },
+	},
+	"feedback.rule.acceptedNothingShips": {
+		en: "triaged: {req} was accepted by decision, not shipped, so whoever triages it reroutes it",
+		vars: { req: "key" },
+	},
 	"standing.who.itsRootUnnamed": { en: "Its root" },
 	"feedback.rule.duplicate": {
 		en: "planned: the root item it duplicates carries it",

@@ -73,6 +73,7 @@ export { roomSettleWriter } from './room-settle.js';
 export { revisionFields } from './route-kit.js';
 export { linkIssueRefusal } from './rules.js';
 export { proposeRevision, returnRevision, withdrawRevision, writeRevision } from './service.js';
+export { acceptanceDecisionsOf } from './standing-facts.js';
 export { heldByDecision } from './standing-held.js';
 export {
   criterionVerdictOf,

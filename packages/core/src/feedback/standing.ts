@@ -32,6 +32,14 @@ import {
   relayWait,
   shippedOwedWait,
 } from './standing-carrier.js';
+import {
+  type RequirementOwed,
+  type RoutedRequirementFacts,
+  requirementGoneRule,
+  requirementOwedWait,
+  requirementPhaseOf,
+} from './standing-requirement.js';
+import { revisionAct } from './standing-revision.js';
 import { MASTER, masterTakesTriage, triageWait } from './standing-triage.js';
 
 export { type CarrierStanding, carriersPhrase } from './standing-carrier.js';
@@ -55,9 +63,8 @@ export interface PhaseFacts {
     delivered: boolean;
     requirementAccepted: boolean;
   } | null;
-  routedRequirementStatus: string | null;
-  /** The routed requirement reads delivered (`requirements/standing.ts:deliveryOf`) or was accepted. */
-  routedRequirementDelivered: boolean;
+  /** The requirement a `new_requirement` route names, with the issues linked to it (ISS-1332); else null. */
+  routedRequirement: RoutedRequirementFacts | null;
   rootPhase: FeedbackPhase | null;
 }
 
@@ -82,14 +89,10 @@ export function phaseOf(f: PhaseFacts): FeedbackPhase {
         return f.suggestion.revisionLive && done ? 'resolved' : 'planned';
       }
       return f.suggestion.status === 'proposed' ? 'planned' : 'triaged';
-    // workflow feedback-lifecycle edge planned → resolved: the linked requirement reads
-    // delivered or stands accepted; agreeing it only plans the work, so an agreed requirement keeps
-    // the item planned. An accept by decision counts as done (`RequirementAcceptanceDecision`): what
-    // it waived reads unproven on the requirement, never as work still owed to the reporter
+    // workflow feedback-lifecycle r18 edge planned → resolved: the requirement stands delivered or
+    // accepted and what delivers it shipped; an accept that shipped nothing reads planned (ISS-1332)
     case 'new_requirement':
-      if (f.routedRequirementDelivered || f.routedRequirementStatus === 'accepted')
-        return 'resolved';
-      return f.routedRequirementStatus === 'dropped' ? 'triaged' : 'planned';
+      return requirementPhaseOf(f.routedRequirement);
     case 'answer':
       return 'resolved';
     // a duplicate reads its original's own phase (K61 on dev.299: FB-271 read planned while FB-153,
@@ -221,6 +224,8 @@ export interface StandingFacts {
   shippedFailing?: readonly string[];
   /** The criteria its carriers shipped owed live (`ISS-382 c3`): resolved, verified once they pass (ISS-1234). */
   shippedOwed?: readonly string[];
+  /** Its requirement route stands delivered or accepted: what its shipping still owes (ISS-1332). */
+  requirement?: RequirementOwed | null;
 }
 
 /** What the times read beyond the turn (`lib/standing-times.ts:withTimes`). */
@@ -262,7 +267,12 @@ function waitingOf(
     case 'triaged': {
       if (facts.draftCarrier) return draftCarrierWait(facts.draftCarrier);
       const act = route === null ? say('feedback.act.route') : say('standing.act.triageAgain');
-      const rule = route === null ? say('feedback.rule.noRoute') : say('feedback.rule.carrierGone');
+      const rule =
+        route === null
+          ? say('feedback.rule.noRoute')
+          : facts.requirement
+            ? requirementGoneRule(facts.requirement)
+            : say('feedback.rule.carrierGone');
       // triaging it again is the same act as triaging it first, owed by the same rule (ISS-1086)
       if (masterTakesTriage(facts)) return theirs(wait('agent', MASTER, act, rule));
       return { wait: wait('person', routerOf(viewer), act, rule), yours: viewer.canRoute };
@@ -272,6 +282,10 @@ function waitingOf(
         return facts.carrierRelease
           ? issueWait(carriers, viewer, { ...facts, carrierRelease: facts.carrierRelease }, clock)
           : carrierWait(facts.carrier ?? null, carriers, facts.shippedFailing);
+      }
+      if (route === 'new_requirement' && facts.requirement) {
+        const owed = requirementOwedWait(facts.requirement, viewer, facts, clock);
+        if (owed) return owed;
       }
       return theirs(plannedWait(route, carriers[0] ?? null, revision));
     case 'resolved':
@@ -437,32 +451,6 @@ function revisionWait(revision: RevisionStage | null): FeedbackWaitingOn {
     say('feedback.rule.delivery'),
     { ref: revision.requirement },
   );
-}
-
-/** `accept revision 2 of REQ-4`, `propose the revision`: the act on a revision, by what is known of it. */
-function revisionAct(
-  verb: 'accept' | 'propose',
-  revision: { revision: number | null; requirement: string | null },
-): Said {
-  const { revision: r, requirement: req } = revision;
-  if (verb === 'accept') {
-    if (r === null) {
-      return req
-        ? say('standing.act.acceptRevisionOf', { req })
-        : say('standing.act.acceptRevision');
-    }
-    return req
-      ? say('standing.act.acceptRevisionN', { r, req })
-      : say('standing.act.acceptRevisionNum', { r });
-  }
-  if (r === null) {
-    return req
-      ? say('standing.act.proposeRevisionOf', { req })
-      : say('standing.act.proposeRevision');
-  }
-  return req
-    ? say('standing.act.proposeRevisionN', { r, req })
-    : say('standing.act.proposeRevisionNum', { r });
 }
 
 export function feedbackStandingOf(

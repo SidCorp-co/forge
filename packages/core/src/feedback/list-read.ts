@@ -19,7 +19,12 @@ import { activeIssuePrefix } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { userNames } from '../lib/people.js';
 import { readOwedPolicy } from '../project-config/index.js';
-import { deliveredAmong, nodesOfDesign, runnerBoundIn } from '../requirements/index.js';
+import {
+  acceptanceDecisionsOf,
+  deliveredAmong,
+  nodesOfDesign,
+  runnerBoundIn,
+} from '../requirements/index.js';
 import { feedbackDependents } from './dependents.js';
 import { WITHHELD } from './egress.js';
 import { type ForgeOrigins, forgeOriginsOf } from './forge-reads.js';
@@ -39,6 +44,12 @@ import {
   unreleasedCarrierKeys,
 } from './list-carriers.js';
 import { type ReleaseGate, releaseGateOf, shippedCarriersOf } from './list-release.js';
+import {
+  issueFactsOf,
+  requirementFactsIn,
+  requirementIssuesOf,
+  routedRequirementOf,
+} from './list-requirement.js';
 import { carriersOf, type StandingFacts, standingFactsOf } from './list-standing.js';
 import type { FeedbackActor, Row } from './read.js';
 import { routeIssuesOf } from './relations.js';
@@ -75,7 +86,9 @@ export interface Linked extends StandingFacts, ReleaseGate {
   >;
   /** The issues each issue-routed item names as its carriers, by item id, oldest issue first. */
   routeIssues: Map<string, string[]>;
-  requirements: Map<string, { key: string; title: string; status: string; delivered: boolean }>;
+  /** The issues linked to each routed requirement, by requirement id, oldest first (ISS-1332). */
+  requirementIssues: Map<string, string[]>;
+  requirements: Map<string, { key: string; title: string; status: string; byDecision: boolean }>;
   releases: Map<string, string>;
   /** Each workflow's flow, title, and the words its design gives each step, by step id. */
   workflows: Map<
@@ -169,11 +182,16 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
   // the reporters' names are asked as soon as the rows are known, at the one step every project's
   // list reaches together, not after its links, which some projects' read a step or two later than
   // others' and so read the names again (ISS-1070 r21)
-  const [routeIssues, names] = await Promise.all([
+  const [routeIssues, names, requirementIssues] = await Promise.all([
     routeIssuesOf(allRows),
     userNames(allRows.map((r) => r.reportedBy)),
+    requirementIssuesOf(ids(allRows.map((r) => r.routedRequirementId))),
   ]);
-  const issueIds = ids([...rows.map((r) => r.issueId), ...[...routeIssues.values()].flat()]);
+  // a requirement route's issues are read with the carriers, in the same statement (ISS-1332)
+  const issueIds = ids([
+    ...rows.map((r) => r.issueId),
+    ...[...routeIssues.values(), ...requirementIssues.values()].flat(),
+  ]);
   const reqIds = ids([
     ...rows.map((r) => r.requirementId),
     ...allRows.map((r) => r.routedRequirementId),
@@ -193,15 +211,16 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
   );
   const providerIds = ids(rows.map((r) => r.contractProviderProjectId));
   const providerRows = await providerRowsOf(providerIds);
-  const delivered = await deliveredAmong(
-    projectId,
-    ids([...reqRows.map((r) => r.id), ...suggestionRows.map((s) => s.requirementId)]),
-  );
+  const [delivered, decided] = await Promise.all([
+    deliveredAmong(projectId, ids(suggestionRows.map((s) => s.requirementId))),
+    acceptanceDecisionsOf(reqRows.map((r) => r.id)),
+  ]);
   // an original read only as a root has its own standing read too: its duplicate reads it
   const carrying = new Set([...routeIssues.values()].flat());
+  const gated = new Set([...carrying, ...[...requirementIssues.values()].flat()]);
   // a carrier closed met in scope waits for the release as one at the gate does
   const atGate = issueRows.filter(
-    (i) => (i.status === AT_RELEASE_GATE || i.unreleased) && carrying.has(i.id),
+    (i) => (i.status === AT_RELEASE_GATE || i.unreleased) && gated.has(i.id),
   );
   const owedPolicy = readOwedPolicy(projectId);
   const owesTriage = allRows.some((r) => r.status === 'new' || r.status === 'reopened');
@@ -246,6 +265,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
       ]),
     ),
     routeIssues,
+    requirementIssues,
     requirements: new Map(
       reqRows.map((r) => [
         r.id,
@@ -253,7 +273,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
           key: requirementKey(r.seq),
           title: r.title,
           status: r.status,
-          delivered: delivered.has(r.id),
+          byDecision: decided.has(r.id),
         },
       ]),
     ),
@@ -310,20 +330,7 @@ function phaseFacts(r: Row, l: Linked, rootPhase: FeedbackPhase | null): PhaseFa
   return {
     status: r.status,
     route: r.route,
-    routedIssues: (l.routeIssues.get(r.id) ?? []).flatMap((id) => {
-      const issue = l.issues.get(id);
-      return issue
-        ? [
-            {
-              key: issue.key,
-              status: issue.status,
-              unreleased: issue.unreleased,
-              failing: issue.failing,
-              owed: issue.owed,
-            },
-          ]
-        : [];
-    }),
+    routedIssues: issueFactsOf(l.routeIssues.get(r.id) ?? [], l),
     suggestion: s
       ? {
           status: s.status as SuggestionStatus,
@@ -332,12 +339,7 @@ function phaseFacts(r: Row, l: Linked, rootPhase: FeedbackPhase | null): PhaseFa
           requirementAccepted: s.requirementAccepted,
         }
       : null,
-    routedRequirementStatus: r.routedRequirementId
-      ? (l.requirements.get(r.routedRequirementId)?.status ?? null)
-      : null,
-    routedRequirementDelivered: r.routedRequirementId
-      ? (l.requirements.get(r.routedRequirementId)?.delivered ?? false)
-      : false,
+    routedRequirement: routedRequirementOf(r.routedRequirementId, l),
     rootPhase,
   };
 }
@@ -452,6 +454,7 @@ function ownStandingIn(r: Row, l: Linked, viewer: StandingViewer, now: Date) {
       carrierRunning: r.route === 'issue' && owed.some((c) => c.status === 'in_progress'),
       shippedFailing: phase === 'planned' ? shippedFailingOf(factsIn(r, l)) : [],
       shippedOwed: phase === 'resolved' ? shippedOwedOf(factsIn(r, l)) : [],
+      ...requirementFactsIn(r, l),
     },
     {
       since: l.decidedAt.get(r.id) ?? r.createdAt,

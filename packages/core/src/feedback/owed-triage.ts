@@ -10,8 +10,9 @@
  * policy gives triage to the master, the suggestion is the master's own work item and stays on this
  * list naming it; where the policy keeps triage a person's, it waits on them, and a rejection owes
  * it again. An item triaged once whose carrier is gone (no route, its issues all dropped, its
- * requirement dropped, its revision suggestion settled without being taken) owes a triage again and is
- * listed beside them (ISS-1086: agenfold FB-108, 51 and 31 were never named): its standing waits on
+ * requirement dropped or past delivery with no live issue to ship it (ISS-1332), its revision
+ * suggestion settled without being taken) owes a triage again and is listed beside them (ISS-1086:
+ * agenfold FB-108, 51 and 31 were never named): its standing waits on
  * the same triager a fresh item's does (`standing.ts`, `feedback.rule.carrierGone`).
  */
 
@@ -42,7 +43,9 @@ const carrierGoneSql = sql`(${feedback.status} = 'triaged' AND (
         SELECT 1 FROM feedback_route_issues ri JOIN issues i ON i.id = ri.issue_id
          WHERE ri.feedback_id = ${feedback.id} AND i.status <> 'dropped'))
   OR (${feedback.route} = 'new_requirement' AND EXISTS (
-        SELECT 1 FROM requirements q WHERE q.id = ${feedback.routedRequirementId} AND q.status = 'dropped'))
+        SELECT 1 FROM requirements q WHERE q.id = ${feedback.routedRequirementId}
+           AND (q.status = 'dropped' OR (q.status IN ('delivered', 'accepted') AND NOT EXISTS (
+                SELECT 1 FROM issues i WHERE i.requirement_id = q.id AND i.status <> 'dropped')))))
   OR (${feedback.route} = 'revision' AND NOT EXISTS (
         SELECT 1 FROM suggestions s WHERE s.id = ${feedback.routedSuggestionId}
            AND s.status IN ('proposed', 'accepted')))))`;
