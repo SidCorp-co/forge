@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.725] - 2026-11-18
+
+Outside-deployed releases stop asking for empty records
+
+### Fixed
+
+- **A release deployed outside Forge now asks for its record only while something is left to record.** Its draft names each closed issue it still carries and the release that took it before a reopen.
+
 ## [0.4.0-dev.724] - 2026-11-18
 
 Batch merge checks, carrier waits, quieter master wakes, safe tmux-to-background moves
