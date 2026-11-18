@@ -37,7 +37,7 @@ export async function rowOf(id: string): Promise<BoxRow> {
 }
 
 /** The box's project, for a caller that must hold `permission` on it; a warm box is no one's yet. */
-async function ownedRow(id: string, actor: BoxActor, act: string) {
+export async function ownedRow(id: string, actor: BoxActor, act: string) {
   const row = await rowOf(id);
   if (row.projectId === null) throw refuse('BOX_NOT_FOUND', `no box ${id} is any project's`);
   await accessFor(row.projectId, actor, 'project.write', act);
@@ -136,20 +136,17 @@ export async function openBox(
       openedAs: asPerson ? ('person' as const) : ('agent' as const),
       url: req.url ?? null,
       createdBy: actor.userId,
+      // nothing records unless the open asks (ISS-1321)
+      recordingWhy: req.record === true ? ('asked' as const) : null,
     };
     if (warm) {
+      // handed out, it opens again until the device says its screen still answers (ISS-1324): a
+      // warm box whose device is gone is failed `BOX_DEVICE_GONE` and its request goes on fresh
       const moved = await transition(tx, BOX_MACHINE, {
-        to: asPerson ? 'person' : 'agent',
+        to: 'opening',
         expect: 'warm',
         where: eq(boxes.id, warm.id),
-        set: {
-          ...fields,
-          ...(asPerson ? { heldBy: actor.userId, heldSince: now, lastInputAt: now } : {}),
-          askedAt: now,
-          // its evidence starts at the hand-out, never with the warm minutes before it; the
-          // device's `ready` for the assignment gives the exact instant
-          recordingStartedAt: now,
-        },
+        set: { ...fields, askedAt: now, openedAt: now },
         actor: kernelActorOf(actor),
         source: SOURCE,
         afterWrite: async (t, rows) => {
@@ -158,13 +155,9 @@ export async function openBox(
               boxId: r.id,
               url: req.url ?? null,
               asPerson,
+              record: req.record === true,
             });
-            await tellChanged(t, {
-              ...warm,
-              ...fields,
-              ...r,
-              state: asPerson ? 'person' : 'agent',
-            });
+            await tellChanged(t, { ...warm, ...fields, ...r, state: 'opening' });
           }
         },
       });
@@ -224,6 +217,7 @@ export async function closeBox(id: string, actor: BoxActor, reason?: string): Pr
       heldBy: null,
       heldSince: null,
       recordingState: row.recordingState === 'recording' ? 'kept' : row.recordingState,
+      recordingWhy: null,
     },
     reason: reason ?? null,
     actor: kernelActorOf(actor),

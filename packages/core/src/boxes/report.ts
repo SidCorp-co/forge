@@ -10,33 +10,25 @@ import { type BoxRow, boxes } from '../db/schema-boxes.js';
 import { type KernelActor, transition } from '../lifecycle/index.js';
 import { refuse, SOURCE, tellChanged } from './access.js';
 import { completeAct } from './acts.js';
-import { failBox } from './allocate.js';
+import { allocateDevice, failBox } from './allocate.js';
 import { boxById, boxRecord } from './read.js';
+import { recordingReport } from './recording.js';
 import { failSpan, recordMark } from './spans.js';
 
 /**
- * Opening → running: a warm box, a person's box to test by hand, or the agent's. A running box's
- * `ready` answers its assignment (`box.assign`): a warm box's evidence restarts at the hand-out, so
- * the record's recording start moves to the instant the device restarted it (ISS-1315).
+ * Opening → running: a warm box, a person's box to test by hand, or the agent's, and a warm box
+ * handed out, whose `ready` answers its `box.assign` once the device found its screen answering
+ * (ISS-1324). It records only where the device says its recording started (ISS-1321).
  */
 async function ready(
   row: BoxRow,
   report: Extract<BoxReport, { kind: 'state' }>,
   device: KernelActor,
 ): Promise<void> {
-  if ((row.state === 'agent' || row.state === 'person') && report.recordingStartedAt) {
-    await db
-      .update(boxes)
-      .set({
-        recordingStartedAt: new Date(report.recordingStartedAt),
-        view: report.offer ?? row.view,
-      })
-      .where(eq(boxes.id, row.id));
-    return;
-  }
   if (row.state !== 'opening') return;
   const now = new Date();
   const to = row.projectId === null ? 'warm' : row.openedAs === 'person' ? 'person' : 'agent';
+  const recorded = report.recordingStartedAt ? new Date(report.recordingStartedAt) : null;
   await transition(db, BOX_MACHINE, {
     to,
     expect: 'opening',
@@ -44,8 +36,9 @@ async function ready(
     set: {
       readyAt: now,
       view: report.offer ?? row.view,
-      recordingState: 'recording',
-      recordingStartedAt: report.recordingStartedAt ? new Date(report.recordingStartedAt) : now,
+      ...(recorded
+        ? { recordingState: 'recording' as const, recordingStartedAt: recorded }
+        : { recordingWhy: null }),
       ...(to === 'person' ? { heldBy: row.createdBy, heldSince: now, lastInputAt: now } : {}),
     },
     actor: device,
@@ -63,6 +56,39 @@ async function ready(
   });
 }
 
+/**
+ * The device found the box's screen gone (ISS-1324): it fails `BOX_DEVICE_GONE` by name and is
+ * never handed out. A request it was being handed to goes on as a fresh box, which its failure
+ * names, and the allocation starts it and a new warm box in its place.
+ */
+async function deviceGone(row: BoxRow, said: string | undefined, device: KernelActor) {
+  if (row.state === 'closed' || row.state === 'failed') return;
+  const words = said ?? "the device found the box's screen no longer answering";
+  let detail = words;
+  if (row.projectId !== null) {
+    const [next] = await db
+      .insert(boxes)
+      .values({
+        deviceId: row.deviceId,
+        projectId: row.projectId,
+        issueId: row.issueId,
+        criterion: row.criterion,
+        mode: row.mode,
+        state: 'waiting',
+        openedAs: row.openedAs,
+        runId: row.runId,
+        url: row.url,
+        viewport: row.viewport,
+        recordingWhy: row.recordingWhy === 'asked' ? 'asked' : null,
+        createdBy: row.createdBy,
+      })
+      .returning({ id: boxes.id });
+    if (next) detail = `${words}. Its request goes on as box ${next.id}: read that one`;
+  }
+  await failBox(row, 'BOX_DEVICE_GONE', detail, device);
+  await allocateDevice(row.deviceId);
+}
+
 export async function reportBox(
   deviceId: string,
   boxId: string,
@@ -76,6 +102,7 @@ export async function reportBox(
   switch (report.kind) {
     case 'state':
       if (report.state === 'ready') await ready(row, report, device);
+      else if (report.failure === 'BOX_DEVICE_GONE') await deviceGone(row, report.detail, device);
       else {
         await failBox(
           row,
@@ -84,6 +111,9 @@ export async function reportBox(
           device,
         );
       }
+      break;
+    case 'recording':
+      await recordingReport(row, report);
       break;
     case 'offer':
       await db.update(boxes).set({ view: report.offer }).where(eq(boxes.id, row.id));

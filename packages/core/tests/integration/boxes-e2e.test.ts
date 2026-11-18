@@ -357,57 +357,7 @@ describe('a hold ends with its box (ISS-1317)', () => {
   });
 });
 
-describe('a box handed out or opened for a person (ISS-1315)', () => {
-  it('starts a warm box’s evidence at the hand-out, never before its createdAt', async () => {
-    await beat(healthy());
-    const warm = (await db.execute(sql`
-      SELECT id, state FROM boxes
-       WHERE device_id = ${deviceId} AND project_id IS NULL AND mode = 'browser'
-         AND state IN ('opening', 'warm')`)) as unknown as Array<{ id: string; state: string }>;
-    // the device brought the warm box up a minute ago, recording from then
-    const longAgo = new Date(Date.now() - 60_000).toISOString();
-    for (const w of warm.filter((r) => r.state === 'opening')) {
-      await say('device', 'POST', `/api/boxes/${w.id}/report`, {
-        kind: 'state',
-        state: 'ready',
-        offer: { codec: 'jpeg-frames', width: 1280, height: 720 },
-        recordingStartedAt: longAgo,
-      });
-    }
-    expect(warm.length).toBeGreaterThan(0);
-
-    const opened = await say('person', 'POST', `/api/projects/${projectId}/boxes`, {
-      mode: 'browser',
-      issueId,
-      criterion: 3,
-      asPerson: true,
-    });
-    expect(opened.status, JSON.stringify(opened.json)).toBe(201);
-    const handed = opened.json.box as Doc;
-    const id = handed.id as string;
-    expect(warm.map((w) => w.id)).toContain(id);
-    expect(handed.state).toBe('person');
-    const startedAt = (handed.recording as Doc).startedAt as string;
-    expect(Date.parse(startedAt)).toBeGreaterThanOrEqual(Date.parse(handed.createdAt as string));
-    expect((await frames(id, 'box.assign')).at(-1)?.data).toEqual({
-      boxId: id,
-      url: null,
-      asPerson: true,
-    });
-
-    // the device restarts the evidence at the assignment and says the instant
-    const restarted = new Date(Date.parse(handed.createdAt as string) + 250).toISOString();
-    const ready = await say('device', 'POST', `/api/boxes/${id}/report`, {
-      kind: 'state',
-      state: 'ready',
-      offer: { codec: 'jpeg-frames', width: 1280, height: 720 },
-      recordingStartedAt: restarted,
-    });
-    expect(ready.status, JSON.stringify(ready.json)).toBe(200);
-    expect((await box(id)).recording).toEqual({ state: 'recording', startedAt: restarted });
-    await say('person', 'POST', `/api/boxes/${id}/close`, {});
-  });
-
+describe('a box opened for a person (ISS-1315)', () => {
   it('tells the device at open that a person holds a box opened for them', async () => {
     await beat(healthy());
     const opened = await say('person', 'POST', `/api/projects/${projectId}/boxes`, {

@@ -2,6 +2,7 @@ import type { BoxViewCodec } from '@forge/contracts/box-wire';
 import {
   BOX_FAILURES,
   BOX_MODES,
+  BOX_RECORDING_WHY,
   BOX_STATES,
   type BoxMode,
   type BoxQueuePlace,
@@ -62,6 +63,11 @@ export const boxes = pgTable(
     url: text('url'),
     view: jsonb('view').$type<{ codec: BoxViewCodec; width: number; height: number }>(),
     recordingState: text('recording_state', { enum: BOX_RECORDING_STATES }),
+    /**
+     * Who wants it recording (ISS-1321): an open or an agent that asked, a criterion's span, or a
+     * person on the Boxes page; null when nobody does, and nothing records by default.
+     */
+    recordingWhy: text('recording_why', { enum: BOX_RECORDING_WHY }),
     recordingStartedAt: timestamp('recording_started_at', { withTimezone: true }),
     failure: text('failure', { enum: BOX_FAILURES }),
     detail: text('detail'),
@@ -90,6 +96,14 @@ export const boxes = pgTable(
     ),
     openedAsChk: check('boxes_opened_as_chk', sql`${t.openedAs} IN (${inList(BOX_ACT_BY)})`),
     failedChk: check('boxes_failed_chk', sql`(${t.state} = 'failed') = (${t.failure} IS NOT NULL)`),
+    failureChk: check(
+      'boxes_failure_chk',
+      sql`${t.failure} IS NULL OR ${t.failure} IN (${inList(BOX_FAILURES)})`,
+    ),
+    recordingWhyChk: check(
+      'boxes_recording_why_chk',
+      sql`${t.recordingWhy} IS NULL OR ${t.recordingWhy} IN (${inList(BOX_RECORDING_WHY)})`,
+    ),
   }),
 );
 
