@@ -1,4 +1,5 @@
 import { type BottomTabItem, type NavEntry, type NavItem, type NavItemGroup, isNavGroup } from "@/design";
+import type { ActivityWaiting } from "@/features/activity";
 import { needsMe } from "@/features/ecosystem";
 import type { WorkspaceRead } from "@/features/ecosystem";
 import { needsYouHint } from "@/features/needs-you";
@@ -203,19 +204,31 @@ export function buildBottomActiveKey(pathname: string, moreOpen: boolean, chatOp
   return "home";
 }
 
-/** The rail's workspace tier: Overview carries the attention count, then the one Ecosystem row. */
-export function workspaceNavItems(attentionCount: number, ecosystems: WorkspaceRead | undefined): NavEntry[] {
+/** The Activity row's count and tooltip: the page's own Waiting on you, none until core has answered (ISS-1330). */
+export function activityBadge(waiting: ActivityWaiting | undefined): Pick<NavItem, "badge" | "badgeHint"> {
+  if (!waiting) return {};
+  const { n, projects: m } = waiting;
+  return { badge: n, badgeHint: en(m === 1 ? "shell.activityWaiting.one" : "shell.activityWaiting.many", { n, m }) };
+}
+
+/** The rail's workspace tier: Overview carries the attention count, Activity its page's Waiting on you, then the one Ecosystem row. */
+export function workspaceNavItems(attentionCount: number, ecosystems: WorkspaceRead | undefined, activity?: ActivityWaiting): NavEntry[] {
   return [
-    ...WORKSPACE_ITEMS.map((it) => (it.key === "overview" ? { ...it, badge: attentionCount, badgeHint: en("shell.waitingAcross", { n: attentionCount }) } : it)),
+    ...WORKSPACE_ITEMS.map((it) => {
+      if (it.key === "overview") return { ...it, badge: attentionCount, badgeHint: en("shell.waitingAcross", { n: attentionCount }) };
+      if (it.key === "activity") return { ...it, ...activityBadge(activity) };
+      return it;
+    }),
     ecosystemRow(ecosystems),
   ];
 }
 
-export function bottomTabItems(attentionCount: number): BottomTabItem[] {
+/** The phone's tabs: Attention its count, and More the Activity row's count, which only More's sheet shows (ISS-1330). */
+export function bottomTabItems(attentionCount: number, activity?: ActivityWaiting): BottomTabItem[] {
   return [
     { key: "home", label: en("nav.home"), icon: "grid" },
     { key: "chat", label: en("nav.chat"), icon: "chat" },
     { key: "attention", label: en("nav.attention"), icon: "inbox", badge: attentionCount, badgeHint: en("shell.waitingAcross", { n: attentionCount }) },
-    { key: "more", label: en("nav.more"), icon: "menu" },
+    { key: "more", label: en("nav.more"), icon: "menu", ...activityBadge(activity) },
   ];
 }

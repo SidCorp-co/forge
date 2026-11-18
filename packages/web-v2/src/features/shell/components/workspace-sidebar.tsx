@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import { NavRail } from "@/design";
 import { OrgSwitcher } from "@/features/orgs";
 import { useMyEcosystems } from "@/features/ecosystem";
+import { useActivityWaiting } from "@/features/activity";
 import { ProjectSwitcher } from "./project-switcher";
 import { HelpToursButton } from "@/features/tours";
 import { WhatsNewButton } from "@/features/whats-new";
@@ -33,7 +34,8 @@ interface WorkspaceSidebarProps {
 export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
   const { collapsed, activeKey, attentionCount, rail, onRoute, badges } = props;
   const ecosystems = useMyEcosystems().data;
-  const workspaceItems = useMemo(() => workspaceNavItems(attentionCount, ecosystems), [attentionCount, ecosystems]);
+  const activity = useActivityWaiting();
+  const workspaceItems = useMemo(() => workspaceNavItems(attentionCount, ecosystems, activity), [attentionCount, ecosystems, activity]);
   const language = useInterfaceLanguage();
   const projectItems = rail.projectMark ? projectMenu(badges, language) : undefined;
 

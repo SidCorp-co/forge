@@ -1,5 +1,7 @@
 import { ORG_ACTIVITY_GROUPS, type OrgActivity, type OrgActivityGroup, orgRoom } from "@forge/contracts/org-activity";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo } from "react";
+import { useActiveOrg } from "@/features/orgs";
 import { useRoom } from "@/lib/ws/use-room";
 import { activityApi } from "./api";
 
@@ -25,6 +27,28 @@ export function useOrgActivity(orgId: string | null) {
     placeholderData: keepPreviousData,
     refetchInterval: (q) => (q.state.data?.refreshing ? REFRESHING_AGAIN_MS : false),
   });
+}
+
+/** What waits on the reader across the page's projects: `n` the sum of its You column, `projects` its Waiting on you chip. */
+export interface ActivityWaiting {
+  n: number;
+  projects: number;
+}
+
+/** The page's own figures, never a second count: the sum of each row's You count and the projects in Waiting on you. */
+export function waitingOnYou(data: OrgActivity): ActivityWaiting {
+  return { n: data.projects.reduce((sum, p) => sum + p.people.total, 0), projects: data.totals.you };
+}
+
+/**
+ * What the Activity page says waits on the reader, for the rail's Activity row and the phone's More (ISS-1330):
+ * the page's own read and query, so the menu number never disagrees with the page it opens (REQ-11 BC-10),
+ * live on the same org room. Undefined until core has answered, never a 0 for "not read yet".
+ */
+export function useActivityWaiting(): ActivityWaiting | undefined {
+  const { activeOrgId } = useActiveOrg();
+  const data = useOrgActivity(activeOrgId).data;
+  return useMemo(() => (data ? waitingOnYou(data) : undefined), [data]);
 }
 
 /**

@@ -52,6 +52,7 @@ import { ChatDock } from "@/features/conversations/components/chat-dock";
 import { ChatDockProvider, useChatDockState } from "@/features/chat-dock";
 import { MockupFeedback } from "@/features/feedback";
 import { useNeedsYou } from "@/features/needs-you";
+import { useActivityWaiting } from "@/features/activity";
 import { WorkspaceSidebar } from "@/features/shell/components/workspace-sidebar";
 import { SidebarSearch } from "@/features/shell/components/sidebar-search";
 import { SidebarBell } from "@/features/shell/components/sidebar-bell";
@@ -202,6 +203,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const { items: recents } = useRecents();
   const pinnedViews = usePinnedViews();
   const { waitingOnYou: attentionCount } = useAttention();
+  const activityWaiting = useActivityWaiting();
   const { data: openCount } = useOpenCount();
 
   const { stopped: signInStopped } = useLoginRedirect(!isLoading && !user, !!user);
@@ -331,7 +333,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         <ChatDock dock={dock} page={pageColumnRef} />
 
         <BottomTabBar
-          items={bottomTabItems(attentionCount)}
+          items={bottomTabItems(attentionCount, activityWaiting)}
           activeKey={buildBottomActiveKey(pathname, moreOpen, dock.open)}
           onSelect={onBottomSelect}
         />

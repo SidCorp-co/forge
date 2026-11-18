@@ -38,6 +38,8 @@
     "shell.account.theme.light": "Light",
     "shell.account.theme.system": "System",
     "shell.account.userId": "User ID",
+    "shell.activityWaiting.many": "{n} waiting on you across {m} projects",
+    "shell.activityWaiting.one": "{n} waiting on you across 1 project",
     "shell.assistant.byAssistant": "the assistant, in a conversation",
     "shell.assistant.byYou": "you",
     "shell.assistant.changes": "Changes",
