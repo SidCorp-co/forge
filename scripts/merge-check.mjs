@@ -20,6 +20,11 @@
 //                                        saved after the builder's verdicts); a criterion standing on
 //                                        a pass, short or fail at a commit the base carries owes
 //                                        none, and a fail standing there is named a standing fail
+//   pnpm merge-check --probes <issue id>=<file> --probes <issue id>=<file> ...
+//                                        a batch: each issue it lands by its id, with that issue's
+//                                        criteria read; the report carries each one's probes and
+//                                        standing under its id, recorded on each (ISS-1294,
+//                                        `lib/merge-probes-batch.mjs`)
 //   pnpm merge-check --probes none       a run that names no issue (CI's): it runs no probe, and core
 //                                        refuses MERGE_PROBE_MISSING where the issue keeps one
 //   pnpm merge-check --probe-origin <url>  the origin serving a build of the change: a command probe
@@ -67,13 +72,8 @@ import {
   verifyEnv,
 } from './lib/merge-check.mjs';
 import { recordingExec, rerunLines, rerunReds } from './lib/merge-check-reruns.mjs';
-import {
-  originOf,
-  probeRefusalLines,
-  readProbesFlag,
-  runProbes,
-  standingLines,
-} from './lib/merge-probes.mjs';
+import { originOf, probeRefusalLines } from './lib/merge-probes.mjs';
+import { probeStandingLines, readProbesFlags, runProbesRead } from './lib/merge-probes-batch.mjs';
 import {
   describeBuilds,
   installRefusal,
@@ -88,7 +88,7 @@ const takes = new Set(['--since', '--report', '--lane', '--probes', '--probe-ori
 for (const [i, a] of args.entries()) {
   if (a.startsWith('--') && !takes.has(a))
     die(
-      `unknown flag ${a}; takes --probes <criteria.json | none>, --probe-origin <url>, --since <sha>, --report <path>, --lane <${LANES.join(' | ')}>`,
+      `unknown flag ${a}; takes --probes <criteria.json | none> (a batch: --probes <issue id>=<criteria.json>, once per issue), --probe-origin <url>, --since <sha>, --report <path>, --lane <${LANES.join(' | ')}>`,
     );
   if (!a.startsWith('--') && !takes.has(args[i - 1])) die(`unexpected argument ${a}`);
 }
@@ -99,6 +99,16 @@ const flagValue = (flag) => {
   if (!v || v.startsWith('--')) die(`${flag} needs a value`);
   return v;
 };
+/** Every value a repeated flag was given, in order: `--probes` is given once per issue of a batch. */
+const flagValues = (flag) =>
+  args.flatMap((a, i) => {
+    if (a !== flag) return [];
+    const v = args[i + 1];
+    if (!v || v.startsWith('--')) die(`${flag} needs a value`);
+    return [v];
+  });
+for (const once of ['--since', '--report', '--lane', '--probe-origin'])
+  if (flagValues(once).length > 1) die(`${once} is given once`);
 const since = flagValue('--since');
 const lane = flagValue('--lane') ?? 'full';
 if (!LANES.includes(lane)) die(`--lane ${lane} is not a lane; the lanes are ${LANES.join(', ')}`);
@@ -107,22 +117,23 @@ if (notInstalled) die(notInstalled);
 
 // The kept probes, read before anything runs: a full-lane merge needs them (REQ-36 BC-9), and a run
 // that cannot say whose they are says so with `none` rather than passing them by silence.
-const probesFlag = flagValue('--probes');
+const probesFlags = flagValues('--probes');
 const originFlag = flagValue('--probe-origin');
-let criteria = null;
+let probesRead = null;
 let origin = null;
 if (lane === 'fast') {
-  if (probesFlag !== null || originFlag !== null)
+  if (probesFlags.length || originFlag !== null)
     die('the fast lane runs no probes (REQ-39 BC-7); drop --probes and --probe-origin');
 } else {
-  if (probesFlag === null)
+  if (!probesFlags.length)
     die(
       "a merge runs its issue's kept probes: pass --probes <file>, the saved answer of " +
-        '`GET /api/issues/<issue id>/criteria`, or --probes none for a run that names no issue',
+        '`GET /api/issues/<issue id>/criteria`, for a batch --probes <issue id>=<file> once per issue, ' +
+        'or --probes none for a run that names no issue',
     );
-  const read = readProbesFlag(probesFlag);
+  const read = readProbesFlags(probesFlags);
   if (read.refusal) die(read.refusal);
-  criteria = read.criteria;
+  probesRead = read;
   if (originFlag !== null) {
     const o = originOf(originFlag);
     if (o.refusal) die(o.refusal);
@@ -265,7 +276,7 @@ const carried = (sha) =>
   spawnSync('git', ['merge-base', '--is-ancestor', sha, baseSha], { cwd: ROOT }).status === 0;
 const probeRun =
   lane === 'full'
-    ? await runProbes(criteria, { root: ROOT, origin, carried })
+    ? await runProbesRead(probesRead, { root: ROOT, origin, carried })
     : { checks: [], bindings: [], missing: [], red: [], standing: [] };
 checks.push(...probeRun.checks);
 
@@ -311,6 +322,7 @@ const report = reportOf({
   checks,
   probes: probeRun.bindings,
   standing: probeRun.standing,
+  issues: probeRun.issues ?? null,
   reruns: rerun.reruns,
   lane,
   patchId,
@@ -324,7 +336,7 @@ for (const line of describeBuilds(built)) console.log(line);
 for (const line of describeChecks(checks)) console.log(line);
 for (const n of [...notRunOnLane(lane), ...NOT_RUN_HERE])
   console.log(`  not run here: ${n.name} — ${n.why} (${n.owner})`);
-for (const line of standingLines(probeRun.standing, `${branch} at ${baseSha.slice(0, 12)}`))
+for (const line of probeStandingLines(probeRun, `${branch} at ${baseSha.slice(0, 12)}`))
   console.log(`  ${line}`);
 if (direct.untested.length) {
   console.log(
@@ -347,4 +359,6 @@ if (red.length) {
   );
 }
 if (red.length || probeFaults.length) process.exit(1);
-console.log(`\n${passedMessage({ mode: report.mode, branch, baseSha, head, path })}`);
+console.log(
+  `\n${passedMessage({ mode: report.mode, branch, baseSha, head, path, issues: report.issues })}`,
+);

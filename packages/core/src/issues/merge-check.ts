@@ -10,6 +10,10 @@
  * kind and duration, as a check run of the run that sent it (`check-runs.ts`, ISS-474), and the
  * verification record naming them and the catalog pages the change carried (`pattern-entry.ts`). The merge mark then asks for that record (`uncheckedMergeRefusal`).
  *
+ * A batch's one report (ISS-1294) names each issue's probes and standing under its id: the issue it is
+ * recorded on is held to its own (`merge-check-batch.ts:reportForIssue`), and one it does not name is
+ * refused MERGE_CHECK_ISSUE_NOT_COVERED.
+ *
  * A report on the fast lane (REQ-39 BC-7) runs fewer checks, so it stands only for the change a person
  * approved in its live preview: the fast lane's own rule, asked through `fastLaneMergeRefusal`, holds
  * its patch id to the approved one and its files to the lane.
@@ -36,6 +40,7 @@ import { cleanupOwesLandingCheck } from './cleanup-landing-port.js';
 import { readCriteriaWithDrafts } from './criteria/service.js';
 import { issueDisplayIds } from './display-ids.js';
 import { readIssueGates } from './gates.js';
+import { reportForIssue } from './merge-check-batch.js';
 import {
   type CheckOwedBy,
   checkRefusal,
@@ -63,11 +68,19 @@ export async function recordMergeCheck(args: {
   /** The device a box credential belongs to; null for a person's. */
   box: string | null;
 }): Promise<RecordEvent> {
-  const { issue, report } = args;
+  const { issue } = args;
   const held = await readProjectDocument(issue.projectId);
   const fastDelivery = fastDeliveryOf(held?.document.delivery);
-  const fault = checkRefusal(report, fastDelivery);
+  const fault = checkRefusal(args.report, fastDelivery);
   if (fault) throw refuse(fault.code, fault.detail, fault.path);
+  // a batch's report holds each issue's probes and standing under its id (ISS-1294): this issue is
+  // held to its own, and an issue the batch's report does not name is refused by name
+  const ref = args.report.issues
+    ? ((await issueDisplayIds([issue.id])).get(issue.id) ?? issue.id)
+    : issue.id;
+  const own = reportForIssue(args.report, { id: issue.id, ref });
+  if (own.refusal) throw refuse(own.refusal.code, own.refusal.detail, own.refusal.path);
+  const report = own.report;
   const criteria = await readCriteriaWithDrafts(issue);
   const probes = probeRefusals(report, criteria);
   if (probes.length) throw new RefusalError(probes, 'MERGE_CHECK_REFUSED');

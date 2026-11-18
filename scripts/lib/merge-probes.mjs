@@ -313,9 +313,13 @@ export async function runRequestProbe(probe, { origin, fetchImpl = fetch }) {
 
 /**
  * Run what the criteria owe and write each as a `probes` check, bound to the kept probe it ran.
- * `criteria` null is a run naming no issue: one check, result `none`, saying so.
+ * `criteria` null is a run naming no issue: one check, result `none`, saying so. `issue`, on a
+ * batch's run (`lib/merge-probes-batch.mjs`, ISS-1294), names whose criteria they are in each scope.
  */
-export async function runProbes(criteria, { root, origin, env, spawn, fetchImpl, carried } = {}) {
+export async function runProbes(
+  criteria,
+  { root, origin, env, spawn, fetchImpl, carried, issue } = {},
+) {
   if (criteria === null) {
     const c = check({
       name: 'probes',
@@ -343,7 +347,7 @@ export async function runProbes(criteria, { root, origin, env, spawn, fetchImpl,
     const c = check({
       name: 'probes',
       kind: 'probes',
-      scope: `criterion ${criterion}`,
+      scope: issue ? `issue ${issue}, criterion ${criterion}` : `criterion ${criterion}`,
       command: probeCommand(probe),
       files: [],
       result: out.result,
@@ -361,7 +365,7 @@ export async function runProbes(criteria, { root, origin, env, spawn, fetchImpl,
       check({
         name: 'probes',
         kind: 'probes',
-        scope: 'issue',
+        scope: issue ? `issue ${issue}` : 'issue',
         command: standing.length
           ? 'the change claims no criterion keeping a probe'
           : 'the issue keeps no probe to run',
@@ -377,14 +381,10 @@ export async function runProbes(criteria, { root, origin, env, spawn, fetchImpl,
 
 /** The refusals a probe run ends in, by name, in the words core uses: none where every probe held. */
 export function probeRefusalLines({ missing, red }) {
+  // a batch's run (ISS-1294) names whose criterion each is
+  const named = (x) => `${x.issue ? `issue ${x.issue} ` : ''}criterion ${x.criterion}: ${x.why}`;
   const lines = [];
-  if (missing.length)
-    lines.push(
-      `MERGE_PROBE_MISSING — ${missing.map((m) => `criterion ${m.criterion}: ${m.why}`).join('; ')}`,
-    );
-  if (red.length)
-    lines.push(
-      `MERGE_PROBE_RED — ${red.map((r) => `criterion ${r.criterion}: ${r.why}`).join('; ')}`,
-    );
+  if (missing.length) lines.push(`MERGE_PROBE_MISSING — ${missing.map(named).join('; ')}`);
+  if (red.length) lines.push(`MERGE_PROBE_RED — ${red.map(named).join('; ')}`);
   return lines;
 }

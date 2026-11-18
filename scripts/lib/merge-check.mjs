@@ -147,6 +147,12 @@ export function redChecks(checks, reruns = []) {
   return checks.filter((c) => c.result === 'fail' && c.kind !== 'probes' && !notTheChanges(c));
 }
 
+/** The standing criteria as core takes them, sent only where one stands. */
+const sentStanding = (standing = []) =>
+  standing.length
+    ? { standing: standing.map(({ criterion, verdict }) => ({ criterion, verdict })) }
+    : {};
+
 /**
  * The body `POST /api/issues/:id/merge-check` takes, as this run made it. `probes` binds each probe
  * check to the kept probe it ran, which core holds to the probes the issue keeps. `standing` names
@@ -154,6 +160,8 @@ export function redChecks(checks, reruns = []) {
  * (`lib/merge-probes.mjs:probesOwed`), a standing fail among them; core holds each to the
  * criterion's live latest verdict and reads its outcome from there, so `outcome` is not sent. It is
  * sent only where one stands, so a report with none is the shape a core older than it still takes.
+ * A batch's run (ISS-1294) sends each issue's `probes` and `standing` under its id, `issues`, and
+ * neither at the top, where a reader would take them for one issue's.
  */
 export function reportOf({
   branch,
@@ -164,6 +172,7 @@ export function reportOf({
   checks,
   probes = [],
   standing = [],
+  issues = null,
   reruns = [],
   lane = 'full',
   patchId,
@@ -176,10 +185,15 @@ export function reportOf({
     mode,
     touched,
     checks,
-    probes,
-    ...(standing.length
-      ? { standing: standing.map(({ criterion, verdict }) => ({ criterion, verdict })) }
-      : {}),
+    ...(issues
+      ? {
+          issues: issues.map((x) => ({
+            issue: x.issue,
+            probes: x.probes,
+            ...sentStanding(x.standing),
+          })),
+        }
+      : { probes, ...sentStanding(standing) }),
     // sent only where a red was rerun, so a report with none is the shape an older core still takes
     ...(reruns.length ? { reruns } : {}),
     lane,
@@ -189,14 +203,20 @@ export function reportOf({
 
 /**
  * What a passing run says it is owed next. A pre-merge run is recorded on the issue before the
- * merge mark; a landed run (`--since`, dev's push run) checks what already landed, so it asks for
+ * merge mark, a batch's on each issue it names (ISS-1294); a landed run (`--since`, dev's push run) checks what already landed, so it asks for
  * nothing before a mark that has, or has not, already been made.
  */
-export function passedMessage({ mode, branch, baseSha, head, path }) {
+export function passedMessage({ mode, branch, baseSha, head, path, issues = null }) {
   if (mode === 'landed') {
     return (
       `merge-check: passed on a landing already on ${branch} (${baseSha.slice(0, 12)}..${head.slice(0, 12)}).\n` +
       `This checked what landed, after the merge; the report says what it ran:\n  ${path}`
+    );
+  }
+  if (issues) {
+    return (
+      'merge-check: passed. Record it on each issue the batch lands before its merge mark, with the report as the body:\n' +
+      issues.map((x) => `  POST /api/issues/${x.issue}/merge-check   < ${path}`).join('\n')
     );
   }
   return (

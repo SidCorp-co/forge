@@ -54,6 +54,7 @@ const LIMITS = {
 	probes: 200,
 	commits: 1000,
 	reruns: 200,
+	issues: 50,
 } as const;
 
 /** One probe the merge check ran: the criterion, the kept probe's id, and the `probes` check that ran it. */
@@ -81,6 +82,20 @@ const standingSchema = z.strictObject({
 	),
 });
 export type MergeStanding = z.infer<typeof standingSchema>;
+
+/**
+ * One issue a batch lands, with the probes the check ran and the criteria it read as standing for it
+ * (ISS-1294): `pnpm merge-check --probes <issue id>=<criteria read>`, once per issue, writes one of
+ * these each, and core reads the one naming the issue the report is recorded on.
+ */
+const issueProbesSchema = z.strictObject({
+	issue: z.uuid(
+		"issue is the id of an issue the batch lands, as `--probes <issue id>=<file>` named it",
+	),
+	probes: z.array(probeBindingSchema).max(LIMITS.probes),
+	standing: z.array(standingSchema).max(LIMITS.probes).optional(),
+});
+export type MergeIssueProbes = z.infer<typeof issueProbesSchema>;
 
 /**
  * How a rerun of one red integration test file ended (ISS-1120): `absent` is a file the merge base
@@ -121,7 +136,8 @@ export function rerunVerdictOf(
 	if (head.result !== "fail" || base?.result !== "fail") return "branch-red";
 	const [h, b] = [head.failed, base.failed];
 	if (!h || !b) return "branch-red";
-	const covered = h.length === 0 ? b.length === 0 : h.every((t) => b.includes(t));
+	const covered =
+		h.length === 0 ? b.length === 0 : h.every((t) => b.includes(t));
 	return covered ? "base-red" : "branch-red";
 }
 
@@ -169,6 +185,84 @@ export function requiredMergeChecksOf(
 		: REQUIRED_MERGE_CHECKS;
 }
 
+type Ctx = z.RefinementCtx;
+
+/** Each criterion named standing once: it stands on one verdict. */
+function standingOnce(
+	standing: readonly MergeStanding[],
+	path: (string | number)[],
+	ctx: Ctx,
+): void {
+	for (const [i, s] of standing.entries()) {
+		if (standing.findIndex((o) => o.criterion === s.criterion) !== i) {
+			ctx.addIssue({
+				code: "custom",
+				path: [...path, i, "criterion"],
+				message: `criterion ${s.criterion} is named standing twice; each criterion stands on one verdict`,
+			});
+		}
+	}
+}
+
+/** Each binding names a `probes` check of the report, which is what ran its probe. */
+function bindingsRan(
+	bindings: readonly MergeProbeBinding[],
+	checks: readonly { id: string; kind: string }[],
+	path: (string | number)[],
+	ctx: Ctx,
+): void {
+	for (const [i, b] of bindings.entries()) {
+		const ran = checks.find((c) => c.id === b.check);
+		if (ran?.kind !== "probes") {
+			ctx.addIssue({
+				code: "custom",
+				path: [...path, i, "check"],
+				message: `check ${b.check} is not a \`probes\` check of this report, so it cannot be what ran probe ${b.probe}`,
+			});
+		}
+	}
+}
+
+/**
+ * A batch report (ISS-1294) names each issue once, and each issue's probes and standing under it,
+ * never beside a top-level `probes` or `standing` a reader could take for one issue's.
+ */
+function batchRefinements(
+	r: {
+		issues?: readonly MergeIssueProbes[] | undefined;
+		probes?: readonly MergeProbeBinding[] | undefined;
+		standing?: readonly MergeStanding[] | undefined;
+		checks: readonly { id: string; kind: string }[];
+	},
+	ctx: Ctx,
+): void {
+	if (!r.issues) return;
+	for (const key of ["probes", "standing"] as const) {
+		if (r[key] !== undefined) {
+			ctx.addIssue({
+				code: "custom",
+				path: [key],
+				message: `a batch report names each issue's ${key} under \`issues\`, so it sends no top-level \`${key}\``,
+			});
+		}
+	}
+	for (const [i, x] of r.issues.entries()) {
+		if (
+			r.issues.findIndex(
+				(o) => o.issue.toLowerCase() === x.issue.toLowerCase(),
+			) !== i
+		) {
+			ctx.addIssue({
+				code: "custom",
+				path: ["issues", i, "issue"],
+				message: `issue ${x.issue} is named twice; a batch report names each issue it lands once`,
+			});
+		}
+		standingOnce(x.standing ?? [], ["issues", i, "standing"], ctx);
+		bindingsRan(x.probes, r.checks, ["issues", i, "probes"], ctx);
+	}
+}
+
 export const mergeCheckReportSchema = z
 	.strictObject({
 		base: z.strictObject({
@@ -211,6 +305,13 @@ export const mergeCheckReportSchema = z
 		 */
 		standing: z.array(standingSchema).max(LIMITS.probes).optional(),
 		/**
+		 * A batch's report (ISS-1294): `probes` and `standing` of each issue the batch lands, under its
+		 * id, in place of the top-level ones, which a batch report does not send. Core reads the
+		 * entry of the issue it records the report on and refuses MERGE_CHECK_ISSUE_NOT_COVERED where
+		 * none names it. Absent is a report on one issue, or on none (`--probes none`).
+		 */
+		issues: z.array(issueProbesSchema).min(1).max(LIMITS.issues).optional(),
+		/**
 		 * Each red integration test file, rerun at the head and at the merge base (ISS-1120). A red
 		 * `integration-tests` check whose every rerun is `base-red` or `flaky` is not the change's red.
 		 * Absent is none rerun: every red is the change's, as a report before ISS-1120 reads.
@@ -241,17 +342,8 @@ export const mergeCheckReportSchema = z
 		debts: debtItemsSchema.optional(),
 	})
 	.superRefine((r, ctx) => {
-		for (const [i, s] of (r.standing ?? []).entries()) {
-			if (
-				(r.standing ?? []).findIndex((o) => o.criterion === s.criterion) !== i
-			) {
-				ctx.addIssue({
-					code: "custom",
-					path: ["standing", i, "criterion"],
-					message: `criterion ${s.criterion} is named standing twice; each criterion stands on one verdict`,
-				});
-			}
-		}
+		standingOnce(r.standing ?? [], ["standing"], ctx);
+		batchRefinements(r, ctx);
 		for (const [i, d] of (r.debts ?? []).entries()) {
 			if (d.kind === "red" && d.impact.rating === HOLDING_RATING) {
 				ctx.addIssue({
@@ -318,16 +410,7 @@ export const mergeCheckReportSchema = z
 				});
 			}
 		}
-		for (const [i, b] of (r.probes ?? []).entries()) {
-			const ran = r.checks.find((c) => c.id === b.check);
-			if (ran?.kind !== "probes") {
-				ctx.addIssue({
-					code: "custom",
-					path: ["probes", i, "check"],
-					message: `check ${b.check} is not a \`probes\` check of this report, so it cannot be what ran probe ${b.probe}`,
-				});
-			}
-		}
+		bindingsRan(r.probes ?? [], r.checks, ["probes"], ctx);
 	})
 	.refine((r) => r.lane !== "fast" || r.patchId !== undefined, {
 		path: ["patchId"],
@@ -336,12 +419,16 @@ export const mergeCheckReportSchema = z
 	});
 export type MergeCheckReport = z.infer<typeof mergeCheckReportSchema>;
 
-export const MERGE_CHECK_SHAPE = `{ base: { branch, sha }, head, mode: pre-merge | landed, touched: [{ path, change }], checks: [${CHECK_RUN_SHAPE}], probes?: [{ criterion, probe: <kept probe id>, check: <id of the probes check that ran it> }], standing?: [{ criterion, verdict: <its latest verdict's id, a pass, short or fail at a commit the base carries> }], reruns?: [{ check: <id of a red integration-tests check>, file, verdict: base-red | flaky | branch-red, runs: [{ at: head | base, sha, result: pass | fail | absent | error, command, startedAt, durationMs, note?, failed?: [<test name>] }] }], lane?: fast | full, patchId?: <40 hex, required on the fast lane>, impact?: { type, rating: low | medium | high, reason }, debts?: [{ kind: red | debt | simplify, check?, where, detail, impact }] }`;
+export const MERGE_CHECK_SHAPE = `{ base: { branch, sha }, head, mode: pre-merge | landed, touched: [{ path, change }], checks: [${CHECK_RUN_SHAPE}], probes?: [{ criterion, probe: <kept probe id>, check: <id of the probes check that ran it> }], standing?: [{ criterion, verdict: <its latest verdict's id, a pass, short or fail at a commit the base carries> }], issues?: [{ issue: <issue id>, probes: [as probes], standing?: [as standing] }] (a batch's report, in place of the top-level probes and standing), reruns?: [{ check: <id of a red integration-tests check>, file, verdict: base-red | flaky | branch-red, runs: [{ at: head | base, sha, result: pass | fail | absent | error, command, startedAt, durationMs, note?, failed?: [<test name>] }] }], lane?: fast | full, patchId?: <40 hex, required on the fast lane>, impact?: { type, rating: low | medium | high, reason }, debts?: [{ kind: red | debt | simplify, check?, where, detail, impact }] }`;
 
 /** A kept probe of a criterion the change claims that the report did not run, a claimed observable criterion keeping none, or a standing reading core does not hold. */
 export const MERGE_PROBE_MISSING = "MERGE_PROBE_MISSING" as const;
 /** A kept probe the report ran that answered something other than what it expects. */
 export const MERGE_PROBE_RED = "MERGE_PROBE_RED" as const;
+
+/** A batch report recorded on an issue none of its `issues` entries names (ISS-1294). */
+export const MERGE_CHECK_ISSUE_NOT_COVERED =
+	"MERGE_CHECK_ISSUE_NOT_COVERED" as const;
 
 /** A mark where a merge check is owed and none passed at the commit marked. */
 export const MERGE_CHECK_MISSING = "MERGE_CHECK_MISSING" as const;
@@ -356,6 +443,7 @@ export const MERGE_CHECK_REFUSAL_CODES = [
 	"MERGE_CHECK_KIND_MISMATCH",
 	MERGE_PROBE_MISSING,
 	MERGE_PROBE_RED,
+	MERGE_CHECK_ISSUE_NOT_COVERED,
 	PATTERN_ENTRY_MISSING,
 	/** A report passing reds as cleanup debt on a project that turned fast delivery off (REQ-79 BC-1). */
 	"MERGE_DEBT_FAST_DELIVERY_OFF",

@@ -337,7 +337,11 @@ export function probesRan(
   report: MergeCheckReport,
   criteria: readonly MergeCriterion[] = [],
 ): string {
-  const ran = report.checks.filter((c) => c.kind === 'probes' && c.result !== 'none');
+  // the probes bound to this issue's criteria: a batch's report (ISS-1294) also ran its other issues'
+  const bound = new Set((report.probes ?? []).map((b) => b.check));
+  const ran = report.checks.filter(
+    (c) => c.kind === 'probes' && c.result !== 'none' && bound.has(c.id),
+  );
   const ranFor = [...new Set((report.probes ?? []).map((b) => b.criterion))].sort((a, b) => a - b);
   const lead = ran.length
     ? `${ran.length} kept probe(s) ran and held, for criteria ${ranFor.join(', ')}`
