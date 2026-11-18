@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.731] - 2026-11-18
+
+Room agents act on the owner's word and ask him in his language
+
+### Fixed
+
+- **The technical thread answers you in one voice, in your language.** When you give a go-ahead it makes the act as you (ecosystem links included) instead of asking again, and never promises an act it cannot make.
+
 ## [0.4.0-dev.730] - 2026-11-18
 
 Boxes record only on request and open only once their emulator works

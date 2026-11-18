@@ -1,1 +1,0 @@
-**The technical thread answers you in one voice, in your language.** When you give a go-ahead it makes the act as you (ecosystem links included) instead of asking again, and never promises an act it cannot make.
