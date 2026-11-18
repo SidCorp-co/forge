@@ -25,7 +25,7 @@ export type BoxUnservedMode = (typeof BOX_UNSERVED_MODES)[number];
 /**
  * `waiting`: asked for, and the device's health has no room for it yet (`BOX_SLOT_UNAVAILABLE`
  * names its place and why); core starts it when health returns. `opening`: the runner was told to
- * start it. `warm`: running and nobody's yet, kept so the next request of its mode starts at once.
+ * start it, or to hand a warm one out, and has not said it answers yet. `warm`: running and nobody's yet, kept so the next request of its mode starts at once.
  * `agent`: running, and the agent drives it. `person`: running, and a person holds it; the agent's
  * state-changing acts are refused `BOX_HELD_BY_PERSON`, its reads answer. `closed`: done, and its
  * processes reaped; its recording stays on the device until its issue ends. `failed`: it could not
@@ -64,7 +64,7 @@ export const BOX_HOLDING_STATES = [
  */
 export const BOX_MACHINE = defineMachine({
 	entity: "box",
-	shapes: ["3ee3cdb7"],
+	shapes: ["3ee3cdb7", "8238685f"],
 	design: null,
 	states: BOX_STATES,
 	initial: ["waiting", "opening"],
@@ -78,11 +78,36 @@ export const BOX_MACHINE = defineMachine({
 			permission: null,
 			guards: [],
 		},
-		{ from: "opening", to: "warm", act: "box.warm", permission: null, guards: [] },
-		{ from: "opening", to: "agent", act: "box.ready", permission: null, guards: [] },
-		{ from: "opening", to: "person", act: "box.ready", permission: null, guards: [] },
-		{ from: "warm", to: "agent", act: "box.assigned", permission: null, guards: [] },
-		{ from: "warm", to: "person", act: "box.assigned", permission: null, guards: [] },
+		{
+			from: "opening",
+			to: "warm",
+			act: "box.warm",
+			permission: null,
+			guards: [],
+		},
+		{
+			from: "opening",
+			to: "agent",
+			act: "box.ready",
+			permission: null,
+			guards: [],
+		},
+		{
+			from: "opening",
+			to: "person",
+			act: "box.ready",
+			permission: null,
+			guards: [],
+		},
+		// a warm box given to a request opens again until the device says its screen still answers
+		// (ISS-1324): a warm box is never read as running for anyone before that `ready`
+		{
+			from: "warm",
+			to: "opening",
+			act: "box.assigned",
+			permission: null,
+			guards: [],
+		},
 		{
 			from: "agent",
 			to: "person",
@@ -136,6 +161,12 @@ export const BOX_FAILURES = [
 	"BOX_GONE",
 	/** The device went offline past the grace period. */
 	"DEVICE_OFFLINE",
+	/**
+	 * The box's own screen stopped answering (an emulator `adb` no longer reaches, a browser daemon
+	 * or desktop display gone), found at its hand-out or by the device's sweep (ISS-1324). `detail`
+	 * holds the check's answer and the log tail.
+	 */
+	"BOX_DEVICE_GONE",
 ] as const;
 export type BoxFailure = (typeof BOX_FAILURES)[number];
 
@@ -181,6 +212,15 @@ export interface BoxQueuePlace {
 	reason: string;
 }
 
+/**
+ * Why a box records (ISS-1321; owner 2026-11-18: recording costs resources, so it is optional).
+ * Nothing records by default and a warm box never does. `asked`: the open named `record: true`, or
+ * an agent turned it on. `span`: a criterion's span began it, and the last open span's end stops it.
+ * `person`: a person turned it on from the Boxes page. Only a `span` recording ends with a span.
+ */
+export const BOX_RECORDING_WHY = ["asked", "span", "person"] as const;
+export type BoxRecordingWhy = (typeof BOX_RECORDING_WHY)[number];
+
 /** The record every door answers with. */
 export interface BoxRecord {
 	id: string;
@@ -200,8 +240,15 @@ export interface BoxRecord {
 	url: string | null;
 	/** What the runner offered for viewing once ready (`./box-wire.ts` `BoxViewCodec`). */
 	view: { codec: string; width: number; height: number } | null;
+	/**
+	 * Its recording (ISS-1321): null while nothing was ever recorded. `state` is `recording` while
+	 * the device records, `kept` once it stopped with what it recorded still on the device, `dropped`
+	 * once its issue ended. `why` says who wants it recording now (null when it does not record);
+	 * `startedAt` is when the device began the recording now running, or the last one.
+	 */
 	recording: {
 		state: "recording" | "kept" | "dropped";
+		why: BoxRecordingWhy | null;
 		startedAt: string | null;
 	} | null;
 	failure: BoxFailure | null;
@@ -257,7 +304,10 @@ export const BOX_READ_VERBS = {
 	desktop: ["snapshot", "get", "is", "screenshot", "wait"],
 } as const satisfies Record<BoxMode, readonly string[]>;
 
-export function actKindOf(mode: BoxMode, command: readonly string[]): "read" | "write" {
+export function actKindOf(
+	mode: BoxMode,
+	command: readonly string[],
+): "read" | "write" {
 	const verb = command[0] ?? "";
 	return (BOX_READ_VERBS[mode] as readonly string[]).includes(verb)
 		? "read"
@@ -278,7 +328,8 @@ const viewportSchema = z.strictObject({
 });
 
 /**
- * Open a box. `mode` is any string so that `ios`, or a mode this Forge does not know, is refused
+ * Open a box. `record` asks for the session's recording from the start; without it nothing records
+ * until a span or a person starts it. `mode` is any string so that `ios`, or a mode this Forge does not know, is refused
  * `BOX_MODE_UNAVAILABLE` by name rather than as a malformed body. `runId` is the agent's run, which
  * holds it; a person's open (`asPerson`) holds it as that person from the start ("Open a box to test
  * by hand"). `deviceId` pins a device; absent, the run's device, else the project's device with the
@@ -293,6 +344,8 @@ export const openBoxRequestSchema = z.strictObject({
 	viewport: viewportSchema.optional(),
 	url: z.string().trim().min(1).max(BOX_LIMITS.url).optional(),
 	asPerson: z.boolean().optional(),
+	/** Record the session from the start (ISS-1321). Absent or false: nothing records until asked. */
+	record: z.boolean().optional(),
 });
 export type OpenBoxRequest = z.infer<typeof openBoxRequestSchema>;
 
@@ -309,6 +362,9 @@ export const boxSpanRequestSchema = z.strictObject({
 	criterion: z.number().int().min(1),
 	edge: z.enum(["start", "end"]),
 });
+
+/** Start (`on: true`) or stop a box's recording: its holder or a project writer (ISS-1321). */
+export const boxRecordingRequestSchema = z.strictObject({ on: z.boolean() });
 
 export const boxTicketRequestSchema = z.strictObject({
 	channel: z.enum(["view", "input"]),
@@ -369,6 +425,8 @@ export const BOX_ROUTES = {
 	acts: "/api/boxes/:id/acts",
 	/** POST: mark a criterion's span start or end. GET: the box's spans and their clips. */
 	spans: "/api/boxes/:id/spans",
+	/** POST `{ on }`: start or stop the box's recording (ISS-1321). */
+	recording: "/api/boxes/:id/recording",
 	/** POST: a one-minute ticket for the view or input socket. */
 	ticket: "/api/boxes/:id/ticket",
 	/** Runner only: what the box did (`./box-wire.ts` `boxReportSchema`). */

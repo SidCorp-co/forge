@@ -86,14 +86,17 @@ export type BoxViewCodec = (typeof BOX_VIEW_CODECS)[BoxMode];
 
 export interface BoxControlFrames {
 	/**
-	 * Start a box. `warm`: start it with nobody's work, kept for the next request of its mode. The
-	 * runner records the whole session from the start (agent-browser `record`, ffmpeg x11grab, the
-	 * emulator's recording) and answers `ready` with its view offer, or `failed`.
+	 * Start a box. `warm`: start it with nobody's work, kept for the next request of its mode; a
+	 * warm box never records. `record`: start the session's recording once it is up (agent-browser
+	 * `record`, ffmpeg x11grab, the emulator's recording); without it nothing records (ISS-1321).
+	 * The runner answers `ready` with its view offer, and `recordingStartedAt` where it records, or
+	 * `failed`.
 	 */
 	"box.open": {
 		boxId: string;
 		mode: BoxMode;
 		warm: boolean;
+		record: boolean;
 		viewport: { width: number; height: number } | null;
 		url: string | null;
 		openTimeoutSeconds: number;
@@ -110,21 +113,39 @@ export interface BoxControlFrames {
 		kind: "read" | "write";
 	};
 	/**
-	 * A warm box was given to work: the runner navigates to `url` where one is named. Its
-	 * evidence restarts here, so a warm box's idle minutes are never evidence, and it answers
-	 * `ready` with the instant. `asPerson`: a person holds it from the hand-out.
+	 * A warm box was given to work: the runner first checks its screen still answers, failing it
+	 * `BOX_DEVICE_GONE` where it does not (ISS-1324), then navigates to `url` where one is named. Its
+	 * evidence starts here, so a warm box's idle minutes are never evidence, and it answers
+	 * `ready`, with `recordingStartedAt` where `record` started its recording here. `asPerson`: a
+	 * person holds it from the hand-out.
 	 */
-	"box.assign": { boxId: string; url: string | null; asPerson: boolean };
+	"box.assign": {
+		boxId: string;
+		url: string | null;
+		asPerson: boolean;
+		record: boolean;
+	};
+	/**
+	 * Start (`on: true`) or stop the box's recording, answered by a `recording` report (ISS-1321).
+	 * Stopping closes what was recorded into a segment a span's cut still reads.
+	 */
+	"box.recording.set": { boxId: string; on: boolean };
 	/** A person holds it: the runner accepts `input` channel streams for it from now. */
 	"box.take": { boxId: string; userId: string; name: string | null };
 	/** Back to the agent (`released`, or `expired` by idle): the runner refuses input streams again. */
 	"box.release": { boxId: string; why: "released" | "expired" };
-	/** Note where a criterion's span starts or ends on the recording; answered by a `mark` report. */
+	/**
+	 * Note where a criterion's span starts or ends on the recording; answered by a `mark` report.
+	 * `recording: "start"`: the box was not recording, so the runner starts its recording before
+	 * the start's mark; `"stop"`: this end closes the recording a span began, after the end's mark
+	 * (ISS-1321). Null leaves the recording as it is.
+	 */
 	"box.span.mark": {
 		boxId: string;
 		spanId: string;
 		criterion: number;
 		edge: "start" | "end";
+		recording: "start" | "stop" | null;
 	};
 	/**
 	 * Cut the span's clip and its opening still from the recording, between the offsets the `mark`
@@ -152,13 +173,16 @@ const offerSchema = z.strictObject({
 
 /**
  * - `state`: the box is up (`ready`, with the view `offer` and when its recording started), it could
- *   not start or stopped (`failed`, a `BoxFailure` and the tool's words), or it is gone.
+ *   not start or stopped (`failed`, a `BoxFailure` and the tool's words; `BOX_DEVICE_GONE` for a
+ *   warm box whose screen no longer answers), or it is gone.
  * - `offer`: the view moved (agent-browser restarted on a new stream port, the emulator rotated).
  *   The port itself never leaves the device; the runner re-reads it and a lost one is `failed`
  *   `STREAM_LOST`, loudly.
  * - `act`: what a `box.act` did.
  * - `mark`: the recording offset a `box.span.mark` landed at.
  * - `clip_failed`: a `box.recording.fetch` could not be cut or exceeded the ceiling.
+ * - `recording`: the recording started (`on`, at `at`) or stopped, or could not (`failed`, with the
+ *   tool's words in `detail`), after `box.recording.set` or a span's `recording`.
  */
 export const boxReportSchema = z.discriminatedUnion("kind", [
 	z.strictObject({
@@ -167,7 +191,13 @@ export const boxReportSchema = z.discriminatedUnion("kind", [
 		offer: offerSchema.optional(),
 		recordingStartedAt: z.iso.datetime().optional(),
 		failure: z
-			.enum(["START_FAILED", "STREAM_LOST", "BOX_GONE", "DEVICE_OFFLINE"])
+			.enum([
+				"START_FAILED",
+				"STREAM_LOST",
+				"BOX_GONE",
+				"DEVICE_OFFLINE",
+				"BOX_DEVICE_GONE",
+			])
 			.optional(),
 		detail: z.string().max(4000).optional(),
 	}),
@@ -190,6 +220,12 @@ export const boxReportSchema = z.discriminatedUnion("kind", [
 		kind: z.literal("clip_failed"),
 		spanId: z.uuid(),
 		detail: z.string().max(4000),
+	}),
+	z.strictObject({
+		kind: z.literal("recording"),
+		state: z.enum(["on", "off", "failed"]),
+		at: z.iso.datetime(),
+		detail: z.string().max(4000).optional(),
 	}),
 ]);
 export type BoxReport = z.infer<typeof boxReportSchema>;

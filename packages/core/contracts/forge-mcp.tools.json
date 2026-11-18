@@ -341,7 +341,7 @@
       }
     },
     {
-      "description": "Forge Box: a browser, Android or desktop screen you test a UI in, which a person watches live from Forge and can take over. open {projectId, mode, issueId, criterion, runId, viewport?, url?}: a box, or BOX_SLOT_UNAVAILABLE naming its place and why while it waits. act {boxId, command, runId}: one driver command; a write is refused BOX_HELD_BY_PERSON while a person holds the box, a read always answers. span {boxId, criterion, edge}: mark a criterion's demonstration; its clip and still attach to the issue. close {boxId}; read {boxId}.",
+      "description": "Forge Box: a browser, Android or desktop screen you test a UI in, which a person watches live from Forge and can take over. open {projectId, mode, issueId, criterion, runId, viewport?, url?, record?}: a box, opening until it is ready, or BOX_SLOT_UNAVAILABLE naming its place and why while it waits. act {boxId, command, runId}: one driver command; a write is refused BOX_HELD_BY_PERSON while a person holds the box, a read always answers. span {boxId, criterion, edge}: mark a criterion's demonstration; a span records its own clip, which attaches to the issue with its still. record {boxId, record}: start or stop recording; nothing records unless asked, so record a span, not exploratory work. close {boxId}; read {boxId}.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -350,13 +350,14 @@
               "open",
               "act",
               "span",
+              "record",
               "close",
               "read"
             ],
             "type": "string"
           },
           "boxId": {
-            "description": "act, span, close, read: the box",
+            "description": "act, span, record, close, read: the box",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
             "type": "string"
@@ -397,6 +398,10 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
             "type": "string"
+          },
+          "record": {
+            "description": "open: record the whole session (off by default); record: true starts, false stops",
+            "type": "boolean"
           },
           "runId": {
             "description": "open, act: your run (FORGE_RUN)",
@@ -458,6 +463,12 @@
             "resolved": "the box's project, found from the box"
           },
           "permission": "project.read"
+        },
+        "record": {
+          "on": {
+            "resolved": "the box's project, found from the box"
+          },
+          "permission": "project.write"
         },
         "span": {
           "on": {
@@ -4187,5 +4198,5 @@
       }
     }
   ],
-  "version": "8.6.0"
+  "version": "8.7.0"
 }
