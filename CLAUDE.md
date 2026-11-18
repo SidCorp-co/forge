@@ -24,10 +24,10 @@ the DIRECT tests of what it touched (a test touched, a test importing a touched 
 declaring `@direct-test-of <path>` over it; `--integration` adds the core integration tests chosen
 the same way) and archmap over the files it touched, never a whole suite; a change touching shared logic, billing, permissions or data adds
 `--integration` and the whole suite of the module it shares. The batch's ONE gate is wider than the
-org's bar, because the script runs more than the bar asks: `pnpm verify` — the conformance entrypoint — and `GITHUB_BASE_REF=dev pnpm merge-check --probes <file>` over the batch rebased onto
+org's bar, because the script runs more than the bar asks: `pnpm verify` — the conformance entrypoint — and `GITHUB_BASE_REF=dev pnpm merge-check --probes <issue id>=<file>`, once per issue, over the batch rebased onto
 the latest `dev`, which refuses a branch behind its base (`MERGE_BEHIND_BASE`) and a claimed
-criterion's probe missing or red (`MERGE_PROBE_MISSING`, `MERGE_PROBE_RED`). Its report is recorded
-with `POST /api/issues/:id/merge-check` on each issue the batch lands, a high-impact mark is refused
+criterion's probe missing or red (`MERGE_PROBE_MISSING`, `MERGE_PROBE_RED`). Its one report is recorded
+with `POST /api/issues/:id/merge-check` on each issue the batch lands (`MERGE_CHECK_ISSUE_NOT_COVERED` for one it does not name), a high-impact mark is refused
 without it (`MERGE_CHECK_MISSING`), and then comes one landing, one release and one live judge pass.
 A red the batch's own change caused is fixed inside the batch. The whole suite runs on `dev` once a day and on
 each `main` release cut's commit; a red there that the batch gate missed widens the selection — a

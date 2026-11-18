@@ -1,0 +1,1 @@
+**One merge check covers a whole batch.** `pnpm merge-check --probes <issue id>=<file>`, once per issue, runs every issue's probes; its one report is recorded on each issue, and an issue it does not name is refused by name.
