@@ -82,6 +82,7 @@ type Line = {
   issueKey: string;
   line: string;
   visual: { desktop: File; phone: File; still: File; seconds: number | null } | null;
+  ui: boolean | null;
 };
 type Page = {
   improvements: Line[];
@@ -250,6 +251,8 @@ describe('every New and Fixed line shows its marked visual, with no requirement 
     expect(line?.visual?.seconds).toBe(20);
     expect(p.fixes[0]?.visual?.desktop?.attachmentId).toBe(w.shot);
     expect(p.fixes[0]?.visual?.phone).toBeNull();
+    // whether each landing touched a screen, so a line showing nothing says which it is
+    expect([line?.ui, p.fixes[0]?.ui]).toEqual([true, false]);
   });
 
   it('takes a mark down once a later fail stands on its criterion', async () => {

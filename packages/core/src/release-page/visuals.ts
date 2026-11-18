@@ -160,6 +160,13 @@ export async function relinkedVisual(
 /** The link a signed-in reader fetches an attachment by. */
 const downloadOf = (attachmentId: string) => `/api/attachments/${attachmentId}/download`;
 
+/** Whether an issue's landing touched a screen: null where its landing names nothing to tell by. */
+function touchedUi(issue: ReleaseDetail['issues'][number] | undefined): boolean | null {
+  if (!issue) return null;
+  if (issue.surfaces.includes('ui')) return true;
+  return issue.landing.kind === 'named' ? false : null;
+}
+
 /**
  * Each line with the visual its issue's judge marked, linked for a signed-in reader, and, on the
  * developer view, the lines whose landing touched `ui` surfaces that show none and whose judge said
@@ -170,12 +177,12 @@ export async function withVisuals<T extends Changes>(
   changes: T,
   view: ReleasePage['view'],
 ): Promise<T & { visualsOwed: ReleaseVisualsOwed | null }> {
-  const idOf = new Map(detail.issues.map((i) => [i.key, i.id] as const));
-  const facts = await lineVisualsOf([...idOf.values()]);
+  const byKey = new Map(detail.issues.map((i) => [i.key, i] as const));
+  const facts = await lineVisualsOf(detail.issues.map((i) => i.id));
   const on = async (c: Change): Promise<Change> => {
-    const id = idOf.get(c.issueKey);
-    const marked = id ? facts.visuals.get(id) : undefined;
-    return { ...c, visual: await relinkedVisual(marked, downloadOf) };
+    const issue = byKey.get(c.issueKey);
+    const marked = issue ? facts.visuals.get(issue.id) : undefined;
+    return { ...c, visual: await relinkedVisual(marked, downloadOf), ui: touchedUi(issue) };
   };
   const improvements = await Promise.all(changes.improvements.map(on));
   const fixes = await Promise.all(changes.fixes.map(on));

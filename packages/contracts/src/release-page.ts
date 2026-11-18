@@ -700,6 +700,11 @@ export interface ReleasePageChange {
 	screen?: string | null;
 	/** The clip or shots its judge marked (ISS-1308); null where none is marked, absent on a share frozen before. */
 	visual?: ReleaseLineVisual | null;
+	/**
+	 * Whether its landing touched a `ui` surface, so a line showing nothing reads as having no screen
+	 * or as owing a visual: null where its landing names nothing, absent on a share frozen before.
+	 */
+	ui?: boolean | null;
 }
 
 /**
@@ -945,6 +950,7 @@ const ChangeSchema = z.strictObject({
 	screen: z.string().min(1).nullable().default(null),
 	// a share frozen before lines carried their judge's visual shows none
 	visual: ReleaseLineVisualSchema.nullable().default(null),
+	ui: z.boolean().nullable().default(null),
 });
 
 /**
