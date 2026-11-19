@@ -110,6 +110,8 @@ export class StandInRocketChat implements ChatServer {
   readonly deletedLines: BotLine[] = [];
   /** Whether `chat.update` and `chat.delete` refuse, as a server barring edits after a while does. */
   changesRefused = false;
+  /** The messages `chat.update` and `chat.delete` refuse alone, the others changed as asked. */
+  readonly changesRefusedFor = new Set<string>();
 
   /** How many times a group's history was read. */
   historyReads = 0;
@@ -250,7 +252,8 @@ export class StandInRocketChat implements ChatServer {
         return json(200, { success: true });
       case '/api/v1/chat.update':
       case '/api/v1/chat.delete':
-        if (this.changesRefused) return json(400, { success: false, error: 'error-not-allowed' });
+        if (this.changesRefused || this.changesRefusedFor.has(String(body.msgId)))
+          return json(400, { success: false, error: 'error-not-allowed' });
         return json(...changeLine(this.lines, this.deletedLines, url.pathname, body));
       case '/api/v1/chat.postMessage': {
         if (this.topLevelRefused && !body.tmid) return json(400, { success: false });

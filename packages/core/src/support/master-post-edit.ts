@@ -256,9 +256,9 @@ export async function deleteMasterPost(actor: Actor, messageId: string): Promise
   });
   if (left.length > 0) {
     return no(
-      'SUPPORT_POST_UNCHANGED',
+      'SUPPORT_POST_FILES_LEFT',
       '/messageId',
-      `message ${messageId} was deleted from ${room.rid}, but the chat server would not delete its file messages ${left.join(', ')}: they stay in the room.`,
+      `message ${messageId} was deleted from ${room.rid} and its delete is recorded, but the chat server would not delete its file messages ${left.join(', ')}: they stay in the room, and this door takes no second delete of the post (SUPPORT_POST_DELETED).`,
     );
   }
   return {

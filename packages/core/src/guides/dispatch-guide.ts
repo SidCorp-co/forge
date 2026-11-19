@@ -225,7 +225,8 @@ screens the words for the room's readers and records the post as the master's.
   correction instead. Refused by name, nothing changed: \`SUPPORT_POST_UNKNOWN\`,
   \`SUPPORT_POST_NOT_YOURS\` (another account's or project's post, or no master post),
   \`SUPPORT_POST_EDIT_WINDOW_PASSED\`, \`SUPPORT_POST_DELETED\` and \`SUPPORT_POST_UNCHANGED\` (the
-  chat server would not).
+  chat server would not). A delete the chat server took for the post but not for a file of it is
+  \`SUPPORT_POST_FILES_LEFT\`, naming the files left: the post stays deleted.
 - **A room its users read** takes a master's words only in an asker's thread (one a member wrote
   in), never at its top level, mentioning at most one person: the thread's asker or a member of
   the room. Plain words, things named as the user sees them on screen: no Forge issue key, MR or PR

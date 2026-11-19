@@ -161,6 +161,42 @@ describe('ISS-1238: a master edits or deletes its own post within the window', (
     expect(codeOf(await edit(id, FIXED))).toBe('SUPPORT_POST_DELETED');
     expect(await roomState()).toBe(state);
   });
+
+  it('names a delete whose post went but whose image the chat server kept, never as unchanged', async () => {
+    const { path } = await getStorage().put(`iss1238/${randomUUID()}/k.png`, PNG, 'image/png');
+    const [upload] = await rows<{ id: string }>(sql`
+      INSERT INTO issue_attachments (issue_id, uploader_id, name, path, mime, size)
+      VALUES (${w.issueId}, ${w.ownerId}, 'k.png', ${path}, 'image/png', ${PNG.length}) RETURNING id`);
+    const res = await post({
+      text: FIRST,
+      rid: chat.rid2,
+      attachments: [{ target: 'issue', attachmentId: upload?.id }],
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    const { messageId: id, attachments } = res.body as {
+      messageId: string;
+      attachments: { messageId: string }[];
+    };
+    const image = String(attachments[0]?.messageId);
+    chat.changesRefusedFor.add(image);
+    try {
+      const gone = await remove(id);
+      // planted on the door answering SUPPORT_POST_UNCHANGED, which says the post was not changed
+      expect([gone.status, codeOf(gone)], JSON.stringify(gone.body)).toEqual([
+        503,
+        'SUPPORT_POST_FILES_LEFT',
+      ]);
+      expect(detailOf(gone)).toContain(`message ${id} was deleted`);
+      expect(detailOf(gone)).toContain(image);
+      expect([lineOf(id), lineOf(image)?.id]).toEqual([undefined, image]);
+      const [act] = await rows<{ input: Record<string, unknown> }>(sql`
+        SELECT input FROM support_actions WHERE external_id = ${id} AND tool = 'master_post_delete'`);
+      expect(act?.input).toMatchObject({ deleted: [id], left: [expect.stringContaining(image)] });
+      expect(codeOf(await remove(id))).toBe('SUPPORT_POST_DELETED');
+    } finally {
+      chat.changesRefusedFor.delete(image);
+    }
+  });
 });
 
 describe('ISS-1238: a post not the caller’s own, or past the window, is refused by name', () => {
