@@ -107,6 +107,7 @@ async fn judge(ctx: &Ctx, agent_id: Option<&str>, dir: Option<&Path>) -> Option<
     let runner = runner_program();
     let verdict = decide(&Facts {
         run_id: &run.run_id,
+        agent: agent_id,
         tree: &run.worktree_path,
         runner: &runner,
         issues,

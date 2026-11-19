@@ -679,18 +679,20 @@ pub(crate) fn bind_declared(
             return;
         }
     };
-    // A start is a subagent's first, or a resume of one its master already
-    // ran: Claude Code fires `SubagentStart` for both. Either takes the run
-    // its master declared where it is of the role that run was declared for.
+    let waiting = pending.as_ref().map(|r| r.run_id.as_str());
+    if woken_again(ctl, led, child, waiting, session_id) {
+        return;
+    }
     let mut turned_away: Option<(String, String)> = None;
     if let Some(run) = pending {
-        let promised_role = ctl
+        let promise = ctl
             .promises
             .lock()
             .expect("promises poisoned")
             .promised
             .get(&run.run_id)
-            .and_then(|p| p.role.clone());
+            .cloned();
+        let promised_role = promise.as_ref().and_then(|p| p.role.clone());
         match runner_core::dispatch_gate::claims_the_run(
             agent_type,
             roles.as_ref(),
@@ -700,11 +702,11 @@ pub(crate) fn bind_declared(
                 match led.bind_agent(&run.run_id, child) {
                     Ok(true) => {
                         heard(led, &run.run_id);
-                        ctl.promises
-                            .lock()
-                            .expect("promises poisoned")
-                            .promised
-                            .remove(&run.run_id);
+                        let mut memory = ctl.promises.lock().expect("promises poisoned");
+                        memory.promised.remove(&run.run_id);
+                        if let Some(p) = promise {
+                            memory.started_by.insert(run.run_id.clone(), p.tool_use);
+                        }
                         tracing::info!("[control] run {} is subagent {child}", run.run_id)
                     }
                     Ok(false) => match led.run_for_agent(child) {
@@ -748,6 +750,43 @@ pub(crate) fn bind_declared(
         StartKind::Undeclared => undeclared_child(ctl, child, agent_type, turned_away.as_ref()),
         StartKind::Unreadable(e) => unreadable_ledger(ctl, child, &e),
     }
+}
+
+/// Whether `child`'s start is its master waking it again, which takes no run.
+///
+/// A start is a subagent's first, or a finished one its master woke with
+/// `SendMessage`: Claude Code fires `SubagentStart` for both. Only the first is
+/// an Agent call the gate let through, so a subagent that answered to a run
+/// before takes no run, and the one declared waits for its dispatch (ISS-1366,
+/// FB-780: a woken builder took it, the dispatch after it was refused as
+/// undeclared, and the builder was held to issues it never took). A subagent
+/// still on an open run is not this: its start is a replay of that run's.
+fn woken_again(
+    ctl: &Arc<Control>,
+    led: &runner_core::ledger::Ledger,
+    child: &str,
+    pending: Option<&str>,
+    session_id: &str,
+) -> bool {
+    let before = match led.last_run_of_agent(child) {
+        Ok(Some(before)) if before.ended_by.is_some() => before,
+        Ok(_) => return false,
+        Err(e) => {
+            unreadable_ledger(ctl, child, &e.to_string());
+            return true;
+        }
+    };
+    match pending {
+        Some(run) => tracing::warn!(
+            "[control] subagent {child} was woken again under master session {session_id}: it answered to run {}, which is ended, and a resume makes no Agent call, so it takes no run. Run {run} stays unbound for the dispatch the gate lets through",
+            before.run_id
+        ),
+        None => tracing::info!(
+            "[control] subagent {child} was woken again: it answered to run {}, which is ended, and a resume takes no run",
+            before.run_id
+        ),
+    }
+    true
 }
 
 #[cfg(test)]

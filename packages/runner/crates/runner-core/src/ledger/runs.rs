@@ -554,22 +554,54 @@ impl Ledger {
         Ok(())
     }
 
-    /// Bind open run `run_id` to subagent `agent_id`, which answers to no
-    /// other open run. A run it answered to that has ended does not stop it:
-    /// a master resumes a subagent it already ran for the next declaration,
-    /// and that resume is the subagent taking the new run (ISS-1378).
+    /// Bind open run `run_id` to subagent `agent_id`, which has answered to
+    /// no run before, open or ended. A subagent that already answered to one
+    /// and starts again is its master waking it (`SendMessage`), which makes
+    /// no Agent call and so passes no dispatch gate: the run a master declared
+    /// is for the Agent call the gate lets through, never for a resume
+    /// (ISS-1366, superseding ISS-1378's resume binding).
     pub fn bind_agent(&self, run_id: &str, agent_id: &str) -> Result<bool> {
         let n = self
             .conn
             .execute(
                 "UPDATE runs SET agent_id = ?2
                   WHERE run_id = ?1 AND agent_id IS NULL AND ended_by IS NULL
-                    AND NOT EXISTS (SELECT 1 FROM runs o
-                                     WHERE o.agent_id = ?2 AND o.ended_by IS NULL)",
+                    AND NOT EXISTS (SELECT 1 FROM runs o WHERE o.agent_id = ?2)",
                 params![run_id, agent_id],
             )
             .map_err(sql_err)?;
         Ok(n == 1)
+    }
+
+    /// The run subagent `agent_id` answered to last, open or ended: where it
+    /// has one, a start of it is a resume.
+    pub fn last_run_of_agent(&self, agent_id: &str) -> Result<Option<Run>> {
+        self.conn
+            .query_row(
+                &format!(
+                    "{SELECT_RUN} WHERE agent_id = ?1 ORDER BY ended_by IS NULL DESC, created_at DESC LIMIT 1"
+                ),
+                params![agent_id],
+                map_run,
+            )
+            .optional()
+            .map_err(sql_err)
+    }
+
+    /// This master's open runs on this boot that a subagent holds, the latest
+    /// declared first.
+    pub fn held_runs_for_master(&self, master_session_id: &str, boot_id: &str) -> Result<Vec<Run>> {
+        let mut stmt = self
+            .conn
+            .prepare(&format!(
+                "{SELECT_RUN} WHERE master_session_id = ?1 AND boot_id = ?2 AND agent_id IS NOT NULL
+                   AND ended_by IS NULL ORDER BY created_at DESC, rowid DESC"
+            ))
+            .map_err(sql_err)?;
+        let rows = stmt
+            .query_map(params![master_session_id, boot_id], map_run)
+            .map_err(sql_err)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(sql_err)
     }
 
     /// The run this master declared that no subagent has bound yet, if any.

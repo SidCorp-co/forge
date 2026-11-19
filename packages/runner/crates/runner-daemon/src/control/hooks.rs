@@ -65,7 +65,7 @@ pub(crate) fn dispatch_gate_reply(
     d: runner_core::dispatch_gate::Dispatch,
     session_id: &str,
 ) -> ClaimReply {
-    use runner_core::dispatch_gate::{decide, Facts, Verdict, REFUSAL};
+    use runner_core::dispatch_gate::{decide, Facts, Verdict};
 
     let dir = ctl.config_dir.clone();
     let roles = dir.as_deref().and_then(dispatch_gate_roles);
@@ -141,12 +141,7 @@ pub(crate) fn dispatch_gate_reply(
                 &run_id, &to, &why,
             ))
         }
-        Verdict::Undeclared => {
-            tracing::warn!(
-                "[control] refusing an undeclared hand-off from master session {session_id}"
-            );
-            ClaimReply::denied(REFUSAL)
-        }
+        Verdict::Undeclared => undeclared(held.as_ref(), session_id, &ctl.boot_id, &memory),
         Verdict::Unknown(why) => {
             if let Some(refused) = refused_while_draining(ctl, why, Some(pending.as_deref())) {
                 return refused;
@@ -170,6 +165,72 @@ pub(crate) fn dispatch_gate_reply(
             gate_allows(Some(why))
         }
     }
+}
+
+/// The refusal of a dispatch no declaration waits for: naming what holds the
+/// master's latest run where a subagent holds one, the words it always was
+/// where none does.
+fn undeclared(
+    led: Option<&runner_core::ledger::Ledger>,
+    session_id: &str,
+    boot_id: &str,
+    memory: &GateMemory,
+) -> ClaimReply {
+    let held_by = match led.map(|led| held_runs(led, session_id, boot_id, memory)) {
+        Some(Ok(said)) => said,
+        Some(Err(e)) => {
+            tracing::warn!("[control] cannot read the runs master session {session_id} holds: {e}");
+            None
+        }
+        None => None,
+    };
+    match held_by {
+        Some(said) => {
+            tracing::warn!(
+                "[control] refusing a hand-off from master session {session_id}: no run waits for it, and a subagent holds its latest"
+            );
+            ClaimReply::denied(said)
+        }
+        None => {
+            tracing::warn!(
+                "[control] refusing an undeclared hand-off from master session {session_id}"
+            );
+            ClaimReply::denied(runner_core::dispatch_gate::REFUSAL)
+        }
+    }
+}
+
+/// The refusal naming the latest run this master declared and the subagent
+/// and tool call holding it, where a subagent holds one (ISS-1366); `None`
+/// where none does, and the dispatch is refused as undeclared.
+fn held_runs(
+    led: &runner_core::ledger::Ledger,
+    session_id: &str,
+    boot_id: &str,
+    memory: &GateMemory,
+) -> runner_platform::error::Result<Option<String>> {
+    let runs = led.held_runs_for_master(session_id, boot_id)?;
+    let Some(latest) = runs.first() else {
+        return Ok(None);
+    };
+    let Some(agent) = latest.agent_id.as_deref() else {
+        return Ok(None);
+    };
+    let issues: Vec<String> = led
+        .issues(&latest.run_id)?
+        .into_iter()
+        .filter(|m| m.lease_returned_at.is_none())
+        .map(|m| m.issue_key)
+        .collect();
+    Ok(Some(runner_core::dispatch_gate::held_elsewhere(
+        &runner_core::dispatch_gate::Held {
+            run_id: &latest.run_id,
+            issues: &issues,
+            agent,
+            tool_use: memory.started_by.get(&latest.run_id).map(String::as_str),
+        },
+        runs.len() - 1,
+    )))
 }
 
 /// A role without its `<plugin>:` prefix, so `forge:qa` and `qa` are one role.
@@ -632,6 +693,7 @@ pub(crate) fn note_master_pane(
 #[cfg(test)]
 mod role_tests {
     use super::*;
+    use runner_core::dispatch_gate::BUILDER;
     use runner_core::ledger::{Ledger, NewRun};
 
     const BOOT: &str = "boot-1";
@@ -747,22 +809,98 @@ mod role_tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
-    /// A subagent its master resumes for a new declaration, after the run it
-    /// answered to was closed, binds that declaration.
+    /// ISS-1366 (FB-780): a master declares a run, then wakes a finished
+    /// builder with `SendMessage`. That resume makes no Agent call, so it
+    /// takes no run: the run waits for the Agent call the gate lets through,
+    /// whose subagent binds it, and the woken builder is held to nothing.
     #[test]
-    fn a_resumed_subagent_binds_the_run_its_master_declared_for_it() {
+    fn a_finished_builder_woken_by_send_message_leaves_the_declared_run_to_the_next_dispatch() {
         let (ctl, dir) = a_box(&["runner"]);
         declare(&ctl, "run-1");
-        started(&ctl, "agent-1", "forge:runner");
+        assert!(dispatch_gate_reply(&ctl, dispatch(BUILDER, "toolu_1"), MASTER).ok);
+        started(&ctl, "agent-1", BUILDER);
         assert_eq!(bound(&ctl, "run-1").as_deref(), Some("agent-1"));
         end(&ctl, "run-1");
         declare(&ctl, "run-2");
-        started(&ctl, "agent-1", "forge:runner");
+        // `SendMessage` to agent-1: no Agent call, no gate, one `SubagentStart`.
+        started(&ctl, "agent-1", BUILDER);
         assert_eq!(
-            bound(&ctl, "run-2").as_deref(),
-            Some("agent-1"),
-            "the resumed subagent was refused the run its master declared for it"
+            bound(&ctl, "run-2"),
+            None,
+            "a finished builder woken by SendMessage took the run declared for the next dispatch"
         );
+        let next = dispatch_gate_reply(&ctl, dispatch(BUILDER, "toolu_2"), MASTER);
+        assert!(
+            next.ok,
+            "the dispatch the run was declared for was refused: {next:?}"
+        );
+        assert_eq!(next.job_id.as_deref(), Some("run-2"));
+        started(&ctl, "agent-2", BUILDER);
+        assert_eq!(bound(&ctl, "run-2").as_deref(), Some("agent-2"));
+        let held = ctl.ledger.lock().unwrap();
+        assert!(
+            held.as_ref()
+                .unwrap()
+                .run_for_agent("agent-1")
+                .unwrap()
+                .is_none(),
+            "the woken builder is held to a run it never took"
+        );
+        drop(held);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// The same resume landing between the gate's answer and the dispatched
+    /// subagent's start leaves the run to the subagent that call started.
+    #[test]
+    fn a_resume_between_the_gate_and_the_dispatched_start_does_not_take_the_run() {
+        let (ctl, dir) = a_box(&["runner"]);
+        declare(&ctl, "run-1");
+        assert!(dispatch_gate_reply(&ctl, dispatch(BUILDER, "toolu_1"), MASTER).ok);
+        started(&ctl, "agent-1", BUILDER);
+        end(&ctl, "run-1");
+        declare(&ctl, "run-2");
+        assert!(dispatch_gate_reply(&ctl, dispatch(BUILDER, "toolu_2"), MASTER).ok);
+        started(&ctl, "agent-1", BUILDER);
+        assert_eq!(
+            bound(&ctl, "run-2"),
+            None,
+            "the resume took the promised run"
+        );
+        started(&ctl, "agent-2", BUILDER);
+        assert_eq!(bound(&ctl, "run-2").as_deref(), Some("agent-2"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A dispatch no declaration waits for, while the master's latest run is
+    /// held, is refused naming that run, its issues, the subagent holding it
+    /// and the tool call that started it, never as work nobody declared.
+    #[test]
+    fn an_undeclared_dispatch_names_the_run_its_master_declared_and_what_holds_it() {
+        let (ctl, dir) = a_box(&["runner"]);
+        declare(&ctl, "run-259");
+        assert!(dispatch_gate_reply(&ctl, dispatch(BUILDER, "toolu_1"), MASTER).ok);
+        started(&ctl, "agent-1", BUILDER);
+        let r = dispatch_gate_reply(&ctl, dispatch(BUILDER, "toolu_2"), MASTER);
+        assert!(!r.ok && hook_denies(&r), "{r:?}");
+        let why = r.reason.unwrap_or_default();
+        assert!(
+            !why.contains("nothing on this box has been told"),
+            "a master that declared a run was told it declared nothing: {why}"
+        );
+        for named in [
+            "run run-259",
+            "ISS-259",
+            "subagent agent-1",
+            "toolu_1",
+            "forge-runner run declare",
+            "forge-runner run close run-259",
+        ] {
+            assert!(
+                why.contains(named),
+                "the refusal does not name {named}: {why}"
+            );
+        }
         let _ = std::fs::remove_dir_all(dir);
     }
 

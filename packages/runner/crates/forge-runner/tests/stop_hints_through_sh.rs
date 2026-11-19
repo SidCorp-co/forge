@@ -144,6 +144,7 @@ fn the_held_hint_filled_with_prose_posts_it_as_the_comment_body() {
     let tree = scratch.0.join("tree");
     let reason = refusal(&Facts {
         run_id: "296f5496-870e-428f-b386-d1c6007bfd9c",
+        agent: "agent-297",
         tree: &tree,
         runner: env!("CARGO_BIN_EXE_forge-runner"),
         issues: vec![(
@@ -236,6 +237,7 @@ fn the_dirty_hint_filled_with_prose_commits_it_as_the_message() {
 
     let reason = refusal(&Facts {
         run_id: "296f5496-870e-428f-b386-d1c6007bfd9c",
+        agent: "agent-297",
         tree: &tree,
         runner: env!("CARGO_BIN_EXE_forge-runner"),
         // a dirty tree alone holds no stop (ISS-1251): the hint rides a held issue's refusal
@@ -279,6 +281,7 @@ fn the_dirty_hint_commits_a_deletion_already_staged() {
 
     let reason = refusal(&Facts {
         run_id: "296f5496-870e-428f-b386-d1c6007bfd9c",
+        agent: "agent-297",
         tree: &tree,
         runner: env!("CARGO_BIN_EXE_forge-runner"),
         // a dirty tree alone holds no stop (ISS-1251): the hint rides a held issue's refusal
@@ -330,6 +333,7 @@ fn the_hint_after_a_failed_commit_runs_as_written() {
         ));
         let reason = refusal(&Facts {
             run_id: "296f5496-870e-428f-b386-d1c6007bfd9c",
+            agent: "agent-297",
             tree: &tree,
             runner: env!("CARGO_BIN_EXE_forge-runner"),
             issues: vec![(

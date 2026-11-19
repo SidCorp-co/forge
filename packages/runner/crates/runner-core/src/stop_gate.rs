@@ -159,6 +159,8 @@ pub enum Issue {
 
 pub struct Facts<'a> {
     pub run_id: &'a str,
+    /// The subagent the box bound the run to: the one stopping.
+    pub agent: &'a str,
     pub tree: &'a Path,
     /// The `forge-runner` a hint names: the binary judging the stop, so the
     /// hint runs as written where `forge-runner` is not on PATH.
@@ -390,12 +392,16 @@ fn reason(f: &Facts<'_>, lines: &[(Condition, String)]) -> String {
     } else {
         String::new()
     };
+    let run = crate::ledger::short_id(f.run_id);
     format!(
-        "Refused by the runner's stop gate: run {} is stopping while it holds work. Clear each \
-         item below, then stop again.{dirty_note}\n\n{items}\n\nThis is refusal {} of \
+        "Refused by the runner's stop gate: run {run}, which this box bound to you (subagent {}) \
+         when you started, is stopping while it holds work. Clear each item below, then stop \
+         again.{dirty_note}\n\n{items}\n\nIf you never took run {run}'s issues, say so to your \
+         master instead, which closes it with `forge-runner run close {}`. This is refusal {} of \
          {STOP_BOUND} in a row for this run; the stop after the last is let through and recorded \
          on this box as having left this work standing.",
-        crate::ledger::short_id(f.run_id),
+        f.agent,
+        f.run_id,
         f.refused_in_a_row + 1
     )
 }

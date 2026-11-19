@@ -22,6 +22,13 @@
 //! a `PreToolUse` deny fires neither `PostToolUseFailure` nor
 //! `PermissionDenied`, and `SubagentStart` names no tool call.
 //!
+//! `SubagentStart` also fires for a finished subagent its master wakes with
+//! `SendMessage`, which makes no Agent call and passes no gate. Such a resume
+//! took the run its master had just declared for the next dispatch, and that
+//! dispatch was then refused as undeclared (ISS-1366, FB-780). A subagent that
+//! answered to a run before takes no run again; see the daemon's
+//! `bind_declared`.
+//!
 //! The subject is a dispatch to a role this box's plugin copy actually ships,
 //! or to [`BUILDER`], the general-purpose subagent a master in direct mode
 //! hands a part of a batch to. Each is a subagent that builds, so each holds
@@ -209,6 +216,58 @@ pub fn promised_elsewhere(run_id: &str, to: &str, why: &Elsewhere) -> String {
     format!("{head} {tail}")
 }
 
+/// A run this master declared that a subagent already holds, as the refusal
+/// of a dispatch no declaration waits for names it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Held<'a> {
+    pub run_id: &'a str,
+    /// The issues the run holds, by key.
+    pub issues: &'a [String],
+    /// The subagent the run is bound to.
+    pub agent: &'a str,
+    /// The tool call the gate let through that started that subagent, where
+    /// this daemon kept it.
+    pub tool_use: Option<&'a str>,
+}
+
+/// The refusal for a dispatch no declaration waits for, where this master's
+/// latest declared run is held by a subagent: which run, which subagent,
+/// which tool call started it, and the way out. Before it the master read the
+/// one sentence saying nothing was declared, while it had just declared a run
+/// a subagent woken by `SendMessage` took (ISS-1366).
+pub fn held_elsewhere(latest: &Held<'_>, others: usize) -> String {
+    let Held {
+        run_id,
+        issues,
+        agent,
+        tool_use,
+    } = latest;
+    let over = if issues.is_empty() {
+        String::new()
+    } else {
+        format!(" ({})", issues.join(", "))
+    };
+    let started = match tool_use {
+        Some(t) => format!("which tool call {t}, a dispatch this gate let through, started"),
+        None => "which took it at its start with no tool call of this box's gate on record: a \
+                 subagent woken by `SendMessage`, or one started before this daemon was"
+            .to_string(),
+    };
+    let more = match others {
+        0 => String::new(),
+        1 => " One more of your open runs is held by its own subagent.".to_string(),
+        n => format!(" {n} more of your open runs are held by their own subagents."),
+    };
+    format!(
+        "Refused: no run you declared is waiting for this dispatch. Your latest, run \
+         {run_id}{over}, is held by subagent {agent}, {started}.{more} One declaration covers one \
+         subagent: declare a run of this hand-off's own with `forge-runner run declare`, then \
+         dispatch it again. If subagent {agent} is not doing run {run_id}'s work, `forge-runner \
+         run close {run_id}` ends its hold first. A finished subagent is not woken while a run \
+         you declared waits for its dispatch."
+    )
+}
+
 /// The role in `roles` that `name` is, by the one rule every reader here
 /// matches a role by: `roles` holds `<plugin>:<role>`, the name Claude Code
 /// sends (`forge:runner`), and a bare `runner` is that same role in whichever
@@ -227,6 +286,11 @@ pub fn shipped<'r>(roles: &'r BTreeSet<String>, name: &str) -> Option<&'r String
 
 /// Whether a subagent that just started under a master is the one that
 /// master's pending declaration was made for, or why it is not.
+///
+/// A start that is a resume never gets this far: Claude Code fires
+/// `SubagentStart` both for a dispatch and for a finished subagent its master
+/// wakes with `SendMessage`, and only the dispatch passed this gate, so a
+/// subagent that answered to a run before takes none (ISS-1366).
 ///
 /// A master starts subagents the box knows nothing about — a search, a review —
 /// and the first of them to start used to take the binding meant for the run
@@ -454,6 +518,37 @@ mod tests {
             );
         }
         assert!(promised_elsewhere("r", "t", &Elsewhere::InFlight).contains("in flight"));
+    }
+
+    /// ISS-1366: a dispatch no declaration waits for, while the master's
+    /// latest run is held, names that run, its issues, the subagent and the
+    /// call that started it, or that no call is on record.
+    #[test]
+    fn a_refusal_for_a_held_run_names_the_run_the_subagent_and_what_started_it() {
+        let issues = ["ISS-259".to_string(), "ISS-260".to_string()];
+        let held = |tool_use| Held {
+            run_id: "run-1",
+            issues: &issues,
+            agent: "agent-1",
+            tool_use,
+        };
+        let said = held_elsewhere(&held(Some("toolu_1")), 0);
+        for named in [
+            "run run-1 (ISS-259, ISS-260)",
+            "subagent agent-1",
+            "tool call toolu_1",
+            "forge-runner run declare",
+            "forge-runner run close run-1",
+        ] {
+            assert!(said.contains(named), "{named} unnamed: {said}");
+        }
+        assert!(
+            !said.contains("nothing on this box has been told"),
+            "{said}"
+        );
+        let said = held_elsewhere(&held(None), 2);
+        assert!(said.contains("`SendMessage`"), "{said}");
+        assert!(said.contains("2 more of your open runs"), "{said}");
     }
 
     #[test]

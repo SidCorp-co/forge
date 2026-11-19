@@ -85,6 +85,7 @@ fn standing(pid: u32, command: &str) -> Standing {
 fn facts<'a>(tree: &'a Path, issues: Vec<(String, Issue)>) -> Facts<'a> {
     Facts {
         run_id: "296f5496-870e-428f-b386-d1c6007bfd9c",
+        agent: "agent-297",
         tree,
         runner: "/opt/forge runner/bin/forge-runner",
         issues,
@@ -124,7 +125,14 @@ fn a_held_issue_with_nothing_written_refuses_naming_its_condition_and_the_issue(
     );
     assert!(r.contains("issues/0d9e6010/comments"), "{r}");
     assert!(!r.contains("ISS-298"), "{r}");
-    assert!(r.contains("run 296f5496 "), "{r}");
+    assert!(r.contains("run 296f5496,"), "{r}");
+    // ISS-1366: the stop names the subagent the run is bound to, and the way
+    // out for one held to issues it never took.
+    assert!(r.contains("subagent agent-297"), "{r}");
+    assert!(
+        r.contains("forge-runner run close 296f5496-870e-428f-b386-d1c6007bfd9c"),
+        "{r}"
+    );
 }
 
 /// ISS-1251: a dirty tree is never lost (the box keeps it and names it), so

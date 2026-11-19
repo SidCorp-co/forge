@@ -239,6 +239,10 @@ pub struct GateMemory {
     promised: std::collections::HashMap<String, Promise>,
     #[cfg(unix)]
     allowed: std::collections::HashSet<String>,
+    /// The tool call whose subagent took each run, kept once the promise is
+    /// spent, so a refusal can name what holds a run (ISS-1366).
+    #[cfg(unix)]
+    started_by: std::collections::HashMap<String, String>,
     /// The last role inventory this daemon read whole, which decides which
     /// dispatch an unread inventory's promise may go to (ISS-1390).
     #[cfg(unix)]
