@@ -90,8 +90,8 @@ export async function redactMemberMessage(input: {
         conversationId: held.conversationId,
         thread: held.thread,
         kind: 'secret_redacted',
+        // core made the act; the Forge account that asked for it is the record's `by`
         actorKind: 'core',
-        actorKey: input.userId,
         input: { action: held.id, message: held.externalId, reason: scrubLogText(input.reason) },
         output: { by: input.userId, at: at.toISOString() },
       },

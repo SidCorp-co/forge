@@ -194,16 +194,11 @@ describe('ISS-1353: account credentials written in chat are kept scrubbed and fl
       SELECT content FROM conversation_messages
        WHERE conversation_id = ${action?.conversation_id}::uuid AND external_id = ${missed}`);
     expect(message?.content).toBe('[Filtered]');
-    const [record] = await rows<{
-      actor_key: string;
-      input: { action: string; reason: string };
-    }>(sql`
-      SELECT actor_key, input FROM support_actions
-       WHERE room_id = ${w.roomId}::uuid AND kind = 'secret_redacted' AND input->>'action' = ${String(action?.id)}`);
-    expect(record).toMatchObject({
-      actor_key: w.ownerId,
-      input: { reason: 'a test password was kept as written' },
-    });
+    const [record] = await rows<{ by: string; reason: string }>(sql`
+      SELECT output->>'by' AS by, input->>'reason' AS reason FROM support_actions
+       WHERE room_id = ${w.roomId}::uuid AND kind = 'secret_redacted'
+         AND input->>'action' = ${String(action?.id)}`);
+    expect(record).toEqual({ by: w.ownerId, reason: 'a test password was kept as written' });
     const again = await door(String(action?.id));
     expect([again.status, code(again.body as Record<string, unknown>)]).toEqual([
       409,
