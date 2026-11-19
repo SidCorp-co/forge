@@ -258,30 +258,6 @@ describe('ISS-1343: the morning reminder of what waits on a person', () => {
     expect(w.threadLines(ops, thread).some((l) => l.text.includes('giờ chạy import'))).toBe(false);
   });
 
-  it('takes a post linking a page a still-open wait shares with one the record settled since', async () => {
-    const gold = await ask(
-      'Print the gift cards in gold?',
-      new Date(morning.getTime() - 30 * HOUR),
-    );
-    const silver = await ask(
-      'Print the gift cards in silver?',
-      new Date(morning.getTime() - 30 * HOUR),
-    );
-    const day = new Date(morning.getTime() + 192 * HOUR);
-    const { handed, outs } = await runMorning(day, async (note) => {
-      expect((await answer(gold)).status).toBe(200);
-      return { finding: `@alice [thẻ quà tặng màu bạc](${linkOf(note.text, 2)}) vẫn chờ anh.` };
-    });
-    // both are asked on one issue, so both link its page: the post names the open one
-    expect(linkOf(handed[0]?.text ?? '', 1)).toBe(linkOf(handed[0]?.text ?? '', 2));
-    expect(outs.map(code), JSON.stringify(outs)).toEqual([undefined]);
-    const thread = await projectThread();
-    expect(w.threadLines(ops, thread).some((l) => l.text.includes('thẻ quà tặng màu bạc'))).toBe(
-      true,
-    );
-    expect((await answer(silver)).status).toBe(200);
-  });
-
   it('is turned off and its hour set in the project document', async () => {
     const pending = await ask(
       'Publish the spring catalog?',
@@ -325,6 +301,62 @@ describe('ISS-1343: the morning reminder of what waits on a person', () => {
         sql`UPDATE integration_bindings SET active = true WHERE id = ${opsBinding}::uuid`,
       );
     }
+  });
+
+  it('refuses by name, on the bell of whoever it waits on, a project whose waits can be written nowhere', async () => {
+    const alone = await createTestProject(w.ownerId);
+    await addProjectMember(alone.id, w.ownerId, 'owner');
+    const lone = await createTestIssue(alone.id, w.ownerId, 11, {
+      status: 'in_progress',
+      createdAt: new Date(morning.getTime() - 72 * HOUR),
+    });
+    const asked = await api(w.owner, 'POST', '/api/questions', {
+      issueId: lone.id,
+      prompt: 'Approve the new supplier?',
+      options: [
+        { id: 'yes', label: 'Yes', authority: 'writer', bindsTo: 'project', executedBy: 'agent' },
+      ],
+      recommendedOptionId: 'yes',
+    });
+    expect(asked.status, JSON.stringify(asked.body)).toBe(201);
+    await db.execute(
+      sql`UPDATE agent_questions SET created_at = now() - interval '2 days', steps = (SELECT jsonb_agg(s - 'askedAt') FROM jsonb_array_elements(steps) s) WHERE id = ${String(asked.body.id)}::uuid`,
+    );
+    forgetSettledMornings();
+    await fireWaitReminders(new Date(morning.getTime() + 144 * HOUR));
+    const alerts = await rows<{ title: string; body: string }>(sql`
+      SELECT n.title, n.body FROM notifications n
+       WHERE n.project_id = ${alone.id}::uuid AND n.type = 'ops_alert'`);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]?.title).toContain('reminder not sent');
+    expect(alerts[0]?.body).toContain('SUPPORT_TECHNICAL_CHANNEL_UNREACHABLE');
+  });
+});
+
+// a reminder's result: given back where its post did not go out, and taken where it names an open wait
+describe('ISS-1343: the morning result, taken once its post went out', () => {
+  it('takes a post linking a page a still-open wait shares with one the record settled since', async () => {
+    const gold = await ask(
+      'Print the gift cards in gold?',
+      new Date(morning.getTime() - 30 * HOUR),
+    );
+    const silver = await ask(
+      'Print the gift cards in silver?',
+      new Date(morning.getTime() - 30 * HOUR),
+    );
+    const day = new Date(morning.getTime() + 192 * HOUR);
+    const { handed, outs } = await runMorning(day, async (note) => {
+      expect((await answer(gold)).status).toBe(200);
+      return { finding: `@alice [thẻ quà tặng màu bạc](${linkOf(note.text, 2)}) vẫn chờ anh.` };
+    });
+    // both are asked on one issue, so both link its page: the post names the open one
+    expect(linkOf(handed[0]?.text ?? '', 1)).toBe(linkOf(handed[0]?.text ?? '', 2));
+    expect(outs.map(code), JSON.stringify(outs)).toEqual([undefined]);
+    const thread = await projectThread();
+    expect(w.threadLines(ops, thread).some((l) => l.text.includes('thẻ quà tặng màu bạc'))).toBe(
+      true,
+    );
+    expect((await answer(silver)).status).toBe(200);
   });
 
   it('takes the morning result only once its post went out: a refused channel or a failed post leaves it to answer again', async () => {
@@ -385,34 +417,5 @@ describe('ISS-1343: the morning reminder of what waits on a person', () => {
       );
       expect((await answer(contract)).status).toBe(200);
     }
-  });
-
-  it('refuses by name, on the bell of whoever it waits on, a project whose waits can be written nowhere', async () => {
-    const alone = await createTestProject(w.ownerId);
-    await addProjectMember(alone.id, w.ownerId, 'owner');
-    const lone = await createTestIssue(alone.id, w.ownerId, 11, {
-      status: 'in_progress',
-      createdAt: new Date(morning.getTime() - 72 * HOUR),
-    });
-    const asked = await api(w.owner, 'POST', '/api/questions', {
-      issueId: lone.id,
-      prompt: 'Approve the new supplier?',
-      options: [
-        { id: 'yes', label: 'Yes', authority: 'writer', bindsTo: 'project', executedBy: 'agent' },
-      ],
-      recommendedOptionId: 'yes',
-    });
-    expect(asked.status, JSON.stringify(asked.body)).toBe(201);
-    await db.execute(
-      sql`UPDATE agent_questions SET created_at = now() - interval '2 days', steps = (SELECT jsonb_agg(s - 'askedAt') FROM jsonb_array_elements(steps) s) WHERE id = ${String(asked.body.id)}::uuid`,
-    );
-    forgetSettledMornings();
-    await fireWaitReminders(new Date(morning.getTime() + 144 * HOUR));
-    const alerts = await rows<{ title: string; body: string }>(sql`
-      SELECT n.title, n.body FROM notifications n
-       WHERE n.project_id = ${alone.id}::uuid AND n.type = 'ops_alert'`);
-    expect(alerts).toHaveLength(1);
-    expect(alerts[0]?.title).toContain('reminder not sent');
-    expect(alerts[0]?.body).toContain('SUPPORT_TECHNICAL_CHANNEL_UNREACHABLE');
   });
 });
