@@ -13,6 +13,9 @@ describe('a password under a short chat label', () => {
     [`pass = ${PASS}`, `pass = ${FILTERED}`],
     [`pw: 82731945`, `pw: ${FILTERED}`],
     [`mật khẩu là ${PASS}`, `mật khẩu là ${FILTERED}`], // i18n-allow: the label under test
+    [`mật mã: ${PASS}`, `mật mã: ${FILTERED}`], // i18n-allow: the label under test, ending in a letter outside ASCII
+    [`MẬT MÃ là ${PASS}`, `MẬT MÃ là ${FILTERED}`], // i18n-allow: the label under test, capitals
+    [`mat ma: ${PASS}`, `mat ma: ${FILTERED}`],
     [`the password is ${PASS}.`, `the password is ${FILTERED}`],
   ])('filters the value of %s', (text, kept) => {
     expect(scrubChatCredentials(text, false)).toBe(kept);
@@ -24,6 +27,8 @@ describe('a password under a short chat label', () => {
     'pw: 3 tries left',
     'mật khẩu là gì vậy?', // i18n-allow: "what is the password?", prose
     'passport: issued',
+    'mật mãi: 12345678', // i18n-allow: a longer word the label starts, never the label
+    'tmk: 12345678',
     'the build will pass: 12 tests',
   ])('keeps prose as written: %s', (text) => {
     expect(scrubChatCredentials(text, false)).toBe(text);

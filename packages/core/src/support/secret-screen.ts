@@ -24,8 +24,15 @@ const LOGIN_CONTEXT_MS = 6 * 60 * 60_000;
 /** The labels a password is written under in chat, longest first so `password` is not read as `pass`. */
 const LABEL = '(?:m[ậa]t\\s*kh[ẩa]u|m[ậa]t\\s*m[ãa]|password|passwd|passcode|pass|pwd|pw|mk)'; // i18n-allow: the Vietnamese labels a password is written under
 
-/** A label, its separator (`:`, `=`, or the word "is" in English or Vietnamese), and the value after it. */
-const LABELLED = new RegExp(`(\\b${LABEL}\\b\\s*(?:[:=]|\\s(?:là|la|is)\\s)\\s*)([^\\s,;]+)`, 'gi'); // i18n-allow: `là` is "is"
+/**
+ * A label, its separator (`:`, `=`, or the word "is" in English or Vietnamese), and the value after it.
+ * The label's edges are read by Unicode letter: `\b` knows ASCII alone, so it never sees the end of a
+ * label ending in a marked letter and a password under the Vietnamese "secret code" was kept as written.
+ */
+const LABELLED = new RegExp(
+  `((?<![\\p{L}\\p{N}_])${LABEL}(?![\\p{L}\\p{N}_])\\s*(?:[:=]|\\s(?:là|la|is)\\s)\\s*)([^\\s,;]+)`, // i18n-allow: `là` is "is"
+  'giu',
+);
 
 /** An email address. */
 const EMAIL = '[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+';
