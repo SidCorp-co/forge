@@ -301,6 +301,66 @@ describe('ISS-1343: the morning reminder of what waits on a person', () => {
     }
   });
 
+  it('takes the morning result only once its post went out: a refused channel or a failed post leaves it to answer again', async () => {
+    const contract = await ask(
+      'Renew the shipping contract?',
+      new Date(morning.getTime() - 20 * HOUR),
+    );
+    const channel = (value: unknown) =>
+      db.execute(
+        value === null
+          ? sql`UPDATE project_config_documents SET document = document - 'technicalChannel', revision = revision + 1 WHERE project_id = ${w.projectId}`
+          : sql`UPDATE project_config_documents SET document = jsonb_set(document, '{technicalChannel}', ${JSON.stringify(value)}::jsonb), revision = revision + 1 WHERE project_id = ${w.projectId}`,
+      );
+    await db.execute(
+      sql`UPDATE integration_bindings SET active = false WHERE id = ${opsBinding}::uuid`,
+    );
+    // a direct message to a person the chat server's directory does not hold: refused before any claim
+    await channel({ kind: 'dm', user: 'u-nobody' });
+    try {
+      await w.settleWarm();
+      const outs: Record<string, unknown>[] = [];
+      let done = 0;
+      w.box.model = async (turn, act) => {
+        for (const m of turn.messages) {
+          if (m.from !== 'forge' || !m.thread.startsWith('check:waits-')) continue;
+          const finding = `@alice [hợp đồng vận chuyển](${linkOf(m.text, 1)}) đang chờ anh.`;
+          const once = async () =>
+            outs.push(await act({ action: 'check_result', check: m.thread, finding }));
+          await once();
+          await channel(null);
+          w.stand.topLevelRefused = true;
+          await once();
+          w.stand.topLevelRefused = false;
+          await once();
+          await once();
+          done += 1;
+        }
+      };
+      forgetSettledMornings();
+      const fired = await fireWaitReminders(new Date(morning.getTime() + 168 * HOUR));
+      await expect.poll(() => done, { timeout: 20_000 }).toBe(fired);
+      const codes = outs.map(code);
+      expect(codes[0], JSON.stringify(outs[0])).toBe('SUPPORT_TECHNICAL_CHANNEL_UNREACHABLE');
+      // the chat server refused the line: the act fails, and the claim is given back
+      expect(outs[1], JSON.stringify(outs[1])).toMatchObject({ isError: true });
+      expect(JSON.stringify(outs[1])).toContain('chat.postMessage failed');
+      expect(codes.slice(2), JSON.stringify(outs.slice(2))).toEqual([
+        undefined,
+        'SUPPORT_CHECK_ANSWERED',
+      ]);
+      const sent = w.stand.linesIn(DM).filter((l) => l.text.includes('hợp đồng vận chuyển'));
+      expect(sent).toHaveLength(1);
+    } finally {
+      w.stand.topLevelRefused = false;
+      await channel(null);
+      await db.execute(
+        sql`UPDATE integration_bindings SET active = true WHERE id = ${opsBinding}::uuid`,
+      );
+      expect((await answer(contract)).status).toBe(200);
+    }
+  });
+
   it('refuses by name, on the bell of whoever it waits on, a project whose waits can be written nowhere', async () => {
     const alone = await createTestProject(w.ownerId);
     await addProjectMember(alone.id, w.ownerId, 'owner');

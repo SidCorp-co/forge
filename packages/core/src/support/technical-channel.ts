@@ -56,7 +56,7 @@ export type Raised = Outcome<{
 }>;
 
 /** Where the project's channel is, resolved before a word is written: a thread, or a direct message. */
-type Destination =
+export type Destination =
   | { kind: 'thread'; room: RoomRow; thread: string }
   | { kind: 'dm'; rid: string; user: string };
 
@@ -106,12 +106,12 @@ async function directOf(
 }
 
 /** The project's channel for `room`, or the refusal naming the key that fixes it at `path`. */
-async function destinationOf(room: RoomRow, path: string): Promise<Outcome<Destination>> {
+export async function destinationOf(room: RoomRow, path: string): Promise<Outcome<Destination>> {
   const channel = await technicalChannelOf(room.projectId);
   return channel.kind === 'thread' ? sharedThreadOf(room, path) : directOf(room, channel, path);
 }
 
-async function postTo(room: RoomRow, to: Destination, text: string): Promise<Raised> {
+export async function postTo(room: RoomRow, to: Destination, text: string): Promise<Raised> {
   if (to.kind === 'thread') {
     const posted = await postInThread({ room: to.room, thread: to.thread, text });
     return {

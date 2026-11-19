@@ -6,13 +6,16 @@
 // owner (`technical-channel.ts`). A finding of null posts nothing and still takes the morning's result.
 
 import type { ProvenMessage } from '@forge/contracts/messaging';
+import { eq } from 'drizzle-orm';
 import { outsideTokenScope } from '../credentials/pat-scope.js';
+import { db } from '../db/client.js';
+import { supportActions } from '../db/schema-support.js';
 import { findProjectSlugs, projectName } from '../projects/index.js';
 import { no, type Outcome } from './outcome.js';
 import { projectThreadFor } from './project-thread.js';
 import { screenForThread } from './screen.js';
 import { insertAction, type RoomRow } from './store.js';
-import { postTechnical, technicalLine } from './technical-channel.js';
+import { destinationOf, postTo, technicalLine } from './technical-channel.js';
 import { postInThread, roomAuth, scrubbedForRoom } from './thread.js';
 import type { ReminderFiring } from './wait-reminder.js';
 import { projectWaits, type Wait } from './wait-reminder-waits.js';
@@ -52,14 +55,30 @@ const answered = (check: string) =>
     `${check} already has its one result; a morning reminder is posted once, and nothing was posted`,
   );
 
-/** Post the screened line where the firing's route says, after the morning's result is claimed. */
+/** Where a reminder's post went. */
+interface Posted {
+  messageId: string | null;
+  conversationId: string | null;
+  thread: string | null;
+}
+
+/** Give the morning's result back: its post did not go out, so the reminder can be answered again. */
+async function release(claimed: { id: string }): Promise<void> {
+  await db.delete(supportActions).where(eq(supportActions.id, claimed.id));
+}
+
+/**
+ * Post the screened line where the firing's route says. Where it lands is resolved before the
+ * morning's one result is claimed, and a post that fails gives the claim back, so a refusal or a
+ * failure leaves the reminder to answer again (as `checks.ts:checkResult` does, ISS-933, ISS-1227).
+ */
 async function post(
   room: RoomRow,
   firing: ReminderFiring,
   check: string,
   screened: { text: string; proof: ProvenMessage },
 ): Promise<Outcome<{ posted: string | null }>> {
-  let at: { messageId: string | null; conversationId: string | null; thread: string | null };
+  let send: () => Promise<Outcome<Posted>>;
   if (firing.route === 'thread') {
     const thread = await projectThreadFor(room, firing.projectId);
     if (!thread.ok) {
@@ -69,15 +88,34 @@ async function post(
         `${firing.slug}'s own thread of ${room.rid} could not be opened (${thread.why}); nothing was posted, try again`,
       );
     }
-    if (!(await claim(room, check, screened.text))) return answered(check);
-    const posted = await postInThread({ room, thread: thread.thread, ...screened });
-    at = { ...posted, thread: thread.thread };
+    send = async () => {
+      const posted = await postInThread({ room, thread: thread.thread, ...screened });
+      return { ok: true, value: { ...posted, thread: thread.thread } };
+    };
   } else {
-    if (!(await claim(room, check, screened.text))) return answered(check);
-    const posted = await postTechnical(room, screened.text, '/check');
-    if (!posted.ok) return posted;
-    at = { messageId: posted.value.messageId, conversationId: null, thread: null };
+    const to = await destinationOf(room, '/check');
+    if (!to.ok) return to;
+    send = async () => {
+      const posted = await postTo(room, to.value, screened.text);
+      if (!posted.ok) return posted;
+      const { messageId } = posted.value;
+      return { ok: true, value: { messageId, conversationId: null, thread: null } };
+    };
   }
+  const claimed = await claim(room, check, screened.text);
+  if (!claimed) return answered(check);
+  let sent: Outcome<Posted>;
+  try {
+    sent = await send();
+  } catch (err) {
+    await release(claimed);
+    throw err;
+  }
+  if (!sent.ok) {
+    await release(claimed);
+    return sent;
+  }
+  const at = sent.value;
   await insertAction({
     roomId: room.id,
     projectId: room.projectId,
