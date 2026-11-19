@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.744] - 2026-11-19
+
+Masters keep run controls across runner installs and while waiting for cutover
+
+### Fixed
+
+- **A master pane keeps its run declare and run close across a runner install.** A new build no longer takes a running pane's capability. A refused frame says why and how to recover, never a bare unknown_token.
+- **A master waiting to move to a background session can still dispatch work.** Its pane declares, dispatches and closes runs, which move with its conversation. A refusal during the wait names what holds it and the way through.
+
 ## [0.4.0-dev.743] - 2026-11-19
 
 Mockups arrive sharp, the guide list opens by name, releases say Live or Simulated
