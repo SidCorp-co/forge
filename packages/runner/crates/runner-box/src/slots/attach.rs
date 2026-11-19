@@ -48,22 +48,22 @@ impl Boxes {
 
 #[cfg(all(test, unix))]
 mod tests {
-    use super::super::tests::{boxes, Said, ID};
+    use super::super::tests::{boxes, Said};
     use super::*;
     use crate::browser::Browser;
     use crate::cdp::tests::{attach, call, fake_chrome};
-    use crate::testkit::Scratch;
+    use crate::testkit::{box_id, Scratch};
 
-    /// A browser box whose agent-browser is a script naming the fake Chrome's CDP URL.
-    async fn browser_box(b: &Boxes, root: &Scratch, chrome: &str) -> Arc<Running> {
+    /// A browser box `id` whose agent-browser is a script naming the fake Chrome's CDP URL.
+    async fn browser_box(b: &Boxes, root: &Scratch, id: &str, chrome: &str) -> Arc<Running> {
         let bin = root.script(
             "bin/agent-browser",
             &format!("[ \"$1 $2\" = \"get cdp-url\" ] && echo ws://{chrome}/devtools/browser/b1"),
         );
-        let browser = Browser::new(ID, bin, &b.0.ctx.settings, None, root.path().join("r.webm"));
+        let browser = Browser::new(id, bin, &b.0.ctx.settings, None, root.path().join("r.webm"));
         let running = Arc::new(Running::Browser(browser.unwrap()));
         b.slots().insert(
-            ID.into(),
+            id.into(),
             Slot {
                 running: Some(running.clone()),
                 held: watch::channel(false).0,
@@ -79,18 +79,19 @@ mod tests {
 
     #[tokio::test]
     async fn a_browser_boxs_attach_follows_the_hold_core_sends_and_goes_with_the_box() {
+        let id = box_id();
         let root = Scratch::new("attach");
         let b = boxes(&root, Arc::new(Said::default()));
         let chrome = fake_chrome().await;
-        let running = browser_box(&b, &root, &chrome.addr).await;
+        let running = browser_box(&b, &root, id, &chrome.addr).await;
 
         let said = b
-            .attach_on(ID, &running)
+            .attach_on(id, &running)
             .await
             .expect("a browser box attaches");
         let url = said["cdp"].as_str().unwrap().to_string();
         assert!(url.starts_with("http://127.0.0.1:"), "{url}");
-        assert_eq!(b.attach_of(ID), Some(said));
+        assert_eq!(b.attach_of(id), Some(said));
 
         let mut ws = attach(&url).await;
         assert_eq!(
@@ -99,7 +100,7 @@ mod tests {
         );
         b.handle(
             "box.take",
-            json!({ "boxId": ID, "userId": ID, "name": "An" }),
+            json!({ "boxId": id, "userId": id, "name": "An" }),
         )
         .await
         .unwrap();
@@ -108,7 +109,7 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("BOX_HELD_BY_PERSON"));
-        b.handle("box.release", json!({ "boxId": ID, "why": "released" }))
+        b.handle("box.release", json!({ "boxId": id, "why": "released" }))
             .await
             .unwrap();
         assert_eq!(
@@ -120,7 +121,7 @@ mod tests {
             ["Page.navigate", "Page.navigate"]
         );
 
-        b.slots().remove(ID);
+        b.slots().remove(id);
         assert!(
             reqwest::get(format!("{url}/json/version")).await.is_err(),
             "the proxy goes with its box"

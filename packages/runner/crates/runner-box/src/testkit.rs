@@ -57,6 +57,13 @@ fn runnable(p: &Path) {
     panic!("script {} stayed busy (ETXTBSY) for 2 s", p.display());
 }
 
+/// A box id this test alone uses. A box's close reaps every process naming its id, in any test
+/// running beside it (`proc::reap`), so a test that shares one can kill another's processes. The
+/// id is kept for the rest of the test binary's life.
+pub fn box_id() -> &'static str {
+    Box::leak(uuid::Uuid::new_v4().to_string().into_boxed_str())
+}
+
 impl Drop for Scratch {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);

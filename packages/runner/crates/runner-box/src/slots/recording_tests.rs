@@ -2,16 +2,13 @@
 //! no file, a warm box never records, and a span begun with recording off records its own clip and
 //! stops at its end. agent-browser and ffmpeg are scripts that write down what they were told.
 
-use super::tests::{boxes, Said, ID};
+use super::tests::{boxes, Said};
 use super::*;
-use crate::testkit::Scratch;
+use crate::testkit::{box_id, Scratch};
 use std::path::Path;
-
-const WARM: &str = "5d2c7a52-3c4d-4e6f-8a1b-2c3d4e5f6a7b";
 
 /// agent-browser as a script that logs every command, and writes the recording only on `record
 /// stop` as the real one does; its daemon (this test) serves a stream for `ids`. The log's path.
-#[cfg(unix)]
 fn fake_tools(root: &Scratch, b: &Boxes, ids: &[&str]) -> PathBuf {
     let log = root.path().join("agent-browser.log");
     let at = root.path().join("recording-path");
@@ -64,15 +61,15 @@ fn files(dir: &Path) -> Vec<String> {
     names
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn an_open_without_record_starts_no_recorder_and_writes_no_file() {
+    let id = box_id();
     let root = Scratch::new("rec");
     let said = Arc::new(Said::default());
     let b = boxes(&root, said.clone());
-    let log = fake_tools(&root, &b, &[ID]);
+    let log = fake_tools(&root, &b, &[id]);
 
-    b.handle("box.open", open(ID, false, None)).await.unwrap();
+    b.handle("box.open", open(id, false, None)).await.unwrap();
     let ready = &said.kinds()[0];
     assert_eq!(ready["state"], "ready", "{ready}");
     assert!(
@@ -86,53 +83,54 @@ async fn an_open_without_record_starts_no_recorder_and_writes_no_file() {
         ran(&log)
     );
     assert!(
-        files(&b.0.ctx.box_dir(ID)).is_empty(),
+        files(&b.0.ctx.box_dir(id)).is_empty(),
         "no recording file: {:?}",
-        files(&b.0.ctx.box_dir(ID))
+        files(&b.0.ctx.box_dir(id))
     );
-    assert!(!b.slots()[ID].recording);
+    assert!(!b.slots()[id].recording);
 
     // closed, it stops no recorder it never started
-    b.handle("box.close", json!({ "boxId": ID, "why": "done" }))
+    b.handle("box.close", json!({ "boxId": id, "why": "done" }))
         .await
         .unwrap();
     assert!(!ran(&log).contains("record"), "{}", ran(&log));
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn an_open_asking_record_starts_it_and_says_when() {
+    let id = box_id();
     let root = Scratch::new("rec");
     let said = Arc::new(Said::default());
     let b = boxes(&root, said.clone());
-    let log = fake_tools(&root, &b, &[ID]);
+    let log = fake_tools(&root, &b, &[id]);
 
-    b.handle("box.open", open(ID, false, Some(true)))
+    b.handle("box.open", open(id, false, Some(true)))
         .await
         .unwrap();
     let ready = &said.kinds()[0];
     assert!(ready["recordingStartedAt"].is_string(), "{ready}");
     assert!(ran(&log).contains("record start"), "{}", ran(&log));
-    assert!(b.slots()[ID].recording);
-    b.handle("box.close", json!({ "boxId": ID, "why": "done" }))
+    assert!(b.slots()[id].recording);
+    b.handle("box.close", json!({ "boxId": id, "why": "done" }))
         .await
         .unwrap();
     assert!(ran(&log).contains("record stop"), "{}", ran(&log));
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn a_warm_box_never_records_and_its_hand_out_records_only_when_asked() {
+    let id = box_id();
+    let warm = box_id();
     let root = Scratch::new("rec");
     let said = Arc::new(Said::default());
     let b = boxes(&root, said.clone());
-    let log = fake_tools(&root, &b, &[ID, WARM]);
+    let log = fake_tools(&root, &b, &[id, warm]);
 
     // a warm box asked to record (no core sends that) still records nothing
-    b.handle("box.open", open(WARM, true, Some(true)))
+    b.handle("box.open", open(warm, true, Some(true)))
         .await
         .unwrap();
-    b.handle("box.open", open(ID, true, None)).await.unwrap();
+    b.handle("box.open", open(id, true, None)).await.unwrap();
     assert!(!ran(&log).contains("record"), "{}", ran(&log));
     assert!(said
         .kinds()
@@ -141,7 +139,7 @@ async fn a_warm_box_never_records_and_its_hand_out_records_only_when_asked() {
 
     b.handle(
         "box.assign",
-        json!({ "boxId": ID, "url": null, "asPerson": false }),
+        json!({ "boxId": id, "url": null, "asPerson": false }),
     )
     .await
     .unwrap();
@@ -154,7 +152,7 @@ async fn a_warm_box_never_records_and_its_hand_out_records_only_when_asked() {
 
     b.handle(
         "box.assign",
-        json!({ "boxId": WARM, "url": null, "asPerson": false, "record": true }),
+        json!({ "boxId": warm, "url": null, "asPerson": false, "record": true }),
     )
     .await
     .unwrap();
@@ -166,16 +164,16 @@ async fn a_warm_box_never_records_and_its_hand_out_records_only_when_asked() {
     );
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn a_span_begun_with_recording_off_records_its_clip_and_stops_at_its_end() {
+    let id = box_id();
     let root = Scratch::new("rec");
     let said = Arc::new(Said::default());
     let b = boxes(&root, said.clone());
-    let log = fake_tools(&root, &b, &[ID]);
-    b.handle("box.open", open(ID, false, None)).await.unwrap();
+    let log = fake_tools(&root, &b, &[id]);
+    b.handle("box.open", open(id, false, None)).await.unwrap();
     let span = "7e1c7a52-3c4d-4e6f-8a1b-2c3d4e5f6a7b";
-    let mark = |edge: &str, recording: &str| json!({ "boxId": ID, "spanId": span, "criterion": 2, "edge": edge, "recording": recording });
+    let mark = |edge: &str, recording: &str| json!({ "boxId": id, "spanId": span, "criterion": 2, "edge": edge, "recording": recording });
 
     b.handle("box.span.mark", mark("start", "start"))
         .await
@@ -190,7 +188,7 @@ async fn a_span_begun_with_recording_off_records_its_clip_and_stops_at_its_end()
         k[2]["kind"], "mark",
         "the mark lands after the recording began"
     );
-    assert!(b.slots()[ID].recording);
+    assert!(b.slots()[id].recording);
 
     b.handle("box.span.mark", mark("end", "stop"))
         .await
@@ -202,8 +200,8 @@ async fn a_span_begun_with_recording_off_records_its_clip_and_stops_at_its_end()
         (Some("recording"), Some("off")),
         "{k:?}"
     );
-    assert!(!b.slots()[ID].recording, "the span's end stopped it");
-    let dir = b.0.ctx.box_dir(ID);
+    assert!(!b.slots()[id].recording, "the span's end stopped it");
+    let dir = b.0.ctx.box_dir(id);
     let names = files(&dir);
     assert!(
         names
@@ -214,13 +212,13 @@ async fn a_span_begun_with_recording_off_records_its_clip_and_stops_at_its_end()
     );
 
     let from = k[2]["offsetMs"].as_u64().unwrap();
-    b.handle("box.recording.fetch", json!({ "boxId": ID, "spanId": span, "fromMs": from, "toMs": from + 1000, "maxSeconds": 20, "maxBytes": 1_000_000 }))
+    b.handle("box.recording.fetch", json!({ "boxId": id, "spanId": span, "fromMs": from, "toMs": from + 1000, "maxSeconds": 20, "maxBytes": 1_000_000 }))
         .await
         .unwrap();
     let clips = said.1.lock().unwrap().clone();
     assert_eq!(
         clips,
-        vec![(ID.to_string(), span.to_string(), b"cut".to_vec())],
+        vec![(id.to_string(), span.to_string(), b"cut".to_vec())],
         "{:?}",
         said.kinds()
     );
@@ -232,16 +230,16 @@ async fn a_span_begun_with_recording_off_records_its_clip_and_stops_at_its_end()
     );
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn a_recording_set_on_and_off_is_reported_and_never_started_twice() {
+    let id = box_id();
     let root = Scratch::new("rec");
     let said = Arc::new(Said::default());
     let b = boxes(&root, said.clone());
-    let log = fake_tools(&root, &b, &[ID]);
-    b.handle("box.open", open(ID, false, None)).await.unwrap();
+    let log = fake_tools(&root, &b, &[id]);
+    b.handle("box.open", open(id, false, None)).await.unwrap();
     for on in [true, true, false, false] {
-        b.handle("box.recording.set", json!({ "boxId": ID, "on": on }))
+        b.handle("box.recording.set", json!({ "boxId": id, "on": on }))
             .await
             .unwrap();
     }
@@ -261,7 +259,7 @@ async fn a_recording_set_on_and_off_is_reported_and_never_started_twice() {
     assert_eq!(ran(&log).matches("record start").count(), 1);
     assert_eq!(ran(&log).matches("record stop").count(), 1);
 
-    let gone = "9a9c7a52-3c4d-4e6f-8a1b-2c3d4e5f6a7b";
+    let gone = box_id();
     b.handle("box.recording.set", json!({ "boxId": gone, "on": true }))
         .await
         .unwrap();
@@ -270,13 +268,7 @@ async fn a_recording_set_on_and_off_is_reported_and_never_started_twice() {
     assert!(last["detail"].as_str().unwrap().contains("not running"));
 }
 
-// each test sends its own box: a close reaps every process naming its box, in any test (`proc::reap`)
-const SENT: &str = "1a5e7a52-3c4d-4e6f-8a1b-2c3d4e5f6a7b";
-const LARGE: &str = "2b5e7a52-3c4d-4e6f-8a1b-2c3d4e5f6a7b";
-const GONE: &str = "3c5e7a52-3c4d-4e6f-8a1b-2c3d4e5f6a7b";
-
 /// ffmpeg as a script that writes its last argument and keeps the concat list it was handed.
-#[cfg(unix)]
 fn ffmpeg_keeping_its_list(root: &Scratch) -> PathBuf {
     let kept = root.path().join("concat-list");
     root.script(
@@ -293,29 +285,29 @@ printf cut > "$last""#,
 /// ISS-1338: a recording a person asked for, kept as segments and the live file the close left, is
 /// sent whole, in the order it was recorded, through the span clip's upload with `session` in the
 /// span's place.
-#[cfg(unix)]
 #[tokio::test]
 async fn a_kept_recording_is_sent_whole_through_the_clip_upload_once_its_box_closed() {
+    let sent = box_id();
     let root = Scratch::new("rec");
     let said = Arc::new(Said::default());
     let b = boxes(&root, said.clone());
-    fake_tools(&root, &b, &[SENT]);
+    fake_tools(&root, &b, &[sent]);
     let kept = ffmpeg_keeping_its_list(&root);
-    b.handle("box.open", open(SENT, false, Some(true)))
+    b.handle("box.open", open(sent, false, Some(true)))
         .await
         .unwrap();
     for on in [false, true] {
-        b.handle("box.recording.set", json!({ "boxId": SENT, "on": on }))
+        b.handle("box.recording.set", json!({ "boxId": sent, "on": on }))
             .await
             .unwrap();
     }
-    b.handle("box.close", json!({ "boxId": SENT, "why": "done" }))
+    b.handle("box.close", json!({ "boxId": sent, "why": "done" }))
         .await
         .unwrap();
-    let dir = b.0.ctx.box_dir(SENT);
+    let dir = b.0.ctx.box_dir(sent);
     b.handle(
         "box.recording.upload",
-        json!({ "boxId": SENT, "maxBytes": 1_000_000 }),
+        json!({ "boxId": sent, "maxBytes": 1_000_000 }),
     )
     .await
     .unwrap();
@@ -323,7 +315,7 @@ async fn a_kept_recording_is_sent_whole_through_the_clip_upload_once_its_box_clo
     let clips = said.1.lock().unwrap().clone();
     assert_eq!(
         clips,
-        vec![(SENT.to_string(), "session".to_string(), b"cut".to_vec())],
+        vec![(sent.to_string(), "session".to_string(), b"cut".to_vec())],
         "{:?}",
         said.kinds()
     );
@@ -346,22 +338,22 @@ async fn a_kept_recording_is_sent_whole_through_the_clip_upload_once_its_box_clo
     assert!(said.kinds().iter().all(|k| k["kind"] != "session_failed"));
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn a_recording_past_the_ceiling_is_said_too_large_and_never_sent() {
+    let large = box_id();
     let root = Scratch::new("rec");
     let said = Arc::new(Said::default());
     let b = boxes(&root, said.clone());
-    fake_tools(&root, &b, &[LARGE]);
-    b.handle("box.open", open(LARGE, false, Some(true)))
+    fake_tools(&root, &b, &[large]);
+    b.handle("box.open", open(large, false, Some(true)))
         .await
         .unwrap();
-    b.handle("box.close", json!({ "boxId": LARGE, "why": "done" }))
+    b.handle("box.close", json!({ "boxId": large, "why": "done" }))
         .await
         .unwrap();
     b.handle(
         "box.recording.upload",
-        json!({ "boxId": LARGE, "maxBytes": 2 }),
+        json!({ "boxId": large, "maxBytes": 2 }),
     )
     .await
     .unwrap();
@@ -378,16 +370,16 @@ async fn a_recording_past_the_ceiling_is_said_too_large_and_never_sent() {
     );
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn a_recording_no_longer_on_the_device_is_said_gone() {
+    let gone = box_id();
     let root = Scratch::new("rec");
     let said = Arc::new(Said::default());
     let b = boxes(&root, said.clone());
     fake_tools(&root, &b, &[]);
     b.handle(
         "box.recording.upload",
-        json!({ "boxId": GONE, "maxBytes": 1_000_000 }),
+        json!({ "boxId": gone, "maxBytes": 1_000_000 }),
     )
     .await
     .unwrap();

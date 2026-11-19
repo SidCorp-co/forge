@@ -5,14 +5,10 @@
 use super::tests::{boxes, Said};
 use super::*;
 use crate::android::{Android, Tools};
-use crate::testkit::Scratch;
+use crate::testkit::{box_id, Scratch};
 use std::path::Path;
 
-const DEAD: &str = "2f6e7a52-3c4d-4e6f-8a1b-2c3d4e5f6a7b";
-const LIVE: &str = "3a7e7a52-3c4d-4e6f-8a1b-2c3d4e5f6a7b";
-
 /// adb as a script: emulator-5556 is gone, emulator-5554 is booted and answers.
-#[cfg(unix)]
 fn fake_adb(root: &Scratch) -> PathBuf {
     root.script(
         "bin/adb",
@@ -70,18 +66,18 @@ fn failed_of(said: &Said, id: &str) -> Option<Value> {
         .map(|(_, k)| k.clone())
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn a_warm_android_box_whose_emulator_is_gone_is_failed_by_name_never_handed_out() {
+    let dead = box_id();
     let root = Scratch::new("warm");
     let said = Arc::new(Said::default());
     let b = boxes(&root, said.clone());
     let adb = fake_adb(&root);
-    plant_android(&b, &root, DEAD, 5556, &adb);
+    plant_android(&b, &root, dead, 5556, &adb);
 
     b.handle(
         "box.assign",
-        json!({ "boxId": DEAD, "url": null, "asPerson": false }),
+        json!({ "boxId": dead, "url": null, "asPerson": false }),
     )
     .await
     .unwrap();
@@ -90,7 +86,7 @@ async fn a_warm_android_box_whose_emulator_is_gone_is_failed_by_name_never_hande
         "never handed out: {:?}",
         said.kinds()
     );
-    let failed = failed_of(&said, DEAD).expect("failed by name");
+    let failed = failed_of(&said, dead).expect("failed by name");
     assert_eq!(failed["failure"], "BOX_DEVICE_GONE");
     let detail = failed["detail"].as_str().unwrap();
     assert!(
@@ -99,32 +95,33 @@ async fn a_warm_android_box_whose_emulator_is_gone_is_failed_by_name_never_hande
     );
     assert!(detail.contains("emulator log tail"), "{detail}");
     assert!(
-        !b.slots().contains_key(DEAD),
+        !b.slots().contains_key(dead),
         "reaped: the runner holds it no more"
     );
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn the_sweep_fails_the_dead_warm_box_and_hands_out_the_live_one() {
+    let dead = box_id();
+    let live = box_id();
     let root = Scratch::new("warm");
     let said = Arc::new(Said::default());
     let b = boxes(&root, said.clone());
     let adb = fake_adb(&root);
-    plant_android(&b, &root, DEAD, 5556, &adb);
-    plant_android(&b, &root, LIVE, 5554, &adb);
+    plant_android(&b, &root, dead, 5556, &adb);
+    plant_android(&b, &root, live, 5554, &adb);
 
     b.sweep_warm().await;
     assert_eq!(
-        failed_of(&said, DEAD).map(|k| k["failure"].clone()),
+        failed_of(&said, dead).map(|k| k["failure"].clone()),
         Some(json!("BOX_DEVICE_GONE"))
     );
-    assert!(failed_of(&said, LIVE).is_none(), "{:?}", said.kinds());
-    assert!(!b.slots().contains_key(DEAD) && b.slots().contains_key(LIVE));
+    assert!(failed_of(&said, live).is_none(), "{:?}", said.kinds());
+    assert!(!b.slots().contains_key(dead) && b.slots().contains_key(live));
 
     b.handle(
         "box.assign",
-        json!({ "boxId": LIVE, "url": null, "asPerson": false }),
+        json!({ "boxId": live, "url": null, "asPerson": false }),
     )
     .await
     .unwrap();
@@ -133,7 +130,7 @@ async fn the_sweep_fails_the_dead_warm_box_and_hands_out_the_live_one() {
         .lock()
         .unwrap()
         .iter()
-        .find(|(id, k)| id == LIVE && k["state"] == "ready")
+        .find(|(id, k)| id == live && k["state"] == "ready")
         .map(|(_, k)| k.clone());
     assert!(
         ready.is_some(),
@@ -141,7 +138,7 @@ async fn the_sweep_fails_the_dead_warm_box_and_hands_out_the_live_one() {
         said.kinds()
     );
     assert!(
-        !b.slots()[LIVE].warm,
+        !b.slots()[live].warm,
         "handed out, the sweep leaves it to its holder"
     );
 }

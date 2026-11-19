@@ -485,9 +485,10 @@ pub(super) fn cut(detail: &str) -> String {
 mod attach;
 mod recording;
 
-#[cfg(test)]
+// every test in these two drives tools that are shell scripts, so neither compiles elsewhere
+#[cfg(all(test, unix))]
 mod recording_tests;
 #[cfg(test)]
 mod tests;
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod warm_tests;
