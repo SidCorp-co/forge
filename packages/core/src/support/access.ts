@@ -13,6 +13,7 @@ import { db } from '../db/client.js';
 import { supportActions } from '../db/schema-support.js';
 import { refuse } from './refusals.js';
 import { type RoomRow, roomsOfPrincipal } from './store.js';
+import { technicalThreadOf } from './technical-thread-room.js';
 
 /** What an act names that says which of a channel agent's groups it is in. */
 export interface RoomHint {
@@ -61,7 +62,7 @@ async function roomOf(rooms: readonly RoomRow[], hint: RoomHint): Promise<RoomRo
       '/rid',
     );
   }
-  const found = await roomOfRecord(rooms, hint);
+  const found = (await roomOfRecord(rooms, hint)) ?? (await roomOfTechnicalThread(rooms, hint));
   if (found) return found;
   if (hint.anyRoom && only) return only;
   throw refuse(
@@ -90,4 +91,36 @@ async function roomOfRecord(rooms: readonly RoomRow[], hint: RoomHint): Promise<
     )
     .limit(1);
   return rooms.find((r) => r.id === row?.roomId) ?? null;
+}
+
+/**
+ * The group whose project's own thread of the shared operations room holds the thread or message the
+ * act names (ISS-1359): the owner is asked there since ISS-1271 and answers there, recorded on the
+ * shared room's row, so no group of the session holds it. The read then goes to that thread alone.
+ */
+async function roomOfTechnicalThread(
+  rooms: readonly RoomRow[],
+  hint: RoomHint,
+): Promise<RoomRow | null> {
+  if (!hint.thread && !hint.message) return null;
+  for (const room of rooms) {
+    const technical = await technicalThreadOf(room);
+    if (!technical) continue;
+    if (hint.thread) {
+      if (hint.thread === technical.thread) return room;
+      continue;
+    }
+    const [row] = await db
+      .select({ thread: supportActions.thread })
+      .from(supportActions)
+      .where(
+        and(
+          eq(supportActions.roomId, technical.shared.id),
+          eq(supportActions.externalId, hint.message ?? ''),
+        ),
+      )
+      .limit(1);
+    if (row?.thread === technical.thread) return room;
+  }
+  return null;
 }

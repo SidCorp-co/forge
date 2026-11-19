@@ -16,6 +16,7 @@ import {
 } from '../integrations/rocketchat/index.js';
 import { no, type Outcome } from './outcome.js';
 import type { RoomRow } from './store.js';
+import { technicalThreadOf } from './technical-thread-room.js';
 import { roomAuth } from './thread.js';
 
 /** One picture as a `message_in` row's input records it: the chat server's ref, its name and type. */
@@ -165,20 +166,40 @@ export interface ImageRead {
   dataBase64: string;
 }
 
-/** The session reads picture `n` of a member's message in its room (ISS-1010). */
+/**
+ * A member's message the session may read pictures of, and the room whose bot fetches them: one of
+ * its own room, or one in its project's own thread of the shared operations room, where the owner
+ * is asked since ISS-1271 (ISS-1359). Any other message is refused by name, saying where it is.
+ */
+async function readableMessage(
+  room: RoomRow,
+  message: string,
+): Promise<Outcome<{ thread: string; images: RecordedImage[]; from: RoomRow }>> {
+  const own = await messageImages(room.id, message);
+  if (own) return { ok: true, value: { ...own, from: room } };
+  const technical = await technicalThreadOf(room);
+  const there = technical ? await messageImages(technical.shared.id, message) : null;
+  if (technical && there?.thread === technical.thread) {
+    return { ok: true, value: { ...there, from: technical.shared } };
+  }
+  return no(
+    'SUPPORT_MESSAGE_UNKNOWN',
+    '/message',
+    there
+      ? `message ${message} is in the shared operations room outside this project's own thread there, so it is not this room's to read; name a message of your room or of your project's technical thread`
+      : `neither this room nor this project's technical thread received a member message ${message}; name a message you were handed (\`message\`)`,
+  );
+}
+
+/** The session reads picture `n` of a member's message in its room or its technical thread (ISS-1010, ISS-1359). */
 export async function readImage(
   room: RoomRow,
   input: { message: string; n?: number | undefined },
 ): Promise<Outcome<ImageRead>> {
   const n = input.n ?? 1;
-  const found = await messageImages(room.id, input.message);
-  if (!found) {
-    return no(
-      'SUPPORT_MESSAGE_UNKNOWN',
-      '/message',
-      `this room received no member message ${input.message}; name a message you were handed (\`message\`)`,
-    );
-  }
+  const readable = await readableMessage(room, input.message);
+  if (!readable.ok) return { ok: false, refusals: readable.refusals };
+  const found = readable.value;
   const image = found.images[n - 1];
   if (!image) {
     return no(
@@ -189,7 +210,7 @@ export async function readImage(
         : `message ${input.message} carries ${found.images.length} picture(s); n is 1..${found.images.length}`,
     );
   }
-  const got = await fetchRecordedImage(room, image);
+  const got = await fetchRecordedImage(found.from, image);
   if (!got.ok) {
     return no(
       got.code,

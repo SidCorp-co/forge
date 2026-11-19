@@ -23,6 +23,7 @@ import type { Refusal } from './refusals.js';
 import { limitsOf } from './rules.js';
 import { type SessionDoor, screenForThread } from './screen.js';
 import { insertAction, type RoomRow } from './store.js';
+import { roomHoldingThread } from './technical-thread-room.js';
 import { noteInThread, postInThread, scrubbedForRoom } from './thread.js';
 import { ANSWERED_ELSEWHERE, type NamedRequest, resultOwed } from './thread-requests.js';
 
@@ -39,7 +40,7 @@ export async function readThread(
 ): Promise<
   Outcome<{ id: string | null; role: string; from: string | null; text: string; at: string }[]>
 > {
-  const conversationId = await knownThread(room, thread);
+  const conversationId = await knownThread(await roomHoldingThread(room, thread), thread);
   if (!conversationId) return threadUnknown(thread);
   const lines = await readMessages(conversationId, 60);
   return {

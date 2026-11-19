@@ -15,6 +15,7 @@ import { channelOf, memberMessage, memberOf } from './channel-store.js';
 import { forgeUserOfWriter } from './ops-asker.js';
 import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
 import type { RoomRow } from './store.js';
+import { roomHoldingThread } from './technical-thread-room.js';
 import { aroundMessage, openAsksOf, type ThreadAround, threadLines } from './thread-context.js';
 
 /** How many projects a writer filed in lately are named. */
@@ -94,9 +95,11 @@ export async function askerFacts(
   room: RoomRow,
   input: { thread: string; message: string },
 ): Promise<Outcome<AskerFacts>> {
-  const conversationId = await knownThread(room, input.thread);
+  // ISS-1359: the owner's message in the project's technical thread is recorded on the shared room
+  const at = await roomHoldingThread(room, input.thread);
+  const conversationId = await knownThread(at, input.thread);
   if (!conversationId) return threadUnknown(input.thread);
-  const said = await memberMessage(room.id, input.message);
+  const said = await memberMessage(at.id, input.message);
   if (!said || said.thread !== input.thread) {
     return no(
       'OPS_ASKER_MESSAGE_UNKNOWN',
@@ -104,16 +107,16 @@ export async function askerFacts(
       `${input.message} is no member's message in thread ${input.thread}; name one as it carries \`message\` in what you were handed`,
     );
   }
-  const named = await forgeUserOfWriter(room, { key: said.authorKey, label: said.author });
+  const named = await forgeUserOfWriter(at, { key: said.authorKey, label: said.author });
   const account = named.ok ? await accountOf(named.value.userId, room.projectId) : null;
-  const channel = await channelOf(room.projectId, room.rid);
+  const channel = await channelOf(at.projectId, at.rid);
   const row = channel ? await memberOf(channel.id, said.author ?? said.authorKey) : null;
   const member = row ? { roles: row.roles, confirmed: row.state === 'confirmed' } : null;
   const org = account?.org ?? null;
   const accountRoles = rolesOfAccount(org, account?.projects ?? []);
   const [lines, openAsks] = await Promise.all([
     threadLines(conversationId),
-    openAsksOf(room.id, input.thread),
+    openAsksOf(at.id, input.thread),
   ]);
   return {
     ok: true,

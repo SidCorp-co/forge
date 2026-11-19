@@ -6,7 +6,7 @@ vi.hoisted(() => {
 });
 
 import { db } from '../../src/db/client.js';
-import { roomsOfProject } from '../../src/support/store.js';
+import { insertAction, roomsOfProject } from '../../src/support/store.js';
 import { postTechnical } from '../../src/support/technical-channel.js';
 import { api } from '../helpers/api.js';
 import { settleOutbox } from '../helpers/ecosystem-world.js';
@@ -18,6 +18,9 @@ import { AgentWorld } from '../helpers/support-agent-world.js';
 // @direct-test-of packages/core/src/project-config/binding-amend.ts
 // @direct-test-of packages/core/src/support/thread.ts
 // @direct-test-of packages/core/src/support/owner-ask.ts
+// @direct-test-of packages/core/src/support/images.ts
+// @direct-test-of packages/core/src/support/technical-thread-room.ts
+// @direct-test-of packages/core/src/support/asker-read.ts
 //
 // ISS-1271 (owner 2026-11-17: Forge-Communicate is SidCorp's default technical channel): a project
 // whose document names no technical channel raises in its own thread of the operations room its
@@ -39,6 +42,12 @@ const w = new AgentWorld();
 let ops = '';
 let opsBinding = '';
 let slug = '';
+let siblingId = '';
+// a 1x1 PNG, as the owner's screenshot
+const PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+  'base64',
+);
 
 beforeAll(async () => {
   await w.openAgent();
@@ -51,6 +60,7 @@ beforeAll(async () => {
   );
   const sibling = await createTestProject(w.ownerId, { orgId: String(home?.org_id) });
   await addProjectMember(sibling.id, w.ownerId, 'owner');
+  siblingId = sibling.id;
   const rc = await api(w.owner, 'POST', '/api/integration-connections', {
     provider: 'rocketchat',
     displayName: 'Babo',
@@ -177,5 +187,65 @@ describe("ISS-1271: the organization's shared operations room is the default tec
     expect(out).toMatchObject({ channel: 'dm', rid: DM });
     expect(w.stand.linesIn(DM).at(-1)?.text).toContain('may I flush the cache?');
     expect(w.stand.linesIn(ops).length).toBe(opsBefore);
+  });
+
+  it("ISS-1359: the room agent reads a picture its owner posted in the project's technical thread, and no other thread's", async () => {
+    const own = await recorded();
+    expect(own).not.toBeNull();
+    const shared = (await roomsOfProject(siblingId)).find((r) => r.rid === ops);
+    if (!shared) throw new Error('the shared operations room was not declared');
+    // the owner's reply with a screenshot, recorded on the shared room's row as inbound records it
+    const plant = async (externalId: string, thread: string) => {
+      w.stand.uploads.set(externalId, { bytes: PNG, mime: 'image/png' });
+      await insertAction({
+        roomId: shared.id,
+        projectId: shared.projectId,
+        conversationId: null,
+        kind: 'message_in',
+        actorKind: 'member',
+        actorKey: 'u-owner',
+        actorLabel: 'owner',
+        thread,
+        externalId,
+        input: {
+          text: 'Cái nào ?',
+          images: [
+            {
+              name: 'clip.png',
+              mime: 'image/png',
+              ref: `${w.stand.serverUrl}/file-upload/${externalId}/clip.png`,
+            },
+          ],
+        },
+      });
+    };
+    await plant('M-tech-own', String(own));
+    await plant('M-tech-other', 'T-another-project');
+    const reads: Record<string, unknown>[] = [];
+    await w.hear(
+      () => w.stand.say(w.stand.bob, 'what did the owner show?'),
+      async (_t, act) => {
+        reads.push(await act({ action: 'image', message: 'M-tech-own', n: 1 }));
+        reads.push(await act({ action: 'image', message: 'M-tech-other', n: 1 }));
+        reads.push(await act({ action: 'image', message: 'M-tech-other', n: 1, rid: w.stand.rid }));
+      },
+    );
+    const [mine, unnamed, other] = reads as [
+      Record<string, unknown> & { content?: { type: string; data?: string; mimeType?: string }[] },
+      Record<string, unknown>,
+      Record<string, unknown>,
+    ];
+    // read through Forge with the shared room's bot, bytes and type intact
+    expect(mine.isError, JSON.stringify(mine)).toBe(false);
+    const block = mine.content?.find((c) => c.type === 'image');
+    expect(block?.mimeType).toBe('image/png');
+    expect(Buffer.from(block?.data ?? '', 'base64')).toEqual(PNG);
+    // another thread of the shared room stays out of reach: no group of the session holds it, and
+    // named in the agent's own group it is refused by name, saying where it is
+    expect(unnamed.isError).toBe(true);
+    expect(JSON.stringify(unnamed)).toContain('SUPPORT_ROOM_AMBIGUOUS');
+    expect(other.isError).toBe(true);
+    expect(JSON.stringify(other)).toContain('SUPPORT_MESSAGE_UNKNOWN');
+    expect(JSON.stringify(other)).toContain("outside this project's own thread");
   });
 });
