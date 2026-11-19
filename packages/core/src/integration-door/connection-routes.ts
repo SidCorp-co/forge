@@ -4,16 +4,17 @@ import { say } from '@forge/contracts/said';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { db } from '../db/client.js';
 import { listInstallationRepositories } from '../integrations/github/index.js';
 import {
   adapterOrRefuse,
-  announceConnectionCredential,
   applySecretsPatch,
   assertVaultConfigured,
   bindingItemsSchema,
   buildContextFromBinding,
   connectionConfigSchemaForProvider,
   connectionCreateSchema,
+  connectionCredentialFilled,
   connectionUpdateSchema,
   createConnection,
   decryptConnectionSecrets,
@@ -54,6 +55,7 @@ import {
   readMonitoringConnection,
   rereadReadiness,
 } from '../monitoring/index.js';
+import { emitEvent } from '../outbox/index.js';
 import { requireOrgHeld } from '../permissions/index.js';
 import { readDeployMap } from '../project-config/index.js';
 import { listProjectHeads } from '../projects/index.js';
@@ -398,7 +400,10 @@ integrationConnectionsRoutes.patch(
     if (!updated) throw notFound('connection');
     notifyConnectionChanged(existing.provider, id);
     // a thread that asked for this credential hears it was set, by fingerprint (ISS-1348)
-    if (connPatch.secrets) await announceConnectionCredential(existing, connPatch.secrets, 'page');
+    const filled = connPatch.secrets
+      ? connectionCredentialFilled(existing, connPatch.secrets, 'page')
+      : null;
+    if (filled) await emitEvent(db, 'secret.slotFilled', filled);
     return c.json({ connection: summarizeConnection(updated) });
   },
 );

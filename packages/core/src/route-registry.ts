@@ -202,7 +202,7 @@ import { statusReportRoutes } from './status-reports/routes.js';
 import { stewardRoutes } from './steward/index.js';
 import { stewardNoteRoutes } from './steward-notes/routes.js';
 import { suggestionRoutes } from './suggestions/routes.js';
-import { mountSupportDoors } from './support/doors.js';
+import { mountSupportDoors } from './support/index.js';
 import { uploadRoutes } from './uploads/routes.js';
 import { hostTheWeb } from './web-host/index.js';
 import { whatsNewRoutes } from './whats-new/routes.js';

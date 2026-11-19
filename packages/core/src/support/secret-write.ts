@@ -12,9 +12,11 @@ import type { Context } from 'hono';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { z } from 'zod';
+import { db } from '../db/client.js';
 import { fingerprintSecret, writeConnectionCredential } from '../integrations/index.js';
 import { RefusalError, refused } from '../lib/refusal.js';
 import { invalid, noQuery, rawBody, zValidator } from '../middleware/zod-validator.js';
+import { emitEvent } from '../outbox/index.js';
 import { requiresNoPermission } from '../permissions/index.js';
 import { SECRET_VALUE_MAX, writeSecret, writeVariableByGrant } from '../project-config/index.js';
 import { type AskRow, askOfToken, claimWrite, releaseWrite } from './secret-asks.js';
@@ -104,7 +106,10 @@ async function writeSlot(ask: AskRow, value: string, from: string): Promise<stri
     }
     return fingerprintSecret(ask.projectId, value);
   }
-  return (await writeConnectionCredential(s.connection ?? '', value)).fingerprint;
+  const filled = await writeConnectionCredential(s.connection ?? '', value);
+  // the adapter builds the fact and emits none: the asking threads hear of it from here
+  await emitEvent(db, 'secret.slotFilled', filled);
+  return filled.fingerprint;
 }
 
 export const secretWriteRoutes = new Hono();
@@ -163,7 +168,9 @@ secretWriteRoutes.put(
 // a write URL reads nothing: a GET (and so a HEAD) is refused by name, whatever the token
 secretWriteRoutes.get(
   '/:token',
-  requiresNoPermission('refused for every caller: a write URL takes a PUT alone and answers no read'),
+  requiresNoPermission(
+    'refused for every caller: a write URL takes a PUT alone and answers no read',
+  ),
   noQuery,
   (c) =>
     refuse(
