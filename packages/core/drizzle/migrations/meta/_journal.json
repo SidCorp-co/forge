@@ -4390,6 +4390,13 @@
       "when": 1842566400000,
       "tag": "0690_a_person_redacts_a_secret_a_room_kept_unscrubbed",
       "breakpoints": true
+    },
+    {
+      "idx": 691,
+      "version": "7",
+      "when": 1842652800000,
+      "tag": "0691_a_room_agent_asks_for_a_secret_through_one_door",
+      "breakpoints": true
     }
   ]
 }

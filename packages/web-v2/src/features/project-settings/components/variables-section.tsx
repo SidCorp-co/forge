@@ -3,7 +3,7 @@
 // plain value inline, reveals a secret one at a time, adds, edits and deletes, and decides what
 // agents proposed; anyone else reads names. Values are never kept past the row that revealed them.
 import type { VariableView } from "@forge/contracts/variables";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
 	Badge,
 	Button,
@@ -25,7 +25,7 @@ import {
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useDeleteVariable, useVariables, variablesApi } from "../variables";
-import { VariableForm } from "./variable-form";
+import { type AskedVariable, askedVariableOf, VariableForm } from "./variable-form";
 import { TYPE_LABEL } from "./variable-labels";
 import { VariableHistory, VariableProposals } from "./variable-proposals";
 
@@ -36,6 +36,7 @@ export function VariablesSettings({ projectId }: { projectId: string }) {
 	const [deleting, setDeleting] = useState<VariableView | null>(null);
 	const remove = useDeleteVariable(projectId);
 	const read = listQ.data;
+	const asked = useAskedVariable(read?.canManage === true ? read.variables : null, setEditing);
 	return (
 		<PageSection>
 			<PageSectionBody>
@@ -54,7 +55,13 @@ export function VariablesSettings({ projectId }: { projectId: string }) {
 				) : read ? (
 					<>
 						{editing !== null && (
-							<VariableForm projectId={projectId} environments={read.environments} editing={editing === "new" ? null : editing} onDone={() => setEditing(null)} />
+							<VariableForm
+								projectId={projectId}
+								environments={read.environments}
+								editing={editing === "new" ? null : editing}
+								asked={asked}
+								onDone={() => setEditing(null)}
+							/>
 						)}
 						{read.variables.length === 0 ? (
 							<EmptyState message={t("settings.project.variables.none")} mascot={false} />
@@ -80,6 +87,24 @@ export function VariablesSettings({ projectId }: { projectId: string }) {
 			</PageSectionBody>
 		</PageSection>
 	);
+}
+
+/**
+ * A secret link names one variable (ISS-1348): once the list has drawn, its form opens at that key and
+ * scope with the value box focused, the held one to replace or a new one to add. Opened once.
+ */
+function useAskedVariable(
+	variables: VariableView[] | null,
+	open: (v: VariableView | "new") => void,
+): AskedVariable | null {
+	const [asked] = useState(() => askedVariableOf(window.location.search));
+	const openedRef = useRef(false);
+	useEffect(() => {
+		if (!asked || openedRef.current || variables === null) return;
+		openedRef.current = true;
+		open(variables.find((v) => v.key === asked.key && v.environment === asked.environment) ?? "new");
+	}, [asked, variables, open]);
+	return asked;
 }
 
 function VariableTable({

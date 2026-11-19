@@ -105,7 +105,7 @@ function CredentialLine({
       testId="testing-credential"
       rowKey={`${name}:${credential}`}
     >
-      {replacing && ref?.[1] && ref[2] ? <ReplaceSecret projectId={projectId} scope={ref[1]} name={ref[2]} onDone={() => setReplacing(false)} /> : null}
+      {replacing && ref?.[1] && ref[2] ? <ReplaceSecret projectId={projectId} scope={ref[1]} name={ref[2]} focus={open} onDone={() => setReplacing(false)} /> : null}
     </RowItem>
   );
 }

@@ -10,15 +10,20 @@
 // ISS-1328: the note the session is handed asks for the deletion once, says why nothing was kept and
 // names the credential door (`support.secret_link`) in the same line; a later secret in the same
 // thread is told as already said, so no second deletion ask and no rotation ask ever follow. Core
-// posts nothing (ISS-845).
+// posts nothing (ISS-845). ISS-1348: where the thread asked for a slot, the note carries that slot's
+// link and a fresh one-time write command, for the reply to give at once.
 
 import { and, desc, eq, gte, inArray, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { supportActions } from '../db/schema-support.js';
 import type { RocketChatIncomingMessage } from '../integrations/rocketchat/index.js';
+import { webBaseUrl } from '../lib/web-base-url.js';
 import { channelOfRoom, shownNames } from './channel.js';
 import { membersOf } from './channel-store.js';
 import { threadOf } from './rules.js';
+import { openAskIn, recordAsk } from './secret-asks.js';
+import { secretWriteOf } from './secret-link.js';
+import { slotLabelOf } from './secret-receipts.js';
 import { insertAction, type RoomRow } from './store.js';
 
 /** How recent a filtered secret or a writer's word that a key is coming still speaks for a token. */
@@ -112,23 +117,68 @@ async function toldBefore(roomId: string, thread: string): Promise<boolean> {
   return row !== undefined;
 }
 
+/**
+ * The door the note gives (ISS-1348 c4): where this thread asked for a slot already, that slot's link
+ * and a fresh one-time write command, to give at once; otherwise the act that makes them.
+ */
+async function doorLine(room: RoomRow, thread: string): Promise<string | null> {
+  const asked = await openAskIn(room.id, thread);
+  const web = webBaseUrl();
+  if (asked && web) {
+    const { row, token } = await recordAsk(
+      {
+        projectId: asked.projectId,
+        roomId: room.id,
+        thread,
+        kind: asked.kind,
+        slot: asked.slot,
+        slotKey: asked.slotKey,
+        link: asked.link,
+      },
+      true,
+    );
+    const write =
+      token && row.writeExpiresAt ? secretWriteOf(web, token, row.writeExpiresAt) : null;
+    return [
+      `This thread asked for ${slotLabelOf(asked)}: in that same reply, give the person its link ${asked.link}`,
+      write
+        ? `and, where the value sits in a file, this command, good once for ${write.minutes} minutes: ${write.command}`
+        : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
+  }
+  return null;
+}
+
+/** The act that makes a slot's door, where the thread asked for none yet. */
+const ASK_THE_DOOR =
+  'In that same reply, give the person the link and the one-time write command support.secret_link { thread, kind, …, presign: true } answers for the slot they meant (a variable, a testing profile’s credential or an integration’s), so the right door is the first one next time; never name a settings screen yourself.';
+
 /** The note on a thread's first secret: once, why, the door, one deletion ask, no rotation. */
-function firstSecretNote(messageId: string, who: string, asked: string | null): string {
+function firstSecretNote(
+  messageId: string,
+  who: string,
+  asked: string | null,
+  door: string | null,
+): string {
   return [
     `Message ${messageId} from ${who} in this thread held a secret; Forge kept nothing of it, and the bot cannot delete it.`,
     'Say so once in this thread, in your own words: that it was not kept, and why (a secret is never kept in chat or in Forge).',
-    'In that same line, give the person the link support.secret_link { thread, profile, actor | service } answers, where they enter it for the project’s testing profile so the master can use it without it passing through chat.',
+    door ?? ASK_THE_DOOR,
     `You may ask ${asked ? `@${asked}` : 'a Technical member'} once to delete that message from the chat server; if its author or a Technical member declines, that is settled for this thread and is never asked again.`,
     'Never ask anyone to rotate, change or revoke it, never repeat what it held, and never keep it anywhere.',
   ].join(' ');
 }
 
 /** The note on a later secret in a thread already told: nothing is said of it again. */
-function againSecretNote(messageId: string, who: string): string {
+function againSecretNote(messageId: string, who: string, door: string | null): string {
   return [
     `Message ${messageId} from ${who} in this thread also held a secret; Forge kept nothing of it.`,
     'This thread was already told once: say nothing more of it, ask no deletion and no rotation, and answer what the person asked.',
-    'Where they want it used, the link support.secret_link answers is still the way; never repeat what it held.',
+    door
+      ? `Where they want it used: ${door}. Never repeat what it held.`
+      : 'Where they want it used, the link support.secret_link answers is still the way; never repeat what it held.',
   ].join(' ');
 }
 
@@ -151,7 +201,10 @@ export async function flagSecret(
   const who = author.label ? `@${author.label}` : `account ${author.key}`;
   const asked = technical ? (await shownNames(room, [technical]))(technical.username) : null;
   const again = await toldBefore(room.id, thread);
-  const note = again ? againSecretNote(messageId, who) : firstSecretNote(messageId, who, asked);
+  const door = await doorLine(room, thread);
+  const note = again
+    ? againSecretNote(messageId, who, door)
+    : firstSecretNote(messageId, who, asked, door);
   // the fact goes to the session as a note of the thread, handed on with the message itself
   await insertAction({
     roomId: room.id,

@@ -121,4 +121,14 @@ export const SUPPORT_SCENARIOS: readonly CardScenario[] = [
       /never ask anyone to rotate/i,
     ],
   },
+  {
+    name: 'a production variable asked for: the link to that field and a one-time write command',
+    card: 'support.secret_link',
+    source:
+      'ISS-1348, epod thread 86aGqsokzYezYNdvF of 19/11: a settings screen named in prose and corrected, then a production OAuth secret pasted in chat',
+    situation: 'The master needs a production OAuth client secret the owner holds',
+    bad: 'the bot named a settings screen in prose, linked the wrong one, and the owner pasted the secret in chat',
+    good: 'call support.secret_link naming the variable and its environment with presign, and give its link and command',
+    teaches: [/support\.secret_link/, /never name a settings screen/i, /presign/],
+  },
 ];

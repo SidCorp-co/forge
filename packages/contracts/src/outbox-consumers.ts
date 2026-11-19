@@ -150,6 +150,8 @@ export const OUTBOX_CONSUMERS = {
 	"release.approvalDecided": ["release-approval-wake", "org-activity"],
 	"verdict.recorded": ["release-highlights", "issue-fail-reopen"],
 	"credential.tokenChanged": ["ws-broadcast"],
+	// the thread that asked for a secret hears its slot was filled, never what with (ISS-1348)
+	"secret.slotFilled": ["support-secret-receipts"],
 	"runner.changed": ["ws-broadcast"],
 	"job.changed": ["ws-broadcast"],
 	"session.changed": ["ws-broadcast"],

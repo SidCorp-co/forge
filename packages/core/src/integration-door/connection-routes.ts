@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { listInstallationRepositories } from '../integrations/github/index.js';
 import {
   adapterOrRefuse,
+  announceConnectionCredential,
   applySecretsPatch,
   assertVaultConfigured,
   bindingItemsSchema,
@@ -396,6 +397,8 @@ integrationConnectionsRoutes.patch(
     const updated = await updateConnection(id, connPatch);
     if (!updated) throw notFound('connection');
     notifyConnectionChanged(existing.provider, id);
+    // a thread that asked for this credential hears it was set, by fingerprint (ISS-1348)
+    if (connPatch.secrets) await announceConnectionCredential(existing, connPatch.secrets, 'page');
     return c.json({ connection: summarizeConnection(updated) });
   },
 );

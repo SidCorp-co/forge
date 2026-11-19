@@ -58,6 +58,7 @@ export const OUTBOX_EVENT_TYPES = [
 	"release.approvalDecided",
 	"verdict.recorded",
 	"credential.tokenChanged",
+	"secret.slotFilled",
 	"runner.changed",
 	"job.changed",
 	"session.changed",
@@ -653,6 +654,19 @@ export interface OutboxEventPayloads
 		at: string;
 	};
 	/** A personal access token of `userId` was minted, revoked, had its project list changed, or was used (at most once a minute). */
+	/**
+	 * A secret slot was given a value through any door (ISS-1348): a variable at one scope, a project
+	 * secret (`secret://`), or an integration connection's credential. `slot` names it as the room's
+	 * secret asks do (`support_secret_asks.slot_key`); `fingerprint` is the keyed digest the slot's
+	 * audit keeps, never the value; `via` says whether a page or a one-time write URL set it.
+	 */
+	"secret.slotFilled": {
+		projectId: string | null;
+		slot: string;
+		fingerprint: string;
+		via: "page" | "presigned";
+		at: string;
+	};
 	"credential.tokenChanged": {
 		userId: string;
 		tokenId: string;

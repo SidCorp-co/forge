@@ -1,4 +1,4 @@
-// The session's REST twin of forge_support's secret_link act (ISS-1328): it runs the act its MCP
+// The session's REST twin of forge_support's secret_link act (ISS-1328, ISS-1348): it runs the act its MCP
 // action runs (`acts.ts`), and admits only the room's own session under its current turn's token.
 
 import { supportSecretLinkRequestSchema } from '@forge/contracts/support';
@@ -17,7 +17,10 @@ export function mountSecretLinkSessionRoutes(app: Hono<{ Variables: AuthVars }>)
       invalid('invalid path: the project id is a uuid'),
     ),
     SESSION_ONLY,
-    strictBody(supportSecretLinkRequestSchema, '{ thread, profile, actor | service }'),
+    strictBody(
+      supportSecretLinkRequestSchema,
+      '{ thread, project?, kind: variable, environment, key | kind: testing, profile, actor | service | kind: integration, provider; presign? }',
+    ),
     (c) => act(c, c.req.valid('param').id, { action: 'secret_link', ...c.req.valid('json') }),
   );
 }

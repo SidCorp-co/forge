@@ -25,7 +25,7 @@ import { z } from 'zod';
 import { db, type Tx } from '../db/client.js';
 import { projectVariableEvents } from '../db/schema-project-variables.js';
 import { type SignInAnswer, trySignIn } from '../integrations/deploy/index.js';
-import { encryptSecret, isVaultConfigured } from '../integrations/index.js';
+import { encryptSecret, fingerprintSecret, isVaultConfigured } from '../integrations/index.js';
 import {
   GRAPHQL_SET,
   loginBodyRefusal,
@@ -159,7 +159,10 @@ export async function writeSecret(input: {
   scope: string;
   name: string;
   value: string;
-  actor: { id: string; tokenId: string | null; agency: 'human' | 'agent' };
+  /** Who wrote it: null where a one-time write URL did, which names no account (ISS-1348). */
+  actor: { id: string | null; tokenId: string | null; agency: 'human' | 'agent' };
+  /** What the audit row keeps of how the write came (`via`, the ask), never the value. */
+  detail?: Record<string, unknown>;
 }): Promise<SecretWriteOutcome> {
   if (!isVaultConfigured()) return { ok: false, code: 'VAULT_NOT_CONFIGURED' };
   const { projectId } = input;
@@ -196,7 +199,9 @@ export async function writeSecret(input: {
         actorId: input.actor.id,
         actorTokenId: input.actor.tokenId,
         agency: input.actor.agency,
-        detail: { secret: true, signIn },
+        // the keyed digest the asking thread is told (ISS-1348), never the value
+        newFingerprint: fingerprintSecret(projectId, input.value),
+        detail: { ...input.detail, secret: true, signIn },
       },
     ]);
     return stored;

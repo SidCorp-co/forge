@@ -35,6 +35,7 @@ import {
 } from './release-notes.js';
 import { registerSupportResults, tellAllResults } from './result.js';
 import { SUPPORT_SESSION_MARKER } from './rooms.js';
+import { tellSlotFilled } from './secret-receipts.js';
 import { tellLinked } from './speaker-link.js';
 import { agentSwitchGate } from './switches.js';
 import { raiseTechnical } from './technical-channel.js';
@@ -134,6 +135,8 @@ export function registerSupportConsumers(): void {
   registerSupportResults();
   // a release reaching production, handed to each opted-in room's agent (ISS-854)
   registerSupportReleaseNotes();
+  // a secret a thread asked for, told there once its slot holds a value (ISS-1348)
+  consume('secret.slotFilled', { name: 'support-secret-receipts', handle: tellSlotFilled });
   consume('integration.changed', {
     name: 'support-rooms',
     handle: async (p: { projectId: string }) => {

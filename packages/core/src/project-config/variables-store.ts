@@ -13,6 +13,7 @@ import {
   projectVariables,
   VARIABLE_SECRET_SCOPE,
 } from '../db/schema-project-variables.js';
+import { emitEvents } from '../outbox/index.js';
 
 export type VariableRow = typeof projectVariables.$inferSelect;
 export type ProposalRow = typeof projectVariableProposals.$inferSelect;
@@ -200,8 +201,41 @@ export interface EventInput {
   detail?: Record<string, unknown>;
 }
 
+/** The acts that give a slot a value, each told to the threads that asked for it (ISS-1348). */
+const FILLING_ACTS: readonly VariableEventAct[] = ['created', 'updated', 'approved'];
+
+/**
+ * The slot an audit row names, as a room's secret asks name it: a project secret by its ref, a
+ * variable by its scope (`*` for every environment) and key.
+ */
+export function slotKeyOf(e: Pick<EventInput, 'projectId' | 'key' | 'environment'>): string {
+  return e.key.startsWith('secret://')
+    ? `secret:${e.projectId}:${e.key}`
+    : `variable:${e.projectId}:${e.environment ?? '*'}:${e.key}`;
+}
+
 export async function insertEvents(tx: Tx, events: readonly EventInput[]): Promise<void> {
   if (events.length === 0) return;
+  // a value given to a slot is a fact the asking thread hears, by fingerprint, never the value
+  await emitEvents(
+    tx,
+    events.flatMap((e) =>
+      FILLING_ACTS.includes(e.act) && e.newFingerprint
+        ? [
+            {
+              type: 'secret.slotFilled' as const,
+              payload: {
+                projectId: e.projectId,
+                slot: slotKeyOf(e),
+                fingerprint: e.newFingerprint,
+                via: e.detail?.via === 'presigned' ? ('presigned' as const) : ('page' as const),
+                at: new Date().toISOString(),
+              },
+            },
+          ]
+        : [],
+    ),
+  );
   await tx.insert(projectVariableEvents).values(
     events.map((e) => ({
       projectId: e.projectId,

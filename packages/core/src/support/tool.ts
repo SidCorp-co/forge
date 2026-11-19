@@ -5,6 +5,7 @@
 import { ISSUE_STATUSES } from '@forge/contracts/issue-machine';
 import { REFERENCE_KINDS } from '@forge/contracts/references';
 import {
+  SECRET_SLOT_KINDS,
   SUPPORT_ACTIONS,
   SUPPORT_RECORD_KINDS,
   SUPPORT_ROUTING_CONFIDENCES,
@@ -103,6 +104,7 @@ import { SUPPORT_ACT_CARDS } from './act-cards.js';
 import { type SupportActInput, supportAct } from './acts.js';
 import type { ImageRead } from './images.js';
 import { refusalOf } from './refusals.js';
+import { SECRET_LINK_TOOL_FIELDS } from './secret-tool-fields.js';
 import { supportActEntries, supportToolDescription } from './tool-description.js';
 
 /** The actions that write nothing: the rest post in a thread, file an item, or act or record for a member. */
@@ -259,8 +261,6 @@ const inputSchema = z.strictObject({
   commit: supportForgeActRequestSchema.shape.commit,
   baseRevision: supportForgeActRequestSchema.shape.baseRevision,
   document: supportForgeActRequestSchema.shape.document,
-  // a promise's environment, by the project's own name for it (ISS-1012)
-  environment: supportPromiseRequestSchema.shape.environment.optional(),
   // a picture's place in its message; the message is the agreement's own field (ISS-1010)
   n: supportImageRequestSchema.shape.n,
   // an issue move's status, or a route's destination: each action's own request judges which
@@ -281,16 +281,16 @@ const inputSchema = z.strictObject({
     .shape,
   aliases: supportTermRequestSchema.shape.aliases,
   anchor: supportTermRequestSchema.shape.anchor,
-  // a credential's input link: the testing profile and its one actor or service (ISS-1328)
-  ...supportSecretLinkRequestSchema.omit({ thread: true }).partial().shape,
+  // the one secret door's slot, its environment and key widened to what other acts take too
+  ...SECRET_LINK_TOOL_FIELDS,
   // a field two acts' requests both take, each judged by its own act's request: a record's or a
   // draft's kind, or a reference source's; a page's or a source's address; a one-line why, or what a
   // source teaches
   kind: z
-    .enum([...SUPPORT_RECORD_KINDS, ...REFERENCE_KINDS])
+    .enum([...SUPPORT_RECORD_KINDS, ...REFERENCE_KINDS, ...SECRET_SLOT_KINDS])
     .optional()
     .describe(
-      `record, draft_feedback: ${SUPPORT_RECORD_KINDS.join(' | ')}; reference_add, reference_propose: ${REFERENCE_KINDS.join(' | ')}`,
+      `record, draft_feedback: ${SUPPORT_RECORD_KINDS.join(' | ')}; reference_add, reference_propose: ${REFERENCE_KINDS.join(' | ')}; secret_link: ${SECRET_SLOT_KINDS.join(' | ')}`,
     ),
   url: z
     .string()
@@ -365,7 +365,7 @@ const SIGNATURES = [
   'reference_cite { source, ref, verdict: take | reject, why, about?, project? }',
   'reference_propose { kind, url, why, areas, evidence, title?, priority?, followReleases?, project? }',
   'term { thread, message, slug, title, means, module, quote, aliases?, anchor?, project? }',
-  'secret_link { thread, profile, actor | service }',
+  'secret_link { thread, project?, kind: variable, environment (null: every environment), key | kind: testing, profile, actor | service | kind: integration, provider; presign? }',
 ];
 
 /** What every act shares, said once in the description and in a refusal. */

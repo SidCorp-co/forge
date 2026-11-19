@@ -84,6 +84,7 @@ export {
   listTestingProfiles,
   readPolicy as readEffectivePolicy,
   readProjectDocument,
+  SECRET_VALUE_MAX,
   writeProjectConfig,
 } from './service.js';
 export {
@@ -104,3 +105,6 @@ export {
   forgeBindingsTool,
   forgeConfigTool,
 } from './tool.js';
+export { variableHeld, writeVariableByGrant } from './variables-grant.js';
+export { declaredEnvironments } from './variables-service.js';
+export { slotKeyOf } from './variables-store.js';

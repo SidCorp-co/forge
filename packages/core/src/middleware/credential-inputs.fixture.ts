@@ -100,7 +100,8 @@ export const CREDENTIAL_INPUTS: Readonly<Record<string, string>> = {
   'field:form:code': 'an MCP client’s authorization code, redeemed once by its digest',
   'field:form:code_verifier': 'the PKCE verifier that code’s challenge was made from',
   'field:form:refresh_token': 'an MCP client’s refresh token, looked up by its digest and rotated',
-  'field:param:token': 'a feedback widget status link token, looked up by its SHA-256',
+  'field:param:token':
+    'a feedback widget status link token, or a secret’s one-time write token (ISS-1348), each looked up by its SHA-256',
   'field:json:signed':
     'a client backend’s HMAC over a widget visitor’s id, checked against the binding’s signing secret',
 };
@@ -178,7 +179,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:fire field:json:covers field:json:profile field:param:debt
     field:param:n field:param:environment field:param:proposal field:param:variable field:json:environment
     field:param:keyId field:param:messageId field:json:module field:param:relationId
-    field:json:pictures field:json:actor field:json:service field:param:actionId`,
+    field:json:pictures field:json:actor field:json:service field:json:provider field:param:actionId`,
   'prose a person or an agent writes: a title, a body, a message, a note': words`
     field:json:about field:json:acceptanceCriteria field:json:alt field:json:answer
     field:json:assistantInstructions field:json:assumed field:json:body field:json:brief
@@ -280,6 +281,8 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
 
 /** Each whole read a presented secret arrives in, by `<module> <what> in <owner>`, and what. */
 export const CREDENTIAL_READS: Readonly<Record<string, string>> = {
+  'support/secret-write.ts HonoRequest.text in module code':
+    'a secret’s value a one-time write URL sets at its one slot (ISS-1348), kept by fingerprint and never answered',
   'auth/oauth/handler.ts Context handed to hono:getCookie in handleCallback':
     'the OAuth state cookie',
   'auth/oauth/handler.ts HonoRequest.url in handleCallback':
@@ -324,7 +327,11 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     widget/stream.ts Context handed to hono:streamSSE in widgetStream`,
   'an outbound URL, header set or module URL core builds, never a request to core': lines`
     assistant/identity/link-url.ts URLSearchParams.toString in speakerLinkUrl
-    support/secret-link.ts URLSearchParams.toString in secretLinkOf
+    support/secret-slots.ts URLSearchParams.toString in secretLinkOf
+    support/secret-slots.ts URLSearchParams.toString in variableSlot
+    support/secret-slots.ts URLSearchParams.toString in integrationSlot
+    support/secret-slots.ts URL.search in testingSlot
+    support/secret-slots.ts URL.hash in testingSlot
     contracts-generate.ts URL.href in baseOf
     integrations/autoflow/refresh.ts URLSearchParams.toString in requestRefresh
     integration-door/github-connect-shared.ts URLSearchParams.toString in strandedAt

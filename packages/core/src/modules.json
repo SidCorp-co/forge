@@ -1363,6 +1363,7 @@
         "supportPromises",
         "chatTemporaryAccounts",
         "supportMasterAsks",
+        "supportSecretAsks",
         "supportReplyVerdicts",
         "supportOwnerConsents",
         "supportOwnerSignIns",

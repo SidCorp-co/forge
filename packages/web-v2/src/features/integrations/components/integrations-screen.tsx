@@ -148,7 +148,9 @@ export function IntegrationsScreen() {
 
   // The SELECTED ID, with the row re-derived from the live query data, so the open drawer reflects
   // every mutation (rename/health/active) without holding a stale snapshot.
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // a room agent's secret link names one connection (ISS-1348): its drawer opens at the key box
+  const [asked] = useState(() => params.get("connection"));
+  const [selectedId, setSelectedId] = useState<string | null>(asked);
   const selected = items.find((c) => c.id === selectedId) ?? null;
 
   return (
@@ -205,7 +207,7 @@ export function IntegrationsScreen() {
         </div>
       )}
 
-      {selected ? <ConnectionEditDrawer connection={selected} onClose={() => setSelectedId(null)} /> : null}
+      {selected ? <ConnectionEditDrawer connection={selected} focusKey={selected.id === asked} onClose={() => setSelectedId(null)} /> : null}
       {bindId ? <BindConnectionDrawer connectionId={bindId} onClose={clearReturn} projects={spaceProjects} /> : null}
     </PageContainer>
   );

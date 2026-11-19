@@ -18,6 +18,7 @@ import {
   Divider,
   ErrorState,
   Field,
+  focusOnMount,
   Icon,
   Input,
   Skeleton,
@@ -124,9 +125,12 @@ function HeaderTitle({
 function CredentialFields({
   connection,
   canManage,
+  focusKey = false,
 }: {
   connection: ConnectionSummary;
   canManage: boolean;
+  /** A secret link opened it (ISS-1348): the replace-key box takes the focus. */
+  focusKey?: boolean;
 }) {
   const update = useUpdateConnection();
   const test = useTestConnection();
@@ -176,6 +180,7 @@ function CredentialFields({
         >
           <div className="flex items-center gap-2">
             <Input
+              ref={focusKey ? focusOnMount : undefined}
               type="password"
               autoComplete="off"
               placeholder={secretPlaceholderOf(connection.provider, language) ?? t("integrations.edit.apiKey")}
@@ -413,9 +418,11 @@ function DangerZone({
 
 export function ConnectionEditDrawer({
   connection,
+  focusKey = false,
   onClose,
 }: {
   connection: ConnectionSummary | null;
+  focusKey?: boolean;
   onClose: () => void;
 }) {
   const canManage = useCanManageConnection(connection);
@@ -440,7 +447,7 @@ export function ConnectionEditDrawer({
       width={560}
     >
       <div className="flex flex-col gap-5">
-        <CredentialFields connection={connection} canManage={canManage} />
+        <CredentialFields connection={connection} canManage={canManage} focusKey={focusKey} />
         <Divider />
         <ConfigFields connection={connection} canManage={canManage} />
         {/* ISS-1275 — the connection tier of the release runner label. It renders

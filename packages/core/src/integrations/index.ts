@@ -26,6 +26,12 @@ export {
 } from './binding-name.js';
 export { heldBindingWithConnection } from './binding-read.js';
 export {
+  announceConnectionCredential,
+  connectionSlotKey,
+  credentialFieldOf,
+  writeConnectionCredential,
+} from './credential-write.js';
+export {
   applyClaimedInbound,
   findDeliveryById,
   findDeliveryByRequestId,

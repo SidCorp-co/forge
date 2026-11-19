@@ -944,27 +944,62 @@ export const SUPPORT_ACTIONS = [
 	"secret_link",
 ] as const;
 
+/** The kinds of slot the one secret door opens (ISS-1348). */
+export const SECRET_SLOT_KINDS = ["variable", "testing", "integration"] as const;
+export type SecretSlotKind = (typeof SECRET_SLOT_KINDS)[number];
+
+/** How a slot was given its value: through its page in Forge, or a one-time write URL. */
+export const SECRET_WRITE_VIAS = ["page", "presigned"] as const;
+
+const slotName = (what: string) =>
+	z.string().regex(/^[a-zA-Z][a-zA-Z0-9-]{0,62}$/, what).optional();
+
 /**
- * A Forge link opening the secret input of one actor or service of the project's testing profile
- * (ISS-1328): the person enters the value there, it is kept as that slot's `secret://`, and the
- * master reads it at the testing-profile secrets door; it never passes through chat.
+ * The one secret door (ISS-1328, ISS-1348): the slot a person gives a value for, by kind, and core
+ * builds the link that opens that one field — a variable at one environment (REQ-80), a testing
+ * profile's actor or service, or an integration's credential. A slot not held yet opens as a new one
+ * with its key and scope filled. With `presign`, the answer also carries a one-time write URL for that
+ * slot alone (PUT the value as the body; short-lived, single use, write-only). The value never passes
+ * through chat; the thread hears that it was filled, by fingerprint. `project` names a project of the
+ * room's scope (ISS-1346); the room's own where omitted.
  */
 export const supportSecretLinkRequestSchema = z.strictObject({
 	thread: threadId,
+	project: supportProjectSlugSchema.optional(),
+	kind: z
+		.enum(SECRET_SLOT_KINDS)
+		.describe(
+			"variable (an environment variable: environment, key), testing (a testing profile's credential: profile, actor | service) or integration (a connection's credential: provider)",
+		),
+	environment: z
+		.string()
+		.regex(/^[a-z][a-z0-9-]{0,62}$/, "an environment the project declares")
+		.nullable()
+		.optional()
+		.describe("variable: the environment it is scoped to, or null for every environment"),
+	key: z
+		.string()
+		.regex(/^[A-Za-z_][A-Za-z0-9_]{0,254}$/, "an environment variable name")
+		.optional()
+		.describe("variable: its key"),
 	profile: z
 		.string()
 		.regex(/^[a-z][a-z0-9-]{0,62}$/, "a testing profile id")
-		.describe("the testing profile, by its id"),
-	actor: z
-		.string()
-		.regex(/^[a-zA-Z][a-zA-Z0-9-]{0,62}$/, "an actor name")
 		.optional()
-		.describe("the profile's actor the value signs in as; or service"),
-	service: z
+		.describe("testing: the profile, by its id"),
+	actor: slotName("an actor name").describe("testing: the actor the value signs in as; or service"),
+	service: slotName("a service name").describe("testing: the service the value is a key of; or actor"),
+	provider: z
 		.string()
-		.regex(/^[a-zA-Z][a-zA-Z0-9-]{0,62}$/, "a service name")
+		.regex(/^[a-z][a-z0-9-]{0,62}$/, "an integration provider")
 		.optional()
-		.describe("the profile's service the value is a key of; or actor"),
+		.describe("integration: the provider whose connection the project binds"),
+	presign: z
+		.boolean()
+		.optional()
+		.describe(
+			"also answer a one-time write URL for this slot, for a value that lives in a file or a terminal",
+		),
 });
 export type SupportSecretLinkRequest = z.infer<typeof supportSecretLinkRequestSchema>;
 
@@ -1830,9 +1865,31 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_SECRET_PROFILE_UNKNOWN",
 	/** A secret link naming neither or both of an actor and a service (ISS-1328). */
 	"SUPPORT_SECRET_SLOT_ONE",
+	/** A secret link carrying a field its kind does not take, or missing one it does (ISS-1348). */
+	"SUPPORT_SECRET_SLOT_SHAPE",
+	/** A variable secret link naming an environment the project does not declare (ISS-1348). */
+	"SUPPORT_SECRET_ENVIRONMENT_UNKNOWN",
+	/** An integration secret link naming a provider the project binds no connection of (ISS-1348). */
+	"SUPPORT_SECRET_INTEGRATION_UNKNOWN",
+	/** An integration secret link naming a provider the project binds through several connections (ISS-1348). */
+	"SUPPORT_SECRET_INTEGRATION_AMBIGUOUS",
+	/** An integration whose credential is not typed by hand (an App installed, a key minted) (ISS-1348). */
+	"SUPPORT_SECRET_INTEGRATION_NOT_BY_HAND",
+	/** A write URL whose token names no ask (ISS-1348). */
+	"SUPPORT_SECRET_WRITE_UNKNOWN",
+	/** A write URL already used once (ISS-1348). */
+	"SUPPORT_SECRET_WRITE_USED",
+	/** A write URL past its time (ISS-1348). */
+	"SUPPORT_SECRET_WRITE_EXPIRED",
+	/** A write URL asked to answer anything but a PUT: it writes, and reads nothing (ISS-1348). */
+	"SUPPORT_SECRET_WRITE_ONLY",
+	/** A write URL PUT with no value in its body (ISS-1348). */
+	"SUPPORT_SECRET_WRITE_EMPTY",
+	/** A write URL PUT with a body longer than a secret holds (ISS-1348). */
+	"SUPPORT_SECRET_WRITE_TOO_LONG",
 	/** A secret link naming an actor or service its profile does not declare (ISS-1328). */
 	"SUPPORT_SECRET_SLOT_UNKNOWN",
-	/** A secret link naming a service whose credential is a stored variable, not a secret (ISS-1328). */
+	/** A testing secret link naming a service whose credential is a stored variable: a variable link (ISS-1328). */
 	"SUPPORT_SECRET_SLOT_VARIABLE",
 	/** A secret link asked of a core that knows no web app address to link to (ISS-1328). */
 	"SUPPORT_SECRET_LINK_NO_WEB",
@@ -2053,6 +2110,17 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_PICTURE_HELD_SECRET: 409,
 	SUPPORT_SECRET_PROFILE_UNKNOWN: 404,
 	SUPPORT_SECRET_SLOT_ONE: 400,
+	SUPPORT_SECRET_SLOT_SHAPE: 400,
+	SUPPORT_SECRET_ENVIRONMENT_UNKNOWN: 404,
+	SUPPORT_SECRET_INTEGRATION_UNKNOWN: 404,
+	SUPPORT_SECRET_INTEGRATION_AMBIGUOUS: 409,
+	SUPPORT_SECRET_INTEGRATION_NOT_BY_HAND: 409,
+	SUPPORT_SECRET_WRITE_UNKNOWN: 404,
+	SUPPORT_SECRET_WRITE_USED: 409,
+	SUPPORT_SECRET_WRITE_EXPIRED: 409,
+	SUPPORT_SECRET_WRITE_ONLY: 403,
+	SUPPORT_SECRET_WRITE_EMPTY: 400,
+	SUPPORT_SECRET_WRITE_TOO_LONG: 400,
 	SUPPORT_SECRET_SLOT_UNKNOWN: 404,
 	SUPPORT_SECRET_SLOT_VARIABLE: 409,
 	SUPPORT_SECRET_LINK_NO_WEB: 503,

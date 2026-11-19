@@ -98,7 +98,7 @@
   "info": {
     "description": "Every route packages/core/src/index.ts mounts, generated from the running app. A request part is described where a zod validator holds it, and `x-forge-validated` on each operation lists which parts those are. The generator refuses a route whose handlers read a body or a query no validator declares, so a part missing from that list is one the route does not read: a path parameter with no validator is any string, a body declared with rawBody() is not JSON and carries its media type and description only, and `x-forge-input: none` marks an operation that reads no input at all. `x-forge-query-closed` marks a read whose query refuses a key it does not take; every GET carries it, or carries `x-forge-query-open` naming why a third party chooses its keys. `x-forge-refinements` on a schema names each refine() by the message it refuses with; the predicate itself is not described. `x-forge-auth` lists, in the order they run, the gate middlewares mounted on the route, each defined under `x-forge-auth-gates`; an empty list means no gate middleware, and a handler may still check a credential of its own. Every 4XX and 5XX answers `application/problem+json` (`components.responses.Problem`); a success response is undeclared: Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers.",
     "title": "forge-api",
-    "version": "29.2.1",
+    "version": "30.0.0",
     "x-forge-generator": "packages/core/src/contracts-generate.ts"
   },
   "openapi": "3.1.0",
@@ -55164,13 +55164,6 @@
                     "maximum": 16,
                     "minimum": 1,
                     "type": "integer"
-                  },
-                  "thread": {
-                    "description": "the thread the message is in, as you were handed it (`thread`): places the read in one group of a channel agent's",
-                    "maxLength": 64,
-                    "minLength": 1,
-                    "pattern": "^[A-Za-z0-9_-]+$",
-                    "type": "string"
                   }
                 },
                 "required": [
@@ -55639,13 +55632,6 @@
                     "x-forge-refinements": [
                       "a role is named once"
                     ]
-                  },
-                  "thread": {
-                    "description": "the thread: the id the message you answer carries as `thread` in what you were handed",
-                    "maxLength": 64,
-                    "minLength": 1,
-                    "pattern": "^[A-Za-z0-9_-]+$",
-                    "type": "string"
                   }
                 },
                 "required": [
@@ -57795,17 +57781,58 @@
                 "additionalProperties": false,
                 "properties": {
                   "actor": {
-                    "description": "the profile's actor the value signs in as; or service",
+                    "description": "testing: the actor the value signs in as; or service",
                     "pattern": "^[a-zA-Z][a-zA-Z0-9-]{0,62}$",
                     "type": "string"
                   },
+                  "environment": {
+                    "anyOf": [
+                      {
+                        "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "variable: the environment it is scoped to, or null for every environment"
+                  },
+                  "key": {
+                    "description": "variable: its key",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,254}$",
+                    "type": "string"
+                  },
+                  "kind": {
+                    "description": "variable (an environment variable: environment, key), testing (a testing profile's credential: profile, actor | service) or integration (a connection's credential: provider)",
+                    "enum": [
+                      "variable",
+                      "testing",
+                      "integration"
+                    ],
+                    "type": "string"
+                  },
+                  "presign": {
+                    "description": "also answer a one-time write URL for this slot, for a value that lives in a file or a terminal",
+                    "type": "boolean"
+                  },
                   "profile": {
-                    "description": "the testing profile, by its id",
+                    "description": "testing: the profile, by its id",
+                    "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                    "type": "string"
+                  },
+                  "project": {
+                    "description": "a project you follow, by slug; your home project when omitted",
+                    "maxLength": 100,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "provider": {
+                    "description": "integration: the provider whose connection the project binds",
                     "pattern": "^[a-z][a-z0-9-]{0,62}$",
                     "type": "string"
                   },
                   "service": {
-                    "description": "the profile's service the value is a key of; or actor",
+                    "description": "testing: the service the value is a key of; or actor",
                     "pattern": "^[a-zA-Z][a-zA-Z0-9-]{0,62}$",
                     "type": "string"
                   },
@@ -57819,7 +57846,7 @@
                 },
                 "required": [
                   "thread",
-                  "profile"
+                  "kind"
                 ],
                 "type": "object"
               }
@@ -69842,6 +69869,79 @@
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
+        ]
+      }
+    },
+    "/api/secret-writes/{token}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [],
+        "x-forge-permission": {
+          "none": "refused for every caller: a write URL takes a PUT alone and answers no read"
+        },
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
+      },
+      "put": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{43}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {}
+            }
+          },
+          "description": "The secret's value itself, as a file's bytes (curl --data-binary @file); one closing newline is the file's and is dropped. Its slot comes from the write token.",
+          "required": true
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [],
+        "x-forge-permission": {
+          "none": "the write token in the path is the credential: unguessable, single use and short-lived, minted by a room agent’s secret link for one slot, which it fixes; it writes that slot and reads nothing"
+        },
+        "x-forge-validated": [
+          "param"
         ]
       }
     },

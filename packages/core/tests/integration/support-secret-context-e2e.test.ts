@@ -91,6 +91,7 @@ describe('ISS-1326: a key sent alone is a secret where its thread says so', () =
         const link = await (act as Act)({
           action: 'secret_link',
           thread: m.thread,
+          kind: 'testing',
           profile: 'stg',
           service: 'pgprints',
         });
@@ -271,7 +272,7 @@ describe('ISS-1328: support.secret_link answers the link of one declared slot', 
     ];
     await w.ask(w.chat.bob, 'Mình gửi key PGPrints test thế nào?', async (m, act) => {
       for (const t of tries)
-        answers.push(await act({ action: 'secret_link', thread: m.thread, ...t }));
+        answers.push(await act({ action: 'secret_link', thread: m.thread, kind: 'testing', ...t }));
       return undefined;
     });
     const [service, actor, ...refused] = answers;
@@ -281,8 +282,8 @@ describe('ISS-1328: support.secret_link answers the link of one declared slot', 
           `/projects/${slug}/settings\\?tab=testing&profile=stg&service=pgprints#profile-stg$`,
         ),
       ),
-      profile: 'stg',
-      slot: { service: 'pgprints' },
+      kind: 'testing',
+      slot: { profile: 'stg', service: 'pgprints' },
     });
     expect(String(service?.says)).toContain('never ask anyone to rotate it');
     expect(actor).toMatchObject({ slot: { actor: 'supplier' } });

@@ -50,11 +50,16 @@ export const refuse = refuser<VariableRefusalCode>('VARIABLE_REFUSED');
 /** Where an agent reads a value: inside a run, never at a project route (BC-6). */
 const RUN_DOOR = 'GET /api/jobs/<run id>/variables/<environment>';
 
-export interface Caller {
-  userId: string;
-  access: ProjectAccess;
+/** Who a write is recorded as: an account, or none where a one-time write URL made it (ISS-1348). */
+export interface Writer {
+  userId: string | null;
   agency: 'human' | 'agent';
   tokenId: string | null;
+}
+
+export interface Caller extends Writer {
+  userId: string;
+  access: ProjectAccess;
 }
 
 export async function callerOf(projectId: string, userId: string): Promise<Caller> {
@@ -102,7 +107,7 @@ export async function declaredEnvironments(projectId: string): Promise<DeclaredE
 }
 
 export const eventOf = (
-  caller: Caller,
+  caller: Writer,
   row: { projectId: string; key: string; environment: string | null },
   act: EventInput['act'],
   more: Partial<EventInput> = {},
@@ -191,7 +196,7 @@ interface SetInput {
 export async function setIn(
   tx: Tx,
   projectId: string,
-  caller: Caller,
+  caller: Writer,
   input: SetInput,
   act: {
     create: 'created' | 'approved';

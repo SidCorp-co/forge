@@ -1535,9 +1535,9 @@
     "by": "ISS-1251"
   },
   "support.channel": {
-    "hash": "52215b21e216e8c1",
-    "on": "2026-11-18",
-    "by": "ISS-1326"
+    "hash": "8893668d4c8ed0f7",
+    "on": "2026-11-19",
+    "by": "ISS-1348"
   },
   "support.check_result": {
     "hash": "64ba77a12f5da891",
@@ -1745,9 +1745,9 @@
     "by": "ISS-1256"
   },
   "support.secret_link": {
-    "hash": "4805f751bcccf0cf",
-    "on": "2026-11-18",
-    "by": "ISS-1328"
+    "hash": "93900235ea470c5a",
+    "on": "2026-11-19",
+    "by": "ISS-1348"
   },
   "support.silent": {
     "hash": "d2c11967a9624ef6",

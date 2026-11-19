@@ -157,6 +157,8 @@ const SECRET_DOORS: Readonly<Record<string, string>> = {
     'trades a product’s code at its token endpoint for the owner’s tokens (ISS-1047); a PAT is no OAuth code',
   'support/owner-sign-in.ts':
     'finishOwnerSignIn looks a sign-in up by the SHA-256 of the state the product returns, spends it once, and trades its code with the PKCE verifier only core holds; a PAT is neither',
+  'support/secret-write.ts':
+    'PUT /api/secret-writes/:token sets one secret slot with no session, for whoever holds the write token core minted for one ask; it is looked up by its SHA-256, spent once, and a PAT is never one',
   'support/owner-routes.ts':
     'GET /api/support/owner-sign-in/callback takes a product’s code and a state core minted for one owner sign-in, with no session; the state is looked up by its SHA-256 and spent once, and a PAT is neither',
   'devices/login-routes.ts':
