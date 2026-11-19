@@ -504,7 +504,12 @@ fn open_channel(
         );
         return (env, None);
     };
-    match store.mint(agent_session_id, project_id, slug, pane) {
+    // A job's pane name and session are its own and no pane runs under them, so
+    // what the mint replaces is settled at once, as a mint used to do itself.
+    let minted = store
+        .mint(agent_session_id, project_id, slug, pane)
+        .and_then(|token| store.settle(&token).map(|()| token));
+    match minted {
         Ok(token) => {
             let mut env = env;
             env.push((session_tokens::TOKEN_ENV.to_string(), token));

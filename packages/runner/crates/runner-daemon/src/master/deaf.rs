@@ -230,9 +230,13 @@ pub(crate) fn replacement_of(ended_a_deaf_pane: bool, started: bool) -> Replacem
 ///
 /// So the map is read back. `Err` carries what stopped it in words a caller can
 /// put in front of a person.
+///
+/// Only `token` goes, never everything naming its session: core can hand a
+/// placement the session a running pane already holds, and withdrawing by
+/// session took that pane's capability with the unused one (ISS-1306).
 pub(crate) fn withdraw_unplaced_mint(
     tokens: Option<&session_tokens::SessionTokens>,
-    session_id: &str,
+    token: &str,
 ) -> std::result::Result<(), String> {
     let Some(store) = tokens else {
         // Not reachable from the placement path, which returns `Absent` rather
@@ -240,10 +244,10 @@ pub(crate) fn withdraw_unplaced_mint(
         // assumed, because what it would mean is a mint nothing can take back.
         return Err("this box has no capability map to withdraw from".to_string());
     };
-    store.retire(session_id);
-    match store.holds_session(session_id) {
+    let withdrawn = store.withdraw(token);
+    match store.holds_token(token) {
         Ok(false) => Ok(()),
-        Ok(true) => Err("the map still names that session after the withdrawal, so the map could not be written".to_string()),
+        Ok(true) => Err(format!("the map still holds that capability after the withdrawal, so the map could not be written ({})", withdrawn.err().map_or_else(|| "no error was given".to_string(), |e| e.to_string()))),
         Err(e) => Err(format!("the map could not be read back, so whether the withdrawal took is unknown: {e}")),
     }
 }
@@ -276,10 +280,10 @@ pub(crate) async fn deaf_pane_outlived_its_kill(
     project_id: &str,
     slug: &str,
     name: &str,
-    session_id: &str,
+    (session_id, token): (&str, &str),
     ports: &CapabilityPorts<'_>,
 ) -> PaneState {
-    let withdrawn = withdraw_unplaced_mint(ports.tokens, session_id);
+    let withdrawn = withdraw_unplaced_mint(ports.tokens, token);
     // Held across sweeps where it failed, released where it took. This is what
     // makes the verdict STAY stale: the map still says `current`, and nothing
     // that could correct the map is available to a box that could not write it.

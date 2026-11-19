@@ -144,7 +144,7 @@ pub(crate) async fn place_pane(
     };
     let mut env = prepared.env;
     let standing = prepared.standing;
-    if let Err(why) = mint_into(
+    let token = match mint_into(
         &mut env,
         ports.tokens,
         session,
@@ -152,9 +152,12 @@ pub(crate) async fn place_pane(
         &resolved.slug,
         name,
     ) {
-        say_unplaced(masters, project_id, &resolved.slug, why);
-        return PaneState::Absent;
-    }
+        Ok(token) => token,
+        Err(why) => {
+            say_unplaced(masters, project_id, &resolved.slug, why);
+            return PaneState::Absent;
+        }
+    };
     let resume = carry.conversation;
     let mcp_config = prepared.mcp_config.as_deref();
     let placed = match start_session(t, carry, &env, mcp_config).await {
@@ -165,7 +168,7 @@ pub(crate) async fn place_pane(
                 project_id,
                 &resolved.slug,
                 ports.tokens,
-                session,
+                (session, &token),
                 detail,
             );
             return PaneState::Absent;
@@ -179,11 +182,12 @@ pub(crate) async fn place_pane(
             project_id,
             slug,
             name,
-            &session.session_id,
+            (&session.session_id, &token),
             ports,
         )
         .await;
     }
+    settle_mint(ports.tokens, &resolved.slug, &token, started);
     tracing::info!(
         "[master] {}: resident session {name} {} in {} — `{}` to watch it",
         resolved.slug,
@@ -351,7 +355,8 @@ fn write_pane_mcp(
 }
 
 /// The mint is the last refusal before the pane. Every refusal above it leaves
-/// no capability behind; one below it has to withdraw what it minted.
+/// no capability behind; one below it has to withdraw what it minted, and only
+/// that, by the token answered here.
 fn mint_into(
     env: &mut Vec<(String, String)>,
     tokens: Option<&session_tokens::SessionTokens>,
@@ -359,7 +364,7 @@ fn mint_into(
     project_id: &str,
     slug: &str,
     name: &str,
-) -> std::result::Result<(), Unplaced> {
+) -> std::result::Result<String, Unplaced> {
     let Some(store) = tokens else {
         return Err(Unplaced::CapabilityUnminted {
             detail: "this box cannot resolve where its control token map lives".into(),
@@ -370,8 +375,36 @@ fn mint_into(
         .map_err(|e| Unplaced::CapabilityUnminted {
             detail: e.to_string(),
         })?;
-    env.push((session_tokens::TOKEN_ENV.to_string(), token));
-    Ok(())
+    env.push((session_tokens::TOKEN_ENV.to_string(), token.clone()));
+    Ok(token)
+}
+
+/// What a placement's capability becomes once the start answered (ISS-1306). A
+/// session it started holds `token`, so the entries for the pane it replaced
+/// go. A session already up under the name holds its own token and was handed
+/// none, so `token` goes and the running session keeps its entry; dropping that
+/// entry left a live master refused on every frame.
+fn settle_mint(
+    tokens: Option<&session_tokens::SessionTokens>,
+    slug: &str,
+    token: &str,
+    started: bool,
+) {
+    let Some(store) = tokens else { return };
+    let (done, what) = if started {
+        (
+            store.settle(token),
+            "the entries it replaces could not be retired",
+        )
+    } else {
+        (
+            store.withdraw(token),
+            "the capability minted for a session already up could not be withdrawn",
+        )
+    };
+    if let Err(e) = done {
+        tracing::error!("[master] {slug}: {what}: {e}");
+    }
 }
 
 /// tmux did not start the pane: no pane holds the capability minted for it, so
@@ -382,10 +415,10 @@ fn unstarted(
     project_id: &str,
     slug: &str,
     tokens: Option<&session_tokens::SessionTokens>,
-    session: &master_api::MasterSession,
+    (session, token): (&master_api::MasterSession, &str),
     detail: String,
 ) {
-    let withdrawn = withdraw_unplaced_mint(tokens, &session.session_id);
+    let withdrawn = withdraw_unplaced_mint(tokens, token);
     masters.note_unwithdrawn(
         project_id,
         withdrawn

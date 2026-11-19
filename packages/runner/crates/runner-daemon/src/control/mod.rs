@@ -389,10 +389,8 @@ async fn serve_one(ctl: Arc<Control>, stream: UnixStream) {
     }
     let reply = match serde_json::from_str::<Request>(&line) {
         Ok(req) => match caller_of(&ctl, req.token()) {
-            Some((holder, session_id)) => {
-                serve_request(&ctl, req, &holder, &session_id, peer).await
-            }
-            None => ClaimReply::refused("unknown_token"),
+            Ok((holder, session_id)) => serve_request(&ctl, req, &holder, &session_id, peer).await,
+            Err(unresolved) => ClaimReply::refused(unresolved.refusal()),
         },
         Err(e) => ClaimReply::refused(format!("undecodable request: {e}")),
     };
@@ -411,11 +409,18 @@ async fn serve_one(ctl: Arc<Control>, stream: UnixStream) {
 /// rewritten — what moves is which session this daemon serves the pane under.
 /// Anywhere else, and for a capability minted before the record, the frame acts
 /// under the session the capability names.
+///
+/// A token that resolves to no one is refused with its cause, the map absent
+/// that entry or the map unreadable, and the way back (ISS-1306). It is never
+/// a bare `unknown_token`.
 #[cfg(unix)]
-fn caller_of(ctl: &Control, token: &str) -> Option<(Holder, String)> {
+fn caller_of(
+    ctl: &Control,
+    token: &str,
+) -> Result<(Holder, String), crate::session_tokens::Unresolved> {
     let holder = ctl.tokens.resolve(token)?;
     let session = acting_session(&ctl.masters, &holder);
-    Some((holder, session))
+    Ok((holder, session))
 }
 
 #[cfg(unix)]
@@ -659,14 +664,43 @@ mod credential_refused_tests {
         assert_eq!(gate_denial(&gate), Some("run r is promised to tool call t"));
         let before_the_flag = wire(&ClaimReply::refused(runner_core::dispatch_gate::REFUSAL));
         assert!(gate_denial(&before_the_flag).is_some());
-        assert_eq!(
-            gate_denial(&wire(&ClaimReply::refused("unknown_token"))),
-            None
-        );
-        let plain = serde_json::to_string(&ClaimReply::refused("unknown_token")).unwrap();
+        let absent = crate::session_tokens::Unresolved::Absent {
+            map: "/x/control-tokens.json".into(),
+        }
+        .refusal();
+        assert_eq!(gate_denial(&wire(&ClaimReply::refused(&absent))), None);
+        let plain = serde_json::to_string(&ClaimReply::refused(absent)).unwrap();
         assert!(
             !plain.contains("deny"),
             "an ordinary reply grew a field: {plain}"
+        );
+    }
+
+    /// A frame whose token the map does not hold is answered with the cause,
+    /// the map's path and the way back, never a bare `unknown_token` (ISS-1306).
+    #[tokio::test]
+    async fn a_frame_whose_token_is_absent_is_answered_with_the_fix() {
+        let ctl = ctl();
+        let (near, far) = UnixStream::pair().unwrap();
+        let served = tokio::spawn(serve_one(ctl.clone(), far));
+        let mut near = BufReader::new(near);
+        let frame = serde_json::json!({
+            "op": "run_close", "token": "a-token-no-pane-holds", "runId": "r-1"
+        });
+        let line = format!("{frame}\n");
+        near.get_mut().write_all(line.as_bytes()).await.unwrap();
+        let mut answer = String::new();
+        near.read_line(&mut answer).await.unwrap();
+        served.await.unwrap();
+        let reply: ClaimReply = serde_json::from_str(&answer).unwrap();
+        let reason = reply.reason.unwrap_or_default();
+        assert!(!reply.ok);
+        assert_ne!(reason, "unknown_token");
+        assert!(
+            reason.starts_with("[CAPABILITY_ABSENT]")
+                && reason.contains(&ctl.tokens.path().display().to_string())
+                && reason.contains("forge-runner master kill"),
+            "{reason}"
         );
     }
 
