@@ -74,7 +74,7 @@ export async function secretLink(
   input: SupportSecretLinkRequest,
 ): Promise<Outcome<SecretLink>> {
   if (!(await knownThread(room, input.thread))) return threadUnknown(input.thread);
-  const project = await namedProject(room, undefined);
+  const project = await namedProject(room, input.project);
   if (!project.ok) return project;
   const slot = await resolveSlot(project.value, input);
   if (!slot.ok) return slot;

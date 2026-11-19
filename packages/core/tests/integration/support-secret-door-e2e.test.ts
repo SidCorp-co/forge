@@ -1,5 +1,5 @@
 /**
- * The one secret door (ISS-1348), from epod's thread of 19/11: the master needed a
+ * The one secret door (ISS-1348, ISS-1346), from epod's thread of 19/11: the master needed a
  * production OAuth secret, the room agent could only link a testing profile's slot, named a settings
  * screen in prose, and the owner pasted the secret in chat.
  *
@@ -7,6 +7,8 @@
  * - support.secret_link names a variable { environment, key }, a testing profile's slot or an
  *   integration's credential, and core builds the link to that one field; a variable not held yet
  *   opens as a new one; each kind refuses by name what the project does not declare (c1);
+ * - it names another project of the room's reach with `project`, and refuses one outside it
+ *   (ISS-1346 c1, c2, c3);
  * - with presign, a one-time write URL sets the slot once: a second use, a use past its time, a GET
  *   and an empty body are each refused by name, and the use is kept by fingerprint (c2);
  * - the thread that asked is told by fingerprint once the slot holds a value, through the write URL
@@ -181,6 +183,27 @@ beforeAll(async () => {
 }, 180_000);
 
 afterAll(() => w.stop());
+
+describe('ISS-1346: the secret link names a project of the room’s reach', () => {
+  it('opens the sibling’s settings at its declared slot, keeps the room’s own when none is named, and refuses one outside', async () => {
+    const thread = await threadOf('sid-desk cần key mail-support cho stg'); // i18n-allow: "sid-desk needs the mail-support key for stg"
+    const ask = (project?: string) =>
+      secretLink(room, {
+        thread,
+        kind: 'testing',
+        profile: 'stg',
+        service: 'mail-support',
+        ...(project ? { project } : {}),
+      });
+    // planted on today's code: the link was the room's own project's, which declares no stg
+    const named = linkOf(await ask(sibling.slug));
+    expect(named.project).toBe(sibling.slug);
+    expect(new URL(named.link).pathname).toBe(`/projects/${sibling.slug}/settings`);
+    expect(new URL(named.link).search).toBe('?tab=testing&profile=stg&service=mail-support');
+    expect(codeOf(await ask())).toBe('SUPPORT_SECRET_PROFILE_UNKNOWN');
+    expect(codeOf(await ask('no-such-project'))).toBe('OPS_OUT_OF_SCOPE');
+  });
+});
 
 describe('ISS-1348: one secret act for every kind of slot', () => {
   let thread = '';
