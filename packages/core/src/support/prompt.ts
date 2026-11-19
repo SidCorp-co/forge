@@ -25,7 +25,8 @@ import { ownerOwedNote } from './owner-owed.js';
 import { OWNER_MAP_ACTS, roomConductLines } from './room-conduct.js';
 import { type RoutingSignals, routingSignalsOf } from './routing-signals.js';
 import type { ActionRow, RoomRow } from './store.js';
-import { recentThreads, threadConversation, threadWritings } from './store.js';
+import { recentThreads, threadWritings } from './store.js';
+import { threadConversation } from './thread-conversation.js';
 
 /** The source label every member line carries inside its untrusted frame. */
 export const SUPPORT_MEMBER_SOURCE = 'support group member';

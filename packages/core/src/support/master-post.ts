@@ -43,13 +43,7 @@ import { reportThreadFor } from './report-thread.js';
 import { toldResultOfThread } from './room-reads.js';
 import { boundButUndeclared, declareSupportRooms, heldElsewhere, roomIsBound } from './rooms.js';
 import { type SessionDoor, screenForThread } from './screen.js';
-import {
-  insertAction,
-  type RoomRow,
-  roomsOfProject,
-  threadConversation,
-  threadMembers,
-} from './store.js';
+import { insertAction, type RoomRow, roomsOfProject, threadMembers } from './store.js';
 import {
   postInThread,
   projectThreadOfRoom,
@@ -58,6 +52,7 @@ import {
   TOP_LEVEL,
   topLevelThreadOf,
 } from './thread.js';
+import { threadConversation } from './thread-conversation.js';
 
 /** The tool a master's post is recorded under; its edit and delete read it back (ISS-1238). */
 export const TOOL = 'master_post';

@@ -7,7 +7,8 @@ vi.hoisted(() => {
 });
 
 import { deliverWaiting } from '../../src/support/dispatch.js';
-import { insertAction, threadConversation } from '../../src/support/store.js';
+import { insertAction } from '../../src/support/store.js';
+import { threadConversation } from '../../src/support/thread-conversation.js';
 import { rows } from '../helpers/factories.js';
 import { AgentWorld } from '../helpers/support-agent-world.js';
 import { code } from '../helpers/support-channel.js';

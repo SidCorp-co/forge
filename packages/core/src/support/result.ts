@@ -20,9 +20,9 @@ import {
   projectsWithOpenLinks,
   type RoomRow,
   roomById,
-  threadConversation,
 } from './store.js';
 import { scrubbedForRoom } from './thread.js';
+import { threadConversation } from './thread-conversation.js';
 
 /** How much of the team's last note on a carrier a result note hands the session. */
 const FOUND_CHARS = 1500;

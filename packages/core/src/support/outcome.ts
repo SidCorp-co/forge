@@ -1,7 +1,8 @@
 // The answer each support act gives: its value, or the refusals naming what could not stand.
 
 import { type Refusal, refusalOf } from './refusals.js';
-import { type RoomRow, threadConversation } from './store.js';
+import type { RoomRow } from './store.js';
+import { threadConversation } from './thread-conversation.js';
 
 export type Outcome<T> = { ok: true; value: T } | { ok: false; refusals: Refusal[] };
 

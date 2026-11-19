@@ -4,7 +4,8 @@ const supportApisOf = vi.fn();
 vi.mock('../integrations/support-api/index.js', () => ({ supportApisOf }));
 const readProjectDocument = vi.fn(async (): Promise<unknown> => null);
 vi.mock('../project-config/index.js', () => ({ readProjectDocument }));
-vi.mock('./store.js', () => ({ insertAction: vi.fn(), threadConversation: vi.fn() }));
+vi.mock('./store.js', () => ({ insertAction: vi.fn() }));
+vi.mock('./thread-conversation.js', () => ({ threadConversation: vi.fn() }));
 const raiseTechnical = vi.fn(async (..._args: unknown[]) => ({ ok: true }));
 vi.mock('./technical-channel.js', () => ({ raiseTechnical }));
 

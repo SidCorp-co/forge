@@ -25,7 +25,8 @@ import {
 } from '../release-batch/index.js';
 import { handOnRooms } from './dispatch.js';
 import { environmentNamed, promiseNote, untrackedWhy } from './promise-rules.js';
-import { insertAction, roomById, threadConversation } from './store.js';
+import { insertAction, roomById } from './store.js';
+import { threadConversation } from './thread-conversation.js';
 
 type PromiseRow = typeof supportPromises.$inferSelect;
 

@@ -16,8 +16,6 @@ import {
 } from '../db/schema-support.js';
 import { turnOfRequest } from './turn-of-act.js';
 
-export { threadConversation } from './thread-conversation.js';
-
 export type RoomRow = typeof supportRooms.$inferSelect;
 export type ActionRow = typeof supportActions.$inferSelect;
 export type ProposalRow = typeof supportProposals.$inferSelect;
