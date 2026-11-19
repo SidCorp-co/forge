@@ -4,10 +4,12 @@
 // again before it expires.
 
 import { createHash, randomBytes } from 'node:crypto';
+import type { OutboxEventPayload } from '@forge/contracts/outbox-events';
 import type { SecretSlotKind } from '@forge/contracts/support';
 import { and, desc, eq, gt, gte, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { supportSecretAsks } from '../db/schema-support-secrets.js';
+import { emitEvent } from '../outbox/index.js';
 
 export type AskRow = typeof supportSecretAsks.$inferSelect;
 
@@ -115,4 +117,11 @@ export async function openAskIn(roomId: string, thread: string): Promise<AskRow 
     .orderBy(desc(supportSecretAsks.createdAt))
     .limit(1);
   return row ?? null;
+}
+
+/** A slot's fill fact a write built and did not emit itself (an integration's credential), told to its asks. */
+export async function emitSlotFilled(
+  filled: OutboxEventPayload<'secret.slotFilled'>,
+): Promise<void> {
+  await emitEvent(db, 'secret.slotFilled', filled);
 }

@@ -12,14 +12,18 @@ import type { Context } from 'hono';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { z } from 'zod';
-import { db } from '../db/client.js';
 import { fingerprintSecret, writeConnectionCredential } from '../integrations/index.js';
 import { RefusalError, refused } from '../lib/refusal.js';
 import { invalid, noQuery, rawBody, zValidator } from '../middleware/zod-validator.js';
-import { emitEvent } from '../outbox/index.js';
 import { requiresNoPermission } from '../permissions/index.js';
 import { SECRET_VALUE_MAX, writeSecret, writeVariableByGrant } from '../project-config/index.js';
-import { type AskRow, askOfToken, claimWrite, releaseWrite } from './secret-asks.js';
+import {
+  type AskRow,
+  askOfToken,
+  claimWrite,
+  emitSlotFilled,
+  releaseWrite,
+} from './secret-asks.js';
 import { slotLabelOf } from './secret-receipts.js';
 
 const TOKEN = z.object({ token: z.string().regex(/^[A-Za-z0-9_-]{43}$/) });
@@ -108,7 +112,7 @@ async function writeSlot(ask: AskRow, value: string, from: string): Promise<stri
   }
   const filled = await writeConnectionCredential(s.connection ?? '', value);
   // the adapter builds the fact and emits none: the asking threads hear of it from here
-  await emitEvent(db, 'secret.slotFilled', filled);
+  await emitSlotFilled(filled);
   return filled.fingerprint;
 }
 
