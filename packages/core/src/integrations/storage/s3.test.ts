@@ -6,7 +6,7 @@ const settings = s3SettingsFrom({
   S3_REGION: 'us-east-1',
   S3_BUCKET: 'shared',
   S3_PREFIX: 'forge-dev',
-  S3_FORCE_PATH_STYLE: true,
+  S3_FORCE_PATH_STYLE: 'true',
   S3_ACCESS_KEY_ID: 'unit',
   S3_SECRET_ACCESS_KEY: 'unit',
 });
@@ -43,10 +43,12 @@ describe('S3Storage keeps every key under S3_PREFIX (ISS-1364)', () => {
         S3_REGION: 'us-east-1',
         S3_BUCKET: undefined,
         S3_PREFIX: 'p',
-        S3_FORCE_PATH_STYLE: false,
+        S3_FORCE_PATH_STYLE: 'false',
         S3_ACCESS_KEY_ID: 'a',
         S3_SECRET_ACCESS_KEY: 'b',
       }),
-    ).toThrow('the s3 storage driver needs S3_BUCKET, which are unset');
+    ).toThrow(
+      /the s3 storage driver cannot start:\n {2}- S3_BUCKET: required when STORAGE_DRIVER=s3; it is unset/,
+    );
   });
 });

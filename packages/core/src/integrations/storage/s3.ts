@@ -6,7 +6,7 @@ import {
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
-import { type Env, missingS3Settings } from '../../lib/env.js';
+import { type Env, s3SettingIssues } from '../../lib/env.js';
 import type { StorageAdapter } from './types.js';
 
 /** What the s3 driver connects with: an S3-compatible server, one bucket, one folder in it. */
@@ -34,28 +34,29 @@ type S3Env = Pick<
 
 /** The s3 settings of `parsed`, refused naming each one unset (boot refuses the same, `lib/env.ts:storageEnvIssues`). */
 export function s3SettingsFrom(parsed: S3Env): S3Settings {
-  const missing = missingS3Settings(parsed);
+  const issues = s3SettingIssues(parsed);
   const {
     S3_ENDPOINT: endpoint,
     S3_REGION: region,
     S3_BUCKET: bucket,
     S3_PREFIX: prefix,
-    S3_FORCE_PATH_STYLE: forcePathStyle,
+    S3_FORCE_PATH_STYLE: style,
     S3_ACCESS_KEY_ID: accessKeyId,
     S3_SECRET_ACCESS_KEY: secretAccessKey,
   } = parsed;
   if (
-    missing.length > 0 ||
+    issues.length > 0 ||
     endpoint === undefined ||
     region === undefined ||
     bucket === undefined ||
     prefix === undefined ||
-    forcePathStyle === undefined ||
+    style === undefined ||
     accessKeyId === undefined ||
     secretAccessKey === undefined
   ) {
-    throw new Error(`the s3 storage driver needs ${missing.join(', ')}, which are unset`);
+    throw new Error(`the s3 storage driver cannot start:\n${issues.join('\n')}`);
   }
+  const forcePathStyle = style === 'true' || style === '1';
   return {
     endpoint,
     region,

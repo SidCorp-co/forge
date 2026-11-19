@@ -108,25 +108,15 @@ const EnvSchema = z.object({
     .default(5 * 1024 * 1024),
   /** `local` keeps uploads under UPLOADS_DIR; `s3` keeps them in S3_BUCKET under S3_PREFIX (`storageEnvIssues`). */
   STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
-  S3_ENDPOINT: z.url().optional(),
+  // Read as plain text: their shape is checked only where they are used, by `s3SettingIssues`, so a
+  // misshapen S3 setting never stops a container on the local driver (forge-dev, 2026-11-19 13:34Z).
+  S3_ENDPOINT: z.string().min(1).optional(),
   S3_REGION: z.string().min(1).optional(),
   S3_BUCKET: z.string().min(1).optional(),
   /** The folder every key lives under in a bucket other apps share, e.g. `forge-dev/`. */
-  S3_PREFIX: z
-    .string()
-    .min(1)
-    .refine((p) => !p.startsWith('/') && !p.split('/').includes('..'), {
-      error:
-        "S3_PREFIX is a folder inside the bucket such as 'forge-dev/': no leading '/', no '..'",
-    })
-    .optional(),
-  S3_FORCE_PATH_STYLE: z
-    .enum(['true', 'false', '1', '0'], {
-      error: (i) =>
-        `S3_FORCE_PATH_STYLE must be one of true, false, 1, 0; got ${JSON.stringify(i.input)}`,
-    })
-    .optional()
-    .transform((v) => (v === undefined ? undefined : v === 'true' || v === '1')),
+  S3_PREFIX: z.string().min(1).optional(),
+  /** `true`, `false`, `1` or `0`. */
+  S3_FORCE_PATH_STYLE: z.string().min(1).optional(),
   S3_ACCESS_KEY_ID: z.string().min(1).optional(),
   S3_SECRET_ACCESS_KEY: z.string().min(1).optional(),
   LITELLM_API_URL: z.url().optional(),
@@ -243,15 +233,45 @@ export function missingS3Settings(parsed: Pick<Env, (typeof S3_SETTINGS)[number]
   return S3_SETTINGS.filter((name) => parsed[name] === undefined);
 }
 
+const PATH_STYLE = ['true', 'false', '1', '0'];
+
 /**
- * STORAGE_DRIVER=s3 with a setting missing would boot and fail on the first upload, so it is
- * refused at boot naming each missing variable (ISS-1364, replacing ISS-190's refusal of s3 itself).
+ * Each s3 setting `parsed` leaves unset or misshapen, one line per setting, naming it and never
+ * printing what an endpoint or a key holds. The driver and the upload migration read through this.
+ */
+export function s3SettingIssues(parsed: Pick<Env, (typeof S3_SETTINGS)[number]>): string[] {
+  const missing = missingS3Settings(parsed).map(
+    (name) => `  - ${name}: required when STORAGE_DRIVER=s3; it is unset`,
+  );
+  const shaped: string[] = [];
+  if (parsed.S3_ENDPOINT !== undefined && !URL.canParse(parsed.S3_ENDPOINT)) {
+    shaped.push(
+      '  - S3_ENDPOINT: Invalid URL; set it with its scheme, such as https://s3.example.com',
+    );
+  }
+  const prefix = parsed.S3_PREFIX;
+  if (prefix !== undefined && (prefix.startsWith('/') || prefix.split('/').includes('..'))) {
+    shaped.push(
+      "  - S3_PREFIX: S3_PREFIX is a folder inside the bucket such as 'forge-dev/': no leading '/', no '..'",
+    );
+  }
+  const style = parsed.S3_FORCE_PATH_STYLE;
+  if (style !== undefined && !PATH_STYLE.includes(style)) {
+    shaped.push(
+      `  - S3_FORCE_PATH_STYLE: S3_FORCE_PATH_STYLE must be one of true, false, 1, 0; got ${JSON.stringify(style)}`,
+    );
+  }
+  return [...missing, ...shaped];
+}
+
+/**
+ * STORAGE_DRIVER=s3 with a setting missing or misshapen would boot and fail on the first upload, so
+ * it is refused at boot naming each one (ISS-1364, replacing ISS-190's refusal of s3 itself). The
+ * local driver reads none of them, so nothing an S3 setting holds stops it from booting.
  */
 export function storageEnvIssues(parsed: Env): string[] {
   if (parsed.STORAGE_DRIVER !== 's3') return [];
-  return missingS3Settings(parsed).map(
-    (name) => `  - ${name}: required when STORAGE_DRIVER=s3; it is unset`,
-  );
+  return s3SettingIssues(parsed);
 }
 
 const RETIRED_ENV_VARS: Record<string, string> = {

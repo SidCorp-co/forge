@@ -12,8 +12,7 @@ const S3_ENV = {
   S3_SECRET_ACCESS_KEY: 'unit-secret-key',
 } as const;
 
-const parsed = (over: Partial<Env>) =>
-  ({ ...S3_ENV, S3_FORCE_PATH_STYLE: true, ...over }) as unknown as Env;
+const parsed = (over: Partial<Env>) => ({ ...S3_ENV, ...over }) as unknown as Env;
 
 /** Loads `lib/env.ts` fresh under `vars`, the way core reads its environment at boot. */
 async function boot(vars: Record<string, string | undefined>): Promise<unknown> {
@@ -57,6 +56,23 @@ describe('STORAGE_DRIVER=s3: refused at boot naming each missing S3_* setting (I
   it('asks nothing of the local driver, the default', async () => {
     expect(storageEnvIssues(parsed({ STORAGE_DRIVER: 'local', S3_BUCKET: undefined }))).toEqual([]);
     await expect(boot({ STORAGE_DRIVER: undefined })).resolves.toBe('local');
+  });
+
+  // forge-dev, 2026-11-19 13:34Z: S3 settings set ahead of the switch, driver still local, and every
+  // boot died on "S3_ENDPOINT: Invalid URL". The local driver reads no S3 setting, so none stops it.
+  it('boots the local driver whatever an S3 setting holds, and refuses the same value under s3', async () => {
+    const misshapen = {
+      S3_ENDPOINT: 's3.example.test',
+      S3_PREFIX: '/x',
+      S3_FORCE_PATH_STYLE: 'yes',
+    };
+    await expect(boot({ ...S3_ENV, ...misshapen, STORAGE_DRIVER: 'local' })).resolves.toBe('local');
+    await expect(boot({ ...S3_ENV, ...misshapen })).rejects.toThrow(
+      /- S3_ENDPOINT: Invalid URL; set it with its scheme/,
+    );
+    expect(storageEnvIssues(parsed({ S3_ENDPOINT: 's3.example.test' })).join('\n')).not.toContain(
+      's3.example.test',
+    );
   });
 
   it('refuses a prefix that leaves its folder, and a path-style flag that is no boolean', async () => {
