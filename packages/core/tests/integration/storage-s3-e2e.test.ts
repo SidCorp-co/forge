@@ -117,7 +117,7 @@ describe('the upload migration (ISS-1364 criterion 3)', () => {
 
       const unset = run({ S3_PREFIX: '' });
       expect(unset.status).toBe(1);
-      expect(unset.stderr).toContain('the s3 storage driver needs S3_PREFIX, which are unset');
+      expect(unset.stderr).toContain('- S3_PREFIX: required when STORAGE_DRIVER=s3; it is unset');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
