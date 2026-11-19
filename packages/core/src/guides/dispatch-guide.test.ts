@@ -115,7 +115,9 @@ describe('the dispatch guide teaches batches by default', () => {
     const direct = prose.slice(prose.indexOf('### Direct mode'));
     for (const section of [declare, direct]) {
       expect(section).toContain('woken with `SendMessage` takes');
-      expect(section).toMatch(/never wake (a finished one|one) while a (declared run|run you declared) waits for its dispatch/i);
+      expect(section).toMatch(
+        /never wake (a finished one|one) while a (declared run|run you declared) waits for its dispatch/i,
+      );
       expect(section).toContain('`forge-runner run close`');
     }
     expect(declare).toContain('dispatch first, or close the run you will not dispatch');
