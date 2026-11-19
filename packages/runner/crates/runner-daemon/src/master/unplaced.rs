@@ -127,10 +127,22 @@ impl std::fmt::Display for Unplaced {
                 f,
                 "everything it needs was in place and the pane itself did not start ({detail})"
             ),
-            Self::CutoverWaits { detail, .. } => write!(
-                f,
-                "core places its master as a background session and nothing is started beside the session holding its conversation: {detail}"
-            ),
+            Self::CutoverWaits { detail, pane } => {
+                write!(
+                    f,
+                    "core places its master as a background session and nothing is started beside the session holding its conversation: {detail}"
+                )?;
+                match pane {
+                    Some(pane) => write!(
+                        f,
+                        ". Until it moves, {pane} itself declares, dispatches and closes this project's runs, and they move with its conversation"
+                    ),
+                    None => write!(
+                        f,
+                        ". The way through is to end the process holding it, or let it end, and the next sweep resumes the conversation as the master"
+                    ),
+                }
+            }
             Self::Withheld {
                 reason,
                 because,

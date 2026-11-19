@@ -354,9 +354,11 @@ fn record_declaration(
     // replaced, or let a pane that had just stopped being the master declare.
     let (recorded, written) = match holder {
         Holder::Minted(m) => {
-            let under = ctl.masters.while_live(&m.project, &m.pane, |live| {
-                (live.to_string(), led.create_run_group(new_run(live)))
-            });
+            let under = ctl
+                .masters
+                .while_declaring(&m.project, &m.pane, &m.session, |live| {
+                    (live.to_string(), led.create_run_group(new_run(live)))
+                });
             match under {
                 Some(w) => w,
                 None => {
@@ -1359,6 +1361,140 @@ mod tree_tests {
             .reason
             .unwrap_or_default()
             .contains("never opened a session at core"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    const TMUX_PANE: &str = "forge-master-proj";
+    const PLACED_WITH: &str = "sess-tmux";
+    const BUSY: &str = "[BG_CUTOVER_WAITS] forge-master-proj's tmux pane holds conversation c-1 and its session is `busy`; it stays in tmux and is moved on a sweep that reads it idle";
+
+    /// A box after ISS-1304's install: no master placed, and the last sweep left the busy tmux
+    /// master where it is (`cutover::stays`), or found the conversation held elsewhere.
+    fn waiting(dir: &Path, pane: Option<&str>) -> Arc<Control> {
+        let ctl = ctl(dir);
+        ctl.masters.forget(PROJECT);
+        ctl.masters.note_cutover_waits(PROJECT, BUSY, pane);
+        ctl
+    }
+
+    fn minted(pane: &str) -> Holder {
+        Holder::Minted(crate::session_tokens::Minted {
+            session: PLACED_WITH.into(),
+            project: PROJECT.into(),
+            slug: Some("proj".into()),
+            pane: pane.into(),
+        })
+    }
+
+    async fn declare_as(ctl: &Arc<Control>, holder: &Holder, tree: &Path) -> ClaimReply {
+        let session = super::super::acting_session(&ctl.masters, holder);
+        run_declare_as(
+            ctl,
+            holder,
+            Declaration {
+                project_id: "proj",
+                issue_keys: &["ISS-1315".to_string()],
+                worktree_path: &tree.to_string_lossy(),
+                role: None,
+                requirement: None,
+                cut: None,
+            },
+            &session,
+            None,
+        )
+        .await
+    }
+
+    /// ISS-1316: forge's master on 2026-11-18, busy in its tmux pane with a builder out after
+    /// the dev.726 install, was refused `run declare` for ISS-1315 because the box had placed no
+    /// master. Its own pane declares, dispatches and closes the run under the session it was
+    /// placed with, and the cutover's resume carries the run to the background session.
+    #[tokio::test]
+    async fn a_busy_tmux_master_waiting_for_its_cutover_declares_dispatches_and_closes() {
+        let dir = scratch();
+        let (_repo, tree) = repo_with_tree(&dir);
+        let ctl = waiting(&dir, Some(TMUX_PANE));
+        let reply = declare_as(&ctl, &minted(TMUX_PANE), &tree).await;
+        assert!(
+            reply.ok,
+            "the waiting master's declaration was refused: {reply:?}"
+        );
+        assert_eq!(reply.agent_session_id.as_deref(), Some(PLACED_WITH));
+        let run_id = reply.job_id.unwrap();
+
+        let gate = crate::control::hooks::dispatch_gate_reply(
+            &ctl,
+            runner_core::dispatch_gate::Dispatch {
+                agent_id: None,
+                subagent_type: Some(runner_core::dispatch_gate::BUILDER.into()),
+                tool_use_id: Some("toolu_1".into()),
+                transcript_path: None,
+            },
+            PLACED_WITH,
+        );
+        assert!(
+            gate.ok,
+            "the waiting master's dispatch was refused: {gate:?}"
+        );
+        assert_eq!(gate.job_id.as_deref(), Some(run_id.as_str()));
+
+        let moved_to = "sess-bg";
+        {
+            let mut held = ctl.ledger.lock().unwrap();
+            let led = held.as_mut().unwrap();
+            let inherited = crate::master::inherited_runs(led, PROJECT, "boot-1");
+            assert!(inherited.iter().any(|r| r.run_id == run_id));
+            let hosts = runner_platform::subagent_host::ProcHosts::system();
+            crate::master::placed_again(led, &inherited, moved_to, true, 0, "proj", &hosts);
+            assert_eq!(
+                led.run(&run_id).unwrap().unwrap().master_session_id,
+                moved_to
+            );
+        }
+        assert!(run_close(&ctl, &run_id, Some("done"), moved_to).await.ok);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A run declared while the master waits is closed from the same pane before it moves.
+    #[tokio::test]
+    async fn the_waiting_pane_closes_the_run_it_declared() {
+        let dir = scratch();
+        let (_repo, tree) = repo_with_tree(&dir);
+        let ctl = waiting(&dir, Some(TMUX_PANE));
+        let run_id = declare_as(&ctl, &minted(TMUX_PANE), &tree)
+            .await
+            .job_id
+            .expect("declared");
+        let session = super::super::acting_session(&ctl.masters, &minted(TMUX_PANE));
+        assert!(run_close(&ctl, &run_id, Some("done"), &session).await.ok);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Where the wait refuses a declaration, it names what holds the master and how it gets
+    /// through, never a bare "placed no master".
+    #[tokio::test]
+    async fn a_declaration_the_wait_refuses_names_what_holds_it_and_the_way_through() {
+        let dir = scratch();
+        let (_repo, tree) = repo_with_tree(&dir);
+
+        let ctl = waiting(&dir, Some(TMUX_PANE));
+        let other = declare_as(&ctl, &minted("forge-job-proj-1"), &tree).await;
+        let why = other.reason.unwrap_or_default();
+        assert!(!other.ok);
+        assert!(
+            why.contains(BUSY) && why.contains("Declare from forge-master-proj"),
+            "{why}"
+        );
+
+        let ctl = waiting(&dir, None);
+        let held = declare_as(&ctl, &minted(TMUX_PANE), &tree).await;
+        let why = held.reason.unwrap_or_default();
+        assert!(!held.ok);
+        assert!(
+            why.contains(BUSY) && why.contains("end that process"),
+            "{why}"
+        );
+        assert!(!why.contains("placed no master"), "{why}");
         let _ = std::fs::remove_dir_all(dir);
     }
 }

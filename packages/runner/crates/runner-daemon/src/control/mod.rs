@@ -449,8 +449,10 @@ fn names_minted_project(m: &crate::session_tokens::Minted, named: &str) -> bool 
 /// this daemon's master pane for that project is the pane it was minted for, so
 /// a capability handed to a job pane of the same project declares nothing. The
 /// declared project is compared against the record and never read off the
-/// frame (ISS-1050 criterion 7, re-established here by ISS-1316). A capability
-/// minted before the record keeps the bound it always had.
+/// frame (ISS-1050 criterion 7, re-established here by ISS-1316). With no master
+/// placed, the tmux pane a waiting cutover holds is that pane
+/// ([`waiting_declares`]). A capability minted before the record keeps the bound
+/// it always had.
 #[cfg(unix)]
 fn declaring_project(
     masters: &crate::master::Masters,
@@ -476,12 +478,42 @@ fn declaring_project(
                     "this box's master for {} is pane {pane}, and your capability was minted for pane {} — only the project's master pane declares its runs. Nothing was recorded",
                     m.project, m.pane
                 )),
-                None => Err(masters.why_unplaced(&m.project)),
+                None => waiting_declares(masters, m),
             }
         }
         Holder::Legacy { .. } => masters
             .project_for_session(session_id)
             .ok_or_else(|| masters.why_unplaced(project_id)),
+    }
+}
+
+/// Whether a pane minted for its project's master declares while no master is
+/// placed, which it does only as the tmux pane its cutover waits on (ISS-1316).
+///
+/// ISS-1304 keeps a busy tmux master where it is until a sweep reads it idle,
+/// and the box places none meanwhile. That pane is the only session working for
+/// its project, so it declares, dispatches and closes its runs under the session
+/// it was placed with. The cutover's resume then carries them to the background
+/// session with the conversation. Any other pane is refused, with what holds
+/// the master and how it gets through.
+#[cfg(unix)]
+fn waiting_declares(
+    masters: &crate::master::Masters,
+    m: &crate::session_tokens::Minted,
+) -> Result<String, String> {
+    let Some((detail, pane)) = masters.cutover_waits(&m.project) else {
+        return Err(masters.why_unplaced(&m.project));
+    };
+    match pane {
+        Some(pane) if pane == m.pane => Ok(m.project.clone()),
+        Some(pane) => Err(format!(
+            "this box's master for {} waits in tmux pane {pane} for its move to a background session: {detail}. Pane {pane} declares, dispatches and closes this project's runs until it moves, and this capability was minted for pane {}, which is not it. Declare from {pane}. Nothing was recorded",
+            m.project, m.pane
+        )),
+        None => Err(format!(
+            "this box places no master for {} while another process holds its conversation: {detail}. A capability minted for pane {} declares nothing until then. The way through is to end that process, or let it end, and the next sweep resumes the conversation as this project's master. Nothing was recorded",
+            m.project, m.pane
+        )),
     }
 }
 

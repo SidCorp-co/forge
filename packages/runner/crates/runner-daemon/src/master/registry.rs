@@ -83,6 +83,19 @@ pub(crate) struct Registry {
     pub(crate) dead_arrivals: std::collections::HashSet<String>,
 }
 
+impl Registry {
+    /// The tmux pane holding the project's conversation while its cutover
+    /// waits, where that is why the last sweep placed no master.
+    fn cutover_pane<'a>(&'a self, project_id: &str) -> Option<&'a str> {
+        match self.unplaced.get(project_id) {
+            Some(Unplaced::CutoverWaits {
+                pane: Some(pane), ..
+            }) => Some(pane),
+            _ => None,
+        }
+    }
+}
+
 /// One pane this box placed: when, and where its output begins.
 pub(crate) struct PlacedPane {
     pub(crate) at: Instant,
@@ -125,18 +138,36 @@ impl Masters {
         reg.live.insert(project_id.to_string(), state);
     }
 
-    /// `f` over the session this box serves `pane` under as `project_id`'s
-    /// master, with the registry held so no adoption moves it meanwhile, or
-    /// `None` where `pane` is not that master.
-    pub fn while_live<R>(
+    /// `f` over the session `pane` declares under as `project_id`'s master,
+    /// with the registry held so no adoption or sweep moves it meanwhile: the
+    /// session this box serves the live master under where `pane` is that
+    /// master, or `waiting` where no master is placed and `pane` is the tmux
+    /// pane whose cutover waits (ISS-1316). `None` where `pane` is neither.
+    pub fn while_declaring<R>(
         &self,
         project_id: &str,
         pane: &str,
+        waiting: &str,
         f: impl FnOnce(&str) -> R,
     ) -> Option<R> {
         let reg = self.0.lock().expect("masters poisoned");
-        let m = reg.live.get(project_id).filter(|m| m.name == pane)?;
-        Some(f(&m.session_id))
+        if let Some(m) = reg.live.get(project_id) {
+            return (m.name == pane).then(|| f(&m.session_id));
+        }
+        (Registry::cutover_pane(&reg, project_id) == Some(pane)).then(|| f(waiting))
+    }
+
+    /// What holds `project_id`'s master in its tmux pane, and that pane, where
+    /// a cutover that waits is why no master is placed (ISS-1304, ISS-1316).
+    pub fn cutover_waits(&self, project_id: &str) -> Option<(String, Option<String>)> {
+        let reg = self.0.lock().expect("masters poisoned");
+        if reg.live.contains_key(project_id) {
+            return None;
+        }
+        match reg.unplaced.get(project_id) {
+            Some(Unplaced::CutoverWaits { detail, pane }) => Some((detail.clone(), pane.clone())),
+            _ => None,
+        }
     }
 
     /// Serve the live pane for this project under `session_id`, keeping
@@ -430,6 +461,18 @@ impl Masters {
             );
         }
         n
+    }
+
+    /// The cutover the sweep records for a busy tmux master (`cutover::stays`),
+    /// on a sweep that read the project served here, for the tests of what reads it.
+    #[cfg(test)]
+    pub(crate) fn note_cutover_waits(&self, project_id: &str, detail: &str, pane: Option<&str>) {
+        self.note_served(Served::Read(vec![project_id.to_string()]));
+        let why = Unplaced::CutoverWaits {
+            detail: detail.to_string(),
+            pane: pane.map(str::to_string),
+        };
+        self.note_unplaced(project_id, why);
     }
 
     pub(crate) fn note_unplaced(&self, project_id: &str, why: Unplaced) -> bool {
