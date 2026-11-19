@@ -26,9 +26,11 @@ import { SCREEN_PAGES } from "./screens.pages";
 
 const THEMES = (import.meta.env.VITE_WITNESS_THEMES ?? "light").split(",") as ("light" | "dark")[];
 const WHOLE = import.meta.env.VITE_WITNESS_WHOLE === "1";
-// VITE_WITNESS_WIDTHS=1440,390 also draws each page on a phone; a phone's count prints as `WORDS@390`,
-// which the word budget (witness/screens.budgets.ts:countsOf) does not read: its budget is the 1440 one.
+// VITE_WITNESS_WIDTHS=1440,390 also draws each page on a phone, 844 px tall; a phone's count prints as
+// `WORDS@390`, which the word budget (witness/screens.budgets.ts:countsOf) does not read: its budget is
+// the 1440 one, and a phone's is read by `phoneCountsOf`.
 const WIDTHS: number[] = ((import.meta.env.VITE_WITNESS_WIDTHS as string | undefined) ?? "1440").split(",").map(Number);
+const heightAt = (width: number) => (width >= 1024 ? 900 : 844);
 
 const replace = window.history.replaceState.bind(window.history);
 window.history.replaceState = (data, unused, url) => {
@@ -96,7 +98,7 @@ const theme = (t: "light" | "dark") => {
 };
 
 window.__witness = {
-  cases: WIDTHS.map((width) => ({ name: width >= 1024 ? `wide-${width}` : `phone-${width}`, width })),
+  cases: WIDTHS.map((width) => ({ name: width >= 1024 ? `wide-${width}` : `phone-${width}`, width, height: heightAt(width) })),
   ready: () => Boolean(q("[data-witness=page]")),
   stages: SHOWN.flatMap((p, i) =>
     THEMES.map((t) => ({
@@ -118,7 +120,7 @@ window.__witness = {
         if (loading && loading.getBoundingClientRect().height > 0) {
           return [`the ${p.name} page drew its loader ("${loading.innerText.trim()}"), not its screen: a read its first view waits on has no fixture`];
         }
-        if (window.innerHeight !== 900) return [`the window is ${window.innerHeight} px tall, not 900`];
+        if (window.innerHeight !== heightAt(window.innerWidth)) return [`the window is ${window.innerHeight} px tall, not ${heightAt(window.innerWidth)}`];
         const { count, words } = firstScreenWords(q("[data-witness=page]") as HTMLElement, { whole: WHOLE });
         const narrow = window.innerWidth >= 1024 ? "" : `@${window.innerWidth}`;
         console.log(`${WHOLE ? "WHOLE" : "WORDS"}${narrow} ${p.name} ${t} ${count} :: ${words.slice(0, 400).join(" ")}`);

@@ -4,6 +4,10 @@
 // @direct-test-of packages/web-v2/src/features/releases/proof.ts
 // @direct-test-of packages/web-v2/src/features/releases/release-report.ts
 // @direct-test-of packages/web-v2/src/features/releases/components/release-proof.tsx
+// ISS-1368: the rows and hero its face draws, so a toggle that unfolds in place is caught where it is added
+// @direct-test-of packages/web-v2/src/features/releases/components/release-lines.tsx
+// @direct-test-of packages/web-v2/src/features/releases/components/release-report.tsx
+// @direct-test-of packages/web-v2/src/features/releases/components/release-bits.tsx
 
 import type { ReleasePage as Page } from "@forge/contracts/release-page";
 import { fireEvent, screen, within } from "@testing-library/react";

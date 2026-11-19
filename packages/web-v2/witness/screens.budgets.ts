@@ -115,6 +115,19 @@ export function countsOf(output: string): Map<string, number> {
   return counts;
 }
 
+/** One phone count per screen: `WORDS@<width> <screen> <theme> <n>` as the witness prints it at that width. */
+export function phoneCountsOf(output: string, width: number): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const m of output.matchAll(new RegExp(`WORDS@${width} (\\S+) light (\\d+)`, "g"))) counts.set(m[1] as string, Number(m[2]));
+  return counts;
+}
+
+/**
+ * The screens held to their budget on a phone too, 390 by 844, where a page's paragraphs wrap to twice
+ * their lines: the release page (ISS-1368), whose summary drawn whole carried a served page over it.
+ */
+export const PHONE_SCREENS = ["release-detail"] as const;
+
 /** Every way the drawn counts break the budgets, one sentence each naming the screen. */
 export function overBudget(counts: ReadonlyMap<string, number>, budgets: Readonly<Record<string, ScreenBudget>> = BUDGETS): string[] {
   const wrong: string[] = [];

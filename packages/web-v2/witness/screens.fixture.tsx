@@ -13,6 +13,8 @@ import { AUTOFLOW, EPOD_CATALOG } from "./ecosystem-page.fixture";
 import { reqQueries } from "@/test/vi-chrome-requirements";
 import { AGREEMENTS_PROJECT, AGREEMENTS_VIEW } from "@/test/agreements.fixture";
 import { MINE, REST_READS, THREADS } from "./screens-rest.reads";
+import { servedReleasePage } from "@/test/release-page";
+import { P as REL_P, releaseSeed } from "@/test/vi-chrome-rel-wf";
 
 export const NOW = "2026-10-21T09:00:00.000Z";
 export const day = (i: number) => new Date(Date.parse(NOW) - (29 - i) * 86_400_000).toISOString().slice(0, 10);
@@ -148,6 +150,35 @@ export const REQUIREMENTS_TITLED = titled(reqQueries(), "requirements", "require
 export const ISSUE_TITLED: [QueryKey, unknown][] = detailQueries().map(([key, value]) =>
   key[0] === "issue" && key[1] === "i1" && key.length <= 3 && (value as { displayId?: string }).displayId ? [key, { ...(value as object), title: "Totals drift on export" }] : [key, value],
 );
+
+// ── the release page as forge-dev serves 0.4.0-dev.752 (ISS-1368): shipped, 5 of 17 criteria proven. The
+// project bar above it is left out, as on every screen this witness counts ──
+const RELEASE_AT = "2026-11-19T19:00:00.000Z";
+
+export function releaseServedSeed(): [QueryKey, unknown][] {
+  return [
+    ...releaseSeed().map(([key, value]): [QueryKey, unknown] =>
+      key[0] === "release"
+        ? [
+            key,
+            {
+              release: {
+                ...(value as { release: Record<string, unknown> }).release,
+                state: "shipped",
+                name: "One Secrets page for every secret",
+                releasedAt: RELEASE_AT,
+                verified: { level: "some_criteria", proven: 5, total: 17, check: null, provider: null, judgedOn: null },
+                criteria: { total: 17, proven: 5, failing: 0, open: 12, unproven: 0 },
+                can: { cut: false, decide: false, split: false },
+                gates: [],
+              },
+            },
+          ]
+        : [key, value],
+    ),
+    [["release-page", REL_P, "0.1.0", "user"], servedReleasePage({ projectId: REL_P, header: { ...servedReleasePage().header, version: "0.1.0" } })],
+  ];
+}
 
 const Home = HomeRoute.options.component as () => ReactNode;
 export function HomePage() {

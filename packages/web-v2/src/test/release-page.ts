@@ -107,6 +107,50 @@ export function releasePage(over: Partial<ReleasePage> = {}): ReleasePage {
   };
 }
 
+/** A summary as the naming door asks for one, in two or three sentences: forge-dev's run 45 to 62 words (ISS-1368). */
+export const SERVED_SUMMARY =
+  "Every secret a project needs now lives on one Settings page, where an assistant's request says why it is needed and what shape it takes. A person fills it with a form fitted to that shape or a one-time terminal command, and the assistant gets a receipt. Assistants also confirm a missing capability before asking the project that builds it.";
+
+type Change = ReleasePage["improvements"][number];
+
+const served = (issueKey: string, kind: Change["kind"], line: string, detail: string, over: Partial<Change> = {}): Change => ({
+  issueKey,
+  kind,
+  section: kind === "fixed" ? "Fixed" : kind === "new" ? "Added" : "Changed",
+  line,
+  detail,
+  requirementKey: null,
+  visual: null,
+  ui: true,
+  ...over,
+});
+
+/**
+ * A release page shaped as forge-dev serves 0.4.0-dev.752 (ISS-1368): its name and a 60-word summary,
+ * three What's new rows (one on a named screen), one Fixed row whose landing touched no screen, no
+ * clip, and 5 of 17 criteria proven, so Needs attention says the 12 still owed.
+ */
+export function servedReleasePage(over: Partial<ReleasePage> = {}): ReleasePage {
+  const page = releasePage();
+  return {
+    ...page,
+    header: { ...page.header, name: "One Secrets page for every secret", summary: SERVED_SUMMARY, verified: { ...page.header.verified, proven: 5, total: 17 } },
+    requirements: [],
+    improvements: [
+      served("ISS-1", "new", "One Secrets page where people give every secret", "Every secret a project needs now lives on one Settings page, filled with a form fitted to its shape."),
+      served("ISS-2", "improved", "Agents confirm a missing capability before requesting it", "An assistant that meets a missing command first confirms the need, then asks the project that builds it.", { screen: "Execution" }),
+      served("ISS-3", "improved", "Direct-mode masters declare builder runs with the right role", "A master building directly declares each builder's run before its build."),
+    ],
+    fixes: [served("ISS-4", "fixed", "A shared room's secret link reaches the right project", "A secret asked for in a shared room names the project it is for.", { ui: false })],
+    internal: { count: 0, changes: null },
+    withoutNotes: [],
+    actionRequired: [],
+    shipped: { state: "read", base: "b".repeat(40), head: BUILD, migrations: [], contracts: [], dependencies: [], settings: [], unchecked: [] },
+    knownIssues: [],
+    ...over,
+  };
+}
+
 export const TECHNICAL: NonNullable<ReleasePage["technical"]> = {
   notes: [{ issueKey: "ISS-1", title: "Release page", technical: "Reads release-read through sections.ts." }],
   migrations: ["0478_release_highlights.sql"],

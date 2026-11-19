@@ -8,7 +8,6 @@ import { FeedbackScreen } from "@/features/feedback/components/feedback-screen";
 import { IssueDetailScreen } from "@/features/issues/components/issue-detail-screen";
 import { ReleasesScreen } from "@/features/releases/components/releases-screen";
 import { ReleaseItemScreen } from "@/features/releases";
-import { releasePage } from "@/test/release-page";
 import { RequirementsScreen } from "@/features/requirements/components/requirements-screen";
 import { DocsScreen } from "@/features/docs/components/docs-screen";
 import { NotFoundBody } from "@/features/shell/components/not-found-body";
@@ -27,7 +26,7 @@ import { P as REL_P, releaseSeed } from "@/test/vi-chrome-rel-wf";
 import { REQ_PROJECT, Seeded } from "@/test/vi-chrome-requirements";
 
 import { HOME_SEED } from "./owner-home.fixture";
-import { ECOSYSTEM_ID } from "./screens.fixture";
+import { ECOSYSTEM_ID, releaseServedSeed } from "./screens.fixture";
 import { REST_PAGES } from "./screens.pages-rest";
 
 export interface ScreenPage {
@@ -67,13 +66,14 @@ export function SCREEN_PAGES({ vi, HomePage, ISSUE_TITLED, REQUIREMENTS_TITLED, 
     { name: "feedback-list", path: `${P}/feedback`, render: () => <Seeded data={FEEDBACK_TITLED}><FeedbackScreen projectId={FB_P} slug="hop" /></Seeded> },
     { name: "feedback-detail", path: `${P}/feedback/FB-1`, render: () => vi("Feedback detail") },
     { name: "releases-list", path: `${P}/releases`, render: () => <Seeded data={releaseSeed()}><ReleasesScreen projectId={REL_P} slug="hop" /></Seeded> },
-    // the release's own page and its user report, both answered: the vi walk's seed left the report reading, so
-    // the page drew its loader and stacked the walk's other parts under it (ISS-1131)
+    // the release's own page as forge-dev serves one (ISS-1368): shipped, a 60-word summary, three What's
+    // new rows and one Fixed, 5 of 17 criteria proven; its user report is answered too, or the page draws
+    // its loader and the count reads nothing (ISS-1131)
     {
       name: "release-detail",
       path: `${P}/releases/0.1.0`,
       render: () => (
-        <Seeded data={[...releaseSeed(), [["release-page", REL_P, "0.1.0", "user"], releasePage({ projectId: REL_P, header: { ...releasePage().header, version: "0.1.0", state: "draft" } })]]}>
+        <Seeded data={releaseServedSeed()}>
           <ReleaseItemScreen projectId={REL_P} slug="hop" version="0.1.0" />
         </Seeded>
       ),

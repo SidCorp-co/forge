@@ -31,13 +31,18 @@
 // ISS-1148: a guide article's own text is content, so only its chrome is held to the budget
 // @direct-test-of packages/web-v2/witness/first-screen.ts
 // @direct-test-of packages/web-v2/src/features/docs/components/docs-reader.tsx
+// ISS-1368: the release page drawn as forge-dev serves one, its summary and sentences shut, at 1440 and on a phone
+// @direct-test-of packages/web-v2/src/features/releases/components/release-lines.tsx
+// @direct-test-of packages/web-v2/src/test/release-page.ts
+// @direct-test-of packages/web-v2/witness/screens.fixture.tsx
+// @direct-test-of packages/web-v2/witness/screens.pages.tsx
 
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { BUDGETS, countsOf, MOST_WORDS, overBudget } from "../../witness/screens.budgets";
+import { BUDGETS, countsOf, MOST_WORDS, overBudget, PHONE_SCREENS, phoneCountsOf } from "../../witness/screens.budgets";
 
 const WEB = resolve(import.meta.dirname, "../..");
 const out = mkdtempSync(join(tmpdir(), "screen-budget-"));
@@ -62,9 +67,10 @@ describe("the word budget's judgement", () => {
     expect(overBudget(new Map([["new-screen", 3]]), {})).toEqual(["new-screen: drawn with no word budget: give it the audit's target"]);
   });
 
-  it("reads the witness's lines, one count per screen", () => {
-    const said = "witness: page says WORDS docs light 98 :: Docs Search\nwitness: page says WORDS ops light 38 :: Ops";
+  it("reads the witness's lines, one count per screen, and a phone's apart from the 1440 ones", () => {
+    const said = "witness: page says WORDS docs light 98 :: Docs Search\nwitness: page says WORDS ops light 38 :: Ops\nwitness: page says WORDS@390 docs light 61 :: Docs";
     expect([...countsOf(said)]).toEqual([["docs", 98], ["ops", 38]]);
+    expect([...phoneCountsOf(said, 390)]).toEqual([["docs", 61]]);
   });
 
   it("gives no screen a budget over 110", () => {
@@ -72,19 +78,36 @@ describe("the word budget's judgement", () => {
   });
 });
 
+/** One screen witness run over `only` (every screen when empty) at `widths`, its output whole. */
+function witnessed(only: string, widths: string): { said: string; status: number | null } {
+  const run = spawnSync(process.execPath, ["witness/run.mjs", "witness/screens-all.witness.tsx", "--out", out], {
+    cwd: WEB,
+    encoding: "utf8",
+    // vitest's NODE_ENV=test would build the page on React's dev runtime, which the bundle does not carry
+    env: { ...process.env, NODE_ENV: "production", VITE_WITNESS_THEMES: "light", VITE_WITNESS_ONLY: only, VITE_WITNESS_WIDTHS: widths },
+    timeout: 540_000,
+  });
+  return { said: `${run.stdout}\n${run.stderr}`, status: run.status };
+}
+
 describe("every witnessed screen's first view", () => {
   it("is within its word budget at 1440x900", () => {
-    const run = spawnSync(process.execPath, ["witness/run.mjs", "witness/screens-all.witness.tsx", "--out", out], {
-      cwd: WEB,
-      encoding: "utf8",
-      // vitest's NODE_ENV=test would build the page on React's dev runtime, which the bundle does not carry
-      env: { ...process.env, NODE_ENV: "production", VITE_WITNESS_THEMES: "light", VITE_WITNESS_ONLY: "" },
-      timeout: 540_000,
-    });
-    const said = `${run.stdout}\n${run.stderr}`;
+    const { said, status } = witnessed("", "1440");
     const counts = countsOf(said);
-    expect(counts.size, `the screen witness drew nothing (exit ${run.status}):\n${said.slice(-2000)}`).toBeGreaterThan(0);
-    expect(run.status, `the screen witness failed (exit ${run.status}):\n${said.slice(-2000)}`).toBe(0);
+    expect(counts.size, `the screen witness drew nothing (exit ${status}):\n${said.slice(-2000)}`).toBeGreaterThan(0);
+    expect(status, `the screen witness failed (exit ${status}):\n${said.slice(-2000)}`).toBe(0);
     expect(overBudget(counts)).toEqual([]);
+  }, 600_000);
+
+  it("is within its word budget on a phone at 390x844, for the screens held there", () => {
+    const { said, status } = witnessed(PHONE_SCREENS.join(","), "390");
+    expect(status, `the screen witness failed (exit ${status}):\n${said.slice(-2000)}`).toBe(0);
+    const counts = phoneCountsOf(said, 390);
+    const over = PHONE_SCREENS.flatMap((screen) => {
+      const n = counts.get(screen);
+      const budget = BUDGETS[screen]?.budget ?? 0;
+      return n === undefined ? [`${screen}: the witness drew no such screen at 390`] : n > budget ? [`${screen}: ${n} words on its first view at 390x844, over its budget of ${budget}`] : [];
+    });
+    expect(over).toEqual([]);
   }, 600_000);
 });
