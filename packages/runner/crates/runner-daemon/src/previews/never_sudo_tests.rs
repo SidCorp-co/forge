@@ -27,7 +27,11 @@ fn neither_the_daemon_nor_the_box_crate_ever_runs_sudo() {
         sources(&crates.join(c), &mut files);
     }
     assert!(files.len() > 20, "{} files read", files.len());
-    let this = file!().rsplit('/').next().unwrap_or_default().to_string();
+    // `file!()` uses the host's separator, so read its name as a path, never split on '/'
+    let this = Path::new(file!())
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
     let named: Vec<String> = files
         .iter()
         .filter(|p| p.file_name().is_some_and(|n| n.to_string_lossy() != this))
