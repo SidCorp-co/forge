@@ -8,10 +8,10 @@ use std::path::{Path, PathBuf};
 use serde_json::{json, Value};
 
 use super::{cut, Boxes};
+use crate::{frames, record};
 
 /// How long a send waits for the box's close to seal its recording.
 const CLOSE_WAIT: std::time::Duration = std::time::Duration::from_secs(120);
-use crate::{frames, record};
 
 impl Boxes {
     /// Start or stop the box's recording, and the `recording` report saying what came of it. A
