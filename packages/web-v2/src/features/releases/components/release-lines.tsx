@@ -2,14 +2,18 @@
 // and counts; What's new as feature rows, each beside the clip or shots its judge marked; Fixed as
 // compact rows with thumbnails, a line whose landing touched no screen saying so; and, on the
 // developer view, the lines that touched a screen and show nothing, counted. No issue key, commit or
-// file name is on the reader's face: a line is its note's words and its picture.
+// file name is on the reader's face: a line is its note's words and its picture. A line's sentence
+// opens under its title on a click, a tap or Enter, never on hover alone, so the first view holds the
+// titles within its word budget (ISS-1368).
 
 import type { ReleasePage } from "@forge/contracts/release-page";
 import { releaseVisualCounts } from "@forge/contracts/release-visual";
+import { useId, useState } from "react";
 import { Badge, DeviceFrame, ToneBadge } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 import { unseenCount } from "../release-report";
+import { DisclosureToggle } from "./release-bits";
 import { LineVisual, VisualThumb, VisualTile } from "./release-visual";
 
 type Change = ReleasePage["improvements"][number];
@@ -74,7 +78,47 @@ function ProofTag({ proof }: { proof: Change["proof"] }) {
   );
 }
 
-/** One New or Improved line: its words, and the clip or shots its judge marked beside them. */
+/**
+ * A row's title, and its sentence on demand: the title is the toggle, and the sentence opens whole
+ * beneath it. A row with no sentence is its title alone, with nothing to open. `heading`: the title
+ * is a heading of the page's outline, as a What's new line's is.
+ */
+export function LineWords({
+  line,
+  detail,
+  title,
+  sentence,
+  testId,
+  heading = false,
+}: {
+  line: string;
+  detail: string | null | undefined;
+  title: string;
+  sentence: string;
+  testId: string;
+  heading?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  const Title = heading ? "h3" : "span";
+  if (!detail) return <Title className={title}>{line}</Title>;
+  return (
+    <>
+      <Title className="min-w-0">
+        <DisclosureToggle open={open} onToggle={() => setOpen((o) => !o)} controls={open ? id : undefined} className={cn("text-left", title)} testId={`${testId}-toggle`}>
+          {line}
+        </DisclosureToggle>
+      </Title>
+      {open ? (
+        <p id={id} className={sentence} data-testid={`${testId}-detail`}>
+          {detail}
+        </p>
+      ) : null}
+    </>
+  );
+}
+
+/** One New or Improved line: its title (its sentence on demand), and the clip or shots its judge marked beside them. */
 function NewLine({ c, authed }: { c: Change; authed: boolean }) {
   const t = useCopy();
   return (
@@ -85,8 +129,7 @@ function NewLine({ c, authed }: { c: Change; authed: boolean }) {
           {c.screen ? <span data-testid="whats-new-screen">{c.screen}</span> : null}
           <ProofTag proof={c.proof} />
         </div>
-        <h3 className="text-16 font-semibold leading-snug text-fg">{c.line}</h3>
-        {c.detail ? <p className="max-w-prose text-14 text-muted">{c.detail}</p> : null}
+        <LineWords line={c.line} detail={c.detail} heading title="text-16 font-semibold leading-snug text-fg" sentence="max-w-prose text-14 text-muted" testId="whats-new" />
       </div>
       {c.visual ? <LineVisual visual={c.visual} authed={authed} label={c.line} /> : null}
     </li>
@@ -132,9 +175,9 @@ export function FixedRows({ page, authed }: { page: ReleasePage; authed: boolean
         {page.fixes.map((c) => (
           <li key={c.issueKey} className="flex items-center gap-3 border-t border-line-subtle py-2 first:border-t-0" data-testid="fixed-row">
             {c.visual ? <VisualThumb visual={c.visual} authed={authed} label={c.line} /> : <NoThumb ui={c.ui} />}
-            <span className="min-w-0 text-14 font-medium text-fg" title={c.detail ?? undefined}>
-              {c.line}
-            </span>
+            <div className="grid min-w-0 justify-items-start gap-0.5">
+              <LineWords line={c.line} detail={c.detail} title="min-w-0 text-14 font-medium text-fg" sentence="max-w-prose text-13 text-muted" testId="fixed" />
+            </div>
             <ProofTag proof={c.proof} />
           </li>
         ))}

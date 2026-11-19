@@ -9,14 +9,14 @@ import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { releaseProofOf, unprovenOf } from "../proof";
 import { removedLines } from "../release-report";
-import { FixedRows, ReleaseHero, WhatsNew } from "./release-lines";
+import { FixedRows, LineWords, ReleaseHero, WhatsNew } from "./release-lines";
 
 const HEAD = "mb-1.5 text-11-5 font-semibold uppercase tracking-wide text-muted";
 
 /**
  * What the decider must weigh, each in one line: that the master records it rather than cutting it,
  * the steps before it goes out, what it removes, what is unproven or failing. A line's `detail` opens
- * on demand, never inline.
+ * on demand under it, never inline and never on hover alone.
  */
 export function attentionOf(page: ReleasePage, t: Copy): { key: string; text: string; detail?: string }[] {
   const proof = releaseProofOf(page.header.verified);
@@ -54,7 +54,9 @@ export function NeedsAttention({ page }: { page: ReleasePage }) {
         {items.map((a) => (
           <li key={a.key} className="flex items-baseline gap-2.5 border-t border-line-subtle py-2 text-14 text-fg" data-testid="page-attention-item" data-kind={a.key.split(":")[0]}>
             <i aria-hidden className="inline-block size-2 flex-none rounded-full bg-warn-9" />
-            <span title={a.detail}>{a.text}</span>
+            <div className="grid min-w-0 justify-items-start gap-0.5">
+              <LineWords line={a.text} detail={a.detail} title="min-w-0 font-normal text-fg" sentence="max-w-prose text-13 text-muted" testId="page-attention" />
+            </div>
           </li>
         ))}
       </ul>

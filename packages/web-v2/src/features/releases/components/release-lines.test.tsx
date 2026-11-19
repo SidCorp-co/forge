@@ -4,12 +4,17 @@
 // counts the lines that touched a screen and show nothing.
 // @direct-test-of packages/web-v2/src/features/releases/components/release-visual.tsx
 // @direct-test-of packages/web-v2/src/design/patterns/device-frame.tsx
+// ISS-1368: a row's sentence opens on demand under its title, never on hover alone
+// @direct-test-of packages/web-v2/src/features/releases/components/release-report.tsx
+// @direct-test-of packages/web-v2/src/features/releases/components/release-bits.tsx
 
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { releasePage } from "@/test/release-page";
 import { rawKeysOnFace } from "@/test/screen-face";
 import { FixedRows, ReleaseHero, VisualsOwed, WhatsNew } from "./release-lines";
+import { NeedsAttention } from "./release-report";
 
 beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(new Response("png", { status: 200 }))));
@@ -94,5 +99,77 @@ describe("the developer view counts the visuals owed, and refuses nothing (ISS-1
     render(<VisualsOwed page={releasePage()} />);
     expect(container).toBeEmptyDOMElement();
     expect(screen.queryByTestId("visuals-owed")).toBeNull();
+  });
+});
+
+describe("a row's sentence opens on demand under its title, never on hover alone (ISS-1368)", () => {
+  const SENTENCE = "Open any release and read what it brings, whole, in under a minute.";
+  const FIXED = "Dates no longer slip a day across time zones.";
+  /** No element of the page carries a sentence in a hover-only title. */
+  const onHover = (root: HTMLElement, text: string) => [...root.querySelectorAll("[title]")].filter((e) => e.getAttribute("title") === text);
+
+  it("shows a What's new row's title shut, and opens its sentence whole on a click, and shuts it again", () => {
+    const { container } = render(<WhatsNew page={releasePage()} authed />);
+    const toggle = screen.getByRole("button", { name: "Releases read as pages" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(within(screen.getByRole("heading", { level: 3 })).getByRole("button")).toBe(toggle);
+    expect(screen.queryByText(SENTENCE)).toBeNull();
+    expect(onHover(container, SENTENCE)).toEqual([]);
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    const sentence = screen.getByTestId("whats-new-detail");
+    expect(sentence).toHaveTextContent(SENTENCE);
+    expect(toggle).toHaveAttribute("aria-controls", sentence.id);
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByTestId("whats-new-detail")).toBeNull();
+  });
+
+  it("opens a What's new row's sentence from the keyboard, by Enter and by Space", async () => {
+    const user = userEvent.setup();
+    render(<WhatsNew page={releasePage()} authed />);
+    await user.tab();
+    const toggle = screen.getByRole("button", { name: "Releases read as pages" });
+    expect(toggle).toHaveFocus();
+    await user.keyboard("{Enter}");
+    expect(screen.getByTestId("whats-new-detail")).toHaveTextContent(SENTENCE);
+    await user.keyboard(" ");
+    expect(screen.queryByTestId("whats-new-detail")).toBeNull();
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("opens a Fixed row's sentence the same way, where it showed on hover alone before", async () => {
+    const user = userEvent.setup();
+    const page = releasePage();
+    const fixes = page.fixes.map((c) => ({ ...c, detail: FIXED }));
+    const { container } = render(<FixedRows page={{ ...page, fixes }} authed />);
+    expect(onHover(container, FIXED)).toEqual([]);
+    const toggle = screen.getByRole("button", { name: "Dates show correctly." });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText(FIXED)).toBeNull();
+    await user.click(toggle);
+    expect(screen.getByTestId("fixed-detail")).toHaveTextContent(FIXED);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("draws a row with no sentence as its title alone, with nothing to open", () => {
+    const page = releasePage();
+    render(<WhatsNew page={{ ...page, improvements: page.improvements.map((c) => ({ ...c, detail: null })) }} authed />);
+    render(<FixedRows page={page} authed />);
+    expect(screen.getByRole("heading", { level: 3, name: "Releases read as pages" })).toBeTruthy();
+    expect(screen.getByTestId("fixed-row")).toHaveTextContent("Dates show correctly.");
+    expect(screen.queryByTestId("whats-new-toggle")).toBeNull();
+    expect(screen.queryByTestId("fixed-toggle")).toBeNull();
+  });
+
+  it("opens a Needs attention line's reason the same way, never on hover", async () => {
+    const user = userEvent.setup();
+    const page = releasePage();
+    const { container } = render(<NeedsAttention page={{ ...page, header: { ...page.header, recordedNotCut: true } }} />);
+    expect(container.querySelectorAll("[title]")).toHaveLength(0);
+    const toggle = screen.getByTestId("page-attention-toggle");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await user.click(toggle);
+    expect(screen.getByTestId("page-attention-detail").textContent).not.toBe("");
   });
 });

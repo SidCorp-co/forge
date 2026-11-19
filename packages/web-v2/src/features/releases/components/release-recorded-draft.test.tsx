@@ -3,10 +3,11 @@
 // ISS-1019: catalog-fe's draft 0.13.0 stood at NO_RELEASE_GATE (no production declared) and its page
 // offered "Approve release" while Needs attention listed only what it removes. The page draws a draft's
 // decision only where core's read says the draft door takes it, words it as approving the master's
-// record, and names the blocker in one attention line whose detail opens on demand.
+// record, and names the blocker in one attention line whose detail opens on demand: under the line on
+// a click, a tap or the keyboard, never on hover alone (ISS-1368).
 
 import type { ReleasePage } from "@forge/contracts/release-page";
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import { releasePage } from "@/test/release-page";
@@ -50,7 +51,9 @@ describe("Needs attention on a draft its master records", () => {
     renderWithQuery(<NeedsAttention page={recorded(true)} />);
     const line = screen.getAllByTestId("page-attention-item").find((li) => li.dataset.kind === "recorded");
     expect(line?.textContent).toBe("Recorded by the master, not cut");
-    expect(line?.querySelector("[title]")?.getAttribute("title")).toContain("declares no production");
+    expect(line?.querySelector("[title]")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Recorded by the master, not cut" }));
+    expect(screen.getByTestId("page-attention-detail").textContent).toContain("declares no production");
     expect(screen.getByTestId("page-attention").textContent).not.toContain("NO_RELEASE_GATE");
   });
 
