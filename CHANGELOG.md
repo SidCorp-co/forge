@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.756] - 2026-11-19
+
+Release page rows open their sentence on demand
+
+### Fixed
+
+- **A release page opens on its titles.** Each What's new, Fixed and Needs attention row opens its sentence beneath its title by click, tap or keyboard, never on hover alone, so the first view fits its word budget.
+
 ## [0.4.0-dev.755] - 2026-11-19
 
 Ops read failures name the box and the missing interpreter
