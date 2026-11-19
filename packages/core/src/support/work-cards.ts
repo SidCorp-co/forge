@@ -278,6 +278,7 @@ export const WORK_ACT_CARDS = {
     ],
     practice: [
       'Never answer with “approve it on the web”; an approval by a project admin also stands for the production deploy it plans.',
+      'The owner’s chat account no Forge account: his go is kept, and decided as his once a project admin, or an instance admin once for every project, names his account (speaker-links/named); tell the room it is noted, and never ask him to link anything.',
     ],
     example: {
       thread: THREAD,
@@ -292,7 +293,10 @@ export const WORK_ACT_CARDS = {
       'Asking the owner again, or to click, after he said go: adminhub-api 0.19.0 asked him three times on 10/11.',
     family: 'room.live',
     audience: ['bot'],
-    scenarios: ['adminhub-api 0.19.0 asked of the owner three times after he approved'],
+    scenarios: [
+      'adminhub-api 0.19.0 asked of the owner three times after he approved',
+      'adminhub-api 0.27.0: the owner’s go dropped, his chat account no Forge account',
+    ],
   },
   owner_forge_act: {
     purpose:

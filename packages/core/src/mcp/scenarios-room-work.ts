@@ -149,6 +149,15 @@ export const ROOM_WORK_SCENARIOS: readonly CardScenario[] = [
     teaches: [/support\.release_decision/, /never answer with “approve it on the web”/i],
   },
   {
+    name: 'adminhub-api 0.27.0: the owner’s go dropped, his chat account no Forge account',
+    card: 'support.release_decision',
+    source: 'FB-730 (ISS-1313): adminhub-api 0.27.0, 18/11, message 2Pzx2SDz78PWXxSd7',
+    situation: 'The owner says go on a release; his chat account maps to no Forge account',
+    bad: 'the go was refused OPS_ASKER_UNMAPPED and dropped, and the refusal named a link to ask him for',
+    good: 'record it with support.release_decision: it is kept, and the room is told it waits on his admins naming his account',
+    teaches: [/speaker-links\/named/, /instance admin once for every project/i, /never ask him to link anything/i],
+  },
+  {
     name: 'a fix the room grants left to the owner: “I cannot install it on the live system”',
     card: 'support.tools',
     source: `${AHS}, thread w2NZNL75fXT83G3WB, 14/11 02:14`,
