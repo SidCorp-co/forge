@@ -131,6 +131,24 @@ describe('ISS-1326: a key sent alone is a secret where its thread says so', () =
     expect(await w.linesIn(first)).toEqual([]);
   });
 
+  it('tells a bare key sent at the top level after a filtered one there as already said', async () => {
+    // a writer of their own, so no earlier top-level message of another test is in the context
+    w.box.model = async () => undefined;
+    const dave: Member = { userId: 'u-dave', username: 'dave' };
+    const KEY_THREE = '9a8b7c6d5e4f3021'.repeat(2);
+    const labelled = await say(dave, `Secret: ${KEY_THREE}`);
+    await expect.poll(() => notesIn(labelled).length, { timeout: 15_000 }).toBe(1);
+    const bare = await say(dave, KEY_THREE);
+    expect(await kept(bare)).not.toContain(KEY_THREE);
+    expect(await flagsOf(labelled)).toEqual([{ technical: 'carol', posted: false, told: 'first' }]);
+    // planted on toldBefore matching the bare key's own id alone: it read 'first', and asked again
+    expect(await flagsOf(bare)).toEqual([{ technical: 'carol', posted: false, told: 'again' }]);
+    await expect.poll(() => notesIn(bare).length, { timeout: 15_000 }).toBe(1);
+    const [note] = notesIn(bare).map((n) => n.text);
+    expect(note).toContain('already told once');
+    expect(note).not.toMatch(/to delete that message|@carol/);
+  });
+
   it('filters a bare key its writer said was coming', async () => {
     w.box.model = async () => undefined;
     const opened = await say(w.chat.alice, 'Gửi anh secret key của tài khoản test nhé');

@@ -48,6 +48,38 @@ function isBareToken(text: string): boolean {
 }
 
 /**
+ * The writer's last messages before `m` that speak for it, newest first: in its thread, or, for a
+ * message at the top level (a thread of its own), the writer's top-level messages, within
+ * `SECRET_CONTEXT_MS`. Read alike by `bareKeyInContext` and `toldBefore`, so a key filtered by its
+ * context is told as that context was told.
+ */
+async function writerContext(
+  roomId: string,
+  m: Pick<RocketChatIncomingMessage, 'id' | 'tmid' | 'userId'>,
+  since: Date,
+): Promise<{ id: string | null; input: unknown }[]> {
+  const where = m.tmid
+    ? eq(supportActions.thread, threadOf(m))
+    : sql`${supportActions.thread} = ${supportActions.externalId}`;
+  return db
+    .select({ id: supportActions.externalId, input: supportActions.input })
+    .from(supportActions)
+    .where(
+      and(
+        eq(supportActions.roomId, roomId),
+        eq(supportActions.kind, 'message_in'),
+        eq(supportActions.actorKind, 'member'),
+        eq(supportActions.actorKey, m.userId),
+        gte(supportActions.createdAt, since),
+        sql`${supportActions.externalId} IS DISTINCT FROM ${m.id}`,
+        where,
+      ),
+    )
+    .orderBy(desc(supportActions.createdAt))
+    .limit(3);
+}
+
+/**
  * Whether a bare token is a secret by what stands around it (ISS-1326): a secret was filtered in its
  * thread (at the top level, from its writer) within `SECRET_CONTEXT_MS`, or its writer's message just
  * before it says a key or secret is coming. A token in any other thread is an id (ISS-614).
@@ -59,25 +91,7 @@ export async function bareKeyInContext(
   if (!isBareToken(m.text)) return false;
   const since = new Date(Date.now() - SECRET_CONTEXT_MS);
   const thread = threadOf(m);
-  // a message at the top level is a thread of its own: its writer's top-level messages are its context
-  const where = m.tmid
-    ? eq(supportActions.thread, thread)
-    : sql`${supportActions.thread} = ${supportActions.externalId}`;
-  const before = await db
-    .select({ id: supportActions.externalId, input: supportActions.input })
-    .from(supportActions)
-    .where(
-      and(
-        eq(supportActions.roomId, room.id),
-        eq(supportActions.kind, 'message_in'),
-        eq(supportActions.actorKind, 'member'),
-        eq(supportActions.actorKey, m.userId),
-        gte(supportActions.createdAt, since),
-        where,
-      ),
-    )
-    .orderBy(desc(supportActions.createdAt))
-    .limit(3);
+  const before = await writerContext(room.id, m, since);
   const ids = before.flatMap((r) => (r.id ? [r.id] : []));
   const [flagged] = await db
     .select({ n: sql<number>`1` })
@@ -101,18 +115,28 @@ export async function bareKeyInContext(
   return typeof said === 'string' && KEY_COMING.test(said);
 }
 
-/** Whether the thread was already told of a secret: the note is said once per thread. */
-async function toldBefore(roomId: string, thread: string): Promise<boolean> {
+/**
+ * Whether the thread was already told of a secret: the note is said once per thread. A message at the
+ * top level is told as its context was (`writerContext`), the writer's recent top-level messages,
+ * which `bareKeyInContext` read as one thread.
+ */
+async function toldBefore(
+  roomId: string,
+  thread: string,
+  messageId: string,
+  writer: string,
+): Promise<boolean> {
+  let told = eq(supportActions.thread, thread);
+  if (thread === messageId) {
+    const since = new Date(Date.now() - SECRET_CONTEXT_MS);
+    const context = await writerContext(roomId, { id: messageId, userId: writer }, since);
+    const ids = context.flatMap((r) => (r.id ? [r.id] : []));
+    if (ids.length) told = or(told, inArray(sql`${supportActions.input}->>'message'`, ids)) ?? told;
+  }
   const [row] = await db
     .select({ n: sql<number>`1` })
     .from(supportActions)
-    .where(
-      and(
-        eq(supportActions.roomId, roomId),
-        eq(supportActions.thread, thread),
-        eq(supportActions.kind, 'secret_flagged'),
-      ),
-    )
+    .where(and(eq(supportActions.roomId, roomId), eq(supportActions.kind, 'secret_flagged'), told))
     .limit(1);
   return row !== undefined;
 }
@@ -189,7 +213,7 @@ export async function flagSecret(
     .sort((a, b) => (a.state === b.state ? 0 : a.state === 'confirmed' ? -1 : 1))[0];
   const who = author.label ? `@${author.label}` : `account ${author.key}`;
   const asked = technical ? (await shownNames(room, [technical]))(technical.username) : null;
-  const again = await toldBefore(room.id, thread);
+  const again = await toldBefore(room.id, thread, messageId, author.key);
   const door = await doorLine(room, thread);
   const note = again
     ? againSecretNote(messageId, who, door)
