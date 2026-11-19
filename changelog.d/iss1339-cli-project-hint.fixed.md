@@ -1,0 +1,1 @@
+**The forge command line says how to pick a project when it finds none.** It names `--project <slug>` for a single command and says it does not read forge-runner's `FORGE_PROJECT_SLUG`. Shipped in forge-plugin 3.36.718.
