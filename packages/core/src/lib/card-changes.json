@@ -330,9 +330,9 @@
     "by": "ISS-1251"
   },
   "POST /api/projects/:id/feedback": {
-    "hash": "b1047fc3ddf36c11",
-    "on": "2026-11-17",
-    "by": "ISS-1251"
+    "hash": "f8e6126946fa0c31",
+    "on": "2026-11-19",
+    "by": "ISS-1248"
   },
   "POST /api/projects/:id/feedback/:fb/comments": {
     "hash": "c611ed84a38e8bf6",
