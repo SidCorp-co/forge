@@ -98,7 +98,7 @@ sentence that justifies it, and an exception with no reason is refused.
   contract differ runs over two specs it already holds; it reaches no system. Only its pinned
   download crosses a boundary, and that sits in `packages/core/src/integrations/github/published-releases/public-releases.ts`.
 - **Object storage** is reached through `packages/core/src/integrations/storage/`: `STORAGE_DRIVER=s3`
-  selects `storage/s3.ts:S3Storage`, the one module importing `@aws-sdk/client-s3` (ISS-1364).
+  selects `packages/core/src/integrations/storage/s3.ts:S3Storage`, the one module importing `@aws-sdk/client-s3` (ISS-1364).
 
 ## Consequences
 

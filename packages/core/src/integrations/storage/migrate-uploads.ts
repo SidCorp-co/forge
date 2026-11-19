@@ -10,14 +10,19 @@ import { env } from '../../lib/env.js';
 import { S3Storage, s3SettingsFrom } from './s3.js';
 import { migrateUploads } from './upload-migration.js';
 
-const root = resolve(env.UPLOADS_DIR);
-try {
-  const target = new S3Storage(s3SettingsFrom(env), root);
-  const report = await migrateUploads(root, target, (line) => console.log(line));
-  console.log(
-    `migrated ${report.files} files, ${report.bytes} bytes, from ${root} to ${target.describe()}: count and bytes verified`,
-  );
-} catch (err) {
-  console.error(err instanceof Error ? err.message : String(err));
-  process.exitCode = 1;
+/** Reads the environment only when run, so importing this file does no work (ISS-1067). */
+async function main(): Promise<void> {
+  const root = resolve(env.UPLOADS_DIR);
+  try {
+    const target = new S3Storage(s3SettingsFrom(env), root);
+    const report = await migrateUploads(root, target, (line) => console.log(line));
+    console.log(
+      `migrated ${report.files} files, ${report.bytes} bytes, from ${root} to ${target.describe()}: count and bytes verified`,
+    );
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exitCode = 1;
+  }
 }
+
+await main();
