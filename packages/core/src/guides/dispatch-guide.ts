@@ -138,7 +138,11 @@ has landed, writes no code: it neither holds a scope nor waits on one.
    record of one dispatch.
 4. Dispatch through a shipped role, the brief as the whole message. A dispatch another hook refused
    started nothing and leaves the declaration for the next one. A second subagent on one
-   declaration is refused naming the run and the call it is promised to.
+   declaration is refused naming the run and the call it is promised to. A declaration is taken
+   only by the Agent call the box lets through: a finished subagent woken with \`SendMessage\` takes
+   no run. Never wake a finished one while a declared run waits for its dispatch; dispatch first,
+   or close the run you will not dispatch (\`forge-runner run close\`) before you wake it. A
+   dispatch no run waits for is refused naming your latest run and the subagent holding it.
 
 ### 7. Fold
 Every report is folded: what landed, what was filed, what a restart is owed for, what a run declined
@@ -257,7 +261,10 @@ It works in batches, as §4 splits them:
    merge) and remove its tree once it is folded. Declare its run first, over the issues it builds,
    in a tree of its own (\`forge-runner run declare --role general-purpose\`): the run is one of the
    project's subagent slots, and the box refuses a builder dispatched without one or as another role
-   than the one declared. A dispatch the model API refuses for its model is sent again naming a model
+   than the one declared. Only that Agent call takes the run: a finished builder woken with
+   \`SendMessage\` takes none, so never wake one while a run you declared waits for its dispatch.
+   Dispatch the new builder first, or close the waiting run (\`forge-runner run close\`) and
+   declare again once you need it. A dispatch the model API refuses for its model is sent again naming a model
    the box's account allows. Core opens a run only while the
    project has a slot free, and refuses \`RUN_SLOT_UNAVAILABLE\` naming its slots, how many are in use
    and that one frees when a run closes; parts of one issue each declare it in their own tree, and

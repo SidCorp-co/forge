@@ -107,6 +107,22 @@ describe('the dispatch guide teaches batches by default', () => {
     expect(prose).not.toContain('no shipped role, no declaration');
   });
 
+  // ISS-1366 (FB-780, epod): a master declared a run, woke a finished builder with SendMessage,
+  // and its next dispatch was refused as undeclared. Both the declaration step and direct mode
+  // say a woken subagent takes no run, never to wake one while a declared run waits, and the way out.
+  it('never wakes a finished builder while a declared run waits, and names dispatching or closing first', () => {
+    const declare = prose.slice(prose.indexOf('### 6. Declare'), prose.indexOf('### 7. Fold'));
+    const direct = prose.slice(prose.indexOf('### Direct mode'));
+    for (const section of [declare, direct]) {
+      expect(section).toContain('woken with `SendMessage` takes');
+      expect(section).toMatch(/never wake (a finished one|one) while a (declared run|run you declared) waits for its dispatch/i);
+      expect(section).toContain('`forge-runner run close`');
+    }
+    expect(declare).toContain('dispatch first, or close the run you will not dispatch');
+    expect(direct).toContain('Dispatch the new builder first, or close the waiting run');
+    expect(declare).toContain('refused naming your latest run and the subagent holding it');
+  });
+
   // ISS-1363 (FB-779, epod L-57): a run declared --role runner was refused at dispatch and its
   // issues fell back to open; (FB-778, sid-desk L-8): criteria written onto the record after landing
   it('names the role a builder run is declared as, a model refusal, and criteria on the record first', () => {
