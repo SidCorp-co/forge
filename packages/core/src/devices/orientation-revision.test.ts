@@ -55,7 +55,8 @@ vi.mock('../lessons/card-freshness.js', async (actual) => ({
           text: p.text,
           replaces: null,
           fromLesson: 'L-4',
-          projectId: null,
+          // the project the orientation is served for: a delta naming none reaches nobody (`lessons/proposed-deltas.ts:proposedDeltasFor`)
+          projectId: 'p-1',
           at: '2026-11-16T00:00:00Z',
         })),
     }));
