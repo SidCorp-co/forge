@@ -38,6 +38,7 @@ import { SUPPORT_SESSION_MARKER } from './rooms.js';
 import { tellLinked } from './speaker-link.js';
 import { agentSwitchGate } from './switches.js';
 import { raiseTechnical } from './technical-channel.js';
+import { fireWaitReminders } from './wait-reminder.js';
 import { warmColdRooms, warmProjectRooms, warmRoomsOfDevice } from './warm.js';
 
 export { forgeAuditTool } from './audit-tool.js';
@@ -65,10 +66,20 @@ export async function followSupportResults(): Promise<void> {
   await deliverReleaseNotes();
 }
 
+/**
+ * The scheduled checks sweep (a process timer, every minute): each channel agent's checks due today,
+ * and each project's morning reminder of what waits on a person (ISS-1343).
+ */
+export async function fireScheduledChecks(): Promise<void> {
+  await fireDueChecks();
+  await fireWaitReminders();
+}
+
 export {
   deliverReleaseNotes,
   expireSupportFixes,
   fireDueChecks,
+  fireWaitReminders,
   noteReleaseShipped,
   recoverLostTurns,
   tellAllResults,

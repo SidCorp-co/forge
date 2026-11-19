@@ -297,8 +297,9 @@ const SHARED = new Set<SupportActInput['action']>([
   // any room's agent asks a master, and reads what the masters hold for its thread (ISS-1243)
   'ask_master',
   'in_flight',
-  // what waits on the owner, raised in the technical channel (ISS-1243)
+  // what waits on the owner, raised in the technical channel and reminded each morning (ISS-1343)
   'raise_owed',
+  'check_result',
   // every room agent raises what it needs in its project's technical channel (ISS-1243)
   'technical',
   // and makes the Forge act a person asks for as them, from their own message (ISS-1299)

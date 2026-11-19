@@ -1716,6 +1716,8 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_TECHNICAL_CHANNEL_UNNAMED",
 	/** The technical channel could not be posted in: the direct room did not open, or the project's thread of the shared room could not be opened (ISS-1243, ISS-1271). */
 	"SUPPORT_TECHNICAL_CHANNEL_UNREACHABLE",
+	/** A morning reminder's post names a wait the record settled after the reminder was handed: leave it out (ISS-1343). */
+	"SUPPORT_REMINDER_SETTLED",
 	/** An act the project keeps from its room agents (`agentDeny`): refused, and raised in the technical channel (ISS-1243). */
 	"SUPPORT_ACT_DENIED",
 	/** A post telling a work thread the agent lacks a permission or someone must act first (ISS-1243). */
@@ -1976,6 +1978,7 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_OWNER_QUESTION_UNKNOWN: 404,
 	SUPPORT_TECHNICAL_CHANNEL_UNNAMED: 409,
 	SUPPORT_TECHNICAL_CHANNEL_UNREACHABLE: 503,
+	SUPPORT_REMINDER_SETTLED: 409,
 	SUPPORT_ACT_DENIED: 403,
 	SUPPORT_PERMISSION_TALK: 400,
 	SUPPORT_GIT_NOT_OWNER_MODE: 403,

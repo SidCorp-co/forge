@@ -49,7 +49,7 @@ import {
 import { sweepSuggestions } from './suggestions/index.js';
 import {
   expireSupportFixes,
-  fireDueChecks,
+  fireScheduledChecks,
   followSupportResults,
   recoverLostTurns,
   recoverSupportRooms,
@@ -275,13 +275,11 @@ function conversationDrains(): Timer[] {
       run: warmColdRooms,
     },
     {
-      // a channel agent's scheduled checks fire once a day each, at their time (REQ-77 BC-13)
+      // scheduled checks fire once a day each (REQ-77 BC-13), morning wait reminders too (ISS-1343)
       kind: 'process',
       name: 'support.channel-checks',
       everyMs: 60_000,
-      run: async () => {
-        await fireDueChecks();
-      },
+      run: fireScheduledChecks,
     },
     {
       kind: 'process',

@@ -24,6 +24,44 @@ export const technicalChannelSchema = z.discriminatedUnion("kind", [
 ]);
 export type TechnicalChannel = z.infer<typeof technicalChannelSchema>;
 
+/**
+ * The morning reminder of what waits on a person (ISS-1343, owner 2026-11-19): each morning one
+ * post in the project's technical channel lists every wait of the project open at least 12 hours,
+ * until each is answered, voided or moved. `on` turns it off; `hour` (0-23) and `timeZone` (IANA)
+ * set when it is posted. Absent, it is on at 08:00 Asia/Ho_Chi_Minh.
+ */
+export const waitReminderSchema = z.strictObject({
+	on: z.boolean().optional(),
+	hour: z.int().min(0).max(23).optional(),
+	timeZone: z
+		.string()
+		.min(1)
+		.max(64)
+		.refine(
+			(zone) => {
+				try {
+					new Intl.DateTimeFormat("en", { timeZone: zone });
+					return true;
+				} catch {
+					return false;
+				}
+			},
+			{ message: "an IANA time zone, such as Asia/Ho_Chi_Minh" },
+		)
+		.optional(),
+});
+export type WaitReminder = z.infer<typeof waitReminderSchema>;
+
+/** The reminder where the project document names none, or leaves a part out. */
+export const WAIT_REMINDER_DEFAULTS = {
+	on: true,
+	hour: 8,
+	timeZone: "Asia/Ho_Chi_Minh",
+} as const;
+
+/** A wait younger than this many hours waits for the next morning's reminder. */
+export const WAIT_REMINDER_MIN_AGE_HOURS = 12;
+
 /** What a room agent raises in the technical channel. */
 export const TECHNICAL_NEEDS = [
 	"permission",

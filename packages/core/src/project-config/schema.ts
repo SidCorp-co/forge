@@ -15,7 +15,11 @@ import { REQUIREMENT_READINESS_GATES } from '@forge/contracts/requirements';
 import { stewardPolicySchema } from '@forge/contracts/steward-runtime';
 import { supportApiBindingConfigSchema } from '@forge/contracts/support';
 import { rocketchatBindingTargetShape } from '@forge/contracts/support-channel';
-import { agentDenySchema, technicalChannelSchema } from '@forge/contracts/support-technical';
+import {
+  agentDenySchema,
+  technicalChannelSchema,
+  waitReminderSchema,
+} from '@forge/contracts/support-technical';
 import { widgetBindingConfigSchema } from '@forge/contracts/widget';
 import { rewriteThresholdSchema } from '@forge/contracts/workflow-health';
 import {
@@ -352,6 +356,9 @@ export const projectDocumentSchema = z.strictObject({
   // Absent is the project's own thread of the operations room its organization shares (ISS-1271),
   // or a direct message to the owner the room's binding names where the organization binds none.
   technicalChannel: technicalChannelSchema.optional(),
+  // the morning post in that channel listing every wait of the project open 12 hours or more, until
+  // each is settled (ISS-1343, `support/wait-reminder.ts`). Absent is on at 08:00 Asia/Ho_Chi_Minh.
+  waitReminder: waitReminderSchema.optional(),
   // the acts with serious consequence the project keeps from its room agents, refused by name and
   // raised in the technical channel (ISS-1243, `support/act-deny.ts`). Absent is all four; [] is none.
   agentDeny: agentDenySchema.optional(),

@@ -4,6 +4,8 @@
 // message. The agent answers it with `check_result`: a finding core posts as one message in the
 // group's report thread (ISS-1227, `report-thread.ts`), never its top level, or none, and nothing is
 // posted. One result per firing, whoever sends it; a check turn that fails posts nothing in the group.
+// A morning reminder of what waits on a person fires the same way in any room (ISS-1343,
+// `wait-reminder.ts`), and its result posts in its project's technical channel.
 
 import type { SupportCheck, SupportGrants } from '@forge/contracts/support';
 import { and, eq, isNotNull } from 'drizzle-orm';
@@ -19,6 +21,8 @@ import { checkThreadOf } from './rules.js';
 import { screenForThread } from './screen.js';
 import { insertAction, type RoomRow } from './store.js';
 import { postInThread, scrubbedForRoom, topLevelThreadOf } from './thread.js';
+import type { ReminderFiring } from './wait-reminder.js';
+import { reminderResult } from './wait-reminder-post.js';
 
 /** `YYYY-MM-DD` and `HH:MM` of `now` in UTC. */
 function utcParts(now: Date): { day: string; time: string } {
@@ -102,8 +106,16 @@ export async function fireDueChecks(now = new Date()): Promise<number> {
 
 /** The firing a result names, in this room: a message core wrote under that check thread. */
 export async function firingOf(room: RoomRow, thread: string): Promise<boolean> {
+  return (await firingInput(room, thread)) !== null;
+}
+
+/** What core wrote when the check fired, or null where no check fired as `thread` in this room. */
+async function firingInput(
+  room: RoomRow,
+  thread: string,
+): Promise<{ reminder?: ReminderFiring } | null> {
   const [row] = await db
-    .select({ id: supportActions.id })
+    .select({ id: supportActions.id, input: supportActions.input })
     .from(supportActions)
     .where(
       and(
@@ -114,7 +126,7 @@ export async function firingOf(room: RoomRow, thread: string): Promise<boolean> 
       ),
     )
     .limit(1);
-  return Boolean(row);
+  return row ? ((row.input ?? {}) as { reminder?: ReminderFiring }) : null;
 }
 
 /**
@@ -157,13 +169,16 @@ export async function checkResult(
   room: RoomRow,
   input: { check: string; finding: string | null },
 ): Promise<Outcome<{ posted: string | null }>> {
-  if (!(await firingOf(room, input.check))) {
+  const firing = await firingInput(room, input.check);
+  if (!firing) {
     return no(
       'SUPPORT_CHECK_UNKNOWN',
       '/check',
       `no scheduled check fired as ${input.check} in this group; answer the check thread you were handed`,
     );
   }
+  // a morning reminder posts in its project's technical channel (ISS-1343)
+  if (firing.reminder) return reminderResult(room, input.check, firing.reminder, input.finding);
   const config = await supportConfigOf(room);
   const finding = input.finding === null ? null : await scrubbedForRoom(room, input.finding);
   // screened before the firing's one result is taken, so a finding the screen refuses can be rewritten
