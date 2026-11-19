@@ -170,3 +170,35 @@ fn an_entry_with_an_empty_value_still_refuses_the_map() {
         .is_err());
     done(&path);
 }
+
+/// Between a placement's mint and its settle a pane name has two records, and a hook in a pane
+/// holding no token is told the newest, the same every time it reads the map (cleanup 21284cd0).
+#[test]
+fn the_record_for_a_pane_is_its_newest_every_time() {
+    let path = scratch();
+    let pane = "forge-master-proj";
+    let record = |slug: &str, at: Option<u64>| {
+        let mut v =
+            serde_json::json!({ "session": "s-1", "project": "p-1", "slug": slug, "pane": pane });
+        if let Some(at) = at {
+            v["minted_at"] = at.into();
+        }
+        v
+    };
+    let map = serde_json::json!({
+        "t-before": record("before", None),
+        "t-older": record("older", Some(1_000)),
+        "t-newer": record("newer", Some(2_000)),
+    });
+    std::fs::write(&path, map.to_string()).unwrap();
+    for _ in 0..32 {
+        let store = SessionTokens::at(path.clone());
+        let slug = store.minted_for_pane(pane).unwrap().and_then(|m| m.slug);
+        assert_eq!(slug.as_deref(), Some("newer"));
+    }
+    let store = SessionTokens::at(path.clone());
+    store.mint("s-2", "p-1", "proj", "forge-job-y").unwrap();
+    let minted = store.minted_for_pane("forge-job-y").unwrap().unwrap();
+    assert!(minted.minted_at.is_some(), "a mint says when: {minted:?}");
+    done(&path);
+}

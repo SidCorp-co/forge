@@ -1422,6 +1422,7 @@ mod tree_tests {
             project: PROJECT.into(),
             slug: Some("proj".into()),
             pane: pane.into(),
+            minted_at: None,
         })
     }
 

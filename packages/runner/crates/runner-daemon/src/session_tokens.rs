@@ -80,7 +80,7 @@ struct Stored {
 
 impl Stored {
     fn of(entry: Entry) -> Self {
-        let raw = serde_json::to_value(&entry).unwrap_or(serde_json::Value::Null);
+        let raw = serde_json::to_value(&entry).expect("an entry of this build serializes");
         Self {
             entry: Some(entry),
             raw,
@@ -148,6 +148,10 @@ pub struct Minted {
     pub slug: Option<String>,
     /// The tmux session the pane was started as.
     pub pane: String,
+    /// When it was minted, in ms since the epoch: which of two records for one pane name is the
+    /// newer, between a placement's mint and its settle. Absent from a record written before it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub minted_at: Option<u64>,
 }
 
 /// One entry of the map, in either of the two shapes a file can hold.
@@ -183,6 +187,12 @@ pub enum Holder {
 }
 
 const SHAPES: &str = "each entry is `\"<token>\": {\"session\": \"<id>\", \"project\": \"<id>\", \"slug\": \"<slug>\", \"pane\": \"<tmux session>\"}`, `slug` absent from one 0.17.72 wrote, or, written by forge-runner before 0.17.72, `\"<token>\": \"<session id>\"`";
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
+}
 
 pub fn default_path() -> Option<PathBuf> {
     crate::control::socket_path().map(|s| s.with_file_name("control-tokens.json"))
@@ -355,6 +365,7 @@ impl SessionTokens {
                 project: project.to_string(),
                 slug: Some(slug.to_string()),
                 pane: pane.to_string(),
+                minted_at: Some(now_ms()),
             })),
         );
         self.store(&map)?;
@@ -366,20 +377,25 @@ impl SessionTokens {
     /// under that name holding `token`, so the pane those entries were minted
     /// for has ended.
     pub fn settle(&self, token: &str) -> Result<()> {
-        let mut map = self.load()?;
+        let map = self.load()?;
         let Some(Entry::Minted(minted)) = map.get(token).and_then(|s| s.entry.clone()) else {
             return Err(Error::Other(format!(
                 "tokens: {} holds no record for the capability just minted, so nothing it replaces was retired",
                 self.path.display()
             )));
         };
-        let before = map.len();
-        map.retain(|t, s| {
+        self.store_kept(map, |t, s| {
             t == token
                 || s.kept_by(|e| {
                     e.session() != minted.session && !e.is_pane(&minted.project, &minted.pane)
                 })
-        });
+        })
+    }
+
+    /// Write `map` back holding only what `keep` keeps, where that drops anything.
+    fn store_kept(&self, mut map: Map, keep: impl Fn(&String, &Stored) -> bool) -> Result<()> {
+        let before = map.len();
+        map.retain(|t, s| keep(t, s));
         if map.len() == before {
             return Ok(());
         }
@@ -489,12 +505,19 @@ impl SessionTokens {
             .any(|e| e.session() == session_id || e.is_pane(project, pane)))
     }
 
-    /// The record minted for the pane named `pane`, where there is one.
+    /// The newest record minted for the pane named `pane`, where there is one: a placement's mint
+    /// and its settle leave two for a moment. A record written before `minted_at` is the oldest,
+    /// and a tie goes to the greater token, so the same map always answers the same.
     pub fn minted_for_pane(&self, pane: &str) -> Result<Option<Minted>> {
-        Ok(self.load()?.into_values().find_map(|s| match s.entry {
-            Some(Entry::Minted(m)) if m.pane == pane => Some(m),
-            _ => None,
-        }))
+        Ok(self
+            .load()?
+            .into_iter()
+            .filter_map(|(token, s)| match s.entry {
+                Some(Entry::Minted(m)) if m.pane == pane => Some((m.minted_at, token, m)),
+                _ => None,
+            })
+            .max_by(|a, b| (a.0, &a.1).cmp(&(b.0, &b.1)))
+            .map(|(_, _, m)| m))
     }
 
     pub fn retire(&self, session_id: &str) {
@@ -510,7 +533,7 @@ impl SessionTokens {
     }
 
     fn retire_where(&self, whose: &str, keep: impl Fn(&Entry) -> bool) {
-        let mut map = match self.load() {
+        let map = match self.load() {
             Ok(map) => map,
             Err(e) => {
                 tracing::error!(
@@ -520,14 +543,10 @@ impl SessionTokens {
                 return;
             }
         };
-        let before = map.len();
-        map.retain(|_, s| s.kept_by(&keep));
-        if map.len() != before {
-            if let Err(e) = self.store(&map) {
-                tracing::error!(
-                    "[control] {whose}'s capability could not be retired: {e} — it stays live on this box until the map can be written"
-                );
-            }
+        if let Err(e) = self.store_kept(map, |_, s| s.kept_by(&keep)) {
+            tracing::error!(
+                "[control] {whose}'s capability could not be retired: {e} — it stays live on this box until the map can be written"
+            );
         }
     }
 }
