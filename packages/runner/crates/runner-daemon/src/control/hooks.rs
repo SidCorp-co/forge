@@ -904,6 +904,30 @@ mod role_tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
+    /// The tool call that started a run is kept while the run is held and
+    /// forgotten once it ends, so the gate's memory holds only runs a refusal
+    /// can still name (cleanup 21284cd0, debt a966be04).
+    #[test]
+    fn the_call_that_started_a_run_is_forgotten_once_the_run_ends() {
+        let (ctl, dir) = a_box(&["runner"]);
+        declare(&ctl, "run-1");
+        assert!(dispatch_gate_reply(&ctl, dispatch(BUILDER, "toolu_1"), MASTER).ok);
+        started(&ctl, "agent-1", BUILDER);
+        end(&ctl, "run-1");
+        declare(&ctl, "run-2");
+        assert!(dispatch_gate_reply(&ctl, dispatch(BUILDER, "toolu_2"), MASTER).ok);
+        started(&ctl, "agent-2", BUILDER);
+        let memory = ctl.promises.lock().unwrap();
+        let kept: Vec<_> = memory.started_by.keys().cloned().collect();
+        assert_eq!(
+            kept,
+            vec!["run-2".to_string()],
+            "an ended run's call is kept"
+        );
+        drop(memory);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     /// With the inventory unread the gate lets a dispatch through and
     /// promises the run only to one that could be the run's, so the worker
     /// binds it and a helper sent first does not (ISS-1390).

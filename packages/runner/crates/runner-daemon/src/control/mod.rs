@@ -249,6 +249,25 @@ pub struct GateMemory {
     last_roles: Option<std::collections::BTreeSet<String>>,
 }
 
+#[cfg(unix)]
+impl GateMemory {
+    /// Keep the tool call whose subagent took `run_id`, forgetting each run
+    /// the ledger reads ended or gone: only a held run's refusal names it.
+    fn took(&mut self, led: &runner_core::ledger::Ledger, run_id: &str, tool_use: String) {
+        self.started_by.retain(|run, _| {
+            !matches!(
+                led.run(run),
+                Ok(None)
+                    | Ok(Some(runner_core::ledger::Run {
+                        ended_by: Some(_),
+                        ..
+                    }))
+            )
+        });
+        self.started_by.insert(run_id.to_string(), tool_use);
+    }
+}
+
 /// The dispatch a pending declaration is promised to: its tool call, and the
 /// role it named, which is the role of the subagent that binds the run.
 #[cfg(unix)]

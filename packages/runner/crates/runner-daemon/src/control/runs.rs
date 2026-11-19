@@ -705,7 +705,7 @@ pub(crate) fn bind_declared(
                         let mut memory = ctl.promises.lock().expect("promises poisoned");
                         memory.promised.remove(&run.run_id);
                         if let Some(p) = promise {
-                            memory.started_by.insert(run.run_id.clone(), p.tool_use);
+                            memory.took(led, &run.run_id, p.tool_use);
                         }
                         tracing::info!("[control] run {} is subagent {child}", run.run_id)
                     }
