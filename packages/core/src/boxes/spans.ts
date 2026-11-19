@@ -180,7 +180,39 @@ export async function failSpan(row: BoxRow, spanId: string, detail: string): Pro
     .where(eq(boxSpans.id, span.id));
 }
 
-const CLIP_MIMES: Record<string, string> = { 'video/webm': 'webm', 'video/mp4': 'mp4' };
+type Attached = Awaited<ReturnType<typeof persistIssueAttachment>>;
+
+/** A box clip's types, each with the extension its attachment is named by. */
+export const CLIP_MIMES: Record<string, string> = { 'video/webm': 'webm', 'video/mp4': 'mp4' };
+
+/**
+ * A box clip and its opening still persisted as attachments of `issueId`, named `<base>.<ext>` and
+ * `<base>.png`: a span's cut (`attachSpanClip`) and a box's whole recording (`session.ts`) alike.
+ */
+export async function persistClip(
+  owner: Pick<
+    Parameters<typeof persistIssueAttachment>[0],
+    'issueId' | 'uploaderId' | 'uploaderAgency'
+  >,
+  base: string,
+  ext: string,
+  clip: { bytes: Buffer; mime: string },
+  still: { bytes: Buffer; mime: string },
+): Promise<{ clipFile: Attached; stillFile: Attached }> {
+  const clipFile = await persistIssueAttachment({
+    ...owner,
+    name: `${base}.${ext}`,
+    mime: clip.mime,
+    bytes: clip.bytes,
+  });
+  const stillFile = await persistIssueAttachment({
+    ...owner,
+    name: `${base}.png`,
+    mime: still.mime,
+    bytes: still.bytes,
+  });
+  return { clipFile, stillFile };
+}
 
 /**
  * The device's cut, uploaded: the clip and its opening still become attachments of the issue, named
@@ -214,23 +246,12 @@ export async function attachSpanClip(
     throw refuse('BOX_SPAN_INVALID', detail, '/clip');
   }
   const base = `box-${row.id.slice(0, 8)}-c${span.criterion}-${span.id.slice(0, 8)}`;
-  const common = {
+  const owner = {
     issueId: span.issueId,
     uploaderId: span.createdBy,
     uploaderAgency: 'agent' as const,
   };
-  const clipFile = await persistIssueAttachment({
-    ...common,
-    name: `${base}.${ext}`,
-    mime: clip.mime,
-    bytes: clip.bytes,
-  });
-  const stillFile = await persistIssueAttachment({
-    ...common,
-    name: `${base}.png`,
-    mime: still.mime,
-    bytes: still.bytes,
-  });
+  const { clipFile, stillFile } = await persistClip(owner, base, ext, clip, still);
   const [attached] = await db.transaction(async (tx) => {
     const out = await tx
       .update(boxSpans)

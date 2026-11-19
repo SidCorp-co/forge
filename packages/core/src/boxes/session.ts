@@ -12,9 +12,9 @@ import { and, eq, lt, or } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { type BoxRow, boxes } from '../db/schema-boxes.js';
 import { boxDeviceOf } from '../devices/index.js';
-import { persistIssueAttachment } from '../issues/index.js';
 import { pushBox, refuse, tellChanged } from './access.js';
 import { boxById, boxRecord } from './read.js';
+import { CLIP_MIMES, persistClip } from './spans.js';
 
 type SessionSet = Pick<
   Partial<BoxRow>,
@@ -89,8 +89,6 @@ export async function sessionReport(
   await failSession(row, report.fault, report.detail);
 }
 
-const CLIP_MIMES: Record<string, string> = { 'video/webm': 'webm', 'video/mp4': 'mp4' };
-
 /**
  * The device's upload of the whole kept recording: the clip and its opening still become
  * attachments of the box's issue, named for the box, and the record names them. A box that owes
@@ -129,23 +127,12 @@ export async function attachSession(
     throw refuse('BOX_SPAN_INVALID', detail, '/clip');
   }
   const base = `box-${row.id.slice(0, 8)}-session`;
-  const common = {
+  const owner = {
     issueId: row.issueId,
     uploaderId: row.createdBy,
     uploaderAgency: row.openedAs === 'person' ? ('human' as const) : ('agent' as const),
   };
-  const clipFile = await persistIssueAttachment({
-    ...common,
-    name: `${base}.${ext}`,
-    mime: clip.mime,
-    bytes: clip.bytes,
-  });
-  const stillFile = await persistIssueAttachment({
-    ...common,
-    name: `${base}.png`,
-    mime: still.mime,
-    bytes: still.bytes,
-  });
+  const { clipFile, stillFile } = await persistClip(owner, base, ext, clip, still);
   const attached = await db.transaction(async (tx) => {
     const [moved] = await tx
       .update(boxes)
