@@ -228,19 +228,30 @@ const triesOf = (m: Pick<ActionRow, 'output'>) =>
   Number((m.output as { tries?: unknown } | null)?.tries ?? 0);
 
 /**
+ * A master's answer to the session's own ask (`master-ask.ts:answerMasterAsk`): handed to the
+ * session once (ISS-1301). It tells the session a fact; no person waits on it as a message, so a
+ * turn that completed with it ends its hand-over, posted or not. Handed again, the same answer
+ * reached the room agent three times, each saying answer the person now (FB-723).
+ */
+export function isMasterAnswer(m: Pick<ActionRow, 'actorKind' | 'input'>): boolean {
+  return m.actorKind === 'core' && typeof (m.input as { ask?: unknown } | null)?.ask === 'string';
+}
+
+/**
  * A turn that completed and left messages it was handed with nothing said for them (ISS-1007, ISS-764
  * a): a turn that exits in a second, or one declared done while its process still worked, read as
  * answered before, so the person waited with no failure and no retry recorded. Each is handed again,
  * as a failed turn's are, until its tries run out; then it is recorded on its thread as unanswered,
  * by name, and left: the session did run and chose to post nothing, so no room line says it broke,
- * and chatter is never re-offered for ever.
+ * and chatter is never re-offered for ever. A master's answer the turn took is never handed again
+ * (ISS-1301); a turn that failed on Forge's side still gives it back, as every message (ISS-977).
  */
 export async function retryOrRecordUnanswered(
   room: RoomRow,
   taken: readonly ActionRow[],
   now: Date = new Date(),
 ): Promise<void> {
-  const owed = taken.filter(waitsOnAnswer);
+  const owed = taken.filter((m) => waitsOnAnswer(m) && !isMasterAnswer(m));
   const again = owed.filter((m) => triesOf(m) + 1 < MAX_TRIES);
   const spent = owed.filter((m) => triesOf(m) + 1 >= MAX_TRIES);
   if (again.length > 0) await retryOrTell(room, again, COMPLETED_UNANSWERED, { now });

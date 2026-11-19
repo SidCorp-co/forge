@@ -204,6 +204,8 @@ export async function answerMasterAsk(
   const room = await roomById(answered.roomId);
   if (!room) throw new Error(`support: the room of ask ${askId} is gone`);
   const waited = viewOf(answered, room.rid, actor.projectId, new Date());
+  // its `ask` marks it a master's answer: a turn that completes with it ends its hand-over, posted
+  // or not, and it is never handed again (ISS-1301, `turn-retry.ts:isMasterAnswer`)
   await insertAction({
     roomId: room.id,
     projectId: room.projectId,
