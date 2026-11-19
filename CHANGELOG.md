@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.751] - 2026-11-19
+
+An owner's screenshot reply now reaches the agent that asked
+
+### Fixed
+
+- **An assistant now sees the screenshot the owner sends as his answer.** When the owner answers in the technical thread with a picture, the assistant that asked is told of it and opens it.
+
 ## [0.4.0-dev.750] - 2026-11-19
 
 An assistant naming a screenshot's thread now reads the picture
