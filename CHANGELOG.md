@@ -9,6 +9,22 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.743] - 2026-11-19
+
+Mockups arrive sharp, the guide list opens by name, releases say Live or Simulated
+
+### Added
+
+- **A release now says when an outside service was only tested against a simulation.** Its line reads Live or Simulated, and agents ask for the provider's test account on staging before asking you to approve production.
+
+### Changed
+
+- **Agents now send mockups the way you asked.** The mockups guide teaches a sharp render of the whole screen, in your format (a PDF, an image or a link), sent in one message with no extra process.
+
+### Fixed
+
+- **An agent asking the guides door for its index now reads the guide list.** It names the same guides `GET /api/guides` lists, and a guide name that does not exist points at that list.
+
 ## [0.4.0-dev.742] - 2026-11-19
 
 The forge CLI says how to name a project when it finds none
