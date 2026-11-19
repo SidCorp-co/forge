@@ -1015,6 +1015,12 @@ export const supportImageRequestSchema = z.strictObject({
 		.describe(
 			"which of its pictures, 1 to the `images.count` you were handed; 1 when omitted",
 		),
+	// ISS-1361: the room-ambiguous refusal tells the session to name the thread it was handed
+	thread: threadId
+		.optional()
+		.describe(
+			"the thread the message is in, as you were handed it (`thread`): places the read in one group of a channel agent's",
+		),
 });
 /** One line saying why the session answered or stayed silent, kept on its row for the daily review (ISS-942). */
 const supportWhySchema = z.string().trim().min(3).max(300);

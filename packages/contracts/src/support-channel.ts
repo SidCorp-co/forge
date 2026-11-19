@@ -125,6 +125,8 @@ export const supportMemberRequestSchema = z.strictObject({
 	askFor: channelAskForSchema.optional(),
 	/** The message the inference was read from. */
 	message: supportThreadIdSchema,
+	/** The thread that message is in, as handed: places the act in one group of a channel agent's (ISS-1361). */
+	thread: supportThreadIdSchema.optional(),
 });
 
 /** What a decider may be named for: the acts a proposal waits on an agreement for. */

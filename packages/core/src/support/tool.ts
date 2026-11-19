@@ -129,7 +129,7 @@ export const SUPPORT_TOOL_READS: readonly string[] = [
 const ACTIONS = [...SUPPORT_ACTIONS, ...OPERATIONS_ACTIONS] as const;
 
 /** Each action's own request, judged whole once the action is known. */
-const REQUESTS = {
+export const SUPPORT_ACT_REQUESTS = {
   search: supportSearchRequestSchema,
   thread: supportThreadRequestSchema,
   tools: z.strictObject({}),
@@ -191,7 +191,7 @@ const REQUESTS = {
 
 /** Each action's request as `forge_describe` answers it, its entry below naming exactly these (ISS-1033). */
 const ACTION_REQUESTS: Readonly<Record<string, Record<string, unknown>>> = Object.fromEntries(
-  Object.entries(REQUESTS).map(([action, request]) => [
+  Object.entries(SUPPORT_ACT_REQUESTS).map(([action, request]) => [
     action,
     z.toJSONSchema(request, { io: 'input', unrepresentable: 'any' }) as Record<string, unknown>,
   ]),
@@ -335,7 +335,7 @@ const SIGNATURES = [
   `draft_feedback { thread, message, project, kind: ${SUPPORT_RECORD_KINDS.join(' | ')}, title, summary, one of requirement | issue | screen }`,
   'research { thread, url }',
   'channel {}',
-  `member { member, roles: (${CHANNEL_ROLES.join(' | ')})[], askFor?, message }`,
+  `member { member, roles: (${CHANNEL_ROLES.join(' | ')})[], askFor?, message, thread? }`,
   'rule { thread, message, text }',
   'common_issue { threads, question, answer, feedback? }',
   `route { thread, to: ${CHANNEL_ROUTES.join(' | ')}, member? (technical, product), title? (forge), text }`,
@@ -346,7 +346,7 @@ const SIGNATURES = [
   'agree { thread, proposal, message, decision?: agree | decline }',
   'link { thread, member }',
   'read { name, args?, thread?, check? }',
-  'image { message, n? }',
+  'image { message, n?, thread? }',
   'promise { thread, issue, environment, asker?, project? }',
   'owner_consent { thread, message, decision: give | withdraw, product? }',
   'owner_act { thread, message, tool, args?, agreement? }',
@@ -428,7 +428,9 @@ export const forgeSupportTool: ContextScopedMcpToolFactory = (ctx) => ({
     const action = parsed.success ? parsed.data.action : null;
     const rid = parsed.success ? parsed.data.rid : undefined;
     const judged =
-      parsed.success && action ? REQUESTS[action].safeParse(withoutAction(parsed.data)) : parsed;
+      parsed.success && action
+        ? SUPPORT_ACT_REQUESTS[action].safeParse(withoutAction(parsed.data))
+        : parsed;
     if (!judged.success || !action) {
       const refusals: Refusal[] = (judged.success ? [] : judged.error.issues).map((i) => ({
         code: 'BAD_REQUEST',

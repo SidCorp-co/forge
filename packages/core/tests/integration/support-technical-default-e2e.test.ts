@@ -21,6 +21,7 @@ import { AgentWorld } from '../helpers/support-agent-world.js';
 // @direct-test-of packages/core/src/support/images.ts
 // @direct-test-of packages/core/src/support/technical-thread-room.ts
 // @direct-test-of packages/core/src/support/asker-read.ts
+// @direct-test-of packages/core/src/support/tool.ts
 //
 // ISS-1271 (owner 2026-11-17: Forge-Communicate is SidCorp's default technical channel): a project
 // whose document names no technical channel raises in its own thread of the operations room its
@@ -228,12 +229,15 @@ describe("ISS-1271: the organization's shared operations room is the default tec
         reads.push(await act({ action: 'image', message: 'M-tech-own', n: 1 }));
         reads.push(await act({ action: 'image', message: 'M-tech-other', n: 1 }));
         reads.push(await act({ action: 'image', message: 'M-tech-other', n: 1, rid: w.stand.rid }));
+        // ISS-1361: the call epod's agent made at 09:05Z, following the refusal's own advice
+        reads.push(await act({ action: 'image', message: 'M-tech-own', thread: String(own) }));
       },
     );
-    const [mine, unnamed, other] = reads as [
+    const [mine, unnamed, other, withThread] = reads as [
       Record<string, unknown> & { content?: { type: string; data?: string; mimeType?: string }[] },
       Record<string, unknown>,
       Record<string, unknown>,
+      Record<string, unknown> & { content?: { type: string; data?: string; mimeType?: string }[] },
     ];
     // read through Forge with the shared room's bot, bytes and type intact
     expect(mine.isError, JSON.stringify(mine)).toBe(false);
@@ -247,5 +251,10 @@ describe("ISS-1271: the organization's shared operations room is the default tec
     expect(other.isError).toBe(true);
     expect(JSON.stringify(other)).toContain('SUPPORT_MESSAGE_UNKNOWN');
     expect(JSON.stringify(other)).toContain("outside this project's own thread");
+    // naming the thread it was handed reads it too, never a BAD_REQUEST on `thread` (ISS-1361)
+    expect(withThread.isError, JSON.stringify(withThread)).toBe(false);
+    expect(
+      Buffer.from(withThread.content?.find((c) => c.type === 'image')?.data ?? '', 'base64'),
+    ).toEqual(PNG);
   });
 });

@@ -3,7 +3,7 @@ import { SUPPORT_ACTIONS } from '@forge/contracts/support';
 import { OPERATIONS_ACTIONS } from '@forge/contracts/support-operations';
 import { describe, expect, it } from 'vitest';
 import { SUPPORT_ACT_CARDS, type SupportAction } from './act-cards.js';
-import { forgeSupportTool } from './tool.js';
+import { forgeSupportTool, SUPPORT_ACT_REQUESTS } from './tool.js';
 import { supportActEntries, UNCARDED_ENTRIES } from './tool-description.js';
 
 const ACTIONS: SupportAction[] = [...new Set([...SUPPORT_ACTIONS, ...OPERATIONS_ACTIONS])];
@@ -43,5 +43,17 @@ describe("forge_support's description is rendered from the room acts' cards (ISS
 
   it('is a map of the acts, under half the hand-written 27 KB it replaced', () => {
     expect(tool.description.length).toBeLessThan(14_000);
+  });
+});
+
+describe('an act that names a message takes the thread a room-ambiguous refusal asks for (ISS-1361)', () => {
+  it('lets every act whose request carries `message` carry `thread` too', () => {
+    // SUPPORT_ROOM_AMBIGUOUS tells a channel agent to "name the thread you were handed": an act
+    // naming a message and refusing `thread` sent the epod agent from that advice to a BAD_REQUEST
+    const missing = Object.entries(SUPPORT_ACT_REQUESTS).flatMap(([act, schema]) => {
+      const shape = (schema as { shape?: Record<string, unknown> }).shape ?? {};
+      return 'message' in shape && !('thread' in shape) ? [act] : [];
+    });
+    expect(missing).toEqual([]);
   });
 });

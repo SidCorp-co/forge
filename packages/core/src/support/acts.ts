@@ -129,6 +129,7 @@ export type SupportActInput =
       roles: ChannelRole[];
       askFor?: string | undefined;
       message: string;
+      thread?: string | undefined;
     }
   | { action: 'rule'; thread: string; message: string; text: string }
   | {
@@ -164,7 +165,7 @@ export type SupportActInput =
       decision?: 'agree' | 'decline' | undefined;
     }
   | { action: 'link'; thread: string; member: string }
-  | { action: 'image'; message: string; n?: number | undefined }
+  | { action: 'image'; message: string; n?: number | undefined; thread?: string | undefined }
   | ({ action: 'secret_link' } & SupportSecretLinkRequest)
   | ({ action: 'promise' } & SupportPromiseRequest)
   | ({ action: 'owner_consent' } & SupportOwnerConsentRequest)

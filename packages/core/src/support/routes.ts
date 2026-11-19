@@ -142,7 +142,7 @@ const SHAPES = {
   answerQuestion: '{ thread, forgeQuestion?, source | message, option? | answer? }',
   checkResult: '{ check, finding: string | null }',
   gitCredential: '{ host, path }',
-  image: '{ message, n? }',
+  image: '{ message, n?, thread? }',
 } as const;
 
 supportRoutes.post(
