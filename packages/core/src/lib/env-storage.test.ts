@@ -75,6 +75,22 @@ describe('STORAGE_DRIVER=s3: refused at boot naming each missing S3_* setting (I
     );
   });
 
+  // forge-dev, 2026-11-19: four values were copied with the single quotes Coolify's store wraps them in.
+  it('refuses, by name and never by value, a setting wrapped in quote characters', () => {
+    const lines = storageEnvIssues(
+      parsed({
+        S3_ENDPOINT: "'https://s3.example.test'",
+        S3_SECRET_ACCESS_KEY: '"unit-secret-key"',
+      }),
+    );
+    expect(lines).toEqual([
+      '  - S3_ENDPOINT: its value is wrapped in quote characters, which are taken as part of it; set it without them',
+      '  - S3_SECRET_ACCESS_KEY: its value is wrapped in quote characters, which are taken as part of it; set it without them',
+    ]);
+    expect(lines.join('\n')).not.toContain('unit-secret-key');
+    expect(storageEnvIssues(parsed({ S3_REGION: "us-east-1'" }))).toEqual([]);
+  });
+
   it('refuses a prefix that leaves its folder, and a path-style flag that is no boolean', async () => {
     await expect(boot({ ...S3_ENV, S3_PREFIX: '/forge-dev' })).rejects.toThrow(/S3_PREFIX/);
     await expect(boot({ ...S3_ENV, S3_PREFIX: 'a/../b' })).rejects.toThrow(/S3_PREFIX/);

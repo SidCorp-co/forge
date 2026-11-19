@@ -236,6 +236,16 @@ export function missingS3Settings(parsed: Pick<Env, (typeof S3_SETTINGS)[number]
 const PATH_STYLE = ['true', 'false', '1', '0'];
 
 /**
+ * A value pasted with the quotes a store wraps it in (Coolify's `real_value`, forge-dev 2026-11-19):
+ * the quotes reach the driver as part of the endpoint or key and every request fails.
+ */
+function quoted(value: string | undefined): boolean {
+  if (value === undefined || value.length < 2) return false;
+  const first = value[0];
+  return (first === "'" || first === '"') && value.endsWith(first);
+}
+
+/**
  * Each s3 setting `parsed` leaves unset or misshapen, one line per setting, naming it and never
  * printing what an endpoint or a key holds. The driver and the upload migration read through this.
  */
@@ -243,8 +253,15 @@ export function s3SettingIssues(parsed: Pick<Env, (typeof S3_SETTINGS)[number]>)
   const missing = missingS3Settings(parsed).map(
     (name) => `  - ${name}: required when STORAGE_DRIVER=s3; it is unset`,
   );
-  const shaped: string[] = [];
-  if (parsed.S3_ENDPOINT !== undefined && !URL.canParse(parsed.S3_ENDPOINT)) {
+  const shaped: string[] = S3_SETTINGS.filter((name) => quoted(parsed[name])).map(
+    (name) =>
+      `  - ${name}: its value is wrapped in quote characters, which are taken as part of it; set it without them`,
+  );
+  if (
+    parsed.S3_ENDPOINT !== undefined &&
+    !quoted(parsed.S3_ENDPOINT) &&
+    !URL.canParse(parsed.S3_ENDPOINT)
+  ) {
     shaped.push(
       '  - S3_ENDPOINT: Invalid URL; set it with its scheme, such as https://s3.example.com',
     );
