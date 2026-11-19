@@ -298,3 +298,55 @@ describe("the master's result in the asker's own thread (ISS-871)", () => {
     expect(JSON.stringify(res.body)).toContain('thread');
   });
 });
+
+// ISS-1344 (FB-754): a thread's conversation was read off its OLDEST action, and a master's post the
+// screen refused is recorded with no conversation, so a thread whose first master post was refused
+// stayed unknown after a member wrote in it: on 2026-11-19 the room agent's thread read, in-flight
+// read and reply there were each refused SUPPORT_THREAD_UNKNOWN. A thread no member wrote in is
+// still refused.
+describe("a thread a master's post opened is known once a member writes in it (ISS-1344)", () => {
+  const OPENED = 'Sáng nay còn hai việc chờ anh trả lời.';
+  const ANSWER = 'Đã ghi nhận câu trả lời của anh.';
+  const codesOf = (out: Record<string, unknown>) =>
+    JSON.stringify(out).match(/SUPPORT_[A-Z_]+/g) ?? [];
+  /** A bot-opened thread whose first recorded action is a master post the screen refused. */
+  const openedRefused = async () => {
+    const root = chat.wroteWhileAway(chat.rid, chat.alice, 'Việc chờ', new Date(), { bot: true });
+    const keyed = await post(owner, { text: `${OPENED} ISS-123`, thread: root });
+    expect(codeOf(keyed), JSON.stringify(keyed.body)).toBe('SUPPORT_INTERNAL_CODE');
+    const [first] = await rows<{ kind: string; conversation_id: string | null }>(sql`
+      SELECT kind, conversation_id FROM support_actions
+       WHERE project_id = ${w.projectId}::uuid AND thread = ${root} ORDER BY created_at LIMIT 1`);
+    expect(first).toEqual({ kind: 'refused', conversation_id: null });
+    return root;
+  };
+
+  it("admits the room agent's thread read, in-flight read and reply, and the reply posts", async () => {
+    const root = await openedRefused();
+    expect((await post(owner, { text: OPENED, thread: root })).status).toBe(201);
+    const out: Record<string, unknown> = {};
+    await w.hear(
+      () => chat.say(chat.bob, 'Anh chọn phương án một.', root),
+      async (_turn, act) => {
+        out.thread = await act({ action: 'thread', thread: root });
+        out.inFlight = await act({ action: 'in_flight', thread: root });
+        out.reply = await act({ action: 'reply', thread: root, text: ANSWER });
+      },
+    );
+    expect(codesOf(out), JSON.stringify(out)).toEqual([]);
+    await w.untilLine(chat.rid, root, (t) => t === ANSWER);
+  });
+
+  it('still refuses a thread no member wrote in', async () => {
+    const quiet = await openedRefused();
+    const out: Record<string, unknown> = {};
+    await w.hear(
+      () => chat.say(chat.bob, 'Có ai ở đây không?'),
+      async (_turn, act) => {
+        out.reply = await act({ action: 'reply', thread: quiet, text: ANSWER });
+      },
+    );
+    expect(codesOf(out), JSON.stringify(out)).toContain('SUPPORT_THREAD_UNKNOWN');
+    expect(w.threadLines(chat.rid, quiet)).toEqual([]);
+  });
+});

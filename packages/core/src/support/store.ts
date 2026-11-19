@@ -300,12 +300,22 @@ export async function latestThreadWriter(
   return row?.key ? { key: row.key, label: row.label } : null;
 }
 
-/** The conversation one thread is recorded in, read off its first action. */
+/**
+ * The conversation one thread is recorded in, read off its first action that carries one: a refused
+ * master post is recorded with none, and a thread it opened is still known once a member writes
+ * there (ISS-1344).
+ */
 export async function threadConversation(roomId: string, thread: string): Promise<string | null> {
   const [row] = await db
     .select({ conversationId: supportActions.conversationId })
     .from(supportActions)
-    .where(and(eq(supportActions.roomId, roomId), eq(supportActions.thread, thread)))
+    .where(
+      and(
+        eq(supportActions.roomId, roomId),
+        eq(supportActions.thread, thread),
+        isNotNull(supportActions.conversationId),
+      ),
+    )
     .orderBy(asc(supportActions.createdAt))
     .limit(1);
   return row?.conversationId ?? null;
