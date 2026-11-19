@@ -335,7 +335,7 @@ async function act(
     case 'tools':
       return listTools(room);
     case 'reply':
-      return reply(room, { thread: input.thread, text: input.text, why: input.why, turn });
+      return reply(room, { ...input, turn });
     case 'silent':
       return staySilent(room, input);
     case 'decide': {

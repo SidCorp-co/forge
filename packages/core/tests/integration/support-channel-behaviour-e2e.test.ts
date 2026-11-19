@@ -22,6 +22,7 @@ import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 // @direct-test-of packages/core/src/support/acts.ts
 // @direct-test-of packages/core/src/support/channel-read.ts
 // @direct-test-of packages/core/src/support/service.ts
+// @direct-test-of packages/core/src/support/thread-requests.ts
 // @direct-test-of packages/core/src/support/inbound.ts
 //
 // REQ-77 r1 part 2 (ISS-764), how a project's channel agent answers: its members, roles, rules and
@@ -197,6 +198,53 @@ describe('REQ-77 BC-8: it posts results only, one per request, in the asker’s 
        WHERE project_id = ${w.projectId}::uuid AND thread = ${asked.id} AND kind = 'refused'
          AND output->>'code' = 'SUPPORT_ONE_RESULT_PER_REQUEST'`);
     expect(refused[0]?.n).toBe(1);
+  });
+
+  // ISS-1314 (FB-731): the owner keeps each matter in the thread it was first raised in, and asked a
+  // follow-up in another thread; the answer posted in the matter's thread was refused, because the
+  // guard counted posts per thread, so it went to the follow-up's thread against his rule
+  it('answers a request from another thread in the thread that keeps the matter, once, and its own thread gets no post', async () => {
+    const matter = await w.hear(
+      () => chat.say(chat.bob, 'the CTV design permission is broken'),
+      async (_t, act, message) => {
+        const m = message();
+        await act({ action: 'reply', thread: m.thread, text: 'Fixed: CTVs design again.' });
+      },
+    );
+    const out: Record<string, Record<string, unknown>> = {};
+    const asked = await w.hear(
+      () => chat.say(chat.bob, 'which designs did it hit in the last 24 hours?'),
+      async (_t, act, message) => {
+        const request = { thread: message().thread, message: message().message };
+        const answer = { action: 'reply', thread: matter.id, request };
+        out.first = await act({ ...answer, text: 'Three designs: D-11, D-12 and D-19.' });
+        out.again = await act({ ...answer, text: 'Those three were D-11, D-12 and D-19.' });
+        out.own = await act({ action: 'reply', thread: request.thread, text: 'D-11, D-12, D-19.' });
+        out.none = await act({
+          ...answer,
+          request: { thread: request.thread, message: 'NoSuchMessage1' },
+          text: 'D-11 again.',
+        });
+      },
+    );
+    // [REQUEST_FIELD_REFUSED] before the fix: a reply could not name the request it answered
+    expect(out.first?.isError, JSON.stringify(out.first)).toBe(false);
+    expect(code(out.again as Record<string, unknown>)).toBe('SUPPORT_ONE_RESULT_PER_REQUEST');
+    expect(code(out.own as Record<string, unknown>)).toBe('SUPPORT_ONE_RESULT_PER_REQUEST');
+    expect(code(out.none as Record<string, unknown>)).toBe('SUPPORT_ONE_RESULT_PER_REQUEST');
+    await expect
+      .poll(() => w.threadLines(chat.rid, matter.id).length, { timeout: 10_000 })
+      .toBe(2);
+    expect(w.threadLines(chat.rid, matter.id).map((l) => l.text)).toEqual([
+      'Fixed: CTVs design again.',
+      'Three designs: D-11, D-12 and D-19.',
+    ]);
+    expect(w.threadLines(chat.rid, asked.id)).toEqual([]);
+    // the request reads answered where it was asked, by the post in the matter's thread
+    const [answered] = await rows<{ at: string | null }>(sql`
+      SELECT output->>'answeredAt' AS at FROM support_actions
+       WHERE project_id = ${w.projectId}::uuid AND kind = 'message_in' AND external_id = ${asked.id}`);
+    expect(answered?.at).toEqual(expect.any(String));
   });
 
   it('posts at the top level only by announcement, one an hour, naming nobody', async () => {

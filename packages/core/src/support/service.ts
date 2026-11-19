@@ -14,7 +14,9 @@ import {
   supportApisOf,
 } from '../integrations/support-api/index.js';
 import { askerOf, mentionRefusal, readerOf } from './channel.js';
+import { settleLatency } from './delivery.js';
 import { readersOf } from './grants.js';
+import { endLastResortWait } from './last-resort.js';
 import { unreadLiveClaim } from './live-claims.js';
 import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
 import type { Refusal } from './refusals.js';
@@ -22,7 +24,7 @@ import { limitsOf } from './rules.js';
 import { type SessionDoor, screenForThread } from './screen.js';
 import { insertAction, type RoomRow } from './store.js';
 import { noteInThread, postInThread, scrubbedForRoom } from './thread.js';
-import { unansweredInThread } from './thread-requests.js';
+import { ANSWERED_ELSEWHERE, type NamedRequest, resultOwed } from './thread-requests.js';
 
 export type { Outcome } from './outcome.js';
 
@@ -144,13 +146,19 @@ export async function reply(
     text: string;
     why?: string | undefined;
     turn?: string | null | undefined;
+    request?: NamedRequest | undefined;
   },
 ): Promise<Outcome<{ messageId: string | null }>> {
   const conversationId = await knownThread(room, input.thread);
   if (!conversationId) return threadUnknown(input.thread);
   // a channel agent posts results only, one per request (REQ-77 BC-8): a second post with nothing
-  // new to answer is an acknowledgement or progress, and is refused by name
-  if (room.kind === 'agent' && !(await unansweredInThread(room.id, input.thread))) {
+  // new to answer is an acknowledgement or progress, and is refused by name; one naming the request
+  // it answers is admitted in the thread that keeps the matter (ISS-1314)
+  const owed =
+    room.kind === 'agent' || input.request
+      ? await resultOwed(room.id, input.thread, input.request)
+      : null;
+  if (owed && !owed.ok && (room.kind === 'agent' || owed.why === 'unknown')) {
     await insertAction({
       roomId: room.id,
       projectId: room.projectId,
@@ -159,15 +167,12 @@ export async function reply(
       kind: 'refused',
       actorKind: 'session',
       tool: 'reply',
-      input: { text: input.text },
+      input: { text: input.text, ...(input.request ? { request: input.request } : {}) },
       output: { code: 'SUPPORT_ONE_RESULT_PER_REQUEST' },
     });
-    return no(
-      'SUPPORT_ONE_RESULT_PER_REQUEST',
-      '/thread',
-      'your last post in this thread is its result, and no message has arrived there since: one result per request, never an acknowledgement or progress. Nothing was posted. Keep what you have until the next message in this thread, and answer all of it in that one post. Where the person here waits on work recorded or carried from another thread, promise them here with support.promise { thread, issue, environment }: Forge hands you a note in this thread once it is there, and that note opens your one post.',
-    );
+    return no('SUPPORT_ONE_RESULT_PER_REQUEST', owed.pointer, noResultOwed(owed.why, input.request));
   }
+  const elsewhere = owed?.ok ? owed.elsewhere : null;
   const text = await scrubbedForRoom(room, input.text);
   // what is live is said from a release read of this turn, never from memory (ISS-1123)
   const unread = await unreadLiveClaim<{ messageId: string | null }>(room, {
@@ -222,10 +227,51 @@ export async function reply(
     kind: 'reply',
     actorKind: 'session',
     // why it answered, one line, kept for the daily review to tune the room's policy by (ISS-942)
-    input: { text, ...(input.why ? { why: await scrubbedForRoom(room, input.why) } : {}) },
+    input: {
+      text,
+      ...(input.why ? { why: await scrubbedForRoom(room, input.why) } : {}),
+      ...(elsewhere ? { request: elsewhere } : {}),
+    },
     externalId: posted.messageId,
   });
+  if (elsewhere) await answeredElsewhere(room, input.thread, elsewhere, posted.messageId);
   return { ok: true, value: { messageId: posted.messageId } };
+}
+
+/** Why a channel agent's post is no result owed, and what to do instead (REQ-77 BC-8, ISS-1314). */
+function noResultOwed(why: 'answered' | 'unknown', request: NamedRequest | undefined): string {
+  if (why === 'unknown') {
+    return `no message ${request?.message} was asked in thread ${request?.thread} of this room, so this post answers no request. Nothing was posted. Name the request as you were handed it: its \`thread\` and its \`message\`.`;
+  }
+  if (request) {
+    return `the request ${request.message} in thread ${request.thread} already has its result, posted there or in a thread that named it: one result per request. Nothing was posted. Keep what you have for the next message.`;
+  }
+  return 'your last post in this thread is its result, and no message has arrived there since: one result per request, never an acknowledgement or progress. Nothing was posted. Where this answers a request asked in another thread of this room and the matter is kept here, name it: support.reply { thread, text, request: { thread, message } }. Otherwise keep what you have until the next message in this thread, and answer all of it in that one post. Where the person here waits on work recorded or carried from another thread, promise them here with support.promise { thread, issue, environment }: Forge hands you a note in this thread once it is there, and that note opens your one post.';
+}
+
+/**
+ * The request a reply in `thread` named, asked in another thread of the room, is answered (ISS-1314):
+ * recorded in its own thread as that thread's result, posting nothing there, and the wait of every
+ * message the session was handed there ends.
+ */
+async function answeredElsewhere(
+  room: RoomRow,
+  thread: string,
+  request: NamedRequest,
+  reply: string | null,
+): Promise<void> {
+  await insertAction({
+    roomId: room.id,
+    projectId: room.projectId,
+    conversationId: await knownThread(room, request.thread),
+    thread: request.thread,
+    kind: 'routed',
+    actorKind: 'session',
+    tool: ANSWERED_ELSEWHERE,
+    input: { message: request.message, thread, reply },
+  });
+  await settleLatency(room.id, request.thread, new Date());
+  await endLastResortWait(room, request.thread);
 }
 
 /**

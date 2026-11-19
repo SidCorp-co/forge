@@ -133,6 +133,7 @@ export const ROOM_ACT_CARDS = {
     practice: [
       'Results only: no acknowledgement, plan or progress, save the one reply that an ask went to the team.',
       'In a group the product’s users read, a Forge issue key, MR number, variable name, sha or credential word is refused SUPPORT_INTERNAL_CODE.',
+      'Where an owner keeps each matter in the thread it was first raised in, a question on it asked elsewhere is answered there, named with request: { thread, message }; its own thread gets no post.',
     ],
     example: {
       thread: THREAD,

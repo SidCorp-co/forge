@@ -110,7 +110,7 @@ const ridProjectQuery = zValidator(
 const SHAPES = {
   search: '{ query, project? }',
   thread: '{ thread }',
-  reply: '{ thread, text, why? }',
+  reply: '{ thread, text, why?, request? }',
   silent: '{ thread, message?, reason }',
   run: '{ thread, tool, args? }',
   fix: '{ thread, tool, args?, asker }',

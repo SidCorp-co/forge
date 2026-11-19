@@ -5,6 +5,12 @@ import { db } from '../db/client.js';
 import { supportActions } from '../db/schema-support.js';
 
 /**
+ * The record, in a request's own thread, that a reply posted in another thread of the room answered
+ * it (ISS-1314): the thread's result, though nothing was posted there.
+ */
+export const ANSWERED_ELSEWHERE = 'answered_elsewhere';
+
+/**
  * Whether a thread holds a request its replies have not answered: what a request is, for the one
  * result each gets (REQ-77 BC-8). A request is one handing of the thread's messages: an answer, a
  * note core tells the session and a member's message all count; the session's own checks and posts
@@ -19,13 +25,15 @@ export async function unansweredInThread(roomId: string, thread: string): Promis
   const [last, before] = await db
     .select({ at: supportActions.createdAt })
     .from(supportActions)
-    // a master's post in the thread is its result too: one voice per thread (ISS-1243, `one-voice.ts`)
+    // a master's post in the thread is its result too: one voice per thread (ISS-1243, `one-voice.ts`),
+    // and so is a reply in another thread that named this thread's request (ISS-1314)
     .where(
       and(
         inThread,
         or(
           eq(supportActions.kind, 'reply'),
           and(eq(supportActions.kind, 'routed'), eq(supportActions.tool, 'master_post')),
+          and(eq(supportActions.kind, 'routed'), eq(supportActions.tool, ANSWERED_ELSEWHERE)),
         ),
       ),
     )
@@ -54,4 +62,46 @@ export async function unansweredInThread(roomId: string, thread: string): Promis
     rows.flatMap((r) => (r.handed && r.batch ? [new Date(r.batch).getTime()] : [])),
   );
   return handings.size >= 2;
+}
+
+/** A request a reply names as the one it answers: its thread and its message (ISS-1314). */
+export interface NamedRequest {
+  thread: string;
+  message: string;
+}
+
+/**
+ * Whether a channel agent's post in `thread` is a result a request is owed (REQ-77 BC-8): its own
+ * thread holds a request no result answered, or the request it names, asked in another thread of
+ * the room, does (ISS-1314: an owner keeps each matter in one thread, so its answer goes there).
+ * Answers the request it answers elsewhere, or where and why it is no result owed.
+ */
+export async function resultOwed(
+  roomId: string,
+  thread: string,
+  request: NamedRequest | undefined,
+): Promise<
+  | { ok: true; elsewhere: NamedRequest | null }
+  | { ok: false; pointer: string; why: 'answered' | 'unknown' }
+> {
+  if (request) {
+    const [named] = await db
+      .select({ id: supportActions.id })
+      .from(supportActions)
+      .where(
+        and(
+          eq(supportActions.roomId, roomId),
+          eq(supportActions.thread, request.thread),
+          eq(supportActions.kind, 'message_in'),
+          eq(supportActions.externalId, request.message),
+        ),
+      )
+      .limit(1);
+    if (!named) return { ok: false, pointer: '/request/message', why: 'unknown' };
+  }
+  const asked = request?.thread ?? thread;
+  if (!(await unansweredInThread(roomId, asked))) {
+    return { ok: false, pointer: request ? '/request' : '/thread', why: 'answered' };
+  }
+  return { ok: true, elsewhere: request && request.thread !== thread ? request : null };
 }

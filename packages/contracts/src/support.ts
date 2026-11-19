@@ -998,6 +998,26 @@ export const supportImageRequestSchema = z.strictObject({
 });
 /** One line saying why the session answered or stayed silent, kept on its row for the daily review (ISS-942). */
 const supportWhySchema = z.string().trim().min(3).max(300);
+/**
+ * The request a channel agent's reply answers where it was asked in another thread of the same room
+ * (ISS-1314): the post goes in the thread that keeps the matter, and that request counts as answered
+ * there, so its own thread gets no second post (REQ-77 BC-8, one result per request).
+ */
+export const supportReplyRequestNamedSchema = z
+	.strictObject({
+		thread: threadId.describe(
+			"the thread the request was asked in, as its message carries `thread`",
+		),
+		message: z
+			.string()
+			.min(1)
+			.max(64)
+			.regex(/^[A-Za-z0-9_-]+$/, "a Rocket.Chat message id")
+			.describe("the request's own message id, as it carries `message`"),
+	})
+	.describe(
+		"the request this post answers when it was asked in another thread of this room: post in the thread that keeps the matter, and its own thread gets no second post",
+	);
 export const supportReplyRequestSchema = z.strictObject({
 	thread: threadId,
 	text: z.string().trim().min(1).max(4000),
@@ -1006,6 +1026,7 @@ export const supportReplyRequestSchema = z.strictObject({
 		.describe(
 			"one line: why this message asked for a reply, kept on the reply's row",
 		),
+	request: supportReplyRequestNamedSchema.optional(),
 });
 /**
  * The session posts nothing for a message it was handed, and says why (ISS-942): chatter, a message
@@ -1681,7 +1702,7 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_CHANNEL_NOT_OUTSIDE",
 	/** A channel agent serves several groups, and the act named none it could be read from (REQ-77). */
 	"SUPPORT_ROOM_AMBIGUOUS",
-	/** A channel agent's second reply to one request: one result per request (REQ-77 BC-8). */
+	/** A channel agent's second reply to one request, or one answering none: one result per request (REQ-77 BC-8, ISS-1314). */
 	"SUPPORT_ONE_RESULT_PER_REQUEST",
 	/** A channel agent's post says what is live with no release read in its turn (ISS-1123). */
 	"SUPPORT_LIVE_CLAIM_UNREAD",

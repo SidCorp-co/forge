@@ -312,7 +312,7 @@ const SIGNATURES = [
   'search { query, project? }',
   'thread { thread }',
   'tools {}',
-  'reply { thread, text, why? }',
+  'reply { thread, text, why?, request?: { thread, message } }',
   'silent { thread, message?, reason }',
   `decide { thread, message?, decision: ${SUPPORT_ROUTING_DECISIONS.join(' | ')}, project?, signals: (${SUPPORT_ROUTING_SIGNALS.join(' | ')})[], confidence: ${SUPPORT_ROUTING_CONFIDENCES.join(' | ')}, why }`,
   'run { thread, tool, args? }',
