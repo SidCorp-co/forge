@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.750] - 2026-11-19
+
+An assistant naming a screenshot's thread now reads the picture
+
+### Fixed
+
+- **An assistant that names the thread of a screenshot can open it.** Following its own advice to name the thread no longer gets the assistant refused; it reads the owner's picture.
+
 ## [0.4.0-dev.749] - 2026-11-19
 
 An assistant reads the owner's screenshots in its project's technical thread again
