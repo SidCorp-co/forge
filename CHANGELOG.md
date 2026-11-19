@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.754] - 2026-11-19
+
+Waking a finished builder keeps the master's declared run; local storage starts cleanly
+
+### Fixed
+
+- **A storage setting no longer stops forge-dev from starting.** The S3 settings are checked only when uploads are switched to S3, so they can be set ahead of the switch.
+- **A finished subagent woken by SendMessage no longer takes a run its master declared.** The run waits for the next dispatch, and a dispatch no run waits for is refused naming the run and the subagent holding it.
+
 ## [0.4.0-dev.753] - 2026-11-19
 
 Uploads can live on S3-compatible object storage and survive a redeploy
