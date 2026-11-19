@@ -4,14 +4,15 @@
 // counts the lines that touched a screen and show nothing.
 // @direct-test-of packages/web-v2/src/features/releases/components/release-visual.tsx
 // @direct-test-of packages/web-v2/src/design/patterns/device-frame.tsx
-// ISS-1368: a row's sentence opens on demand under its title, never on hover alone
+// ISS-1368: a row's sentence opens on demand in a card over the page, never on hover alone and never in place
 // @direct-test-of packages/web-v2/src/features/releases/components/release-report.tsx
 // @direct-test-of packages/web-v2/src/features/releases/components/release-bits.tsx
+// ISS-1368 re-run: the release's summary opens from its name the same way
 
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { releasePage } from "@/test/release-page";
+import { releasePage, SERVED_SUMMARY, servedReleasePage } from "@/test/release-page";
 import { rawKeysOnFace } from "@/test/screen-face";
 import { FixedRows, ReleaseHero, VisualsOwed, WhatsNew } from "./release-lines";
 import { NeedsAttention } from "./release-report";
@@ -23,13 +24,14 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("a release opens on its hero (ISS-1308)", () => {
-  it("names the release, says its summary and counts its lines, criteria, clips and shots", () => {
+  it("names the release and counts its lines, clips and shots, leaving its criteria to the page's one proof bar", () => {
     render(<ReleaseHero page={releasePage()} authed />);
     const hero = screen.getByTestId("release-hero");
     expect(hero).toHaveTextContent("Readable releases");
     expect(screen.getByTestId("hero-new")).toHaveTextContent("1New");
     expect(screen.getByTestId("hero-fixed")).toHaveTextContent("1Fixed");
-    expect(screen.getByTestId("hero-criteria")).toHaveTextContent("2/3Criteria passed");
+    expect(screen.queryByTestId("hero-criteria")).toBeNull();
+    expect(hero).not.toHaveTextContent("2/3");
     expect(screen.getByTestId("hero-media")).toHaveTextContent("1 · 1Clips · shots");
     // the cover is the line's clip, on its still, with its length
     expect(within(screen.getByTestId("hero-cover")).getByTestId("visual-play")).toHaveTextContent("Watch 0:20");
@@ -102,13 +104,13 @@ describe("the developer view counts the visuals owed, and refuses nothing (ISS-1
   });
 });
 
-describe("a row's sentence opens on demand under its title, never on hover alone (ISS-1368)", () => {
+describe("a row's sentence opens on demand in a card over the page, never on hover alone and never in place (ISS-1368)", () => {
   const SENTENCE = "Open any release and read what it brings, whole, in under a minute.";
   const FIXED = "Dates no longer slip a day across time zones.";
   /** No element of the page carries a sentence in a hover-only title. */
   const onHover = (root: HTMLElement, text: string) => [...root.querySelectorAll("[title]")].filter((e) => e.getAttribute("title") === text);
 
-  it("shows a What's new row's title shut, and opens its sentence whole on a click, and shuts it again", () => {
+  it("shows a What's new row's title shut, opens its sentence whole in a card over the page on a click, and shuts it again", () => {
     const { container } = render(<WhatsNew page={releasePage()} authed />);
     const toggle = screen.getByRole("button", { name: "Releases read as pages" });
     expect(toggle).toHaveAttribute("aria-expanded", "false");
@@ -120,12 +122,16 @@ describe("a row's sentence opens on demand under its title, never on hover alone
     const sentence = screen.getByTestId("whats-new-detail");
     expect(sentence).toHaveTextContent(SENTENCE);
     expect(toggle).toHaveAttribute("aria-controls", sentence.id);
+    expect(toggle).toHaveAttribute("aria-haspopup", "dialog");
+    // over the page, never in the row: the row keeps its height
+    expect(container.contains(sentence)).toBe(false);
+    expect(sentence.closest("[role=dialog]")).toHaveAccessibleName("Releases read as pages");
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByTestId("whats-new-detail")).toBeNull();
   });
 
-  it("opens a What's new row's sentence from the keyboard, by Enter and by Space", async () => {
+  it("opens a What's new row's sentence from the keyboard, by Enter and by Space, and shuts it by Escape", async () => {
     const user = userEvent.setup();
     render(<WhatsNew page={releasePage()} authed />);
     await user.tab();
@@ -136,6 +142,10 @@ describe("a row's sentence opens on demand under its title, never on hover alone
     await user.keyboard(" ");
     expect(screen.queryByTestId("whats-new-detail")).toBeNull();
     expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await user.keyboard(" ");
+    expect(screen.getByTestId("whats-new-detail")).toHaveTextContent(SENTENCE);
+    await user.keyboard("{Escape}");
+    expect(screen.queryByTestId("whats-new-detail")).toBeNull();
   });
 
   it("opens a Fixed row's sentence the same way, where it showed on hover alone before", async () => {
@@ -149,6 +159,7 @@ describe("a row's sentence opens on demand under its title, never on hover alone
     expect(screen.queryByText(FIXED)).toBeNull();
     await user.click(toggle);
     expect(screen.getByTestId("fixed-detail")).toHaveTextContent(FIXED);
+    expect(container.contains(screen.getByTestId("fixed-detail"))).toBe(false);
     expect(toggle).toHaveAttribute("aria-expanded", "true");
   });
 
@@ -162,6 +173,35 @@ describe("a row's sentence opens on demand under its title, never on hover alone
     expect(screen.queryByTestId("fixed-toggle")).toBeNull();
   });
 
+  it("shows the release's name shut, and opens its summary whole in a card over the page by a click, Enter and Space", async () => {
+    const user = userEvent.setup();
+    const page = servedReleasePage();
+    const { container } = render(<ReleaseHero page={page} authed />);
+    const toggle = screen.getByRole("button", { name: "One Secrets page for every secret" });
+    expect(within(screen.getByRole("heading", { level: 2 })).getByRole("button")).toBe(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText(SERVED_SUMMARY)).toBeNull();
+    expect(onHover(container, SERVED_SUMMARY)).toEqual([]);
+    await user.click(toggle);
+    expect(screen.getByTestId("hero-summary-detail")).toHaveTextContent(SERVED_SUMMARY);
+    expect(toggle).toHaveAttribute("aria-controls", screen.getByTestId("hero-summary-detail").id);
+    expect(container.contains(screen.getByTestId("hero-summary-detail"))).toBe(false);
+    await user.keyboard(" ");
+    expect(screen.queryByTestId("hero-summary-detail")).toBeNull();
+    await user.keyboard("{Enter}");
+    expect(screen.getByTestId("hero-summary-detail")).toHaveTextContent(SERVED_SUMMARY);
+  });
+
+  it("names a release with a summary and no name by its version, and draws a name with no summary alone", () => {
+    const page = servedReleasePage();
+    const { unmount } = render(<ReleaseHero page={{ ...page, header: { ...page.header, name: null } }} authed />);
+    expect(screen.getByRole("button", { name: page.header.version })).toHaveAttribute("aria-expanded", "false");
+    unmount();
+    render(<ReleaseHero page={{ ...page, header: { ...page.header, summary: null } }} authed />);
+    expect(screen.getByRole("heading", { level: 2, name: "One Secrets page for every secret" })).toBeTruthy();
+    expect(screen.queryByTestId("hero-summary-toggle")).toBeNull();
+  });
+
   it("opens a Needs attention line's reason the same way, never on hover", async () => {
     const user = userEvent.setup();
     const page = releasePage();
@@ -171,5 +211,6 @@ describe("a row's sentence opens on demand under its title, never on hover alone
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     await user.click(toggle);
     expect(screen.getByTestId("page-attention-detail").textContent).not.toBe("");
+    expect(container.contains(screen.getByTestId("page-attention-detail"))).toBe(false);
   });
 });

@@ -45,15 +45,12 @@ export function DisclosureToggle({
   onToggle,
   className,
   testId,
-  controls,
   children,
 }: {
   open: boolean;
   onToggle: () => void;
   className: string;
   testId?: string;
-  /** The id of what it opens, once that is drawn. */
-  controls?: string | undefined;
   children: ReactNode;
 }) {
   return (
@@ -61,7 +58,6 @@ export function DisclosureToggle({
       type="button"
       className={cn("inline-flex items-center gap-1 font-medium text-link", className)}
       aria-expanded={open}
-      aria-controls={controls}
       onClick={onToggle}
       data-testid={testId}
     >

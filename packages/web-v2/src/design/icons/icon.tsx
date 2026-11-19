@@ -8,6 +8,7 @@ import {
   Star, Trash2, TriangleAlert, User, Users, Waypoints, Workflow, X,
   Bold, Code, Heading, Italic, ListOrdered, Quote, SquareCode,
   ChevronUp, Expand, Map as MapIcon, Maximize, PanelRightClose, PanelRightOpen, Shrink,
+  Download, Share2,
 } from "lucide-react";
 
 /* Semantic icon names (carried over from the prototype's Icon.jsx) mapped to
@@ -92,6 +93,8 @@ const ICONS = {
   logOut: LogOut,
   flow: Waypoints,
   rocket: Rocket,
+  share: Share2,
+  download: Download,
 } satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof ICONS;

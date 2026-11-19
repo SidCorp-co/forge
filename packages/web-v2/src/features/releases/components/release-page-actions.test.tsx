@@ -84,6 +84,28 @@ describe("exporting a release page", () => {
   });
 });
 
+describe("the page's acts are icons, named by a tooltip (ISS-1368)", () => {
+  const tip = () => document.querySelector<HTMLElement>('[data-slot="tooltip-content"]');
+
+  it("names Share and Export for a screen reader, draws no word on their face, and says each on hover and on keyboard focus", async () => {
+    const user = userEvent.setup();
+    renderWithQuery(<ReleaseActions />);
+    const share = screen.getByRole("button", { name: "Share" });
+    const exporting = screen.getByRole("button", { name: "Export" });
+    expect(screen.getByTestId("release-page-actions").textContent).toBe("");
+    await user.hover(share);
+    await waitFor(() => expect(tip()).toHaveTextContent("Share"));
+    await user.unhover(share);
+    await waitFor(() => expect(tip()).toBeNull());
+    await user.tab();
+    await user.tab();
+    expect(exporting).toHaveFocus();
+    await waitFor(() => expect(tip()).toHaveTextContent("Export"));
+    await user.keyboard("{Enter}");
+    expect(await screen.findByRole("menuitem", { name: "Copy Markdown" })).toBeTruthy();
+  });
+});
+
 describe("sharing a release page", () => {
   it("creates a share whose subject is the release's version", async () => {
     const calls = fakeCore((c) => {
