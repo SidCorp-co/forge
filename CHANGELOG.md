@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.747] - 2026-11-19
+
+A morning reminder of open waits, and replies in threads a master's post opened
+
+### Added
+
+- **Every morning, what still waits on you is reminded in chat.** Each project's thread lists every decision waiting over 12 hours, with who owes it and a link, until it is answered.
+
+### Fixed
+
+- **A thread a refused master post opened answers once someone writes in it.** The room assistant can read it and reply there, where before every act in that thread was refused as unknown.
+
 ## [0.4.0-dev.746] - 2026-11-19
 
 Room assistants get a master's answer once and can answer in the matter's thread
