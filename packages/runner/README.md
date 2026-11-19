@@ -328,7 +328,8 @@ ran in tmux panes is moved over in this order:
    `claude agents --json`, no background child or child run open) has its pane ended and its
    conversation resumed as a background session under the same id; the log says `its tmux pane
    was idle and is ended`. A busy one stays in tmux (`BG_CUTOVER_WAITS` in the log) and moves on
-   a later sweep.
+   a later sweep. While it waits, its own pane still declares, dispatches and closes its runs,
+   and they move with its conversation.
 
 A copy is two live rows for one master in `claude agents --json`, or one background row beside
 the pane holding its conversation. The runner stops one at once (`BG_RESUME_COPIED`);
