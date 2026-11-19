@@ -163,65 +163,6 @@ describe('ISS-1243: a room agent asks its master in its turn', () => {
     expect(stranger.status).toBe(403);
   });
 
-  // ISS-1301 (FB-723, Forge-Communicate 2026-11-18 03:33-03:35Z): a turn that took a master's
-  // answer and posted nothing left it unanswered, and it was handed again twice more, the same
-  // answer each time saying answer the person now
-  it("hands a master's answer to the session once, though the turn that took it posts nothing, and still hands a person's message again", async () => {
-    const { thread, out } = await sessionDoes('Release 0.26.0 lên đi nhé', (t) => ({
-      action: 'ask_master',
-      thread: t,
-      question: 'The release decider approves 0.26.0: record it and deploy?',
-    }));
-    const askId = String(out.ask);
-    await w.settleWarm();
-    // each turn from here completes and says nothing for what it was handed
-    w.box.idleTurnsAct = false;
-    const handed: string[] = [];
-    w.box.model = async (turn) => {
-      for (const m of turn.messages) {
-        if (m.thread !== thread) continue;
-        handed.push(m.from === 'forge' ? 'answer' : String(m.message));
-      }
-    };
-    try {
-      const answered = await api(
-        w.owner,
-        'POST',
-        `/api/projects/${w.projectId}/support/master-asks/${askId}/answer`,
-        { answer: 'Recorded; 0.26.0 deploys to production now.' },
-      );
-      expect(answered.status, JSON.stringify(answered.body)).toBe(200);
-      await expect.poll(() => handed.length, { timeout: 15_000 }).toBe(1);
-      await w.settleWarm();
-      // past the first retry's 5 s back-off: [ANSWER_HANDED_AGAIN] before the fix
-      await new Promise((r) => setTimeout(r, 7_000));
-      await w.settleWarm();
-      expect(handed).toEqual(['answer']);
-      const retried = await rows<{ n: number }>(sql`
-        SELECT count(*)::int AS n FROM support_actions
-         WHERE thread = ${thread} AND tool IN ('turn_retry', 'turn_unanswered')`);
-      expect(retried[0]?.n).toBe(0);
-
-      // a person's message the next turn leaves unanswered still waits again (ISS-977, ISS-1007)
-      const id = await w.chat.say(w.chat.alice, 'Bao giờ lên production?', thread);
-      await expect.poll(() => handed.length, { timeout: 60_000, interval: 200 }).toBe(4);
-      await expect
-        .poll(
-          async () =>
-            (
-              await rows(sql`SELECT 1 FROM support_actions
-                WHERE thread = ${thread} AND tool = 'turn_unanswered'`)
-            ).length,
-          { timeout: 15_000 },
-        )
-        .toBe(1);
-      await w.settleWarm();
-      expect(handed).toEqual(['answer', id, id, id]);
-    } finally {
-      w.box.idleTurnsAct = true;
-    }
-  }, 120_000);
-
   it('refuses, by name, an ask of a project the room does not follow', async () => {
     const { thread, out } = await sessionDoes('Hỏi giúp bên kho', (t) => ({
       action: 'ask_master',
@@ -298,4 +239,65 @@ describe('ISS-1243: a room agent asks its master in its turn', () => {
     if (eta.likelyBy === null) expect(String(eta.says)).toMatch(/^no date: /);
     expect(await w.linesIn(thread)).toEqual([]);
   });
+});
+
+describe("ISS-1301: a master's answer is handed to the room's session once", () => {
+  // ISS-1301 (FB-723, Forge-Communicate 2026-11-18 03:33-03:35Z): a turn that took a master's
+  // answer and posted nothing left it unanswered, and it was handed again twice more, the same
+  // answer each time saying answer the person now
+  it("hands a master's answer to the session once, though the turn that took it posts nothing, and still hands a person's message again", async () => {
+    const { thread, out } = await sessionDoes('Release 0.26.0 lên đi nhé', (t) => ({
+      action: 'ask_master',
+      thread: t,
+      question: 'The release decider approves 0.26.0: record it and deploy?',
+    }));
+    const askId = String(out.ask);
+    await w.settleWarm();
+    // each turn from here completes and says nothing for what it was handed
+    w.box.idleTurnsAct = false;
+    const handed: string[] = [];
+    w.box.model = async (turn) => {
+      for (const m of turn.messages) {
+        if (m.thread !== thread) continue;
+        handed.push(m.from === 'forge' ? 'answer' : String(m.message));
+      }
+    };
+    try {
+      const answered = await api(
+        w.owner,
+        'POST',
+        `/api/projects/${w.projectId}/support/master-asks/${askId}/answer`,
+        { answer: 'Recorded; 0.26.0 deploys to production now.' },
+      );
+      expect(answered.status, JSON.stringify(answered.body)).toBe(200);
+      await expect.poll(() => handed.length, { timeout: 15_000 }).toBe(1);
+      await w.settleWarm();
+      // past the first retry's 5 s back-off: [ANSWER_HANDED_AGAIN] before the fix
+      await new Promise((r) => setTimeout(r, 7_000));
+      await w.settleWarm();
+      expect(handed).toEqual(['answer']);
+      const retried = await rows<{ n: number }>(sql`
+        SELECT count(*)::int AS n FROM support_actions
+         WHERE thread = ${thread} AND tool IN ('turn_retry', 'turn_unanswered')`);
+      expect(retried[0]?.n).toBe(0);
+
+      // a person's message the next turn leaves unanswered still waits again (ISS-977, ISS-1007)
+      const id = await w.chat.say(w.chat.alice, 'Bao giờ lên production?', thread);
+      await expect.poll(() => handed.length, { timeout: 60_000, interval: 200 }).toBe(4);
+      await expect
+        .poll(
+          async () =>
+            (
+              await rows(sql`SELECT 1 FROM support_actions
+                WHERE thread = ${thread} AND tool = 'turn_unanswered'`)
+            ).length,
+          { timeout: 15_000 },
+        )
+        .toBe(1);
+      await w.settleWarm();
+      expect(handed).toEqual(['answer', id, id, id]);
+    } finally {
+      w.box.idleTurnsAct = true;
+    }
+  }, 120_000);
 });
