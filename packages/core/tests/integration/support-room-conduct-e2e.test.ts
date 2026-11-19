@@ -244,6 +244,13 @@ describe('one voice per thread', () => {
     expect(w.threadLines(w.stand.rid, asked.id).map((l) => l.text)).toEqual([
       'Open Reports, pick the month, then Export XLSX.',
     ]);
+    // the stored thread line reads as the chat does, so a replay or a lookup reads the master's text
+    const stored = await rows<{ content: string }>(sql`
+      SELECT content FROM conversation_messages
+       WHERE external_id = ${String(fixed.body.messageId)} AND role = 'assistant'`);
+    expect(stored.map((r) => r.content)).toEqual([
+      'Open Reports, pick the month, then Export XLSX.',
+    ]);
     // the agent may not stack a second voice beside the master's until the asker writes again
     let again: Record<string, unknown> = {};
     await w.hear(

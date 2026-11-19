@@ -16,6 +16,7 @@
 import type { ProvenMessage } from '@forge/contracts/messaging';
 import { SUPPORT_MASTER_POST_EDIT_WINDOW_MS } from '@forge/contracts/support';
 import { and, desc, eq, inArray } from 'drizzle-orm';
+import { replaceSentContent } from '../conversations/index.js';
 import { db } from '../db/client.js';
 import { supportActions } from '../db/schema-support.js';
 import { editProvenReply } from '../integrations/rocketchat/index.js';
@@ -34,13 +35,14 @@ const MASTER_POST = 'master_post';
 export async function answerToReplace(
   room: RoomRow,
   thread: string,
-): Promise<{ messageId: string; by: 'agent' | 'master' } | null> {
+): Promise<{ messageId: string; by: 'agent' | 'master'; conversationId: string | null } | null> {
   const recent = await db
     .select({
       kind: supportActions.kind,
       tool: supportActions.tool,
       actorKind: supportActions.actorKind,
       externalId: supportActions.externalId,
+      conversationId: supportActions.conversationId,
       at: supportActions.createdAt,
     })
     .from(supportActions)
@@ -61,20 +63,32 @@ export async function answerToReplace(
     const answer = row.kind === 'reply' ? 'agent' : row.tool === MASTER_POST ? 'master' : null;
     if (!answer || !row.externalId) continue;
     if (Date.now() - row.at.getTime() > SUPPORT_MASTER_POST_EDIT_WINDOW_MS) return null;
-    return { messageId: row.externalId, by: answer };
+    return { messageId: row.externalId, by: answer, conversationId: row.conversationId };
   }
   return null;
 }
 
-/** Replace the bot's answer with the master's screened text; why it could not, where it could not. */
+/**
+ * Replace the bot's answer with the master's screened text, in the chat and in the thread's stored
+ * line, so a cold replay or a lookup by message reads what the asker reads; why it could not, where
+ * it could not.
+ */
 export async function replaceAnswer(
   room: RoomRow,
-  messageId: string,
+  answer: { messageId: string; conversationId: string | null },
   text: string,
   proof: ProvenMessage,
 ): Promise<{ ok: true } | { ok: false; why: string }> {
   const { auth } = await roomAuth(room);
-  return editProvenReply(auth, room.rid, messageId, text, proof);
+  const out = await editProvenReply(auth, room.rid, answer.messageId, text, proof);
+  if (out.ok && answer.conversationId) {
+    await replaceSentContent({
+      conversationId: answer.conversationId,
+      externalId: answer.messageId,
+      content: text,
+    });
+  }
+  return out;
 }
 
 type Placed = {
@@ -102,7 +116,9 @@ export async function postInOneVoice(input: {
     const posted = await postInThread(input);
     return { ok: true, value: { ...posted, replaced: null } };
   }
-  const out = await replaceAnswer(input.room, answer.messageId, input.text, input.proof);
+  // the answer's own record names the conversation its line is stored in
+  const stored = { ...answer, conversationId: answer.conversationId ?? input.conversationId };
+  const out = await replaceAnswer(input.room, stored, input.text, input.proof);
   if (!out.ok) {
     return no(
       'SUPPORT_POST_UNCHANGED',

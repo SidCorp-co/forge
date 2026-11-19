@@ -441,3 +441,26 @@ export async function redactInboundContent(
     .returning({ id: conversationMessages.id });
   return changed.length;
 }
+
+/**
+ * A sent message's content replaced where the chat server replaced its text in place (a master's
+ * post taking the bot's answer, `support/one-voice.ts:replaceAnswer`): the transport's id names it in
+ * its conversation. How many rows it changed (0 or 1).
+ */
+export async function replaceSentContent(
+  args: { conversationId: string; externalId: string; content: string },
+  tx: Executor = defaultDb,
+): Promise<number> {
+  const changed = await tx
+    .update(conversationMessages)
+    .set({ content: args.content })
+    .where(
+      and(
+        eq(conversationMessages.conversationId, args.conversationId),
+        eq(conversationMessages.externalId, args.externalId),
+        eq(conversationMessages.role, 'assistant'),
+      ),
+    )
+    .returning({ id: conversationMessages.id });
+  return changed.length;
+}

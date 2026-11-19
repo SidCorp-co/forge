@@ -124,6 +124,7 @@ export {
   readMessagesInRange,
   redactInboundContent,
   renameConversation,
+  replaceSentContent,
   type StoredConversationMessage,
   setConversationArchived,
   setConversationPresence,
