@@ -9,6 +9,23 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.752] - 2026-11-19
+
+One Secrets page for every secret; agents confirm missing capabilities; direct-mode builder roles
+
+### Added
+
+- **Every secret has one place: Settings → Secrets.** What an agent asked for comes first, with why and its shape; its link opens that request; a mailbox is labelled boxes, a file a picker, and filled reads so.
+
+### Changed
+
+- **An agent meeting a missing capability confirms the need, then asks the project that builds it.** One change request per capability, naming each interface that lacks it.
+- **A direct-mode master declares each builder as `--role general-purpose` and puts every issue's criteria on its record before the build.** A model the API refuses is dispatched again on one the box allows.
+
+### Fixed
+
+- **A secret link from a shared operations room reaches the right project.** The agent names the project, and one outside the room is refused by name.
+
 ## [0.4.0-dev.751] - 2026-11-19
 
 An owner's screenshot reply now reaches the agent that asked
