@@ -22,7 +22,12 @@ import { projectWaits, type Wait } from './wait-reminder-waits.js';
 
 const TOOL = 'check_result';
 
-/** The waits a finding links that the record settled since they were handed: none may be posted. */
+/**
+ * The waits a finding links that the record settled since they were handed: none may be posted. A
+ * wait is named by its link, and several share one (questions asked on one issue open its page), so
+ * one counts as named only where no wait still open shares its link: a post naming the open twin is
+ * taken.
+ */
 async function settledNamed(room: RoomRow, firing: ReminderFiring, text: string): Promise<Wait[]> {
   const named = firing.waits.filter((w) => text.includes(w.link));
   if (named.length === 0) return [];
@@ -32,7 +37,8 @@ async function settledNamed(room: RoomRow, firing: ReminderFiring, text: string)
     projectWaits(firing.projectId, firing.slug, namespace),
   );
   const open = new Set(waits.map((w) => w.id));
-  return named.filter((w) => !open.has(w.id));
+  const openLinks = new Set(waits.map((w) => w.link));
+  return named.filter((w) => !open.has(w.id) && !openLinks.has(w.link));
 }
 
 /** The morning's one result taken, or null where another already holds it. */

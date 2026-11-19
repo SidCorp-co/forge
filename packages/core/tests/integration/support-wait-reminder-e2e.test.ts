@@ -256,6 +256,30 @@ describe('ISS-1343: the morning reminder of what waits on a person', () => {
     expect(w.threadLines(ops, thread).some((l) => l.text.includes('giờ chạy import'))).toBe(false);
   });
 
+  it('takes a post linking a page a still-open wait shares with one the record settled since', async () => {
+    const gold = await ask(
+      'Print the gift cards in gold?',
+      new Date(morning.getTime() - 30 * HOUR),
+    );
+    const silver = await ask(
+      'Print the gift cards in silver?',
+      new Date(morning.getTime() - 30 * HOUR),
+    );
+    const day = new Date(morning.getTime() + 192 * HOUR);
+    const { handed, outs } = await runMorning(day, async (note) => {
+      expect((await answer(gold)).status).toBe(200);
+      return { finding: `@alice [thẻ quà tặng màu bạc](${linkOf(note.text, 2)}) vẫn chờ anh.` };
+    });
+    // both are asked on one issue, so both link its page: the post names the open one
+    expect(linkOf(handed[0]?.text ?? '', 1)).toBe(linkOf(handed[0]?.text ?? '', 2));
+    expect(outs.map(code), JSON.stringify(outs)).toEqual([undefined]);
+    const thread = await projectThread();
+    expect(w.threadLines(ops, thread).some((l) => l.text.includes('thẻ quà tặng màu bạc'))).toBe(
+      true,
+    );
+    expect((await answer(silver)).status).toBe(200);
+  });
+
   it('is turned off and its hour set in the project document', async () => {
     const pending = await ask(
       'Publish the spring catalog?',
