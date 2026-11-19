@@ -25,7 +25,7 @@ export const ISSUE_FLOW_GUIDE: CoreGuide = {
   title: 'Taking one issue from open to awaiting_release',
   summary:
     'The method a run follows for one issue or a batch, every tracker act a REST call: read it whole, take it, write criteria (a plan where the work needs one), build in its own tree, prove it, land, mark the merge, move it to `awaiting_release`, and close it once its criteria are met in scope.',
-  version: 22,
+  version: 23,
   doors: [
     'POST /api/questions',
     'POST /api/issues/:id/transition',
@@ -397,6 +397,11 @@ download URL (\`desktop\` shown at 16:10, \`phone\` at 9:19.5, \`still\` the pic
 core never picks a file. A line whose landing touched \`ui\` and shows none reads "visual owed" on the
 developer view until you mark one or say why in \`withoutClip\`. Refused by name, nothing written:
 \`VERDICT_RELEASE_VISUAL_FOREIGN\` (a file of another issue), \`VERDICT_RELEASE_VISUAL_SHAPE\`.
+
+A criterion whose change calls an outside provider says how that call was proven:
+\`integrationProof: "live"\` against the provider or its test account, \`"simulated"\` against a
+mock. Its release page line reads Live or Simulated, and a Simulated line is not ready for
+production approval.
 
 A server-side check shows on no screen, so it owes no clip (REQ-36 BC-21): its \`pass\`, \`short\` or
 \`fail\` cites the capture of what was run inside the running server — the command, its output and

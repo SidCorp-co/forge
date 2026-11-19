@@ -313,3 +313,38 @@ describe('the mockups guide teaches delivering a mockup to the person who asked 
     expect(prose('product-role')).toContain('`mockups` guide, *Delivering one*');
   });
 });
+
+describe('an outside call proven only against a mock is not ready for the approval ask (ISS-1329)', () => {
+  // adminhub-api 0.28.0: a master asked for production approval of a PGPrints integration whose send
+  // had run only against a mock, planning the first real order "after it goes live"; then a room told
+  // a person to enter a key into a staging supplier that did not exist yet (FB-739)
+  const prose = (slug: string) => body(slug).split(/\s+/).join(' ');
+
+  it.each(['forge-master', 'room-agent'])(
+    '%s asks for the test account first, and names the smallest real test where none exists',
+    (slug) => {
+      const text = prose(slug);
+      expect(text).toContain('proven only against a simulation is not ready for the approval ask');
+      expect(text).toContain("the provider's test or sandbox account on staging");
+      expect(text).toContain('send, cancel and tracking');
+      expect(text).toContain('the smallest real test before deploy, never "after it goes live"');
+    },
+  );
+
+  it.each(['forge-master', 'room-agent'])(
+    "%s reads an environment's state before giving a person setup steps on it",
+    (slug) => {
+      const text = prose(slug);
+      expect(text).toContain("read that environment's state");
+      expect(text).toContain('name any missing first step');
+      expect(text).toContain('ask only for what only the person holds');
+    },
+  );
+
+  it.each(['issue-flow', 'qa'])('%s has a judge say how an outside call was proven', (slug) => {
+    const text = prose(slug);
+    expect(text).toContain('`integrationProof: "live"`');
+    expect(text).toContain('`"simulated"`');
+    expect(text).toMatch(/release page line reads (it|Live or Simulated)/);
+  });
+});

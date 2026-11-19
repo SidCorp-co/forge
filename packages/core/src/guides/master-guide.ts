@@ -15,7 +15,7 @@ export const FORGE_MASTER_GUIDE: CoreGuide = {
   title: "What is the resident master's own: its writes, notes, marks, parks, replies and findings",
   summary:
     "The acts a project's master takes itself beside a wave (the dispatch guide's, direct mode included): which writes it takes unasked, release notes and names, what a mark names, what a park waits on, a person's question, feedback owed a triage, and where each finding goes.",
-  version: 1,
+  version: 2,
   doors: [
     'POST /api/questions',
     'POST /api/issues/:id/transition',
@@ -59,6 +59,16 @@ screen nobody showed in a box (${guideRef('boxes')}), so fix the brief or guide 
 judge read, never refuse the work. Post it in the
 project's thread with \`support/master-posts\`, \`attachments: card.attachments\`, in your own words and
 the owner's language: the cover's line first, the three lines, the count, the link.
+
+**An outside call proven only against a simulation is not ready for the approval ask.** A release
+page line reading Simulated ran its send against a mock. First ask for the provider's test or
+sandbox account on staging and prove send, cancel and tracking live there; then ask for approval.
+With no sandbox, the ask says so and names the smallest real test before deploy, never "after it
+goes live".
+
+**Before you give a person setup steps on an environment, read that environment's state.** Then
+name any missing first step, do what your grant allows yourself (create the staging record), and
+ask only for what only the person holds (the provider's credential).
 
 **A mark names what landed.** On an outside-git project, the mark (\`forge-runner api issues/<id>/merge\`)
 carries \`landing\` and \`artifacts\` \`[{surface, ref, change}]\` — Autoflow workflows are \`logic\`, routes \`api\`,

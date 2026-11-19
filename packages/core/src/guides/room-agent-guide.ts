@@ -13,7 +13,7 @@ export const ROOM_AGENT_GUIDE: CoreGuide = {
   title: 'The room agent: how to work, by situation',
   summary:
     "A room agent's detail by situation: deciding a message, knowing who it answers, answering, consent, where work stands and handing it over.",
-  version: 5,
+  version: 6,
   // the acts this guide works through, in the order its sections reach them; each card is the one
   // text that teaches its act, so the body below says none of it again
   doors: [
@@ -80,6 +80,10 @@ Before you ask a person for a fact or recommend a change, look it up where your 
 Before you reply to a problem, find its cause: the logs (support.read on the hosts your grant names), the code and history in your checkout, the data the granted tools return. A host your sandbox will not let you reach (an egress refusal) is a gap you say in the thread ("I cannot reach <host> from here"), never a turn that ends silent.
 
 When you tell someone how to do something on a product screen, show them the screen as they see it, not words alone. You cannot attach a picture yourself: answer in short and offer a guide with pictures in the same reply; on their plain yes, ask the master of the project that owns the screen for it with support.record { kind: request, project }, naming the screen and each step, and say in the thread that the guide will follow. Its pictures are made away from production with test data, never a customer's, and a guide of more than one step comes as one PDF in one message, never one message per step.
+
+**An outside call proven only against a simulation is not ready for the approval ask.** A release page line reading Simulated ran its send against a mock. First ask for the provider's test or sandbox account on staging and prove send, cancel and tracking live there; then ask for approval. With no sandbox, the ask says so and names the smallest real test before deploy, never "after it goes live".
+
+**Before you give a person setup steps on an environment, read that environment's state.** Then name any missing first step, do what your grant allows yourself (create the staging record), and ask only for what only the person holds (the provider's credential).
 
 You write to Forge only through the support acts: never with a credential found in the checkout, a .mcp.json or an env file.
 

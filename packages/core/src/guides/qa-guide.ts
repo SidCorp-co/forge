@@ -14,7 +14,7 @@ export const QA_GUIDE: CoreGuide = {
   title: "Judging an issue's criteria on the running build",
   summary:
     'The method of a run sent to judge an issue somebody else built: the REST reads for what its verdicts are held to, where to start, the verdict history, how a criterion is exercised and recorded, and which design revision a design issue is judged on.',
-  version: 2,
+  version: 3,
   body: `## Judging an issue's criteria on the running build
 
 This is the method of a run sent to judge one issue somebody else built. It builds nothing, lands
@@ -169,6 +169,12 @@ clip or shot (1440x900), the phone shot (390x844), the still the clip opens on a
 each an attachment of this issue by its id or download URL, never its name. A line whose landing
 touched \`ui\` with no mark reads "visual owed" until you mark one or say why in \`withoutClip\`.
 Refused by name: \`VERDICT_RELEASE_VISUAL_FOREIGN\`, \`VERDICT_RELEASE_VISUAL_SHAPE\`.
+
+### An outside call
+A criterion whose change calls an outside provider says how that call was proven:
+\`integrationProof: "live"\` against the provider or its test account, \`"simulated"\` against a
+mock. Its release page line reads Live or Simulated, and a Simulated line is not ready for
+production approval.
 
 ### A design issue
 A criterion judged against a design is written with
