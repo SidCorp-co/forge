@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.742] - 2026-11-19
+
+The forge CLI says how to name a project when it finds none
+
+### Fixed
+
+- **The forge command line says how to pick a project when it finds none.** It names `--project <slug>` for a single command and says it does not read forge-runner's `FORGE_PROJECT_SLUG`. Shipped in forge-plugin 3.36.718.
+
 ## [0.4.0-dev.741] - 2026-11-18
 
 A box recording kept on its device now says so in Forge
