@@ -250,7 +250,13 @@ describe('ISS-1348: one secret act for every kind of slot', () => {
 
     const why = 'Errors reach Sentry from every environment';
     const every = linkOf(
-      await secretLink(room, { thread, why, kind: 'variable', environment: null, key: 'SENTRY_DSN' }),
+      await secretLink(room, {
+        thread,
+        why,
+        kind: 'variable',
+        environment: null,
+        key: 'SENTRY_DSN',
+      }),
     );
     expect(new URL(every.link).searchParams.get('tab')).toBe('secrets');
     expect(every.write).toBeUndefined();
@@ -276,7 +282,9 @@ describe('ISS-1348: one secret act for every kind of slot', () => {
       'SUPPORT_SECRET_SLOT_SHAPE',
       'SUPPORT_SECRET_INTEGRATION_UNKNOWN',
     ]);
-    // a person reads the asking line on the page: one carrying a secret itself is refused
+  });
+
+  it('refuses an asking line that holds a secret itself, as a person reads it on the page (c1)', async () => {
     const leaked = await secretLink(room, {
       thread,
       why: `use password: ${VALUE}`,
@@ -393,7 +401,9 @@ describe('ISS-1348: one secret act for every kind of slot', () => {
       expect(kept).toEqual([]);
     }
   });
+});
 
+describe('ISS-1348: a pasted secret is answered with its slot’s door', () => {
   it('answers a secret pasted in a thread that asked for a slot with its link and a fresh command (c4)', async () => {
     const opened = await threadOf('Cần STRIPE_KEY cho staging'); // i18n-allow: "need STRIPE_KEY for staging"
     const stripe = linkOf(

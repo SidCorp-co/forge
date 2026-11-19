@@ -34,7 +34,7 @@ export function useToastedMutation<V, R>(o: {
 	return useMutation({
 		mutationFn: o.mutationFn,
 		onSuccess: (result, vars) => {
-			for (const queryKey of o.invalidates) qc.invalidateQueries({ queryKey });
+			for (const queryKey of o.invalidates) void qc.invalidateQueries({ queryKey });
 			toast({ title: typeof saved === "string" ? saved : saved(result, vars), tone: "success" });
 		},
 		onError:
@@ -56,7 +56,7 @@ function documentWrittenKeys(id: string | undefined, owner: readonly unknown[]) 
 
 /** Refresh every panel that reads a binding, whichever surface wrote it. */
 export function invalidateBindingChange(qc: QueryClient, id: string | undefined): void {
-	for (const key of documentWrittenKeys(id, keys.bindings(id))) qc.invalidateQueries({ queryKey: key });
+	for (const key of documentWrittenKeys(id, keys.bindings(id))) void qc.invalidateQueries({ queryKey: key });
 }
 
 function useRead<T>(key: readonly unknown[], id: string | undefined, read: (id: string) => Promise<T>) {
@@ -89,7 +89,7 @@ export function useWriteSecret(id: string | undefined) {
 		mutationFn: (write: { scope: string; name: string; value: string }) =>
 			configApi.putSecret(id as string, write.scope, write.name, write.value),
 		invalidates: [keys.secrets(id)],
-		saved: (saved) => t("settings.project.toast.secretStored", { ref: saved.ref }),
+		saved: t("settings.project.toast.secretStored"),
 	});
 }
 

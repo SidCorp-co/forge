@@ -1,54 +1,11 @@
-// Writing a secret's value: write-only, as core holds it. Replacing the value of a secret an account
-// already names (scope and name fixed by that account), and storing any other secret by scope and name.
-// No value is ever read back; the field empties once the write settles.
+// Storing a secret by scope and name, beside the ones the Secrets section lists (ISS-1348): write-only,
+// as core holds it. No value is ever read back; the field empties once the write settles.
 import { useState } from "react";
-import { Banner, Button, Field, focusOnMount, Input } from "@/design";
+import { Banner, Button, Field, Input } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useWriteSecret } from "@/features/project-config";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { NAME } from "../secret-refs";
-
-/** A new value for one secret an account names: one password field, save and cancel. */
-export function ReplaceSecret({
-	projectId,
-	scope,
-	name,
-	focus = false,
-	onDone,
-}: {
-	projectId: string;
-	scope: string;
-	name: string;
-	/** A secret link opened it (ISS-1328, ISS-1348): the value box takes the focus, ready to type in. */
-	focus?: boolean;
-	onDone: () => void;
-}) {
-	const t = useCopy();
-	const write = useWriteSecret(projectId);
-	const [value, setValue] = useState("");
-	return (
-		<div className="flex flex-wrap items-end gap-2 py-1">
-			<div className="w-64 max-w-full">
-				<Field label={t("settings.project.testing.newValue")}>
-					<Input ref={focus ? focusOnMount : undefined} type="password" autoComplete="new-password" value={value} onChange={(e) => setValue(e.target.value)} />
-				</Field>
-			</div>
-			<Button
-				variant="primary"
-				disabled={value === "" || write.isPending}
-				loading={write.isPending}
-				onClick={() => write.mutate({ scope, name, value }, { onSettled: () => setValue(""), onSuccess: onDone })}
-				className="min-h-11"
-			>
-				{t("settings.project.testing.saveValue")}
-			</Button>
-			<Button variant="ghost" onClick={onDone} className="min-h-11">
-				{t("common.cancel")}
-			</Button>
-			{write.isError && <Banner tone="danger">{t("settings.project.raw.writeFailed", { error: formatApiError(write.error) })}</Banner>}
-		</div>
-	);
-}
 
 /** Any secret by scope and name, for an account or service not written yet. */
 export function SecretForm({ projectId }: { projectId: string }) {
@@ -86,7 +43,7 @@ export function SecretForm({ projectId }: { projectId: string }) {
 				onClick={() => write.mutate({ scope: target.scope, name: target.name, value }, { onSettled: () => setValue("") })}
 				className="min-h-11"
 			>
-				{t("settings.project.raw.secretStore")} <code translate="no">secret://{target.scope || "…"}/{target.name || "…"}</code>
+				{t("settings.project.raw.secretStore")}
 			</Button>
 		</div>
 	);

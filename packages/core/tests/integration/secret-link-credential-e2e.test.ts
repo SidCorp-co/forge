@@ -111,10 +111,16 @@ describe('a credential given through the secret link (ISS-1328)', () => {
     expect(link.searchParams.get('tab')).toBe('secrets');
 
     // the page lists the profile's service, in plain words, with the door its value is written at
-    const page = await ok(api(world.token, 'GET', `/api/projects/${world.projectId}/support/secrets`));
+    const page = await ok(
+      api(world.token, 'GET', `/api/projects/${world.projectId}/support/secrets`),
+    );
     const groups = page.groups as {
       kind: string;
-      slots: { label: string; held: unknown; door: { kind: string; scope: string; name: string } }[];
+      slots: {
+        label: string;
+        held: unknown;
+        door: { kind: string; scope: string; name: string };
+      }[];
     }[];
     const service = groups.find((g) => g.kind === 'testing')?.slots[0];
     expect(service).toMatchObject({ label: 'Pgprints', door: { kind: 'secret' } });

@@ -1,16 +1,17 @@
 // Settings read before they edit. The test accounts a run signs in with sit first on their own
-// Testing tab, one row each, and their secrets are written and never read back; the raw documents
-// every tab draws from are folded under Advanced; and each tab's rail lists that tab's own groups.
+// Testing tab, one row each, whose value is given on the Secrets section (ISS-1348) and never read
+// back; the raw documents every tab draws from are folded under Advanced; and each tab's rail lists
+// that tab's own groups.
 
 import { QueryClient, QueryClientProvider, type QueryKey } from "@tanstack/react-query";
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { V1Read } from "@/features/project-config";
 import { fakeCore } from "@/test/render";
 import { railBeside } from "@/test/rail-beside";
 import { ProjectSettingsScreen } from "./components/project-settings-screen";
-import { giveOf, TestingSettings } from "./components/testing-tab";
+import { TestingSettings } from "./components/testing-tab";
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
@@ -89,7 +90,7 @@ function seeded(extra: [QueryKey, unknown][] = []): QueryClient {
 const renderSeeded = (ui: ReactNode, extra: [QueryKey, unknown][] = []) => render(<QueryClientProvider client={seeded(extra)}>{ui}</QueryClientProvider>);
 
 const testing = () =>
-  renderSeeded(<TestingSettings projectId={P} canEdit />);
+  renderSeeded(<TestingSettings projectId={P} slug="hop" canEdit />);
 const rowOf = (name: string) => {
   const row = screen.getAllByTestId("testing-credential").find((r) => within(r).queryByText(name, { exact: true }));
   if (!row) throw new Error(`no test account row names ${name}`);
@@ -126,23 +127,6 @@ describe("every test account is one row with its role, environment and masked va
     expect(within(rowOf("viewer")).queryByText(MASK), "a mask over a value that was never stored").toBeNull();
     expect(within(rowOf("viewer")).getByText("Not set")).toBeInTheDocument();
   });
-
-  it("lists only the secrets no account names as other secrets", () => {
-    fakeCore(() => ({ hang: true }));
-    testing();
-    const other = screen.getByRole("region", { name: "Other secrets" });
-    expect(within(other).getByText("secret://dev/old-key")).toBeInTheDocument();
-    expect(within(other).queryByText("secret://dev/admin")).toBeNull();
-  });
-
-  it("dates an unused secret's value as it dates an account's", () => {
-    fakeCore(() => ({ hang: true }));
-    testing();
-    // old-key and admin were written at the same moment, so the two lists must say the same date
-    const other = within(screen.getByRole("region", { name: "Other secrets" })).getByText("secret://dev/old-key").closest("li");
-    const at = (el: Element | null) => [...(el?.querySelectorAll("[data-testid='row-facts'] > span") ?? [])].map((f) => f.textContent?.replace("·", "").trim()).find((f) => f?.startsWith("Value set"));
-    expect(at(other), "the two lists write one date two ways").toBe(at(rowOf("admin")));
-  });
 });
 
 describe("a secret's value is never rendered", () => {
@@ -153,61 +137,21 @@ describe("a secret's value is never rendered", () => {
     expect(container.innerHTML, "the stored value reached the page").not.toContain(LEAKED);
   });
 
-  it("keeps no trace of a value once it is written", async () => {
-    fakeCore((c) => (c.method === "PUT" ? { body: { ref: "secret://dev/admin", scope: "dev", name: "admin", updatedAt: "2026-10-14T09:00:00.000Z" } } : { hang: true }));
-    const { container } = testing();
-    fireEvent.click(within(rowOf("admin")).getByRole("button", { name: "Replace value" }));
-    fireEvent.change(screen.getByLabelText("New value"), { target: { value: "typed-new-value" } });
-    act(() => {
-      fireEvent.click(screen.getByRole("button", { name: "Save value" }));
-    });
-    await waitFor(() => expect(screen.queryByLabelText("New value")).toBeNull());
-    expect(container.innerHTML, "the written value is still on the page").not.toContain("typed-new-value");
-  });
 });
 
-describe("Replace value is write-only", () => {
-  it("opens an empty password field, writes the value once, and never asks for it back", async () => {
-    const calls = fakeCore((c) => (c.method === "PUT" ? { body: { ref: "secret://dev/admin", scope: "dev", name: "admin", updatedAt: "2026-10-14T09:00:00.000Z" } } : { hang: true }));
+// ISS-1348: a person gives a secret in one place; a Testing row opens that account there
+describe("a test account's value is given on the Secrets section", () => {
+  it("links each stored-secret account to its place on Secrets, and writes nothing here", () => {
+    const calls = fakeCore(() => ({ hang: true }));
     testing();
-    fireEvent.click(within(rowOf("admin")).getByRole("button", { name: "Replace value" }));
-    const field = screen.getByLabelText("New value");
-    expect(field, "a field that shows what is typed").toHaveAttribute("type", "password");
-    expect(field).toHaveValue("");
-    expect(field).toHaveAttribute("autocomplete", "new-password");
-    fireEvent.change(field, { target: { value: "typed-new-value" } });
-    act(() => {
-      fireEvent.click(screen.getByRole("button", { name: "Save value" }));
-    });
-    await waitFor(() => expect(calls.filter((c) => c.method === "PUT")).toHaveLength(1));
-    const put = calls.find((c) => c.method === "PUT");
-    expect(put?.path).toBe(`/projects/${P}/secrets/dev/admin`);
-    expect(put?.body).toEqual({ value: "typed-new-value" });
-    expect(calls.filter((c) => c.method === "GET" && /\/secrets\/[^/?]+\/[^/?]+/.test(c.path)), "a read of one secret's value").toEqual([]);
-  });
-
-  // ISS-1328: a room agent's secret link opens the one credential it names with its value field open
-  it("opens the value field of the one credential a secret link names", () => {
-    window.history.replaceState(null, "", "/projects/hop/settings?tab=testing&profile=dev-accounts&service=catalog-api#profile-dev-accounts");
-    fakeCore(() => ({ hang: true }));
-    testing();
-    expect(within(rowOf("catalog-api")).getByLabelText("New value")).toHaveAttribute("type", "password");
-    expect(within(rowOf("admin")).queryByLabelText("New value")).toBeNull();
-    expect(screen.getAllByLabelText("New value")).toHaveLength(1);
-  });
-
-  it("opens nothing from a link naming both an actor and a service, or none", () => {
-    expect(giveOf("?profile=p&actor=a&service=s")).toBeNull();
-    expect(giveOf("?profile=p")).toBeNull();
-    expect(giveOf("?actor=a")).toBeNull();
-    expect(giveOf("?profile=p&actor=a")).toEqual({ profile: "p", kind: "actor", name: "a" });
-  });
-
-  it("is not offered to a reader who cannot edit", () => {
-    fakeCore(() => ({ hang: true }));
-    renderSeeded(<TestingSettings projectId={P} canEdit={false} />);
-    expect(screen.queryByRole("button", { name: /Replace value|Set value/ })).toBeNull();
-    expect(within(rowOf("admin")).getByText(MASK)).toBeInTheDocument();
+    const open = within(rowOf("admin")).getByRole("link", { name: "Open in Secrets" });
+    expect(open.getAttribute("href")).toBe("/projects/hop/settings?tab=secrets&profile=dev-accounts&actor=admin");
+    expect(within(rowOf("catalog-api")).getByRole("link", { name: "Open in Secrets" }).getAttribute("href")).toBe(
+      "/projects/hop/settings?tab=secrets&profile=dev-accounts&service=catalog-api",
+    );
+    expect(screen.queryByRole("button", { name: /Replace value|Set value/ }), "a second place to type a secret").toBeNull();
+    expect(screen.queryByLabelText("New value")).toBeNull();
+    expect(calls.filter((c) => c.method !== "GET")).toEqual([]);
   });
 });
 
@@ -239,9 +183,29 @@ describe("each tab's rail lists its own groups", () => {
     return () => within(rail).getAllByRole("link").map((a) => a.textContent);
   };
 
-  it("lists Testing's groups on Testing", async () => {
-    const links = await railOn("testing");
-    await waitFor(() => expect(links()).toEqual(["Test accounts", "Other secrets"]));
+  // ISS-1348: every secret on one section, its requests first, then grouped by what uses each
+  it("lists Secrets' groups on Secrets", async () => {
+    const slot = (anchor: string, label: string) => ({
+      anchor,
+      ref: null,
+      label,
+      detail: label,
+      environment: null,
+      tier: null,
+      door: { kind: "secret", scope: "dev", name: anchor },
+      form: { kind: "value" },
+      held: null,
+    });
+    const read = {
+      requests: [],
+      groups: [
+        { anchor: "app-production", kind: "app", name: "production", usedIn: [], tier: "production", slots: [slot("a", "Api key")] },
+        { anchor: "testing-dev-accounts", kind: "testing", name: "dev-accounts", usedIn: ["dev", "stg"], tier: null, slots: [slot("b", "Admin")] },
+      ],
+      says: "",
+    };
+    const links = await railOn("secrets", [[["project", P, "secret-slots"], read]]);
+    await waitFor(() => expect(links()).toEqual(["Requests", "App · Production", "Test accounts · Dev, Stg"]));
   });
 
   it("lists Advanced's groups on Advanced, and none of Testing's", async () => {

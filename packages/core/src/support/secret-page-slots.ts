@@ -13,7 +13,11 @@ import {
   secretFormOf,
 } from '@forge/contracts/secret-slots';
 import { SUPPORT_OWNER_CREDENTIAL_SCOPE } from '@forge/contracts/support';
-import { connectionSlotKey, credentialFieldOf, listBindingsForProject } from '../integrations/index.js';
+import {
+  connectionSlotKey,
+  credentialFieldOf,
+  listBindingsForProject,
+} from '../integrations/index.js';
 import {
   declaredEnvironments,
   lastFills,
@@ -30,7 +34,22 @@ import {
 export const anchorOf = (slotKey: string) =>
   `slot-${createHash('sha256').update(slotKey).digest('hex').slice(0, 12)}`;
 
-const ACRONYMS = new Set(['api', 'db', 'dsn', 'id', 'imap', 'ip', 'jwt', 'smtp', 'ssh', 'ssl', 'tls', 'url', 'aws', 's3']);
+const ACRONYMS = new Set([
+  'api',
+  'db',
+  'dsn',
+  'id',
+  'imap',
+  'ip',
+  'jwt',
+  'smtp',
+  'ssh',
+  'ssl',
+  'tls',
+  'url',
+  'aws',
+  's3',
+]);
 
 /** A key or name in plain words: `GOOGLE_CLIENT_ID` reads "Google client ID", `mail-support` "Mail support". */
 export function labelOf(name: string): string {

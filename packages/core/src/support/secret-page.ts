@@ -7,13 +7,13 @@
 import type {
   SecretHeld,
   SecretRequestView,
-  SecretSlotView,
   SecretSlotsRead,
+  SecretSlotView,
 } from '@forge/contracts/secret-slots';
 import { secretFormOf } from '@forge/contracts/secret-slots';
 import { userNames } from '../lib/people.js';
-import { anchorOf, labelOf, slotGroups, slotStoresOf, variableSlot } from './secret-page-slots.js';
 import { type AskRow, asksOfProject } from './secret-asks.js';
+import { anchorOf, labelOf, slotGroups, slotStoresOf, variableSlot } from './secret-page-slots.js';
 
 const SAYS =
   'No value is answered here, only whether each slot holds one. A request is filled on this page or with its one-time write URL; an agent asks for one with support.secret_link.';
@@ -35,7 +35,11 @@ function askedSlot(ask: AskRow): SecretSlotView | null {
   const slotName = s.actor ?? s.service ?? name;
   return {
     anchor: anchorOf(ask.slotKey),
-    ref: { kind: 'testing', profile: s.profile ?? '', ...(s.actor ? { actor: s.actor } : { service: slotName }) },
+    ref: {
+      kind: 'testing',
+      profile: s.profile ?? '',
+      ...(s.actor ? { actor: s.actor } : { service: slotName }),
+    },
     label: labelOf(slotName),
     detail: `${s.profile} · ${slotName}`,
     environment: null,

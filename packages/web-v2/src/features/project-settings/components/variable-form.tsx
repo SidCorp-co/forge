@@ -3,7 +3,7 @@
 // variable on a non-production environment, a short secret) and the refusal is shown as it says it.
 import { VARIABLE_KEY, type VariableType, type VariableView } from "@forge/contracts/variables";
 import { useState } from "react";
-import { Banner, Button, Checkbox, Field, focusOnMount, Input, NativeSelect, Textarea } from "@/design";
+import { Banner, Button, Checkbox, Field, Input, NativeSelect, Textarea } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useCreateVariable, useUpdateVariable } from "../variables";
@@ -11,44 +11,24 @@ import { TYPE_LABEL } from "./variable-labels";
 
 const ALL = "";
 
-/** The one variable a room agent's secret link names (ISS-1348): `?key=<KEY>&environment=<name | *>`. */
-export interface AskedVariable {
-	key: string;
-	environment: string | null;
-}
-
-export function askedVariableOf(search: string): AskedVariable | null {
-	const q = new URLSearchParams(search);
-	const key = q.get("key");
-	const environment = q.get("environment");
-	if (!key || !VARIABLE_KEY.test(key) || environment === null || environment === "") return null;
-	return { key, environment: environment === "*" ? null : environment };
-}
-
 export function VariableForm({
 	projectId,
 	environments,
 	editing,
-	asked = null,
 	onDone,
 }: {
 	projectId: string;
 	environments: { name: string; tier: string }[];
 	editing: VariableView | null;
-	/** A new variable a secret link opened: its key and scope filled, its value box focused. */
-	asked?: AskedVariable | null;
 	onDone: () => void;
 }) {
 	const t = useCopy();
 	const create = useCreateVariable(projectId);
 	const update = useUpdateVariable(projectId);
-	const askedTier = environments.find((e) => e.name === asked?.environment)?.tier;
-	const [key, setKey] = useState(editing?.key ?? asked?.key ?? "");
-	const [environment, setEnvironment] = useState(editing?.environment ?? asked?.environment ?? ALL);
+	const [key, setKey] = useState(editing?.key ?? "");
+	const [environment, setEnvironment] = useState(editing?.environment ?? ALL);
 	const [type, setType] = useState<VariableType>(editing?.type ?? "secret");
-	// a production value an agent asked for reaches production alone (REQ-80 BC-2)
-	const [isProtected, setIsProtected] = useState(editing?.protected ?? askedTier === "production");
-	const focus = asked !== null ? focusOnMount : undefined;
+	const [isProtected, setIsProtected] = useState(editing?.protected ?? false);
 	const [value, setValue] = useState("");
 	const write = editing ? update : create;
 	const keyError = key === "" || VARIABLE_KEY.test(key) ? undefined : t("settings.project.variables.keyRule");
@@ -99,9 +79,9 @@ export function VariableForm({
 			</div>
 			<Field label={editing ? t("settings.project.variables.newValue") : t("settings.project.variables.value")}>
 				{type === "file" ? (
-					<Textarea ref={focus} value={value} onChange={(e) => setValue(e.target.value)} rows={4} />
+					<Textarea value={value} onChange={(e) => setValue(e.target.value)} rows={4} />
 				) : (
-					<Input ref={focus} type={type === "secret" ? "password" : "text"} autoComplete="off" value={value} onChange={(e) => setValue(e.target.value)} />
+					<Input type={type === "secret" ? "password" : "text"} autoComplete="off" value={value} onChange={(e) => setValue(e.target.value)} />
 				)}
 			</Field>
 			<Checkbox checked={isProtected} onChange={setIsProtected} label={t("settings.project.variables.protectedLabel")} />

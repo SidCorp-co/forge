@@ -1,15 +1,16 @@
 // Settings → Testing: the accounts a run signs in with, read per testing profile and the environment
 // that uses it. Each account is one row: its role, where it is used, and whether its secret holds a
-// value (never the value), with a write-only act to replace it. The profile's limits are short rows,
-// and its raw document sits behind a fold for whoever edits it.
+// value (never the value); its value is given on the Secrets section, the one place for every secret
+// (ISS-1348), which the row opens at that account. The profile's limits are short rows, and its raw
+// document sits behind a fold for whoever edits it.
 import { useState } from "react";
-import { Button, Disclosure, ErrorState, RowItem, RowList, SettingsGroup, Skeleton, sentenceCase } from "@/design";
+import { Disclosure, ErrorState, RowItem, RowList, SettingsGroup, Skeleton, sentenceCase } from "@/design";
 import { useProjectDocument, useSecretNames, useTestingProfiles } from "@/features/project-config";
 import type { V1Read } from "@/features/project-config";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
+import { Link } from "@/lib/navigation/router";
 import { NewTestingProfile, TestingProfileDocument } from "./config-documents";
-import { ReplaceSecret, SecretForm } from "./secrets-section";
 
 type Obj = Record<string, unknown>;
 const obj = (v: unknown): Obj => (v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Obj) : {});
@@ -21,22 +22,6 @@ const MASK = "••••••••";
 interface SecretName {
   ref: string;
   updatedAt: string;
-}
-
-/** The one credential a link names to give its value (ISS-1328): `?profile=<id>&actor=<name>` or `&service=<name>`. */
-interface Give {
-  profile: string;
-  kind: "actor" | "service";
-  name: string;
-}
-
-export function giveOf(search: string): Give | null {
-  const q = new URLSearchParams(search);
-  const profile = q.get("profile");
-  const actor = q.get("actor");
-  const service = q.get("service");
-  if (!profile || (actor === null) === (service === null)) return null;
-  return actor !== null ? { profile, kind: "actor", name: actor } : { profile, kind: "service", name: service ?? "" };
 }
 
 /** The environments whose `testing` names each profile, read off the project document. */
@@ -52,29 +37,26 @@ function environmentsByProfile(project: V1Read | undefined): Map<string, string[
 
 /** One credential a profile names: an actor who signs in, or a service it calls. */
 function CredentialLine({
-  projectId,
+  slug,
+  profileId,
   name,
   kind,
+  role,
   credential,
   usedIn,
   stored,
-  canEdit,
-  open = false,
 }: {
-  projectId: string;
+  slug: string;
+  profileId: string;
   name: string;
-  kind: string;
+  kind: "actor" | "service";
+  role: string;
   credential: string;
   usedIn: string[];
   stored: ReadonlyMap<string, SecretName> | null;
-  canEdit: boolean;
-  /** A room agent's secret link names this credential: its value field opens at once (ISS-1328). */
-  open?: boolean;
 }) {
   const t = useCopy();
   const time = useTimeFormat();
-  const [replacing, setReplacing] = useState(open && canEdit);
-  const ref = SECRET_REF.exec(credential);
   const held = stored?.get(credential);
   const standing =
     stored === null
@@ -82,10 +64,11 @@ function CredentialLine({
       : held
         ? t("settings.project.testing.valueSet", { at: time.date(held.updatedAt) })
         : t("settings.project.testing.valueMissing");
+  const at = new URLSearchParams({ tab: "secrets", profile: profileId, [kind]: name });
   return (
     <RowItem
       lead={<span translate="no">{name}</span>}
-      title={kind}
+      title={role}
       facts={[
         usedIn.length > 0 ? t("settings.project.testing.usedIn", { envs: usedIn.join(", ") }) : t("settings.project.testing.usedNowhere"),
         standing,
@@ -95,18 +78,16 @@ function CredentialLine({
           <span className={held ? "font-mono text-13 text-muted" : "text-13 font-medium text-warn-11"} aria-label={standing}>
             {held ? MASK : t("settings.project.testing.notSet")}
           </span>
-          {canEdit && ref?.[1] && ref[2] && !replacing ? (
-            <Button variant="secondary" size="sm" onClick={() => setReplacing(true)}>
-              {held ? t("settings.project.testing.replace") : t("settings.project.testing.setValue")}
-            </Button>
+          {SECRET_REF.test(credential) ? (
+            <Link href={`/projects/${encodeURIComponent(slug)}/settings?${at.toString()}`} className="text-13 font-medium text-link hover:underline">
+              {t("settings.project.testing.openSecrets")}
+            </Link>
           ) : null}
         </span>
       }
       testId="testing-credential"
       rowKey={`${name}:${credential}`}
-    >
-      {replacing && ref?.[1] && ref[2] ? <ReplaceSecret projectId={projectId} scope={ref[1]} name={ref[2]} focus={open} onDone={() => setReplacing(false)} /> : null}
-    </RowItem>
+    />
   );
 }
 
@@ -117,22 +98,22 @@ function LimitLine({ id, note }: { id: string; note: string }) {
 
 function ProfileAccounts({
   projectId,
+  slug,
   profileId,
   read,
   usedIn,
   stored,
   canEdit,
   onReload,
-  give = null,
 }: {
   projectId: string;
+  slug: string;
   profileId: string;
   read: V1Read | null;
   usedIn: string[];
   stored: ReadonlyMap<string, SecretName> | null;
   canEdit: boolean;
   onReload: () => unknown;
-  give?: Give | null;
 }) {
   const t = useCopy();
   const doc = read?.declared ? read.document : {};
@@ -154,27 +135,27 @@ function ProfileAccounts({
           {actors.map((a) => (
             <CredentialLine
               key={a.name}
-              projectId={projectId}
+              slug={slug}
+              profileId={profileId}
               name={a.name}
-              kind={sentenceCase(a.role.replace(/-/g, " "))}
+              kind="actor"
+              role={sentenceCase(a.role.replace(/-/g, " "))}
               credential={a.credential}
               usedIn={usedIn}
               stored={stored}
-              canEdit={canEdit}
-              open={give?.kind === "actor" && give.name === a.name}
             />
           ))}
           {services.map((s) => (
             <CredentialLine
               key={`service:${s.name}`}
-              projectId={projectId}
+              slug={slug}
+              profileId={profileId}
               name={s.name}
-              kind={t(s.access === "readwrite" ? "settings.project.testing.serviceReadWrite" : "settings.project.testing.serviceReadOnly")}
+              kind="service"
+              role={t(s.access === "readwrite" ? "settings.project.testing.serviceReadWrite" : "settings.project.testing.serviceReadOnly")}
               credential={s.credential}
               usedIn={usedIn}
               stored={stored}
-              canEdit={canEdit}
-              open={give?.kind === "service" && give.name === s.name}
             />
           ))}
         </RowList>
@@ -196,24 +177,18 @@ function ProfileAccounts({
   );
 }
 
-export function TestingSettings({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
+export function TestingSettings({ projectId, slug, canEdit }: { projectId: string; slug: string; canEdit: boolean }) {
   const t = useCopy();
-  const time = useTimeFormat();
   const profiles = useTestingProfiles(projectId);
   const secrets = useSecretNames(projectId);
   const project = useProjectDocument(projectId);
   const [adding, setAdding] = useState<string[]>([]);
-  const [give] = useState(() => giveOf(window.location.search));
   if (profiles.isLoading) return <Skeleton className="h-64 w-full rounded-md" />;
   if (!profiles.data) return <ErrorState message={formatApiError(profiles.error)} onRetry={() => void profiles.refetch()} />;
   const byProfile = environmentsByProfile(project.data);
   const stored = secrets.data ? new Map(secrets.data.secrets.map((s) => [s.ref, s])) : null;
   const held = new Set(profiles.data.profiles.map((p) => p.profileId));
   const pending = adding.filter((id) => !held.has(id));
-  const named = new Set(
-    profiles.data.profiles.flatMap((p) => [...Object.values(obj(p.document.actors)), ...Object.values(obj(p.document.services))].map((c) => str(obj(c).credential))),
-  );
-  const unused = (secrets.data?.secrets ?? []).filter((s) => !named.has(s.ref));
   return (
     <div>
       <SettingsGroup id="test-accounts" title={t("settings.project.testing.title")}>
@@ -222,36 +197,19 @@ export function TestingSettings({ projectId, canEdit }: { projectId: string; can
           <ProfileAccounts
             key={p.profileId}
             projectId={projectId}
+            slug={slug}
             profileId={p.profileId}
             read={p}
             usedIn={byProfile.get(p.profileId) ?? []}
             stored={stored}
             canEdit={canEdit}
             onReload={() => profiles.refetch()}
-            give={give?.profile === p.profileId ? give : null}
           />
         ))}
         {pending.map((id) => (
-          <ProfileAccounts key={id} projectId={projectId} profileId={id} read={null} usedIn={byProfile.get(id) ?? []} stored={stored} canEdit={canEdit} onReload={() => profiles.refetch()} />
+          <ProfileAccounts key={id} projectId={projectId} slug={slug} profileId={id} read={null} usedIn={byProfile.get(id) ?? []} stored={stored} canEdit={canEdit} onReload={() => profiles.refetch()} />
         ))}
         {canEdit ? <NewTestingProfile held={held} onAdd={(id) => setAdding((a) => [...a, id])} /> : null}
-      </SettingsGroup>
-      <SettingsGroup id="secrets" title={t("settings.project.testing.otherSecrets")}>
-        {secrets.isError ? <p className="fg-body-sm text-danger-11">{t("settings.project.raw.secretsUnread", { error: formatApiError(secrets.error) })}</p> : null}
-        {unused.length > 0 ? (
-          <RowList label={t("settings.project.testing.otherSecrets")}>
-            {unused.map((s) => (
-              <RowItem key={s.ref} title={<span translate="no">{s.ref}</span>} facts={[t("settings.project.testing.valueSet", { at: time.date(s.updatedAt) }), t("settings.project.testing.usedNowhere")]} />
-            ))}
-          </RowList>
-        ) : (
-          <p className="fg-body-sm text-muted">{t("settings.project.testing.noOtherSecrets")}</p>
-        )}
-        {canEdit ? (
-          <Disclosure title={t("settings.project.testing.storeAnother")}>
-            <SecretForm projectId={projectId} />
-          </Disclosure>
-        ) : null}
       </SettingsGroup>
     </div>
   );

@@ -33,7 +33,11 @@ const askParam = zValidator(
   invalid('invalid path: a project uuid and a request uuid, as the Secrets page lists it'),
 );
 
-const WRITES = { variable: ENV_MANAGE, testing: 'project.admin', integration: 'project.admin' } as const;
+const WRITES = {
+  variable: ENV_MANAGE,
+  testing: 'project.admin',
+  integration: 'project.admin',
+} as const;
 
 export function mountSecretPageRoutes(app: Hono<{ Variables: AuthVars }>): void {
   app.get('/:id/support/secrets', projectParam, READ, noQuery, async (c) =>

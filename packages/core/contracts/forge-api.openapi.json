@@ -55258,6 +55258,13 @@
                     "maximum": 16,
                     "minimum": 1,
                     "type": "integer"
+                  },
+                  "thread": {
+                    "description": "the thread the message is in, as you were handed it (`thread`): places the read in one group of a channel agent's",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9_-]+$",
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -55726,6 +55733,13 @@
                     "x-forge-refinements": [
                       "a role is named once"
                     ]
+                  },
+                  "thread": {
+                    "description": "the thread: the id the message you answer carries as `thread` in what you were handed",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9_-]+$",
+                    "type": "string"
                   }
                 },
                 "required": [

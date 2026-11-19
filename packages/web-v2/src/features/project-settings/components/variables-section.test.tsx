@@ -78,10 +78,7 @@ function mount() {
 	);
 }
 
-afterEach(() => {
-	vi.unstubAllGlobals();
-	window.history.replaceState(null, "", "/");
-});
+afterEach(() => vi.unstubAllGlobals());
 
 describe("the Variables section", () => {
 	it("shows a manager the plain value inline and a secret masked until that row is revealed", async () => {
@@ -129,39 +126,6 @@ describe("the Variables section", () => {
 		expect(screen.getByText("Letters, digits and underscores; not starting with a digit")).toBeInTheDocument();
 		expect(within(screen.getByTestId("variable-form")).getByRole("button", { name: "Add variable" })).toBeDisabled();
 		expect(calls.filter((c) => c.method === "POST")).toHaveLength(0);
-	});
-
-	// ISS-1348: a room agent's secret link names one variable; the page opens that field, focused
-	it("opens a variable a secret link names, not held yet, with its key, scope and kind filled and its value focused", async () => {
-		const calls = core(true);
-		window.history.replaceState(null, "", "/projects/p/settings?tab=variables&key=GOOGLE_CLIENT_SECRET&environment=production#variables");
-		mount();
-		const form = await screen.findByTestId("variable-form");
-		expect(within(form).getByRole("textbox", { name: "Key" })).toHaveValue("GOOGLE_CLIENT_SECRET");
-		expect(within(form).getByRole("combobox", { name: "Environment" })).toHaveValue("production");
-		expect(within(form).getByRole("combobox", { name: "Type" })).toHaveValue("secret");
-		expect(within(form).getByRole("checkbox", { name: "Protected (production-tier runs only)" })).toBeChecked();
-		const value = within(form).getByLabelText("Value");
-		expect(value).toHaveFocus();
-		fireEvent.change(value, { target: { value: "planted-asked-value" } });
-		fireEvent.click(within(form).getByRole("button", { name: "Add variable" }));
-		await waitFor(() => expect(calls.find((c) => c.method === "POST")).toBeDefined());
-		expect(calls.find((c) => c.method === "POST")?.body).toEqual({
-			key: "GOOGLE_CLIENT_SECRET",
-			value: "planted-asked-value",
-			environment: "production",
-			type: "secret",
-			protected: true,
-		});
-	});
-
-	it("opens a held variable a secret link names to replace its value", async () => {
-		core(true);
-		window.history.replaceState(null, "", "/projects/p/settings?tab=variables&key=DATABASE_URL&environment=production");
-		mount();
-		const form = await screen.findByTestId("variable-form");
-		expect(within(form).getByRole("textbox", { name: "Key" })).toBeDisabled();
-		expect(within(form).getByLabelText("New value (blank keeps the stored one)")).toHaveFocus();
 	});
 
 	it("decides an agent's proposal only with a reason, and sends that reason", async () => {

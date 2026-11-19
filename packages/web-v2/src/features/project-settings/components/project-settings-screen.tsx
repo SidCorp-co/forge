@@ -1,7 +1,7 @@
 
 // Per-project settings (ISS-316), grouped by what a person comes to change rather than by the
 // document each value is stored in: General, People, Work, Delivery (with the environments), Gates, Preview,
-// Testing (the accounts a run tests with), Variables (the environment variables it runs with), Connections, and Advanced for the raw documents. The section lives in `?tab=`; a link written against the old flat tabs is
+// Secrets (every secret it is given, ISS-1348), Testing (the accounts a run tests with), Variables (the environment variables it runs with), Connections, and Advanced for the raw documents. The section lives in `?tab=`; a link written against the old flat tabs is
 // moved to the section that now holds its content (`sections.ts:LEGACY_TABS`). The page is the detail
 // template: the section's groups in the main column, and a rail beside it listing them (the group in
 // view marked); below 1024px the rail is not drawn and one contents menu at the top stands in.
@@ -26,6 +26,7 @@ import { LabelsTab } from "./labels-tab";
 import { MembersTab } from "./members-tab";
 import { ModulesTab } from "./modules-tab";
 import { PreviewSettings } from "./preview-section";
+import { landingOf, SecretsSettings } from "./secrets/secrets-page";
 import { ShareSettings } from "./shares-section";
 import { TestingSettings } from "./testing-tab";
 import { VariablesSettings } from "./variables-section";
@@ -38,16 +39,22 @@ const LABEL: Record<SettingsSection, ProductCopyKey> = {
 	delivery: "settings.project.section.delivery",
 	gates: "settings.project.section.gates",
 	preview: "previews.settings.section",
+	secrets: "settings.project.section.secrets",
 	testing: "settings.project.section.testing",
 	variables: "settings.project.section.variables",
 	connections: "settings.project.section.connections",
 	advanced: "settings.project.section.advanced",
 };
 
-/** An old `?tab=` becomes its section, keeping the place it pointed at as the hash. */
+/** An old `?tab=` becomes its section, keeping the place it pointed at as the hash. A secret link
+ *  written for a Testing row (ISS-1328) opens that account on the Secrets section (ISS-1348). */
 function useLegacyTab(setTab: (s: SettingsSection) => void) {
 	useEffect(() => {
 		const raw = new URLSearchParams(window.location.search).get("tab");
+		if (raw === "testing" && landingOf(window.location.search).testing) {
+			setTab("secrets");
+			return;
+		}
 		const moved = raw ? LEGACY_TABS[raw] : undefined;
 		if (!moved) return;
 		if (moved.anchor && !window.location.hash) window.history.replaceState(window.history.state, "", `#${moved.anchor}`);
@@ -143,7 +150,8 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 					{tab === "delivery" && <DeliverySettings project={project} canEdit={canEdit} />}
 					{tab === "gates" && <GatesSettings projectId={project.id} slug={project.slug} access={listItem} />}
 					{tab === "preview" && <PreviewSettings projectId={project.id} slug={project.slug} canEdit={canEdit} />}
-					{tab === "testing" && <TestingSettings projectId={project.id} canEdit={canEdit} />}
+					{tab === "secrets" && <SecretsSettings projectId={project.id} canWrite={canManage} canEdit={canEdit} />}
+					{tab === "testing" && <TestingSettings projectId={project.id} slug={project.slug} canEdit={canEdit} />}
 					{tab === "variables" && <VariablesSettings projectId={project.id} />}
 					{tab === "connections" && (
 						<>
