@@ -2,6 +2,7 @@
 // an ecosystem link no door let it make): the steward's invite and the member project's accept,
 // decline and leave, each through its own service as him (`ecosystem/membership-acts.ts`).
 
+import { REASON_LINE_MAX } from '@forge/contracts/comments';
 import type { SupportForgeActRequest } from '@forge/contracts/support-channel';
 import { type MembershipAct, membershipActByName } from '../ecosystem/index.js';
 import type { OpsOutcome } from './ops-types.js';
@@ -13,9 +14,6 @@ const MEMBERSHIP: Readonly<Record<string, MembershipAct>> = {
   'membership.decline': 'decline',
   'membership.leave': 'leave',
 };
-/** How long a membership's leave reason may be, as its route takes it. */
-const LEAVE_REASON_MAX = 500;
-
 /** Whether `act` is one of the membership acts. */
 export const isMembershipAct = (act: string): boolean => Object.hasOwn(MEMBERSHIP, act);
 
@@ -32,7 +30,9 @@ export async function membershipAct(
     projectId: at.projectId,
     projectSlug: at.projectSlug,
     userId: at.userId,
-    reason: reason ? quotedTo(reason, LEAVE_REASON_MAX) : null,
+    // a leave keeps his own why (`reason` in the request): the room's citation of his message alone
+    // is no why, so a leave without one is refused MEMBERSHIP_REASON_REQUIRED by its service
+    reason: input.reason && reason ? quotedTo(reason, REASON_LINE_MAX) : null,
   });
   if (!made.ok) return { ok: false, refusals: made.refusals };
   return {

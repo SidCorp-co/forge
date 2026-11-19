@@ -16,11 +16,13 @@ import {
   createTestUser,
   rows,
 } from '../helpers/factories.js';
+import { seedEcosystem } from '../helpers/live-wiring.js';
 import { AgentWorld } from '../helpers/support-agent-world.js';
 import { code } from '../helpers/support-channel.js';
 import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 
 // @direct-test-of packages/core/src/support/owner-forge-act.ts
+// @direct-test-of packages/core/src/support/owner-membership-act.ts
 // @direct-test-of packages/core/src/support/acts.ts
 // @direct-test-of packages/core/src/support/owner-routes.ts
 // @direct-test-of packages/core/src/support/tool.ts
@@ -294,5 +296,26 @@ describe("ISS-1243 item 24: the owner's Forge act is made as him from his own me
       sql`SELECT decision FROM release_approvals WHERE id = ${approvalId}`,
     );
     expect(stored?.decision).toBeNull();
+  });
+
+  // cleanup 21284cd0: the room's citation of his message filled a leave's reason, so a leave he gave
+  // no why for was never refused MEMBERSHIP_REASON_REQUIRED
+  it('refuses a membership leave with no why of his own, and takes his why to its door', async () => {
+    const [project] = await rows<{ org_id: string }>(
+      sql`SELECT org_id FROM projects WHERE id = ${w.projectId}`,
+    );
+    const eco = await seedEcosystem(chuong, String(project?.org_id));
+    const bare = await askBy(chat.alice, 'rời ecosystem đó đi em', {
+      act: 'membership.leave',
+      item: eco,
+    });
+    expect(code(bare.out), JSON.stringify(bare.out)).toBe('MEMBERSHIP_REASON_REQUIRED');
+    const why = await askBy(chat.alice, 'rời ecosystem đó đi em, không dùng nữa', {
+      act: 'membership.leave',
+      item: eco,
+      reason: 'không dùng nữa',
+    });
+    // past the reason, to the membership the project does not hold
+    expect(code(why.out), JSON.stringify(why.out)).toBe('MEMBERSHIP_NONE');
   });
 });
