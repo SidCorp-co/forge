@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.745] - 2026-11-19
+
+An unlinked owner's go on a release is kept until his account is named
+
+### Fixed
+
+- **An owner's go on a release is kept while his chat account is unlinked.** His room is told it is noted, and it counts as his decision once an admin names his Forge account.
+
 ## [0.4.0-dev.744] - 2026-11-19
 
 Masters keep run controls across runner installs and while waiting for cutover
