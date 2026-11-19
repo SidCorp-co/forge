@@ -249,8 +249,8 @@ pub fn held_elsewhere(latest: &Held<'_>, others: usize) -> String {
     };
     let started = match tool_use {
         Some(t) => format!("which tool call {t}, a dispatch this gate let through, started"),
-        None => "which took it at its start with no tool call of this box's gate on record: a \
-                 subagent woken by `SendMessage`, or one started before this daemon was"
+        None => "which took it at its start. The tool call that started it is not on record: this \
+                 daemon keeps it in memory only, and has restarted since, an upgrade included"
             .to_string(),
     };
     let more = match others {
@@ -547,7 +547,14 @@ mod tests {
             "{said}"
         );
         let said = held_elsewhere(&held(None), 2);
-        assert!(said.contains("`SendMessage`"), "{said}");
+        assert!(
+            said.contains("not on record") && said.contains("restart"),
+            "{said}"
+        );
+        assert!(
+            !said.contains("SendMessage"),
+            "a woken subagent takes no run: {said}"
+        );
         assert!(said.contains("2 more of your open runs"), "{said}");
     }
 
