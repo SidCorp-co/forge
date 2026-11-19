@@ -107,6 +107,17 @@ describe('the dispatch guide teaches batches by default', () => {
     expect(prose).not.toContain('no shipped role, no declaration');
   });
 
+  // ISS-1363 (FB-779, epod L-57): a run declared --role runner was refused at dispatch and its
+  // issues fell back to open; (FB-778, sid-desk L-8): criteria written onto the record after landing
+  it('names the role a builder run is declared as, a model refusal, and criteria on the record first', () => {
+    expect(prose).toContain('`forge-runner run declare --role general-purpose`');
+    expect(prose).toContain('or as another role than the one declared');
+    expect(prose).toContain('naming a model the box\'s account allows');
+    expect(prose).toContain(
+      "each issue's criteria are on its record (`PUT /api/issues/:id/criteria`), never only in its description",
+    );
+  });
+
   it('never makes a batch smaller than an issue, and folds a live red into the next batch', () => {
     expect(prose).toContain('A batch is never smaller than an issue');
     expect(prose).toContain('one issue is never split across releases');

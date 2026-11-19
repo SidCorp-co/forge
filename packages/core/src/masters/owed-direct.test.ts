@@ -75,6 +75,9 @@ describe('masterWork under direct mode: the pass is told to build, not to dispat
     expect(direct.nudge).not.toContain('build the batch yourself');
     for (const said of [
       'Dispatch no runner role',
+      // ISS-1363 (FB-779, FB-778): the role a builder's run is declared with, and criteria on the record
+      "declare each builder's run `--role general-purpose`",
+      "write each issue's criteria on its record before its build",
       // ISS-1243 item 22: subagents build, the master's session stays free for agents' asks;
       // ISS-1254: each in a tree of its own, never one tree shared
       'hand every build part of the batch to general-purpose subagents, one worktree each, whose commits you fold into the batch branch',
