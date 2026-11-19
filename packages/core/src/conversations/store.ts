@@ -419,3 +419,25 @@ export async function messageAuthorTokenId(
     .limit(1);
   return row?.authorTokenId ?? null;
 }
+
+/**
+ * An inbound message's content replaced where a secret was kept in it unscrubbed (ISS-1353): the
+ * transport's id names it in its conversation. How many rows it changed (0 or 1).
+ */
+export async function redactInboundContent(
+  tx: TxOnly,
+  args: { conversationId: string; externalId: string; content: string },
+): Promise<number> {
+  const changed = await tx
+    .update(conversationMessages)
+    .set({ content: args.content })
+    .where(
+      and(
+        eq(conversationMessages.conversationId, args.conversationId),
+        eq(conversationMessages.externalId, args.externalId),
+        eq(conversationMessages.role, 'user'),
+      ),
+    )
+    .returning({ id: conversationMessages.id });
+  return changed.length;
+}

@@ -15,6 +15,7 @@ describe('a credential field is told from prose by its value', () => {
     'secret: not-set',
     'the secret key: required',
     'api key: missing',
+    'mật khẩu: required', // i18n-allow: the label under test, followed by prose
   ])('admits a field followed by an ordinary word: %s', (text) => {
     expect(scrubLogText(text)).toBe(text);
     expect(containsSecret(text)).toBe(false);
@@ -31,6 +32,9 @@ describe('a credential field is told from prose by its value', () => {
     ['a secret_key label', 'SECRET_KEY: 3f9a8c1d2e4b5a69', `SECRET_KEY: ${FILTERED}`],
     ['a secretKey JSON field', '{"secretKey":"3f9a8c1d2e4b"}', `{"secretKey":"${FILTERED}"}`],
     ['a two-word api key label', 'the api key = 3f9a8c1d2e4b5a69', `the api key = ${FILTERED}`],
+    // ISS-1353: a room stored a password written under the Vietnamese label as it was written
+    ['a Vietnamese password label', 'Mật khẩu: Fake-Pass-77', `Mật khẩu: ${FILTERED}`], // i18n-allow: the label under test
+    ['the label without its marks', 'mat khau = fakepass77', `mat khau = ${FILTERED}`],
   ])('refuses a value with %s', (_shape, text, scrubbed) => {
     expect(scrubLogText(text)).toBe(scrubbed);
     expect(containsSecret(text)).toBe(true);

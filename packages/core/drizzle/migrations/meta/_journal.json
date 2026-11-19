@@ -4383,6 +4383,13 @@
       "when": 1842480000000,
       "tag": "0689_a_verdict_says_whether_its_outside_call_ran_live_or_simulated",
       "breakpoints": true
+    },
+    {
+      "idx": 690,
+      "version": "7",
+      "when": 1842566400000,
+      "tag": "0690_a_person_redacts_a_secret_a_room_kept_unscrubbed",
+      "breakpoints": true
     }
   ]
 }

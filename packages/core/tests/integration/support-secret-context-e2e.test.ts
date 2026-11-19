@@ -12,7 +12,13 @@
  * and no rotation ask. support.secret_link answers the Testing settings link of one declared slot,
  * and refuses by name a profile or slot the project does not declare.
  *
+ * ISS-1353: a password written under a Vietnamese label, and an email and password pair answering a
+ * thread that asked for a login, are each kept scrubbed and flagged; an email alone is kept as written.
+ * A secret the screen did not catch is redacted on the record through a door naming its action.
+ *
  * @direct-test-of packages/core/src/support/secret-flag.ts
+ * @direct-test-of packages/core/src/support/secret-screen.ts
+ * @direct-test-of packages/core/src/support/secret-redact.ts
  * @direct-test-of packages/core/src/support/secret-link.ts
  * @direct-test-of packages/core/src/support/inbound.ts
  */
@@ -138,6 +144,84 @@ describe('ISS-1326: a key sent alone is a secret where its thread says so', () =
     expect(await kept(sha)).toBe(SHA);
     expect(await flagsOf(sha)).toEqual([]);
     expect(notesIn(opened)).toEqual([]);
+  });
+});
+
+describe('ISS-1353: account credentials written in chat are kept scrubbed and flagged', () => {
+  // obvious fakes, built here so no literal credential sits in the tree
+  const PASS = ['Fake', 'Pass', '0042'].join('-');
+  const EMAIL = 'qa-tester@example.test';
+
+  it('filters a Vietnamese-labelled password', async () => {
+    w.box.model = async () => undefined;
+    const said = await say(w.chat.alice, `Mật khẩu: ${PASS}`); // i18n-allow: the label under test
+    expect(await kept(said)).not.toContain(PASS);
+    expect(await kept(said)).toContain('[Filtered]');
+    expect(await flagsOf(said)).toHaveLength(1);
+  });
+
+  it('filters a bare email and password answering a thread that asked for a test login', async () => {
+    w.box.model = async () => undefined;
+    const asked = await say(w.chat.bob, 'Cho mình xin tài khoản test để đăng nhập nhé'); // i18n-allow: "give me a test account to sign in"
+    const pair = await say(w.chat.alice, `${EMAIL} / ${PASS}`, asked);
+    expect(await kept(pair)).toBe(`${EMAIL} / [Filtered]`);
+    expect(await flagsOf(pair)).toHaveLength(1);
+  });
+
+  it('redacts a secret the screen did not catch through the door that names its action (c2)', async () => {
+    w.box.model = async () => undefined;
+    // a shape no screen reads: the password said in words of its own, kept as written
+    const missed = await say(w.chat.alice, `the code to get in is ${PASS} for now`);
+    expect(await kept(missed)).toContain(PASS);
+    const [action] = await rows<{ id: string; conversation_id: string }>(sql`
+      SELECT id, conversation_id FROM support_actions
+       WHERE room_id = ${w.roomId}::uuid AND external_id = ${missed} AND kind = 'message_in'`);
+    const door = (id: string, token = w.owner) =>
+      api(
+        token,
+        'POST',
+        `/api/projects/${w.projectId}/support/rooms/${w.roomId}/actions/${id}/redaction`,
+        {
+          reason: 'a test password was kept as written',
+        },
+      );
+    expect((await door(String(action?.id), w.stranger)).status).toBe(403);
+    const done = await door(String(action?.id));
+    expect(done.status, JSON.stringify(done.body)).toBe(200);
+    expect(done.body).toMatchObject({ action: action?.id, message: missed, redactedBy: w.ownerId });
+    expect(await kept(missed)).toBe('[Filtered]');
+    const [message] = await rows<{ content: string }>(sql`
+      SELECT content FROM conversation_messages
+       WHERE conversation_id = ${action?.conversation_id}::uuid AND external_id = ${missed}`);
+    expect(message?.content).toBe('[Filtered]');
+    const [record] = await rows<{
+      actor_key: string;
+      input: { action: string; reason: string };
+    }>(sql`
+      SELECT actor_key, input FROM support_actions
+       WHERE room_id = ${w.roomId}::uuid AND kind = 'secret_redacted' AND input->>'action' = ${String(action?.id)}`);
+    expect(record).toMatchObject({
+      actor_key: w.ownerId,
+      input: { reason: 'a test password was kept as written' },
+    });
+    const again = await door(String(action?.id));
+    expect([again.status, code(again.body as Record<string, unknown>)]).toEqual([
+      409,
+      'SUPPORT_ACTION_REDACTED',
+    ]);
+    const unknown = await door('00000000-0000-4000-8000-000000000000');
+    expect([unknown.status, code(unknown.body as Record<string, unknown>)]).toEqual([
+      404,
+      'SUPPORT_ACTION_UNKNOWN',
+    ]);
+  });
+
+  it('keeps an email alone as written, with no flag', async () => {
+    w.box.model = async () => undefined;
+    const asked = await say(w.chat.bob, 'Which account should I sign in with?');
+    const email = await say(w.chat.alice, `use ${EMAIL}`, asked);
+    expect(await kept(email)).toBe(`use ${EMAIL}`);
+    expect(await flagsOf(email)).toEqual([]);
   });
 });
 

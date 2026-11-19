@@ -5,7 +5,6 @@
 // answer to a proposal ("ok", "confirm …") is an ordinary message: the session cites it to `agree` (ISS-845).
 
 import type { SupportRoomConfig } from '@forge/contracts/support';
-import { containsSecret, FILTERED, scrubLogText } from '@forge/observability';
 import { pushProjectNow } from '../agent-sessions/index.js';
 import { appendMessagesIn } from '../conversations/index.js';
 import { db } from '../db/client.js';
@@ -27,7 +26,8 @@ import { settleOwnerAnswer } from './owner-answer.js';
 import { noteRoomMessage } from './room-replies.js';
 import { ensureSupportRoom } from './rooms.js';
 import { clipMessage, limitsOf, threadOf } from './rules.js';
-import { bareKeyInContext, flagSecret } from './secret-flag.js';
+import { flagSecret } from './secret-flag.js';
+import { screenAlone, screenMessage } from './secret-screen.js';
 import { addressedInGroup, groupSharers, threadHeldByAnother } from './shared-group.js';
 import {
   insertAction,
@@ -89,10 +89,7 @@ function ownerReplyOf(m: RocketChatIncomingMessage) {
 export async function handleUnboundMessage(input: {
   m: RocketChatIncomingMessage;
 }): Promise<boolean> {
-  const m = containsSecret(input.m.text)
-    ? { ...input.m, text: scrubLogText(input.m.text) }
-    : input.m;
-  return settleOwnerAnswer(ownerReplyOf(m));
+  return settleOwnerAnswer(ownerReplyOf({ ...input.m, text: screenAlone(input.m.text).text }));
 }
 
 export async function handleSupportMessage(input: {
@@ -126,12 +123,11 @@ export async function handleSupportMessage(input: {
         : { kind: 'support', support: config },
   });
   // a posted secret is never kept: the message is recorded and handed on without it (REQ-75 r6
-  // BC-40); a key sent alone is one where its thread says so (ISS-1326, `secret-flag.ts`)
-  const labelled = containsSecret(input.m.text);
-  const secret = labelled || (await bareKeyInContext(room, input.m));
-  const m = secret
-    ? { ...input.m, text: labelled ? scrubLogText(input.m.text) : FILTERED }
-    : input.m;
+  // BC-40), by its label in English or Vietnamese, as account credentials written in chat
+  // (ISS-1353), or as a key sent alone where its thread says so (ISS-1326; `secret-screen.ts`)
+  const screened = await screenMessage(room, input.m);
+  const secret = screened.secret;
+  const m = secret ? { ...input.m, text: screened.text } : input.m;
   try {
     await takeIntoRoom(room, { ...input, m }, config, secret);
   } catch (err) {

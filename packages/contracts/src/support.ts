@@ -803,6 +803,11 @@ export const SUPPORT_ACTION_KINDS = [
 	 * signals used, its confidence, and answer, gather, ask or silent with why.
 	 */
 	"routing_decided",
+	/**
+	 * A person redacted a secret kept unscrubbed in a member's message (ISS-1353): `input` names the
+	 * action and the reason, `actorKey` the Forge account that did it.
+	 */
+	"secret_redacted",
 ] as const;
 export type SupportActionKind = (typeof SUPPORT_ACTION_KINDS)[number];
 
@@ -962,6 +967,21 @@ export const supportSecretLinkRequestSchema = z.strictObject({
 		.describe("the profile's service the value is a key of; or actor"),
 });
 export type SupportSecretLinkRequest = z.infer<typeof supportSecretLinkRequestSchema>;
+
+/**
+ * A person redacting a secret a room kept unscrubbed in a member's message (ISS-1353): the message's
+ * text becomes `[Filtered]` on the room's record and its thread's conversation, and the redaction is
+ * recorded with who made it and why.
+ */
+export const supportRedactRequestSchema = z.strictObject({
+	reason: z
+		.string()
+		.trim()
+		.min(3)
+		.max(500)
+		.describe("why the message is redacted, kept on the record of the redaction"),
+});
+export type SupportRedactRequest = z.infer<typeof supportRedactRequestSchema>;
 
 export const supportSearchRequestSchema = z.strictObject({
 	query: z.string().trim().min(2).max(300),
@@ -1914,6 +1934,10 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_OWED_ALREADY_RAISED",
 	/** A citation naming no active reference source of the project (ISS-1252). */
 	"SUPPORT_REFERENCE_UNKNOWN",
+	/** A redaction naming no member message of the room (ISS-1353). */
+	"SUPPORT_ACTION_UNKNOWN",
+	/** A redaction of a member message already redacted (ISS-1353). */
+	"SUPPORT_ACTION_REDACTED",
 ] as const;
 export type SupportRefusalCode = (typeof SUPPORT_REFUSAL_CODES)[number];
 
@@ -2072,4 +2096,6 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_MASTER_ASK_ANSWERED: 409,
 	SUPPORT_OWED_UNKNOWN: 404,
 	SUPPORT_OWED_ALREADY_RAISED: 409,
+	SUPPORT_ACTION_UNKNOWN: 404,
+	SUPPORT_ACTION_REDACTED: 409,
 } as const satisfies RefusalStatuses<SupportRefusalCode>;

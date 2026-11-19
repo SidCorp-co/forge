@@ -41,8 +41,17 @@ const SCRUB_BODY_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 /** Labels a secret is written under in prose, two words where a body key is one (ISS-1326's
- *  builder found `secret key: <hex>` read as text). Read in text only, never as an object key. */
-const PROSE_LABELS: readonly string[] = ["secret key", "secret-key", "api key", "api-key"];
+ *  builder found `secret key: <hex>` read as text), and the Vietnamese word for a password, with and
+ *  without its marks (ISS-1353: a room stored `mật khẩu: <value>` as written). Read in text only,
+ *  never as an object key. */
+const PROSE_LABELS: readonly string[] = [
+	"secret key",
+	"secret-key",
+	"api key",
+	"api-key",
+	"mật khẩu", // i18n-allow: the Vietnamese label a password is written under
+	"mat khau",
+];
 
 /** Matches `?token=...` / `?jwt=...` / `?access_token=...` / `?api_key=...` query params. */
 const URL_TOKEN_PATTERN =
@@ -144,7 +153,7 @@ const URL_PASSWORD_PATTERN = /\b([a-z][a-z0-9+.-]*:\/\/[^\s:/@]*:)[^\s@/]+@/gi;
 /** Shapes that say a secret is there though no value follows to redact: a password label, a
  *  private-key header without its closing dashes, a connection URL with an empty password. */
 const SECRET_LABEL_PATTERN =
-	/password\s*[:=]|-----BEGIN [A-Z ]*PRIVATE KEY|postgres(?:ql)?:\/\/\S*:\S*@/gi;
+	/password\s*[:=]|m[ậa]t kh[ẩa]u\s*[:=]|-----BEGIN [A-Z ]*PRIVATE KEY|postgres(?:ql)?:\/\/\S*:\S*@/gi; // i18n-allow: the Vietnamese password label
 
 const ENV_SECRET_ASSIGNMENT_PATTERN =
 	/^(\s*(?:export\s+)?(?:[A-Z0-9]+_)*(?:PASSWORD|SECRET|TOKEN|KEY|PASS|PEPPER|DSN|CREDENTIALS)(?:_[A-Z0-9]+)*)\s*=\s*\S.*$/;
@@ -492,7 +501,7 @@ const LINE_RULES: readonly SpanRule[] = [
 const LABEL_RULE: SpanRule = {
 	shape: "secret label",
 	pattern: SECRET_LABEL_PATTERN,
-	lead: /^(?:password\s*[:=]|-----BEGIN [A-Z ]*PRIVATE KEY|postgres(?:ql)?:\/\/)/i,
+	lead: /^(?:password\s*[:=]|m[ậa]t kh[ẩa]u\s*[:=]|-----BEGIN [A-Z ]*PRIVATE KEY|postgres(?:ql)?:\/\/)/i, // i18n-allow: the Vietnamese password label
 	// a label followed by a word has its value, and the value is prose
 	prose: (m, text) => {
 		const next = FIELD_VALUE.exec(text.slice(m.index + m[0].length))?.[1];

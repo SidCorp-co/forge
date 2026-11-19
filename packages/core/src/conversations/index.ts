@@ -122,6 +122,7 @@ export {
   openConversationIn,
   readMessages,
   readMessagesInRange,
+  redactInboundContent,
   renameConversation,
   type StoredConversationMessage,
   setConversationArchived,
