@@ -10,7 +10,8 @@ import type { CheckRefusal } from './merge-check-rules.js';
 
 /**
  * The report as the issue it is recorded on reads it: a report on one issue (or on none) as sent,
- * and a batch's report with that issue's `probes` and `standing` in place of its `issues`; or the
+ * and a batch's report with that issue's `probes` and `standing` in place of its `issues`, and
+ * without the `probes` checks another issue's bindings name; or the
  * refusal naming the issue, the issues the report does cover, and the flag that would cover it.
  */
 export function reportForIssue(
@@ -29,9 +30,14 @@ export function reportForIssue(
       },
     };
   }
+  // the batch ran every issue's probes as checks of its own; those another issue binds are its, so
+  // this issue is never held to them (a red probe of B refusing A's record)
+  const mine = new Set(own.probes.map((b) => b.check));
+  const theirs = new Set(issues.flatMap((x) => (x === own ? [] : x.probes.map((b) => b.check))));
   return {
     report: {
       ...rest,
+      checks: rest.checks.filter((c) => c.kind !== 'probes' || mine.has(c.id) || !theirs.has(c.id)),
       probes: own.probes,
       ...(own.standing ? { standing: own.standing } : {}),
     },

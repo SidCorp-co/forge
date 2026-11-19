@@ -314,7 +314,7 @@ export function probeRefusals(
     out.push({
       code: 'MERGE_PROBE_MISSING',
       path: '/probes',
-      detail: `${missing.join('; ')}. Run the merge check with --probes <the issue's criteria read, saved after the builder's verdicts>, keep a probe on each observable criterion the change claims, and record it again. Nothing was recorded`,
+      detail: `${missing.join('; ')}. Run the merge check with --probes <the issue's criteria read, saved after the builder's verdicts> (a batch: --probes <issue id>=<its criteria read>, once per issue it lands), keep a probe on each observable criterion the change claims, and record it again. Nothing was recorded`,
     });
   }
   const red = report.checks.filter((c) => c.kind === 'probes' && c.result === 'fail');
