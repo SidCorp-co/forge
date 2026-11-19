@@ -2,7 +2,7 @@ import { judgedOnOf } from '@forge/contracts/delivery-policy';
 import type { CriterionClass } from '@forge/contracts/issue-design';
 import type { LandingArtifact, ReadPaths } from '@forge/contracts/landing-artifacts';
 import type { ReleaseNotes } from '@forge/contracts/release-notes';
-import type { ReleaseVerdictReading } from '@forge/contracts/release-page';
+import type { IntegrationProof, ReleaseVerdictReading } from '@forge/contracts/release-page';
 import type { ReleasedLine } from '@forge/contracts/released-line';
 import type { ReleaseCriterionView, ReleasePerson } from '@forge/contracts/releases';
 import type { RequirementState } from '@forge/contracts/requirements';
@@ -172,6 +172,8 @@ export interface CarriedVerdict extends ReleaseVerdictReading {
   authored: boolean;
   /** When it was recorded (`at`), as the verified rule reads it. */
   recordedAt: string;
+  /** How its outside call was proven (ISS-1329), null where it said none; the release page's line reads it. */
+  integrationProof?: IntegrationProof | null;
 }
 
 /**
@@ -206,6 +208,7 @@ async function carriedVerdictsOf(
       byBuilder: v.byBuilder === true,
       authored: v.authored === true,
       recordedAt: v.createdAt.toISOString(),
+      integrationProof: v.integrationProof,
     });
     out.set(v.criterionId, held);
   }
@@ -231,6 +234,7 @@ const carriedRowsOf = (ids: readonly string[]) =>
           evidence: criterionVerdicts.evidence,
           agency: criterionVerdicts.authorAgency,
           createdAt: criterionVerdicts.createdAt,
+          integrationProof: criterionVerdicts.integrationProof,
           byBuilder: builderFactSql(sql`${criterionVerdicts.id}`),
           factOwed: builderFactOwedSql(
             sql`${criterionVerdicts.issueId}`,
