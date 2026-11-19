@@ -140,7 +140,8 @@ has landed, writes no code: it neither holds a scope nor waits on one.
    started nothing and leaves the declaration for the next one. A second subagent on one
    declaration is refused naming the run and the call it is promised to. A declaration is taken
    only by the Agent call the box lets through: a finished subagent woken with \`SendMessage\` takes
-   no run. Never wake a finished one while a declared run waits for its dispatch; dispatch first,
+   no run on a runner built from ISS-1366's landing on; an older runner still binds it to the
+   waiting run. Never wake a finished one while a declared run waits for its dispatch; dispatch first,
    or close the run you will not dispatch (\`forge-runner run close\`) before you wake it. A
    dispatch no run waits for is refused naming your latest run and the subagent holding it.
 
@@ -262,7 +263,8 @@ It works in batches, as §4 splits them:
    in a tree of its own (\`forge-runner run declare --role general-purpose\`): the run is one of the
    project's subagent slots, and the box refuses a builder dispatched without one or as another role
    than the one declared. Only that Agent call takes the run: a finished builder woken with
-   \`SendMessage\` takes none, so never wake one while a run you declared waits for its dispatch.
+   \`SendMessage\` takes none (on a runner built from ISS-1366's landing on; an older runner binds
+   it to the waiting run), so never wake one while a run you declared waits for its dispatch.
    Dispatch the new builder first, or close the waiting run (\`forge-runner run close\`) and
    declare again once you need it. A dispatch the model API refuses for its model is sent again naming a model
    the box's account allows. Core opens a run only while the
