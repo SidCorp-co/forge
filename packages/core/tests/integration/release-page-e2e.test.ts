@@ -298,6 +298,7 @@ describe('the page reads off the release record', () => {
         // its landing names data and config, no screen, and no judge marked a visual (ISS-1308)
         ui: false,
         visual: null,
+        proof: null,
       },
     ]);
     expect(p.fixes).toEqual([
@@ -312,6 +313,7 @@ describe('the page reads off the release record', () => {
         // its landing names nothing, so whether it touched a screen is not said
         ui: null,
         visual: null,
+        proof: null,
       },
     ]);
     expect(p.actionRequired.map((x) => [x.kind, x.ref])).toEqual([

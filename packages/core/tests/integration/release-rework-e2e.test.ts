@@ -151,6 +151,7 @@ describe('an issue reopened between two releases reads as the rework of the one 
         // its landing touched data alone, so it shows no screen and owes no visual (ISS-1308)
         ui: false,
         visual: null,
+        proof: null,
       },
     ]);
     // shipped, its backup is past (ISS-1198); an unshipped one names the issue (sections-range.test.ts)
