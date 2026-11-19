@@ -232,9 +232,7 @@ describe('REQ-77 BC-8: it posts results only, one per request, in the asker’s 
     expect(code(out.again as Record<string, unknown>)).toBe('SUPPORT_ONE_RESULT_PER_REQUEST');
     expect(code(out.own as Record<string, unknown>)).toBe('SUPPORT_ONE_RESULT_PER_REQUEST');
     expect(code(out.none as Record<string, unknown>)).toBe('SUPPORT_ONE_RESULT_PER_REQUEST');
-    await expect
-      .poll(() => w.threadLines(chat.rid, matter.id).length, { timeout: 10_000 })
-      .toBe(2);
+    await expect.poll(() => w.threadLines(chat.rid, matter.id).length, { timeout: 10_000 }).toBe(2);
     expect(w.threadLines(chat.rid, matter.id).map((l) => l.text)).toEqual([
       'Fixed: CTVs design again.',
       'Three designs: D-11, D-12 and D-19.',

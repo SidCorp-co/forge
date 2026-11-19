@@ -170,7 +170,11 @@ export async function reply(
       input: { text: input.text, ...(input.request ? { request: input.request } : {}) },
       output: { code: 'SUPPORT_ONE_RESULT_PER_REQUEST' },
     });
-    return no('SUPPORT_ONE_RESULT_PER_REQUEST', owed.pointer, noResultOwed(owed.why, input.request));
+    return no(
+      'SUPPORT_ONE_RESULT_PER_REQUEST',
+      owed.pointer,
+      noResultOwed(owed.why, input.request),
+    );
   }
   const elsewhere = owed?.ok ? owed.elsewhere : null;
   const text = await scrubbedForRoom(room, input.text);
