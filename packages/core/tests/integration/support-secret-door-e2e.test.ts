@@ -40,6 +40,7 @@ vi.hoisted(() => {
 });
 
 import { app } from '../../src/index.js';
+import { SECRET_VALUE_MAX } from '../../src/project-config/index.js';
 import { type SecretLink, secretLink } from '../../src/support/secret-link.js';
 import { type RoomRow, roomsOfProject } from '../../src/support/store.js';
 import { api } from '../helpers/api.js';
@@ -301,6 +302,12 @@ describe('ISS-1348: one secret act for every kind of slot', () => {
     expect(await hit(url, 'PUT', '\n')).toMatchObject({
       status: 400,
       code: 'SUPPORT_SECRET_WRITE_EMPTY',
+    });
+    // a value over the characters a secret holds, in fewer bytes than the body limit allows: refused
+    // as the page's door refuses it, and the URL still holds
+    expect(await hit(url, 'PUT', 'a'.repeat(SECRET_VALUE_MAX + 1))).toMatchObject({
+      status: 400,
+      code: 'SUPPORT_SECRET_WRITE_TOO_LONG',
     });
     // a file's closing newline is the file's: the empty PUT gave its claim back, and this one sets it
     const set = await hit(url, 'PUT', `${VALUE}\n`);

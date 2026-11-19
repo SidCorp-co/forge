@@ -38,6 +38,13 @@ const tokenParam = zValidator(
 const refuse = (c: Context, code: string, detail: string) =>
   refused(c, [{ code, path: '/token', detail }], 'SUPPORT_REFUSED');
 
+const tooLong = (c: Context) =>
+  refuse(
+    c,
+    'SUPPORT_SECRET_WRITE_TOO_LONG',
+    `a secret holds at most ${SECRET_VALUE_MAX} characters; nothing was written, and this URL still holds.`,
+  );
+
 /** Where a write came from, as the request says it: its address and its client, never its body. */
 function fromOf(c: Context): string {
   const address = c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || 'direct';
@@ -128,22 +135,17 @@ secretWriteRoutes.put(
     'application/octet-stream',
     "The secret's value itself, as a file's bytes (curl --data-binary @file); one closing newline is the file's and is dropped. Its slot comes from the write token.",
   ),
-  bodyLimit({
-    maxSize: SECRET_VALUE_MAX * 4 + 2,
-    onError: (c) =>
-      refuse(
-        c,
-        'SUPPORT_SECRET_WRITE_TOO_LONG',
-        `a secret holds at most ${SECRET_VALUE_MAX} characters; nothing was written, and this URL still holds.`,
-      ),
-  }),
+  // bytes, the most a value of SECRET_VALUE_MAX characters takes; its characters are counted below
+  bodyLimit({ maxSize: SECRET_VALUE_MAX * 4 + 2, onError: (c) => tooLong(c) }),
   async (c) => {
     const { token } = c.req.valid('param');
     const from = fromOf(c);
-    const ask = await claimWrite(token, from);
-    if (!ask) return unusable(c, token);
     // a file's one closing newline is the file's, not the value's
     const value = (await c.req.text()).replace(/\r?\n$/, '');
+    // counted as the page's door counts it (`secret-routes.ts:secretBody`), before the URL is claimed
+    if (value.length > SECRET_VALUE_MAX) return tooLong(c);
+    const ask = await claimWrite(token, from);
+    if (!ask) return unusable(c, token);
     if (value === '' || value === FILTERED) {
       await releaseWrite(ask.id);
       return refuse(
