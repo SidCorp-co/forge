@@ -32,6 +32,19 @@ pub fn default_device_name() -> String {
         .unwrap_or_else(|| "forge-runner".to_string())
 }
 
+/// What to call this box to whoever reads a refusal: the label it paired under,
+/// which is what the web app's device list shows, and the hostname only where
+/// nothing recorded one. A box paired as `forge-runner login --name X` is `X`
+/// in that list, so naming its hostname sends a reader looking for a device
+/// that is not there (ISS-1235).
+pub fn box_name() -> String {
+    runner_platform::config::Config::load()
+        .ok()
+        .and_then(|cfg| cfg.device_name)
+        .filter(|n| !n.trim().is_empty())
+        .unwrap_or_else(default_device_name)
+}
+
 /// Stable per-machine identity. The server dedups devices by
 /// `(owner, sha256(machine_id))` and rotates the token in place, so two runners
 /// sharing one machine-id collapse onto a single device row. Set

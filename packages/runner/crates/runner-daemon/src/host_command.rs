@@ -8,6 +8,8 @@
 //! nothing on this box reads it as shell; the remote host's shell does, which is the point.
 
 use std::ffi::OsStr;
+use std::io::{self, Read};
+use std::path::Path;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
@@ -183,12 +185,7 @@ pub(crate) async fn run_with_env(
         .stderr(Stdio::piped())
         .kill_on_drop(true)
         .spawn()
-        .map_err(|e| {
-            format!(
-                "{} could not run on this box: {e}",
-                program.to_string_lossy()
-            )
-        })?;
+        .map_err(|e| not_started(program, &e, &runner_workspace::pairing::box_name()))?;
     let stdout = child.stdout.take().ok_or("no stdout")?;
     let stderr = child.stderr.take().ok_or("no stderr")?;
     let out = tokio::spawn(capped(stdout));
@@ -211,6 +208,65 @@ pub(crate) async fn run_with_env(
         timed_out,
         duration_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
     })
+}
+
+/// Why `program` did not start on the box called `box_name`, told apart where the OS cannot (ISS-1367):
+/// execve answers ENOENT both for a program that is not there and for a script whose `#!` names an
+/// interpreter that is not, so a program that is there has its first line read. Nothing of the file
+/// past its interpreter line is said.
+pub(crate) fn not_started(program: &OsStr, e: &io::Error, box_name: &str) -> String {
+    let shown = program.to_string_lossy();
+    if e.kind() != io::ErrorKind::NotFound {
+        return format!("{shown} could not run on {box_name}: {e}");
+    }
+    let path = Path::new(program);
+    if path.parent().is_none_or(|p| p.as_os_str().is_empty()) {
+        return format!("{shown} is missing on {box_name}: no program of that name on its PATH");
+    }
+    if !path.exists() {
+        return format!("{shown} is missing on {box_name}: no such file");
+    }
+    let Some(line) = interpreter_line(path) else {
+        return format!(
+            "{shown} is on {box_name} but could not start: it has no #! line, so what is missing \
+             is the loader or a library it was built against ({e})"
+        );
+    };
+    // the kernel ends the interpreter at a space or a tab, so a carriage return stays part of it
+    let interpreter = line[2..]
+        .trim_start_matches([' ', '\t'])
+        .split([' ', '\t'])
+        .next()
+        .unwrap_or("");
+    let lacked = if !interpreter.is_empty() && Path::new(interpreter).exists() {
+        format!(
+            "names {interpreter}, which is on {box_name} but could not start: the loader or a \
+             library it was built against is missing"
+        )
+    } else {
+        format!("names a program not found on {box_name}")
+    };
+    let crlf = if interpreter.ends_with('\r') {
+        "; the line ends in a carriage return, so the file has Windows line endings"
+    } else {
+        ""
+    };
+    format!("{shown} could not start on {box_name}: its interpreter line {line:?} {lacked}{crlf}")
+}
+
+/// The file's first line where it is a `#!` line, read no further than [`LINE_CAP`] bytes.
+fn interpreter_line(path: &Path) -> Option<String> {
+    const LINE_CAP: u64 = 256;
+    let mut head = Vec::new();
+    std::fs::File::open(path)
+        .ok()?
+        .take(LINE_CAP)
+        .read_to_end(&mut head)
+        .ok()?;
+    let first = head.split(|b| *b == b'\n').next().unwrap_or(&[]);
+    first
+        .starts_with(b"#!")
+        .then(|| String::from_utf8_lossy(first).into_owned())
 }
 
 /// A stream read to its end, its first [`STREAM_CAP`] bytes kept as text, and whether any was cut.
@@ -336,6 +392,49 @@ mod tests {
         let err = run(OsStr::new("/nonexistent/ssh"), &[], Duration::from_secs(1))
             .await
             .unwrap_err();
-        assert!(err.contains("could not run on this box"), "{err}");
+        let box_name = runner_workspace::pairing::box_name();
+        assert!(
+            err.contains(&format!("/nonexistent/ssh is missing on {box_name}")),
+            "{err}"
+        );
+        let bare = run(
+            OsStr::new("no-such-ops-program"),
+            &[],
+            Duration::from_secs(1),
+        )
+        .await
+        .unwrap_err();
+        assert!(bare.contains("on its PATH"), "{bare}");
+    }
+
+    /// A script written with Windows line endings asks for `/bin/sh\r`, which no box has: the
+    /// refusal says so rather than leaving a reader to look for a missing `/bin/sh`.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn an_interpreter_line_ending_in_a_carriage_return_is_said_so() {
+        let dir = std::env::temp_dir().join(format!("host-command-crlf-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let script = dir.join("crlf");
+        let wrote = std::process::Command::new("/bin/sh")
+            .args([
+                "-c",
+                "printf '#!/bin/sh\\r\\necho hi\\r\\n' > \"$1\" && chmod 755 \"$1\"",
+                "sh",
+            ])
+            .arg(&script)
+            .status()
+            .unwrap();
+        assert!(wrote.success(), "{wrote}");
+        let err = run(script.as_os_str(), &[], Duration::from_secs(5))
+            .await
+            .unwrap_err();
+        assert!(
+            err.contains(r##"its interpreter line "#!/bin/sh\r""##),
+            "{err}"
+        );
+        assert!(err.contains("names a program not found"), "{err}");
+        assert!(err.contains("Windows line endings"), "{err}");
+        assert!(!err.contains("echo hi"), "{err}");
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

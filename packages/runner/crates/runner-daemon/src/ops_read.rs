@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use runner_platform::config::Config;
+use runner_workspace::pairing::box_name;
 
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -129,11 +130,19 @@ fn repo_program(rel: &str, checkout: &Path) -> Result<PathBuf, String> {
             "{REPO_PROGRAM}{rel} is not a program in the project's checkout: a relative path with no . or .. segment"
         ));
     }
-    let root = checkout
-        .canonicalize()
-        .map_err(|e| format!("the project's checkout could not be read on this box: {e}"))?;
+    let root = checkout.canonicalize().map_err(|e| {
+        format!(
+            "the project's checkout could not be read on {}: {e}",
+            box_name()
+        )
+    })?;
     let program = root.join(rel).canonicalize().map_err(|e| {
-        format!("{REPO_PROGRAM}{rel} is not in the project's checkout on this box: {e}")
+        let on = box_name();
+        if e.kind() == std::io::ErrorKind::NotFound {
+            format!("{REPO_PROGRAM}{rel} is missing from the project's checkout on {on}: {e}")
+        } else {
+            format!("{REPO_PROGRAM}{rel} could not be read in the project's checkout on {on}: {e}")
+        }
     })?;
     if !program.starts_with(&root) {
         return Err(format!(
@@ -175,9 +184,24 @@ pub(crate) async fn read_in(
     );
     let ran = run_with_env(OsStr::new(program), args, timeout, env).await;
     match (ran, argv.first()) {
-        (Err(e), Some(asked)) if asked != program => Err(e.replace(program, asked)),
+        (Err(e), Some(asked)) if asked != program => {
+            Err(without_checkout(&e.replace(program, asked), checkout))
+        }
         (ran, _) => ran,
     }
+}
+
+/// `said` with every mention of where `checkout` sits on this box put as `<checkout>`: an
+/// interpreter line can name a path inside it, a virtualenv this box never built (ISS-1367).
+fn without_checkout(said: &str, checkout: &Path) -> String {
+    [checkout.canonicalize().ok(), Some(checkout.to_path_buf())]
+        .into_iter()
+        .flatten()
+        .map(|root| root.to_string_lossy().into_owned())
+        .filter(|root| root.len() > 1)
+        .fold(said.to_string(), |said, root| {
+            said.replace(&root, "<checkout>")
+        })
 }
 
 /// The program, an absolute path with no `.` or `..` segment, and its arguments as they came.
@@ -323,17 +347,26 @@ mod tests {
     /// execs, and running the script then fails `Text file busy` (os error 26).
     #[cfg(unix)]
     fn checkout_with_a_read(tag: &str) -> PathBuf {
+        checkout_with(
+            tag,
+            "#!/bin/sh\necho \"hello $1 ${FORGE_OPS_TOKEN:-none}\"\n",
+        )
+    }
+
+    /// A checkout holding `scripts/ops/hello` as `script` says, executable.
+    #[cfg(unix)]
+    fn checkout_with(tag: &str, script: &str) -> PathBuf {
         let root = std::env::temp_dir().join(format!("ops-read-{tag}-{}", std::process::id()));
         std::fs::create_dir_all(root.join("scripts/ops")).unwrap();
-        let script = root.join("scripts/ops/hello");
+        let path = root.join("scripts/ops/hello");
         let wrote = std::process::Command::new("/bin/sh")
             .args([
                 "-c",
                 "printf '%s' \"$1\" > \"$2\" && chmod 755 \"$2\"",
                 "sh",
             ])
-            .arg("#!/bin/sh\necho \"hello $1 ${FORGE_OPS_TOKEN:-none}\"\n")
-            .arg(&script)
+            .arg(script)
+            .arg(&path)
             .status()
             .unwrap();
         assert!(
@@ -406,8 +439,67 @@ mod tests {
             .await
             .unwrap_err();
         assert!(missing.contains("repo:scripts/ops/gone"), "{missing}");
+        assert!(missing.contains("is missing"), "{missing}");
         assert!(!missing.contains(&*root.to_string_lossy()), "{missing}");
         std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// ISS-1367: a script that is there but whose `#!` names an interpreter this box lacks fails
+    /// execve with ENOENT, the same error as a missing program. The refusal names the box, the
+    /// program as the grant wrote it and the interpreter line, and nothing else of the script.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_script_whose_interpreter_this_box_lacks_names_the_box_and_its_interpreter_line() {
+        let root = checkout_with(
+            "interp",
+            "#!/nonexistent/interp -u\necho the body stays here\n",
+        );
+        let err = read_in(&argv(&["repo:scripts/ops/hello"]), Some(10_000), &[], &root)
+            .await
+            .unwrap_err();
+        let box_name = box_name();
+        assert!(err.starts_with("repo:scripts/ops/hello "), "{err}");
+        assert!(err.contains(&format!("on {box_name}")), "{err}");
+        assert!(err.contains("#!/nonexistent/interp -u"), "{err}");
+        assert!(err.contains("names a program not found"), "{err}");
+        assert!(!err.contains("is missing"), "{err}");
+        assert!(!err.contains("the body stays here"), "{err}");
+        assert!(!err.contains(&*root.to_string_lossy()), "{err}");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// An interpreter inside the checkout (a virtualenv not built on this box) is named by where it
+    /// sits in the checkout, never by where the checkout sits on this box.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn an_interpreter_in_the_checkout_is_named_without_the_checkout_path() {
+        let at = std::env::temp_dir().join(format!("ops-read-venv-{}", std::process::id()));
+        let root = checkout_with(
+            "venv",
+            &format!("#!{}/.venv/bin/python\nprint(1)\n", at.display()),
+        );
+        let err = read_in(&argv(&["repo:scripts/ops/hello"]), Some(10_000), &[], &root)
+            .await
+            .unwrap_err();
+        assert!(err.contains("/.venv/bin/python"), "{err}");
+        assert!(!err.contains(&*root.to_string_lossy()), "{err}");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// ISS-1367: a program that is not there is said to be missing, never an interpreter.
+    #[tokio::test]
+    async fn a_missing_program_is_said_missing_never_an_interpreter() {
+        let err = read(&argv(&["/nonexistent/ops-read-prog"]), Some(10_000))
+            .await
+            .unwrap_err();
+        let box_name = box_name();
+        assert!(
+            err.contains(&format!(
+                "/nonexistent/ops-read-prog is missing on {box_name}"
+            )),
+            "{err}"
+        );
+        assert!(!err.contains("interpreter"), "{err}");
     }
 
     #[test]

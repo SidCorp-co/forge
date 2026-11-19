@@ -29,21 +29,8 @@ pub fn job_credential() -> Result<String> {
         load_pat(),
         load_device_token(),
         file.as_deref(),
-        &box_name(),
+        &crate::pairing::box_name(),
     )
-}
-
-/// What to call this box to whoever reads a refusal: the label it paired under,
-/// which is what the web app's device list shows, and the hostname only where
-/// nothing recorded one. A box paired as `forge-runner login --name X` is `X`
-/// in that list, so naming its hostname sends a reader looking for a device
-/// that is not there (ISS-1235).
-fn box_name() -> String {
-    runner_platform::config::Config::load()
-        .ok()
-        .and_then(|cfg| cfg.device_name)
-        .filter(|n| !n.trim().is_empty())
-        .unwrap_or_else(crate::pairing::default_device_name)
 }
 
 /// Where a person gets the token the refusals below ask for.
