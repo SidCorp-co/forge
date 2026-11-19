@@ -356,7 +356,8 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
       {
         when: 'A capability the product lacks, met mid-task (a command, page or tool that is not there)',
         do: 'confirm the need first (the task needs it and nothing that exists does it); then one change request per capability to the project that builds it (`channel.draft`), naming each interface missing it (admin, MCP, CLI), or the CLI alone where only the CLI lacks it',
-        watch: 'a workaround around the product (a raw API call, an outside rule) before the need is confirmed and requested',
+        watch:
+          'a workaround around the product (a raw API call, an outside rule) before the need is confirmed and requested',
         for: ['master', 'run', 'bot'],
       },
       {
