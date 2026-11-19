@@ -29,6 +29,7 @@ const IDENTITY_KEYS = [
   'visualStillId',
   'visualSeconds',
   'withoutClip',
+  'integrationProof',
 ] as const satisfies ReadonlyArray<keyof VerdictColumns>;
 
 /** JSON with its object keys sorted, so two equal values compare equal whatever order they were sent in. */

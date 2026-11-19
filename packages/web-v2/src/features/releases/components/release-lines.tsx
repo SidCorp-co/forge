@@ -63,6 +63,17 @@ export function ReleaseHero({ page, authed }: { page: ReleasePage; authed: boole
 
 const KIND_TONE = { new: "accent", improved: "cobalt", fixed: "neutral" } as const;
 
+/** How a line's outside call was proven, as its judge said (ISS-1329): a word, the why on hover. */
+function ProofTag({ proof }: { proof: Change["proof"] }) {
+  const t = useCopy();
+  if (!proof) return null;
+  return (
+    <span data-testid="line-proof" data-proof={proof}>
+      <ToneBadge tone={proof === "live" ? "ready" : "you"} label={t(`releases.proof.${proof}`)} title={t(`releases.proof.${proof}Why`)} />
+    </span>
+  );
+}
+
 /** One New or Improved line: its words, and the clip or shots its judge marked beside them. */
 function NewLine({ c, authed }: { c: Change; authed: boolean }) {
   const t = useCopy();
@@ -72,6 +83,7 @@ function NewLine({ c, authed }: { c: Change; authed: boolean }) {
         <div className="flex flex-wrap items-center gap-2 text-12 text-muted">
           <Badge tone={KIND_TONE[c.kind]}>{t(`releases.line.${c.kind}`)}</Badge>
           {c.screen ? <span data-testid="whats-new-screen">{c.screen}</span> : null}
+          <ProofTag proof={c.proof} />
         </div>
         <h3 className="text-16 font-semibold leading-snug text-fg">{c.line}</h3>
         {c.detail ? <p className="max-w-prose text-14 text-muted">{c.detail}</p> : null}
@@ -123,6 +135,7 @@ export function FixedRows({ page, authed }: { page: ReleasePage; authed: boolean
             <span className="min-w-0 text-14 font-medium text-fg" title={c.detail ?? undefined}>
               {c.line}
             </span>
+            <ProofTag proof={c.proof} />
           </li>
         ))}
       </ul>

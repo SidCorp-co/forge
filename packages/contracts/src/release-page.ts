@@ -176,6 +176,17 @@ export const ReleaseLineVisualSchema = z.strictObject({
 });
 export type ReleaseLineVisual = z.infer<typeof ReleaseLineVisualSchema>;
 
+// ---- a line's outside-call proof: what its judge said (ISS-1329) ----
+
+/**
+ * How a verdict proved its criterion's call to an outside provider (`POST /api/issues/:id/verdicts`,
+ * `integrationProof`): `live` against the provider or its test account, `simulated` against a mock.
+ * A line reads `simulated` while any of its issue's criteria rests on a mock, so a release whose
+ * outside call ran only against a simulation never reads as proven live.
+ */
+export const INTEGRATION_PROOFS = ["live", "simulated"] as const;
+export type IntegrationProof = (typeof INTEGRATION_PROOFS)[number];
+
 // ---- the truth rule (BC-13, BC-8) ----
 
 /** Why a criterion the release carries is not claimed: its verdict on this build, or none on it, or
@@ -705,6 +716,11 @@ export interface ReleasePageChange {
 	 * or as owing a visual: null where its landing names nothing, absent on a share frozen before.
 	 */
 	ui?: boolean | null;
+	/**
+	 * How its outside call was proven, as its judges said (ISS-1329): `simulated` while any criterion's
+	 * newest saying is a mock, else `live`; null where no judge said, absent on a share frozen before.
+	 */
+	proof?: IntegrationProof | null;
 }
 
 /**
@@ -951,6 +967,8 @@ const ChangeSchema = z.strictObject({
 	// a share frozen before lines carried their judge's visual shows none
 	visual: ReleaseLineVisualSchema.nullable().default(null),
 	ui: z.boolean().nullable().default(null),
+	// a share frozen before lines carried their outside-call proof says none
+	proof: z.enum(INTEGRATION_PROOFS).nullable().default(null),
 });
 
 /**

@@ -9,6 +9,7 @@
 
 import { PROBE_KINDS, PROBE_LIMITS } from '@forge/contracts/criterion-probes';
 import { CRITERION_JUDGES } from '@forge/contracts/issue-design';
+import { INTEGRATION_PROOFS } from '@forge/contracts/release-page';
 import {
   type StorefrontDraftPart,
   VERDICT_CORROBORATIONS,
@@ -195,6 +196,9 @@ export const criterionVerdicts = pgTable(
     visualSeconds: integer('visual_seconds'),
     /** Why a judgement of an observable criterion cites no clip (REQ-40 BC-4), kept as a column since 0683. */
     withoutClip: text('without_clip'),
+    /** How the criterion's call to an outside provider was proven, as the judge said (0689, ISS-1329):
+     *  `live` against the provider or its test account, `simulated` against a mock; null where unsaid. */
+    integrationProof: text('integration_proof', { enum: INTEGRATION_PROOFS }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
@@ -244,6 +248,10 @@ export const criterionVerdicts = pgTable(
     visualSecondsChk: check(
       'criterion_verdicts_visual_seconds_chk',
       sql`${t.visualSeconds} IS NULL OR (${t.visualSeconds} >= 1 AND ${t.visualSeconds} <= 3600)`,
+    ),
+    integrationProofChk: check(
+      'criterion_verdicts_integration_proof_chk',
+      sql`${t.integrationProof} IS NULL OR ${t.integrationProof} IN ('live', 'simulated')`,
     ),
     coversChk: check(
       'criterion_verdicts_covers_chk',

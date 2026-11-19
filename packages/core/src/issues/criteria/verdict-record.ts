@@ -74,6 +74,7 @@ const IDENTITY_FIELDS: ReadonlyArray<readonly [keyof VerdictColumns, string]> = 
   ['visualPhoneId', 'visual-phone'],
   ['visualStillId', 'visual-still'],
   ['visualSeconds', 'visual-seconds'],
+  ['integrationProof', 'integration-proof'],
   ['storefrontEnvironment', 'environment'],
   ['corroboration', 'corroboration'],
 ];
@@ -373,6 +374,7 @@ export async function recordVerdict(
     ...(await acceptedOnOf(tx, issue.id, draft)),
     ...(await releaseVisualColumns(tx, issue.id, draft)),
     withoutClip: draft.withoutClip?.trim() || null,
+    integrationProof: draft.integrationProof ?? null,
   };
   const noClip = await clipFault(tx, issue.id, draft, route?.class ?? null);
   if (noClip) throw verdictRefused(noClip);

@@ -6,6 +6,7 @@ import { REASON_TEXT_MAX } from '@forge/contracts/comments';
 import { criterionProbeSchema } from '@forge/contracts/criterion-probes';
 import { criterionTitleSchema } from '@forge/contracts/criterion-title';
 import { CRITERION_JUDGES, ISSUE_CRITERIA_MAX } from '@forge/contracts/issue-design';
+import { INTEGRATION_PROOFS } from '@forge/contracts/release-page';
 import { RELEASE_VISUAL_SECONDS_MAX } from '@forge/contracts/release-visual';
 import {
   storefrontDraftIdentitySchema,
@@ -177,6 +178,16 @@ export const verdictPostSchema = z
         seconds: z.number().int().min(1).max(RELEASE_VISUAL_SECONDS_MAX).optional(),
       })
       .strict()
+      .optional(),
+    /**
+     * How this criterion's call to an outside provider was proven (ISS-1329): `live` against the
+     * provider or its test account, `simulated` against a mock. Its release page line reads it.
+     */
+    integrationProof: z
+      .enum(INTEGRATION_PROOFS, {
+        error: (issue) =>
+          `integrationProof ${JSON.stringify(issue.input)} is no proof: \`live\` where the outside call ran against the provider or its test account, \`simulated\` where it ran against a mock; leave it out where the criterion calls no outside provider`,
+      })
       .optional(),
   })
   .strict();

@@ -22,6 +22,7 @@
 import type { CriterionProbe } from '@forge/contracts/criterion-probes';
 import type { CriterionJudge } from '@forge/contracts/issue-design';
 import type { VerdictRefusalCode } from '@forge/contracts/issues';
+import type { IntegrationProof } from '@forge/contracts/release-page';
 import {
   STOREFRONT_DRAFT_PARTS_MAX,
   STOREFRONT_DRAFT_SHAPE,
@@ -95,6 +96,11 @@ export interface VerdictDraft {
    * pass (`release-visual-mark.ts`). Only the REST door sends one.
    */
   readonly releaseVisual?: ReleaseVisualMark | null | undefined;
+  /**
+   * How the criterion's call to an outside provider was proven (ISS-1329): `live` or `simulated`,
+   * read by its release page line. Only the REST door sends one.
+   */
+  readonly integrationProof?: IntegrationProof | null | undefined;
 }
 
 export interface VerdictRefusal {

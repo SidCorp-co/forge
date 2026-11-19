@@ -4376,6 +4376,13 @@
       "when": 1842393600000,
       "tag": "0688_a_kept_recording_a_person_asked_for_is_sent_to_forge",
       "breakpoints": true
+    },
+    {
+      "idx": 689,
+      "version": "7",
+      "when": 1842480000000,
+      "tag": "0689_a_verdict_says_whether_its_outside_call_ran_live_or_simulated",
+      "breakpoints": true
     }
   ]
 }

@@ -36,6 +36,7 @@ import { carriedRequirements, issueFiles, type RequirementText } from './facts.j
 import { digestOf, highlightFacts, highlightsRow, shownHighlights } from './highlights.js';
 import { namingDraftStale, namingRow, namingStanding } from './naming-store.js';
 import { releaseNamer } from './ports.js';
+import { withProofs } from './proofs.js';
 import { actionsOf, buildOf, changesOf, headerOf, technicalOf } from './sections.js';
 import { cardOf, withVisuals } from './visuals.js';
 
@@ -200,7 +201,7 @@ export async function readReleasePage(args: {
     args.onNamingOwed?.({ projectId, version: detail.version });
   const changes = await withVisuals(
     detail,
-    withScreens(changesOf(detail, view), await screensOf(detail)),
+    await withProofs(detail, withScreens(changesOf(detail, view), await screensOf(detail))),
     view,
   );
   const header = { ...headerOf(detail), naming, ...(namer ? { namer } : {}) };
