@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.749] - 2026-11-19
+
+An assistant reads the owner's screenshots in its project's technical thread again
+
+### Fixed
+
+- **A room's assistant reads the owner's screenshots again.** A picture the owner posts in the project's technical thread is now opened and seen by that project's assistant; one in another project's thread stays out of its reach.
+
 ## [0.4.0-dev.748] - 2026-11-19
 
 Room secret screen catches Vietnamese and chat-written test logins
