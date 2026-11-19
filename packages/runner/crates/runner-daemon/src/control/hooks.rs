@@ -210,10 +210,8 @@ fn held_runs(
     memory: &GateMemory,
 ) -> runner_platform::error::Result<Option<String>> {
     let runs = led.held_runs_for_master(session_id, boot_id)?;
-    let Some(latest) = runs.first() else {
-        return Ok(None);
-    };
-    let Some(agent) = latest.agent_id.as_deref() else {
+    // every run it reads is bound, so the latest names its subagent
+    let Some((latest, Some(agent))) = runs.first().map(|r| (r, r.agent_id.as_deref())) else {
         return Ok(None);
     };
     let issues: Vec<String> = led
