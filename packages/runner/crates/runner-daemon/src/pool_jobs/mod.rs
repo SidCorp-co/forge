@@ -504,13 +504,16 @@ fn open_channel(
         );
         return (env, None);
     };
-    // A job's pane name and session are its own and no pane runs under them, so
-    // what the mint replaces is settled at once, as a mint used to do itself.
-    let minted = store
-        .mint(agent_session_id, project_id, slug, pane)
-        .and_then(|token| store.settle(&token).map(|()| token));
-    match minted {
+    match store.mint(agent_session_id, project_id, slug, pane) {
         Ok(token) => {
+            // A job's pane name and session are its own and no pane runs under them, so what
+            // the mint replaces is settled at once. The token is written whether or not that
+            // goes, so the pane keeps it, as a master's placement does (`settle_mint`).
+            if let Err(e) = store.settle(&token) {
+                tracing::error!(
+                    "[pool] {project_id}: the entries {pane}'s capability replaces could not be retired ({e}) — it starts with its capability, and they stay in the map until the pane they were minted for is retired"
+                );
+            }
             let mut env = env;
             env.push((session_tokens::TOKEN_ENV.to_string(), token));
             (env, Some(agent_session_id.to_string()))
