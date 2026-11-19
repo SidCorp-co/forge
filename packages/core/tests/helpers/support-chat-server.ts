@@ -329,6 +329,8 @@ export class StandInRocketChat implements ChatServer {
       url?: string;
     }[],
     tmid?: string,
+    /** Where it is posted: the group by default, or another room, such as the technical channel's. */
+    rid: string = this.rid,
   ): Promise<{ id: string; uploads: string[] }> {
     await expect.poll(() => this.subs.size, { timeout: 15_000 }).toBeGreaterThan(0);
     const id = this.nextId();
@@ -358,7 +360,7 @@ export class StandInRocketChat implements ChatServer {
     }
     this.push({
       _id: id,
-      rid: this.rid,
+      rid,
       msg: text,
       ...(tmid ? { tmid } : {}),
       ...(files[0] ? { file: files[0], files } : {}),

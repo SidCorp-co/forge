@@ -76,7 +76,13 @@ function ownerReplyOf(m: RocketChatIncomingMessage) {
   return {
     rid: m.rid,
     thread: m.tmid ?? null,
-    message: { id: m.id, text: m.text, replyTo: m.replyToId ?? null },
+    // its pictures go with it, so the asking session is told of them and reads them (ISS-1362)
+    message: {
+      id: m.id,
+      text: m.text,
+      replyTo: m.replyToId ?? null,
+      ...recordedImagesOf(m.images ?? []),
+    },
     author: { key: m.userId, label: m.username ?? null },
   };
 }

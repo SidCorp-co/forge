@@ -76,7 +76,7 @@ export function imagesHeadOf(input: unknown, messageId: string | null): Record<s
 async function messageImages(
   roomId: string,
   messageId: string,
-): Promise<{ thread: string; images: RecordedImage[] } | null> {
+): Promise<{ thread: string; images: RecordedImage[]; technicalChannel: string | null } | null> {
   const [row] = await db
     .select({ thread: supportActions.thread, input: supportActions.input })
     .from(supportActions)
@@ -89,7 +89,13 @@ async function messageImages(
       ),
     )
     .limit(1);
-  return row ? { thread: row.thread, images: imagesOfInput(row.input) } : null;
+  if (!row) return null;
+  const channel = (row.input as { technicalChannel?: unknown } | null)?.technicalChannel;
+  return {
+    thread: row.thread,
+    images: imagesOfInput(row.input),
+    technicalChannel: typeof channel === 'string' ? channel : null,
+  };
 }
 
 /** Every picture the members' messages of a thread recorded, oldest message first. */
@@ -176,8 +182,13 @@ async function readableMessage(
   message: string,
 ): Promise<Outcome<{ thread: string; images: RecordedImage[]; from: RoomRow }>> {
   const own = await messageImages(room.id, message);
-  if (own) return { ok: true, value: { ...own, from: room } };
   const technical = await technicalThreadOf(room);
+  // the owner's reply copied from the technical thread into the ask's thread (ISS-1362): its pictures
+  // were posted in the shared operations room, so that room's bot fetches them
+  if (own?.technicalChannel && technical?.shared.rid === own.technicalChannel) {
+    return { ok: true, value: { ...own, from: technical.shared } };
+  }
+  if (own) return { ok: true, value: { ...own, from: room } };
   const there = technical ? await messageImages(technical.shared.id, message) : null;
   if (technical && there?.thread === technical.thread) {
     return { ok: true, value: { ...there, from: technical.shared } };

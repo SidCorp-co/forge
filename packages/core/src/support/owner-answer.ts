@@ -15,6 +15,7 @@ import { isRefusal } from '../lib/refusal.js';
 import { answerAs } from '../questions/index.js';
 import { deliverWaiting } from './dispatch.js';
 import { grantsOf, supportConfigOf } from './grants.js';
+import type { RecordedImage } from './images.js';
 import { keepOwnerAnswer, ownerRoleGap, ownerSetupStep } from './kept-answers.js';
 import { ASK, type AskedAt, type AskInput } from './owner-ask.js';
 import { threadLink } from './record.js';
@@ -88,7 +89,7 @@ async function openAsksAt(rid: string): Promise<ActionRow[]> {
 export async function settleOwnerAnswer(input: {
   rid: string;
   thread: string | null;
-  message: { id: string; text: string; replyTo: string | null };
+  message: { id: string; text: string; replyTo: string | null; images?: RecordedImage[] };
   author: { key: string; label: string | null };
 }): Promise<boolean> {
   const { rid, thread, message, author } = input;
@@ -164,7 +165,7 @@ async function tellSeveralWait(
 async function answerAsk(
   room: RoomRow,
   ask: ActionRow,
-  message: { id: string; text: string },
+  message: { id: string; text: string; images?: RecordedImage[] },
   author: { key: string; label: string | null },
 ): Promise<void> {
   const asked = ask.input as AskInput;
@@ -180,7 +181,12 @@ async function answerAsk(
         actorKind: 'member',
         actorKey: author.key,
         actorLabel: author.label,
-        input: { text: message.text, technicalChannel: (ask.output as AskedAt).rid },
+        input: {
+          text: message.text,
+          technicalChannel: (ask.output as AskedAt).rid,
+          // the pictures he sent, so the turn's head names them and support.image reads them (ISS-1362)
+          ...(message.images?.length ? { images: message.images } : {}),
+        },
         externalId: message.id,
       },
       tx,

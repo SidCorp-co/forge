@@ -19,6 +19,7 @@ import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 // @direct-test-of packages/core/src/support/technical-channel.ts
 // @direct-test-of packages/core/src/support/owner-answer.ts
 // @direct-test-of packages/core/src/support/inbound.ts
+// @direct-test-of packages/core/src/support/images.ts
 // @direct-test-of packages/core/src/integrations/rocketchat/connection-manager.ts
 //
 // REQ-77 BC-12, ISS-1246: a channel agent asks the owner through the project's technical channel
@@ -37,29 +38,29 @@ beforeAll(async () => {
 
 afterAll(() => w.stop());
 
+/** The notes the issue carries, by body. */
+const notes = async () =>
+  (
+    await rows<{ body: string }>(
+      sql`SELECT body FROM comments WHERE issue_id = ${w.issueId}::uuid ORDER BY created_at`,
+    )
+  ).map((r) => r.body);
+
+/** The bot's line in the technical channel (a direct message to alice) asking `question`. */
+const askLine = (question: string) => {
+  const line = chat.linesIn(DM).find((l) => l.text.endsWith(question));
+  if (!line) throw new Error(`no ask "${question}" in ${JSON.stringify(chat.linesIn(DM))}`);
+  return line;
+};
+/** Whatever a member wrote that reached any agent room's record, by its text. */
+const takenAnywhere = async (text: string) =>
+  (
+    await rows<{ n: number }>(sql`
+      SELECT count(*)::int AS n FROM support_actions
+       WHERE kind = 'message_in' AND actor_kind = 'member' AND input ->> 'text' = ${text}`)
+  )[0]?.n ?? 0;
+
 describe('REQ-77 BC-12, ISS-1246: an agent asks the owner in the technical channel, and the answer comes back', () => {
-  /** The notes the issue carries, by body. */
-  const notes = async () =>
-    (
-      await rows<{ body: string }>(
-        sql`SELECT body FROM comments WHERE issue_id = ${w.issueId}::uuid ORDER BY created_at`,
-      )
-    ).map((r) => r.body);
-
-  /** The bot's line in the technical channel (a direct message to alice) asking `question`. */
-  const askLine = (question: string) => {
-    const line = chat.linesIn(DM).find((l) => l.text.endsWith(question));
-    if (!line) throw new Error(`no ask "${question}" in ${JSON.stringify(chat.linesIn(DM))}`);
-    return line;
-  };
-  /** Whatever a member wrote that reached any agent room's record, by its text. */
-  const takenAnywhere = async (text: string) =>
-    (
-      await rows<{ n: number }>(sql`
-        SELECT count(*)::int AS n FROM support_actions
-         WHERE kind = 'message_in' AND actor_kind = 'member' AND input ->> 'text' = ${text}`)
-    )[0]?.n ?? 0;
-
   it('posts the question in the technical channel alone; only the owner’s reply there answers it, to the session and the issue', async () => {
     const restart = 'May I restart the worker during business hours?';
     let asked: Record<string, unknown> = {};
@@ -105,6 +106,57 @@ describe('REQ-77 BC-12, ISS-1246: an agent asks the owner in the technical chann
     await chat.sayIn(DM, chat.alice, 'thanks');
   });
 
+  it("ISS-1362: hands the owner's screenshot reply to the asking session with its pictures, which support.image reads", async () => {
+    const PNG = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+      'base64',
+    );
+    const question = 'Which button do you mean?';
+    let asked: Record<string, unknown> = {};
+    const thread = await w.hear(
+      () => chat.say(chat.bob, 'the button is broken'),
+      async (_t, act, message) => {
+        asked = await act({ action: 'ask_owner', thread: message().thread, question });
+      },
+    );
+    expect(asked.isError, JSON.stringify(asked)).toBe(false);
+    const line = askLine(question);
+    let read: Record<string, unknown> & {
+      content?: { type: string; data?: string; mimeType?: string }[];
+    } = {};
+    // his reply to the ask's line is a screenshot, as the owner answered epod at 10:00:37Z
+    const answer = await w.hear(
+      async () =>
+        (
+          await chat.sayWithImages(
+            chat.alice,
+            'this one',
+            [{ name: 'clip.png', mime: 'image/png', bytes: PNG }],
+            line.id,
+            DM,
+          )
+        ).id,
+      async (_t, act, message) => {
+        const m = message();
+        read = (await act({ action: 'image', message: m.message, n: 1 })) as typeof read;
+      },
+    );
+    expect(answer.message.thread).toBe(thread.id);
+    expect(answer.message.answersYourQuestion).toBe(question);
+    // the turn names the picture and the act that reads it, as for one sent in the group
+    expect(answer.message.images).toMatchObject({
+      count: 1,
+      mimes: ['image/png'],
+      read: `support.image { message: "${answer.id}", n } with n 1..1`,
+    });
+    expect(read.isError, JSON.stringify(read)).toBe(false);
+    const block = read.content?.find((c) => c.type === 'image');
+    expect(Buffer.from(block?.data ?? '', 'base64')).toEqual(PNG);
+  });
+});
+
+// The same flow once the room's binding is retargeted; these run after the two above, which need the first binding.
+describe('REQ-77 BC-12, ISS-1246: the answer comes back through a retargeted room, and only the owner answers', () => {
   it('hands the answer to the asking session though the room answers only mentions', async () => {
     const granted = await w.retarget({
       agent: { ...agentBlock([w.devTarget], chat.rid), answers: 'mentions' },
