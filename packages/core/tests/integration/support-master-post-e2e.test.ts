@@ -17,6 +17,7 @@ import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 // @direct-test-of packages/core/src/support/warm.ts
 // @direct-test-of packages/core/src/support/report-thread.ts
 // @direct-test-of packages/core/src/support/report-thread-route.ts
+// @direct-test-of packages/core/src/support/thread-conversation.ts
 //
 // ISS-862: the project's master posts its daily review, in its own words, at the top level of the
 // project's team room. Core writes none of the words: it picks the room, screens, posts and records
