@@ -465,7 +465,7 @@ impl Masters {
 
     /// The cutover the sweep records for a busy tmux master (`cutover::stays`),
     /// on a sweep that read the project served here, for the tests of what reads it.
-    #[cfg(test)]
+    #[cfg(all(test, unix))]
     pub(crate) fn note_cutover_waits(&self, project_id: &str, detail: &str, pane: Option<&str>) {
         self.note_served(Served::Read(vec![project_id.to_string()]));
         let why = Unplaced::CutoverWaits {
