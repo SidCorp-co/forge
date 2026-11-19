@@ -19,6 +19,14 @@ export function runWithPatScope<T>(scope: PatScope, fn: () => T): T {
   return storage.run(scope, fn);
 }
 
+/**
+ * Run `fn` outside this request's token (ISS-1313): a person's own word, kept and applied later as
+ * his account, is weighed by his own role alone, never by the token of whoever's request applies it.
+ */
+export function outsideTokenScope<T>(fn: () => T): T {
+  return storage.exit(fn);
+}
+
 /** The fenced project ids, or `null` when this request is not scope-fenced. */
 export function fencedProjectIds(): readonly string[] | null {
   return storage.getStore()?.projectIds ?? null;

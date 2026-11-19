@@ -5,7 +5,8 @@
 // named from another, made the act run as someone who never asked for it.
 // That account is a Forge user when a confirmed speaker link names it (the explicit map, which wins),
 // or when the address the chat server holds for it, verified there, is a Forge account's verified
-// address. Anyone else is unmapped and may only read; the act is refused naming why.
+// address. Anyone else is unmapped and may only read; the act is refused naming why, and the setup
+// step that names them, held by their admins (`setup-step.ts`, ISS-1313): never a link to ask for.
 
 import { resolveSpeaker } from '../assistant/index.js';
 import { verifiedUserIdByEmail } from '../auth/index.js';
@@ -14,6 +15,7 @@ import { logger } from '../lib/logger.js';
 import { writerOfHandedMessage } from './delivery.js';
 import { DIRECT_THREAD, directAskerOf } from './direct-asker.js';
 import { no, type Outcome } from './outcome.js';
+import { namingStep } from './setup-step.js';
 import { type RoomRow, roomById } from './store.js';
 import { roomAuth } from './thread.js';
 
@@ -28,11 +30,16 @@ export interface Asker {
   via: 'link' | 'email' | 'direct';
 }
 
-const unmapped = (who: string, why: string, needs?: string): Outcome<Asker> =>
+const unmapped = async (
+  projectId: string,
+  who: string,
+  why: string,
+  needs?: string,
+): Promise<Outcome<Asker>> =>
   no(
     'OPS_ASKER_UNMAPPED',
     '/thread',
-    `${who} is not a Forge user this room can name (${why}), so they can only read here${needs ? `: this act takes ${needs}, held by a Forge user` : ''}. Confirm a speaker link for the account, or give it on the chat server the address their Forge account uses, verified on both.`,
+    `${who} is not a Forge user this room can name (${why}), so they can only read here${needs ? `: this act takes ${needs}, held by a Forge user` : ''}. Naming their Forge account is a setup step their admins own: ${await namingStep(projectId, 'their')}. Never ask the owner to link anything or to change his chat profile; another member may link their own account from the page support.link hands you.`,
   );
 
 /**
@@ -58,29 +65,30 @@ export async function askerOf(
   return forgeUserOfWriter(room, writer, needs);
 }
 
-/** The Forge user one of the room's writers is, or the refusal saying they are nobody Forge knows. */
+/**
+ * The Forge user one of the room's writers is, or the refusal saying they are nobody Forge knows.
+ * `projectId`, the project the act is on, also resolves an account its admins named there.
+ */
 export async function forgeUserOfWriter(
   room: RoomRow,
   writer: { key: string; label: string | null },
   needs?: string,
+  projectId?: string,
 ): Promise<Outcome<Asker>> {
   const who = writer.label ? `@${writer.label}` : `account ${writer.key}`;
+  const nobody = (why: string) => unmapped(projectId ?? room.projectId, who, why, needs);
   const { auth, namespace } = await roomAuth(room);
-  const linked = await resolveSpeaker({
-    source: 'rocketchat',
-    namespace,
-    externalId: writer.key,
-    label: writer.label,
-  });
+  const linked = await resolveSpeaker(
+    { source: 'rocketchat', namespace, externalId: writer.key, label: writer.label },
+    projectId,
+  );
   if (linked.linked) return { ok: true, value: { ...writer, userId: linked.userId, via: 'link' } };
   const profile = await fetchUserProfile(auth, writer.key).catch(() => null);
-  if (!profile) return unmapped(who, 'the chat server would not say who the account is', needs);
-  if (!profile.email) return unmapped(who, 'the account has no address on the chat server', needs);
-  if (!profile.emailVerified) {
-    return unmapped(who, `the chat server has not verified ${profile.email}`, needs);
-  }
+  if (!profile) return nobody('the chat server would not say who the account is');
+  if (!profile.email) return nobody('the account has no address on the chat server');
+  if (!profile.emailVerified) return nobody(`the chat server has not verified ${profile.email}`);
   const userId = await verifiedUserIdByEmail(profile.email);
-  if (!userId) return unmapped(who, `no Forge account holds ${profile.email}, verified`, needs);
+  if (!userId) return nobody(`no Forge account holds ${profile.email}, verified`);
   return { ok: true, value: { ...writer, userId, via: 'email' } };
 }
 

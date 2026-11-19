@@ -3,20 +3,26 @@
 // once he links his chat account or a project admin names it (`assistant/identity/named-links.ts`).
 // Until then the cited answer is kept here, and once the account exists it is recorded as his, once,
 // and nothing is asked of him again. The setup step is his admins': the agent never raises it with him.
+// His go or no on a release is kept the same way, on the same record, and decided as his once his
+// account is named (ISS-1313, `release-decide-as.ts:decideKeptGo`).
 
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { resolveSpeaker, type SpeakerLinked } from '../assistant/index.js';
+import { outsideTokenScope } from '../credentials/pat-scope.js';
 import { db } from '../db/client.js';
 import { supportActions } from '../db/schema-support.js';
 import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
-import { holderNames, permissionFactsOf } from '../permissions/index.js';
+import { permissionFactsOf } from '../permissions/index.js';
 import { answerAs } from '../questions/index.js';
-import { insertAction, type RoomRow, roomById } from './store.js';
+import { decideKeptGo, type KeptGo } from './release-decide-as.js';
+import { namingStep } from './setup-step.js';
+import { type ActionRow, insertAction, type RoomRow, roomById } from './store.js';
 import { roomAuth } from './thread.js';
 
 const KEPT = 'answer_kept';
 const ANSWER = 'answer_question';
+const RELEASE = 'release_decision';
 
 /** The round's answer the owner's words make: a choice's option, or his words. */
 export type KeptAnswer =
@@ -36,12 +42,10 @@ interface Kept {
 
 /**
  * What the agent reads where the owner's account is no Forge account yet: who owes the setup step
- * and how, and what it may tell the room. Never that it should ask him.
+ * and how, and what it may tell the room of `what` he said. Never that it should ask him.
  */
-export async function ownerSetupStep(projectId: string): Promise<string> {
-  const names = await holderNames('project.admin', projectId);
-  const admins = names.length > 0 ? `a project admin (${names.join(', ')})` : 'a project admin';
-  return `the owner's chat account is no Forge account yet, so his answer cannot be recorded as anyone. It is kept, and it is recorded as his, once and with nothing asked again, when ${admins} names his Forge account (POST /api/projects/${projectId}/speaker-links/named), or an instance admin once for every project (POST /api/speaker-links/named), or he links it himself from Forge. That step is his admins', never his: do not ask him to link anything or to change his chat profile. You may tell the room his answer is noted and waits on a setup step its admins own. Nothing was recorded yet.`;
+export async function ownerSetupStep(projectId: string, what = 'his answer'): Promise<string> {
+  return `the owner's chat account is no Forge account yet, so ${what} cannot be recorded as anyone. It is kept, and it is recorded as his, once and with nothing asked again, when ${await namingStep(projectId, 'his')}, or he links it himself from Forge. That step is his admins', never his: do not ask him to link anything or to change his chat profile. You may tell the room ${what} is noted and waits on a setup step its admins own. Nothing was recorded yet.`;
 }
 
 /**
@@ -54,9 +58,15 @@ export async function ownerRoleGap(userId: string, projectId: string): Promise<s
   return `the owner's chat account is Forge account ${userId}, which holds no role in this question's project, so his answer cannot be recorded as him there. A project admin adds that account to the project, or an admin corrects the naming; never ask him. Nothing was recorded.`;
 }
 
-/** Keep the owner's cited answer to a question, once per room, message and question. */
-export async function keepOwnerAnswer(room: RoomRow, thread: string, kept: Kept): Promise<void> {
-  const externalId = `${KEPT}:${kept.questionId}:${kept.message}`;
+/** Keep what the owner said, once per room and key, on the record his account's naming reads. */
+async function keep(
+  room: RoomRow,
+  thread: string,
+  tool: typeof ANSWER | typeof RELEASE,
+  key: string,
+  input: Kept | KeptGo,
+): Promise<void> {
+  const externalId = `${KEPT}:${key}`;
   const [held] = await db
     .select({ id: supportActions.id })
     .from(supportActions)
@@ -76,10 +86,26 @@ export async function keepOwnerAnswer(room: RoomRow, thread: string, kept: Kept)
     thread,
     kind: KEPT,
     actorKind: 'core',
-    tool: ANSWER,
-    input: { ...kept },
+    tool,
+    input: { ...input },
     externalId,
   });
+}
+
+/** Keep the owner's cited answer to a question, once per room, message and question. */
+export async function keepOwnerAnswer(room: RoomRow, thread: string, kept: Kept): Promise<void> {
+  await keep(room, thread, ANSWER, `${kept.questionId}:${kept.message}`, kept);
+}
+
+/** Keep the owner's cited go or no on a release (ISS-1313), once per room, message and release. */
+export async function keepOwnerGo(room: RoomRow, kept: KeptGo): Promise<void> {
+  await keep(
+    room,
+    kept.thread,
+    RELEASE,
+    `release:${kept.projectId}:${kept.version}:${kept.message}`,
+    kept,
+  );
 }
 
 type Recorded = { recorded: true; by: string } | { recorded: false; why: string };
@@ -102,10 +128,59 @@ async function recordOne(kept: Kept, userId: string): Promise<Recorded> {
   }
 }
 
+/** The project a kept row's naming must hold in: its question's, or its release's. */
+const projectOfKept = (row: ActionRow): string =>
+  row.tool === RELEASE ? (row.input as KeptGo).projectId : (row.input as Kept).questionProjectId;
+
+/** Record one kept row as `userId`, as his own account: what became of it, as its room is told. */
+async function recordKept(
+  room: RoomRow,
+  row: ActionRow,
+  userId: string,
+): Promise<{ outcome: Recorded; line: string }> {
+  if (row.tool === RELEASE) {
+    const go = row.input as KeptGo;
+    const outcome = await decideKeptGo(room, go, userId);
+    const what = `His kept ${go.decision === 'approve' ? 'go' : 'no'} (message ${go.message}) on ${go.project} ${go.version}`;
+    return {
+      outcome,
+      line: outcome.recorded
+        ? `${what} is now recorded as his release decision.`
+        : `${what} was not recorded: ${outcome.why}.`,
+    };
+  }
+  const kept = row.input as Kept;
+  // his own account answers, never the token of the request that named it (ISS-1313)
+  const outcome = await outsideTokenScope(() => recordOne(kept, userId));
+  if (outcome.recorded) {
+    await insertAction({
+      roomId: room.id,
+      projectId: room.projectId,
+      conversationId: null,
+      thread: row.thread,
+      kind: 'routed',
+      actorKind: 'core',
+      tool: ANSWER,
+      input: {
+        thread: row.thread,
+        message: kept.message,
+        forgeQuestion: kept.questionId,
+        kept: row.id,
+      },
+    });
+  }
+  return {
+    outcome,
+    line: outcome.recorded
+      ? `His kept answer (message ${kept.message}) to Forge question ${kept.questionId} is now recorded as his; the master who asked is woken.`
+      : `His kept answer (message ${kept.message}) to Forge question ${kept.questionId} was not recorded: ${outcome.why}.`,
+  };
+}
+
 /**
- * Record every answer kept for the account just linked or named, as the Forge account it now
- * resolves to, each once: what became of each, by room, with the thread it was kept on. An answer
- * whose question's project the account does not resolve in stays kept.
+ * Record everything kept for the account just linked or named, as the Forge account it now resolves
+ * to, each once: an answer to its question, a go on its release (ISS-1313). What became of each, by
+ * room, with the thread it was kept on. One whose project the account does not resolve in stays kept.
  */
 export async function recordKeptAnswers(
   linked: SpeakerLinked,
@@ -122,15 +197,15 @@ export async function recordKeptAnswers(
     );
   const told = new Map<string, { thread: string; lines: string[] }>();
   for (const row of rows) {
-    const kept = row.input as Kept;
-    if (linked.projectId && kept.questionProjectId !== linked.projectId) continue;
+    const projectId = projectOfKept(row);
+    if (linked.projectId && projectId !== linked.projectId) continue;
     const room = await roomById(row.roomId);
     if (!room) continue;
     const { namespace } = await roomAuth(room).catch(() => ({ namespace: null }));
     if (namespace !== linked.namespace) continue;
     const who = await resolveSpeaker(
       { source: linked.source, namespace, externalId: linked.externalId },
-      kept.questionProjectId,
+      projectId,
     );
     if (!who.linked) continue;
     // claimed once: a second link, or a second pass, finds it spent
@@ -140,31 +215,10 @@ export async function recordKeptAnswers(
       .where(and(eq(supportActions.id, row.id), isNull(supportActions.output)))
       .returning({ id: supportActions.id });
     if (!claimed) continue;
-    const outcome = await recordOne(kept, who.userId);
+    const { outcome, line } = await recordKept(room, row, who.userId);
     await db.update(supportActions).set({ output: outcome }).where(eq(supportActions.id, row.id));
-    if (outcome.recorded) {
-      await insertAction({
-        roomId: room.id,
-        projectId: room.projectId,
-        conversationId: null,
-        thread: row.thread,
-        kind: 'routed',
-        actorKind: 'core',
-        tool: ANSWER,
-        input: {
-          thread: row.thread,
-          message: kept.message,
-          forgeQuestion: kept.questionId,
-          kept: row.id,
-        },
-      });
-    }
     const entry = told.get(room.id) ?? { thread: row.thread, lines: [] };
-    entry.lines.push(
-      outcome.recorded
-        ? `His kept answer (message ${kept.message}) to Forge question ${kept.questionId} is now recorded as his; the master who asked is woken.`
-        : `His kept answer (message ${kept.message}) to Forge question ${kept.questionId} was not recorded: ${outcome.why}.`,
-    );
+    entry.lines.push(line);
     told.set(room.id, entry);
   }
   return told;

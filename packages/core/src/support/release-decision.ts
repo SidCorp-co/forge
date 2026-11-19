@@ -1,83 +1,68 @@
 // A person's release decision, recorded from his own message in a room (ISS-1206). The owner who says
 // "approved", "release it" or "ship it", in any language, for a named release in his room has decided
-// it: the room cites that message, and core decides the release's pending approval as him, never as the room's agent, after
-// checking the message is that member's own in the thread named, that he is a Forge person holding
-// releases.approve on the release's project, and that the release names one cut version with an
-// approval pending (`release-batch/approvals.ts:decideApprovalOfVersion`). The decision's reason
-// quotes his message with its id and thread, so it is audited back to his words. Where he also holds
-// project.admin, the approval stands for the production deploy the release plans
-// (`coolify-prod-gate.ts:giveProdGoWithApproval`): nobody asks him again for the same release.
+// it: the room cites that message, and core decides the release's pending approval as him, never as
+// the room's agent, after checking the message is that member's own in the thread named, and then
+// what `release-decide-as.ts` checks: he is a Forge person holding releases.approve on the release's
+// project, and the release names one cut version with an approval pending. The decision's reason
+// quotes his message with its id and thread, so it is audited back to his words.
+// The owner a binding names whose chat account is no Forge account yet (ISS-1313, FB-730) is not
+// refused: his go or no is kept as his answers are (`kept-answers.ts`), the room is told it waits on
+// his admins' setup step, and it is decided as his once they name his account.
 
 import type { SupportReleaseDecisionRequest } from '@forge/contracts/support-channel';
 import { isRefusal } from '../lib/refusal.js';
-import { actorFor, permissionRefusalFor, projectResource } from '../permissions/index.js';
-import {
-  decideApprovalOfVersion,
-  giveProdGoWithApproval,
-  parseDecision,
-  parseReleaseVersion,
-  runCutAs,
-} from '../release-batch/index.js';
+import { listReleases, parseReleaseVersion } from '../release-batch/index.js';
 import { memberMessage } from './channel-store.js';
-import { type Asker, forgeUserOfWriter } from './ops-asker.js';
+import { grantsOf, isNamedOwner, supportConfigOf } from './grants.js';
+import { keepOwnerGo, ownerSetupStep } from './kept-answers.js';
+import { forgeUserOfWriter } from './ops-asker.js';
 import { projectInScope } from './ops-scope.js';
 import type { OpsOutcome } from './ops-types.js';
-import { asAsker, refusalsOf } from './ops-writes.js';
+import { asAsker } from './ops-writes.js';
 import { no } from './outcome.js';
+import { decideAs } from './release-decide-as.js';
 import { insertAction, type RoomRow } from './store.js';
 
-/** How much of his message the decision's reason quotes: the reason is at most 1000 characters. */
-const QUOTE_MAX = 400;
-
-const quoted = (text: string | null): string => {
-  const words = (text ?? '').replace(/\s+/g, ' ').trim();
-  return words.length > QUOTE_MAX ? `${words.slice(0, QUOTE_MAX - 1)}…` : words;
-};
-
-/** The decision's reason: his why where he gave one, then his message, cited by id and thread. */
-function reasonOf(
-  room: RoomRow,
-  input: SupportReleaseDecisionRequest,
-  said: { author: string | null; authorKey: string; text: string | null },
-): string {
-  const who = said.author ? `@${said.author}` : `account ${said.authorKey}`;
-  const cite = `${who} decided it in the room, message ${input.message} in thread ${input.thread} of group ${room.rid}: "${quoted(said.text)}"`;
-  return input.reason ? `${input.reason.trim()}. ${cite}` : cite;
-}
-
 /**
- * His approval's go to production, standing for the deploy the release plans where he may press its
- * confirm (project.admin, the confirm door's permission), so nobody asks him again; where he may not,
- * what the deploy still waits on. Null where no run was cut (a draft decided, nothing deploys yet).
+ * Keep the owner's go or no on a release he named, while his chat account is no Forge account: the
+ * release is one the project lists, and what the agent may tell the room is that it is noted and
+ * waits on his admins' setup step. Nothing is decided yet.
  */
-async function goToProduction(
+async function keepGo(
   room: RoomRow,
   input: SupportReleaseDecisionRequest,
-  projectId: string,
-  person: Asker,
-) {
-  const run = await runCutAs(projectId, input.version);
-  if (!run) return null;
-  const notAdmin = await asAsker(person, projectId, () =>
-    permissionRefusalFor(
-      actorFor(person.userId),
-      'project.admin',
-      projectResource(projectId),
-      'confirming a production deploy',
-    ),
-  );
-  if (notAdmin) {
-    return {
-      standsFor: null,
-      waitsOn:
-        "a production deploy that waits on a confirm waits on a project admin's press; his approval does not stand for it",
-    };
+  project: { id: string; slug: string },
+  ownerKey: string,
+): Promise<OpsOutcome<unknown>> {
+  const listed = await listReleases(project.id, null);
+  if (!listed.releases.some((r) => r.version === input.version)) {
+    return no(
+      'SUPPORT_RELEASE_VERSION_AMBIGUOUS',
+      '/version',
+      `${input.version} names no release of ${project.slug}: read its releases and name the one he meant, by its whole version. Nothing was kept`,
+    );
   }
-  return giveProdGoWithApproval({
-    runId: run.id,
-    userId: person.userId,
-    cited: { message: input.message, thread: input.thread, rid: room.rid },
+  await keepOwnerGo(room, {
+    projectId: project.id,
+    project: project.slug,
+    version: input.version,
+    decision: input.decision,
+    ...(input.reason ? { reason: input.reason } : {}),
+    thread: input.thread,
+    message: input.message,
+    ownerKey,
   });
+  const word = input.decision === 'approve' ? 'go' : 'no';
+  return {
+    ok: true,
+    value: {
+      kept: true,
+      decision: input.decision,
+      version: input.version,
+      project: project.slug,
+      next: await ownerSetupStep(project.id, `his ${word} on ${project.slug} ${input.version}`),
+    },
+  };
 }
 
 async function decide(
@@ -94,28 +79,6 @@ async function decide(
   }
   const project = await projectInScope(room, input.project);
   if (!project.ok) return project;
-  const person = await forgeUserOfWriter(
-    room,
-    { key: said.authorKey, label: said.author },
-    'releases.approve',
-  );
-  if (!person.ok) return person;
-  const who = said.author ? `@${said.author}` : `account ${said.authorKey}`;
-  const denied = await asAsker(person.value, project.value.id, () =>
-    permissionRefusalFor(
-      actorFor(person.value.userId),
-      'releases.approve',
-      projectResource(project.value.id),
-      'approving or returning a release',
-    ),
-  );
-  if (denied) {
-    return no(
-      'SUPPORT_RELEASE_DECISION_NOT_PERMITTED',
-      '/message',
-      `${who} wrote ${input.message}, and holds no releases.approve on ${project.value.slug}, so their word decides no release there: a release approver of the project decides it, here in their own words or on its page. Nothing was decided`,
-    );
-  }
   if (!parseReleaseVersion(input.version)) {
     return no(
       'SUPPORT_RELEASE_VERSION_AMBIGUOUS',
@@ -123,42 +86,28 @@ async function decide(
       `${input.version} names no one release: a release is named by its whole version as its page shows it (MAJOR.MINOR.PATCH, e.g. 0.19.0), so read ${project.value.slug}'s releases and name the one he meant. Nothing was decided`,
     );
   }
-  const decision = parseDecision({
-    decision: input.decision,
-    reason: reasonOf(room, input, said),
-  });
-  const decided = await refusalsOf(() =>
-    asAsker(person.value, project.value.id, async () => ({
-      ok: true as const,
-      value: await decideApprovalOfVersion({
-        projectId: project.value.id,
-        version: input.version,
-        userId: person.value.userId,
-        decision,
-      }),
-    })),
+  // an account his admins named in this project resolves here too, as his answers do (ISS-1313)
+  const person = await forgeUserOfWriter(
+    room,
+    { key: said.authorKey, label: said.author },
+    'releases.approve',
+    project.value.id,
   );
-  if (!decided.ok) return decided;
-  const deploy =
-    input.decision === 'approve'
-      ? await goToProduction(room, input, project.value.id, person.value)
-      : null;
-  return {
-    ok: true,
-    value: {
-      decision: input.decision,
-      version: input.version,
-      project: project.value.slug,
-      decidedBy: person.value.label ?? person.value.key,
-      approval: decided.value,
-      ...(deploy ? { productionDeploy: deploy } : {}),
-    },
-  };
+  if (!person.ok) {
+    if (isNamedOwner(grantsOf(await supportConfigOf(room)), said.authorKey)) {
+      return keepGo(room, input, project.value, said.authorKey);
+    }
+    return person;
+  }
+  return decideAs(room, input, project.value, person.value, said, (fn) =>
+    asAsker(person.value, project.value.id, fn),
+  );
 }
 
 /**
- * Record a person's release decision from his own message (ISS-1206): decided as him, or refused by
- * name with nothing decided. Either way the act is on the room's record beside his message.
+ * Record a person's release decision from his own message (ISS-1206): decided as him, kept as the
+ * unlinked owner's (ISS-1313), or refused by name with nothing decided. Either way the act is on the
+ * room's record beside his message.
  */
 export async function decideReleaseFromMessage(
   room: RoomRow,
