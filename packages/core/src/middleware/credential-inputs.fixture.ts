@@ -66,7 +66,8 @@ export const SURFACE: Surface = {
   }),
   IncomingMessage: members({
     carrier: 'headers',
-    whole: 'rawHeaders headersDistinct url pipe read',
+    // transformToByteArray: the AWS SDK's mixin on a response body it hands back (ISS-1364)
+    whole: 'rawHeaders headersDistinct url pipe read transformToByteArray',
     event: 'on once',
     none: 'method statusCode statusMessage socket destroy resume',
   }),
@@ -469,6 +470,8 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     support/ops-research.ts URL.href in readPublicPage
     support/ops-research.ts URL.password in readPublicPage
     support/ops-research.ts URL.username in readPublicPage`,
+  'an object S3 answered core’s own read with, an outbound response, never a request to core (ISS-1364)': lines`
+    integrations/storage/s3.ts IncomingMessage.transformToByteArray in S3Storage`,
   'the storefront MCP relay, once its relay ticket verified: the transport headers it passes by name, the agent’s message relayed as sent, and the provider’s answer core passes back': lines`
     integrations/mcp-relay.ts Headers handed to @types/node:fetch in relayToUpstream
     integrations/mcp-relay.ts Headers handed to undici-types:Response in relayToUpstream

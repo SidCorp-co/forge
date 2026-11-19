@@ -5,6 +5,7 @@
  * It runs `docker` and the migration command as processes of its own, which the whole-tree guard
  * cannot read, so it declares itself as the install tests do.
  * @gate-input whole-tree
+ * @direct-test-of packages/core/src/integrations/storage/migrate-uploads.ts
  */
 
 import { spawnSync } from 'node:child_process';
