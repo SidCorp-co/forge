@@ -14,6 +14,7 @@
 //! design exists to answer is *waiting or dead*, and one string cannot say
 //! both.
 
+mod agents;
 mod masters;
 mod release;
 pub use release::{Rearmed, RETIRED_HOLDER_REFUSAL};
