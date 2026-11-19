@@ -135,7 +135,7 @@ export const WORK_ACT_CARDS = {
   },
   check_result: {
     purpose:
-      'Answers a scheduled check you were handed with one finding, posted in the channel’s report thread, or with nothing.',
+      'Answers a scheduled check with one finding or nothing, posted in the report thread; a morning reminder’s posts in its project’s technical channel.',
     situations: [
       {
         when: 'you are handed a scheduled check (its thread is the check)',
