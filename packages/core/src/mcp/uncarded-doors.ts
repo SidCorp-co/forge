@@ -167,6 +167,11 @@ export const UNCARDED_DOORS: Readonly<Record<keyof typeof UNCARDED_WHY, readonly
     'POST /api/projects/:id/support/channels/:rid/switch/proven',
     'DELETE /api/projects/:id/support/owner-credentials/:bindingId',
     'PUT /api/projects/:id/support/owner-credentials/:bindingId',
+    // ISS-1353: a project admin redacts a secret a room kept as written; the master does not run it
+    'POST /api/projects/:id/support/rooms/:roomId/actions/:actionId/redaction',
+    // ISS-1348: the Secrets page mints a person's one-time write URL (an agent is refused
+    // SUPPORT_SECRET_ASK_PERSON_ONLY), and the person PUTs the value to it with the token as credential
+    'POST /api/projects/:id/support/secrets/requests/:ask/write-url',
     'DELETE /api/projects/:id/testing-profiles/:profileId',
     'PATCH /api/projects/:id/workflows/:workflow/comments/:comment',
     'POST /api/projects/:projectId/integrations/:id/confirm-prod-deploy',
@@ -204,6 +209,7 @@ export const UNCARDED_DOORS: Readonly<Record<keyof typeof UNCARDED_WHY, readonly
     'DELETE /api/runners/:id',
     'PATCH /api/runners/:id',
     'DELETE /api/schedules/:id',
+    'PUT /api/secret-writes/:token',
     'POST /api/shares/open',
     'POST /api/shares/open/member',
     'POST /api/skills',
