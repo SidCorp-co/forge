@@ -233,10 +233,13 @@ export async function userNames(ids: readonly string[]): Promise<Map<string, str
   return new Map(rows.map((r) => [r.id, r.displayName?.trim() || r.email]));
 }
 
-/** The project's debts, open or cleared, newest first, at most `limit` of each. */
+/**
+ * The project's debts, newest first: every open one, since a cleanup report must name each
+ * (`openDebts`) and open debt is bounded by work, and at most `clearedLimit` of those cleared.
+ */
 export async function readDebts(
   projectId: string,
-  limit = 200,
+  clearedLimit = 200,
 ): Promise<{ open: DebtView[]; cleared: DebtView[] }> {
   const read = (cleared: boolean) =>
     db
@@ -248,9 +251,8 @@ export async function readDebts(
           cleared ? isNotNull(deliveryDebts.clearedAt) : isNull(deliveryDebts.clearedAt),
         ),
       )
-      .orderBy(desc(deliveryDebts.createdAt))
-      .limit(limit);
-  const [open, cleared] = await Promise.all([read(false), read(true)]);
+      .orderBy(desc(deliveryDebts.createdAt));
+  const [open, cleared] = await Promise.all([read(false), read(true).limit(clearedLimit)]);
   const ids = [...open, ...cleared].flatMap((r) => (r.issueId ? [r.issueId] : []));
   const keys = ids.length ? await issueDisplayIds([...new Set(ids)]) : new Map<string, string>();
   const evidence = await evidenceOf([...open, ...cleared].map((r) => r.id));

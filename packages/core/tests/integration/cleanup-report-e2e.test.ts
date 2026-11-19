@@ -140,6 +140,30 @@ describe('a cleanup report (BC-9)', () => {
     });
   });
 
+  // cleanup 21284cd0: the read answered the newest 200 open debts while the report check counts
+  // every one, so a run that named all it read was refused for the oldest it never saw
+  it('reads and briefs every open debt past 200, so a report naming all it read is whole', async () => {
+    const recorded: string[] = [];
+    for (let batch = 0; batch < 5; batch++) {
+      const items = Array.from({ length: 41 }, (_, i) => ({
+        ...red('low'),
+        where: `scripts/debt-${batch}-${i}.mjs`,
+      }));
+      recorded.push(...((await debts({ items })).body.debts as string[]));
+    }
+    const open = (await ledger()).body.open.map((d: Doc) => d.id as string);
+    expect(open).toHaveLength(205);
+    expect(new Set(open)).toEqual(new Set(recorded));
+    const plan = await cleanupFirePlan({ projectId, fireId: randomUUID() });
+    if (plan.kind !== 'run') throw new Error(`no run: ${JSON.stringify(plan)}`);
+    expect(plan.prompt).toContain(recorded[0]);
+    const report = await reportCleanup({
+      result: 'red',
+      remains: open.map((debt: string) => ({ debt, why: 'not reached this window' })),
+    });
+    expect(report.status, JSON.stringify(report.body)).toBe(201);
+  });
+
   // ISS-1057: the audit holds no change, so a report covers nothing, and one still sending `covers`
   // (a run on an older brief) is refused by name rather than read and dropped in silence
   it('refuses `covers` by name, recording nothing', async () => {
