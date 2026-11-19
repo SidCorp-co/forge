@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.753] - 2026-11-19
+
+Uploads can live on S3-compatible object storage and survive a redeploy
+
+### Added
+
+- **Uploads can live in an S3-compatible bucket.** `STORAGE_DRIVER=s3` stores every attachment under `S3_PREFIX`, boot names each missing `S3_*` setting, and `storage:migrate-uploads` copies `UPLOADS_DIR` across, verifying count and bytes.
+
 ## [0.4.0-dev.752] - 2026-11-19
 
 One Secrets page for every secret; agents confirm missing capabilities; direct-mode builder roles
