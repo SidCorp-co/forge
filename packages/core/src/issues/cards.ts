@@ -63,6 +63,10 @@ export const ISSUE_REST_CARDS = {
         when: 'you review a change you did not build and judge a code-property criterion',
         do: 'post it with `judge: "review"` and the reviewing run in `run`',
       },
+      {
+        when: 'the criterion you judged sends a call to an outside provider',
+        do: 'say `integrationProof: "live"`, or `"simulated"` where it ran against a mock; a simulated line is not ready for a production approval ask',
+      },
     ],
     practice: [
       'evidence is a list of strings (an attachment name, a URL or a repo path), never one string.',
