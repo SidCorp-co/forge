@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.757] - 2026-11-19
+
+Release page summaries and row sentences open in a card over the page
+
+### Fixed
+
+- **A release page opens on its name.** Its summary and each row's sentence now open in a card over the page by click, tap or keyboard, never in place, and the hero no longer repeats the proof figure.
+
 ## [0.4.0-dev.756] - 2026-11-19
 
 Release page rows open their sentence on demand
