@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.748] - 2026-11-19
+
+Room secret screen catches Vietnamese and chat-written test logins
+
+### Fixed
+
+- **A test login pasted in a room is no longer kept as written.** A password under a Vietnamese label, or an email and password answering a login request, is filtered and flagged; an admin can redact one kept.
+
 ## [0.4.0-dev.747] - 2026-11-19
 
 A morning reminder of open waits, and replies in threads a master's post opened
