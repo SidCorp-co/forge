@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.755] - 2026-11-19
+
+Ops read failures name the box and the missing interpreter
+
+### Fixed
+
+- **An ops read that cannot start names its box and what it lacks.** A script whose `#!` interpreter is not on the box is refused quoting that line, apart from a program that is truly missing.
+- **A storage setting pasted with quotes around it is refused by name.** The quotes would otherwise be taken as part of the address or key.
+
 ## [0.4.0-dev.754] - 2026-11-19
 
 Waking a finished builder keeps the master's declared run; local storage starts cleanly
