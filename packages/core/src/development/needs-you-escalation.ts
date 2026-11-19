@@ -55,12 +55,6 @@ export function declineProposed<T extends DecisionBody>(d: T): T {
   });
 }
 
-/** Whether a decision touched at `touchedAt` has waited the days the agent proposes after. */
-export const waitedToPropose = (touchedAt: string | null, now: Date): boolean =>
-  touchedAt !== null && now.getTime() - Date.parse(touchedAt) >= ESCALATE_AFTER_DAYS * DAY_MS;
-
-const DAY_MS = 86_400_000;
-
 /** The decision with the agent's day-14 proposal added, or as built where there is none to make. */
 export function withEscalation(
   built: Built,

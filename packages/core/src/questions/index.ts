@@ -20,6 +20,7 @@ export {
   proposable,
   REMIND_AFTER_DAYS,
   stampAgedRounds,
+  waitedToPropose,
 } from './decision-age.js';
 export { type AwaitedDesign, answerDesignQuestions } from './design-wait.js';
 export {

@@ -1,5 +1,6 @@
 import { isSpendLimitError, isUsageLimitError } from '@forge/contracts/runners';
 import type { RunnerLimitReason } from '../db/schema.js';
+import { zonedClock } from '../lib/zoned-clock.js';
 
 export interface RunnerLimit {
   reason: RunnerLimitReason;
@@ -59,34 +60,6 @@ function isAuthError(text: string): boolean {
     // apart isn't misread as an auth failure (mirrors the usage-limit guard).
     /\b401\b[\s\S]{0,60}?(invalid|unauthorized|authentication)/i.test(text)
   );
-}
-
-/** The wall clock in `tz` at `at`; throws on an unknown zone. */
-function zonedClock(
-  tz: string,
-  at: Date,
-): { year: number; month: number; day: number; hour: number; minute: number } {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: tz,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).formatToParts(at);
-  const part = (type: string) => {
-    const value = parts.find((p) => p.type === type)?.value;
-    if (value === undefined) throw new Error(`zonedClock: ${tz} formats no ${type} part`);
-    return Number.parseInt(value, 10);
-  };
-  return {
-    year: part('year'),
-    month: part('month'),
-    day: part('day'),
-    hour: part('hour') === 24 ? 0 : part('hour'),
-    minute: part('minute'),
-  };
 }
 
 /**

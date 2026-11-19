@@ -18,8 +18,9 @@ import { agentQuestions } from '../db/schema-questions.js';
 import { assistantSpeakerLinks } from '../db/schema-speaker-links.js';
 import { supportActions } from '../db/schema-support.js';
 import { webBaseUrl } from '../lib/web-base-url.js';
+import { zonedClock } from '../lib/zoned-clock.js';
 import { namedHolders } from '../permissions/index.js';
-import { ESCALATE_AFTER_DAYS } from '../questions/index.js';
+import { waitedToPropose } from '../questions/index.js';
 
 /** One person a wait is on: their name, and the chat name they are mentioned by where one is known. */
 export interface Ower {
@@ -39,12 +40,11 @@ export interface Wait {
   owes: Ower[];
   /** The Forge page that opens it, absolute. */
   link: string;
-  /** Waited past the day-14 escalation (`questions/decision-age.ts:ESCALATE_AFTER_DAYS`). */
+  /** Waited past the day-14 escalation (`questions/decision-age.ts:waitedToPropose`). */
   escalated: boolean;
 }
 
 const HOUR_MS = 3_600_000;
-const DAY_MS = 24 * HOUR_MS;
 
 /** A project's reminder with every part named. */
 export interface ReminderSetting {
@@ -62,16 +62,9 @@ export const reminderOf = (named: WaitReminder | undefined): ReminderSetting => 
 
 /** `now` in `timeZone`: its day (`YYYY-MM-DD`) and its hour (0-23). */
 export function localDay(now: Date, timeZone: string): { day: string; hour: number } {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(now);
-  const of = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
-  return { day: `${of('year')}-${of('month')}-${of('day')}`, hour: Number(of('hour')) };
+  const at = zonedClock(timeZone, now);
+  const two = (n: number) => String(n).padStart(2, '0');
+  return { day: `${at.year}-${two(at.month)}-${two(at.day)}`, hour: at.hour };
 }
 
 /** The day whose morning is due for a project now, or null: off, or before its hour today. */
@@ -178,6 +171,7 @@ export async function projectWaits(
   projectId: string,
   slug: string,
   namespace: string | null,
+  now: Date,
 ): Promise<Wait[]> {
   const people = new Map<string, string>();
   for (const permission of ['project.write', 'releases.approve'] as const) {
@@ -196,7 +190,6 @@ export async function projectWaits(
   const held = [...byId.values()];
   const issueOf = await questionIssues(held.map(({ d }) => d.key));
   const mentions = await mentionsOf([...people.keys()], namespace);
-  const escalation = Date.now() - ESCALATE_AFTER_DAYS * DAY_MS;
   return held.map(({ d, owes }) => ({
     id: d.id,
     ask: d.entity === 'question' ? d.question : d.title,
@@ -208,6 +201,6 @@ export async function projectWaits(
       mention: mentions.get(userId) ?? null,
     })),
     link: linkOf(slug, d, issueOf),
-    escalated: d.touchedAt !== null && Date.parse(d.touchedAt) <= escalation,
+    escalated: waitedToPropose(d.touchedAt, now),
   }));
 }

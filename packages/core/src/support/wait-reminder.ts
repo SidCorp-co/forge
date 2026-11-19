@@ -201,7 +201,7 @@ async function fireProject(
   const route = await reminderRouteOf(project.id);
   if (route.ok && (await fired(route.value.room, thread))) return false;
   const namespace = route.ok ? (await roomAuth(route.value.room)).namespace : null;
-  const waits = dueWaits(await projectWaits(project.id, project.slug, namespace), now);
+  const waits = dueWaits(await projectWaits(project.id, project.slug, namespace, now), now);
   if (waits.length === 0) return false;
   if (!route.ok) {
     const [refusal] = route.refusals;

@@ -34,7 +34,7 @@ async function settledNamed(room: RoomRow, firing: ReminderFiring, text: string)
   const { namespace } = await roomAuth(room);
   // core's own re-read of the record it fired the reminder from, never fenced by the session's token
   const waits = await outsideTokenScope(() =>
-    projectWaits(firing.projectId, firing.slug, namespace),
+    projectWaits(firing.projectId, firing.slug, namespace, new Date()),
   );
   const open = new Set(waits.map((w) => w.id));
   const openLinks = new Set(waits.map((w) => w.link));

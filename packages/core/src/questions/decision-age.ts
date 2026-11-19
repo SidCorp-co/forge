@@ -17,6 +17,15 @@ export const ESCALATE_AFTER_DAYS = 14;
 
 export type DecisionAgeStamp = 'remindedAt' | 'escalatedAt';
 
+const DAY_MS = 86_400_000;
+
+/**
+ * Whether a decision touched at `touchedAt` has waited the days the agent proposes after: the Needs
+ * you read and the morning reminder (`support/wait-reminder-waits.ts`) read it alike.
+ */
+export const waitedToPropose = (touchedAt: string | null, now: Date): boolean =>
+  touchedAt !== null && now.getTime() - Date.parse(touchedAt) >= ESCALATE_AFTER_DAYS * DAY_MS;
+
 /** When the current round was asked: its own `askedAt`, else when the question was written. */
 const roundAskedAt = sql`coalesce((${agentQuestions.steps} -> -1 ->> 'askedAt')::timestamptz, ${agentQuestions.createdAt})`;
 

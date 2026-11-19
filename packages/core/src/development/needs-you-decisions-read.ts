@@ -15,10 +15,11 @@ import {
 } from '@forge/contracts/needs-you-decisions';
 import { withQueryLeg } from '../db/query-timing.js';
 import type { ProjectAccess } from '../lib/authz.js';
+import { waitedToPropose } from '../questions/index.js';
 import { type NeedsYouViewer, readNeedsYouAttention } from './needs-you.js';
 import { agentTakesItem, agentTakesOf } from './needs-you-agent-takes.js';
 import { type Attention, decisionsOf } from './needs-you-decisions.js';
-import { declineProposed, waitedToPropose } from './needs-you-escalation.js';
+import { declineProposed } from './needs-you-escalation.js';
 import { type EvidenceGroup, withEvidence } from './needs-you-evidence.js';
 import { type Folded, foldedDecisions, unreadableItem } from './needs-you-fold.js';
 
