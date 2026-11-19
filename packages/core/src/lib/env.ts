@@ -229,7 +229,7 @@ export const S3_SETTINGS = [
 ] as const;
 
 /** The s3 settings `parsed` leaves unset, named; the values are never read out. */
-export function missingS3Settings(parsed: Pick<Env, (typeof S3_SETTINGS)[number]>): string[] {
+function missingS3Settings(parsed: Pick<Env, (typeof S3_SETTINGS)[number]>): string[] {
   return S3_SETTINGS.filter((name) => parsed[name] === undefined);
 }
 
