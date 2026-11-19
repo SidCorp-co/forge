@@ -169,7 +169,7 @@ const ISSUE_NAV_RE =
 export const ISSUE_LINK_SHAPE: MessageRule = {
   id: 'issue-link-shape',
   shape:
-    'an issue link reads <base>/projects/<slug>/issues/<documentId> — the documentId a UUID, never a hash route and never an issue key or number in the path',
+    'an issue link reads <base>/projects/<slug>/issues/<documentId> — the documentId a UUID, never a hash route and never an issue key or number in the path — behind words of your own, [what it is](<link>), so no room reads the id',
   example: 'The CSV export fix is in; the tracker has the issue with its link.',
   needs: [],
   check: (text) => {

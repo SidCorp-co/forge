@@ -94,3 +94,33 @@ describe('internalCodesIn: the technical channel line', () => {
     expect(internalCodesIn(`epod asks: ${question}`, prefixes)).toEqual([]);
   });
 });
+
+// ISS-1343 c3: the morning reminder names each wait in plain words and opens it in one tap. The
+// screen refused a bare issue link for its uuid while the link rule refused /issues/ISS-n, so no link
+// passed both (2026-11-19). A Forge link behind words of its own passes: the reader never reads its
+// target. A bare address, a code in the words, and another site's target are still read.
+describe('internalCodesIn: a Forge link behind its own words (ISS-1343)', () => {
+  const prefixes = keyPrefixesOf([], []);
+  const DOC = '62cf7301-4edc-41bc-835c-520ca58c5346';
+  const link = `https://forge.example.co/projects/catalog-api/issues/${DOC}`;
+
+  it('reads nothing in the target of [words](a Forge page)', () => {
+    expect(internalCodesIn(`Two workers wait: [the design queue](${link}).`, prefixes)).toEqual([]);
+    expect(
+      internalCodesIn(
+        '[the sign-off](https://forge.example.co/projects/shop/requirements/REQ-2)',
+        prefixes,
+      ),
+    ).toEqual([]);
+  });
+
+  it('still reads a bare address, the words of the link, and a target off Forge', () => {
+    expect(internalCodesIn(`Open ${link}`, prefixes).map((c) => c.kind)).toContain('uuid');
+    expect(internalCodesIn(`[ISS-113 workers](${link})`, prefixes)).toEqual([
+      { kind: 'issue key', quote: 'ISS-113' },
+    ]);
+    expect(
+      internalCodesIn('[the fix](https://git.example.co/shop/commit/30d310c)', prefixes),
+    ).toEqual([{ kind: 'commit sha', quote: '30d310c' }]);
+  });
+});

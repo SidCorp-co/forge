@@ -91,13 +91,27 @@ const INTERNAL_CODES: readonly {
 ];
 
 /**
+ * The target of a link to one of Forge's own pages, written as a link with words of its own
+ * (`[the release sign-off](https://forge.example/projects/shop/issues/<documentId>)`): the reader
+ * sees the words and taps through, and never reads the target (ISS-1343). A bare address shows what
+ * it holds, so it is read like any other text.
+ */
+const FORGE_LINK_TARGET = /(?<=\]\()https?:\/\/[^\s()]+\/projects\/[\w-]+\/[^\s()]*(?=\))/g;
+
+/** `text` with each Forge link target blanked to spaces, so a code only its target holds is no code shown. */
+const shownOf = (text: string): string =>
+  text.replace(FORGE_LINK_TARGET, (target) => ' '.repeat(target.length));
+
+/**
  * The internal codes a text holds, each with the words that hold it, in the order of the kinds; an
- * issue key is one under `keyPrefixes` (`keyPrefixesOf`).
+ * issue key is one under `keyPrefixes` (`keyPrefixesOf`). A Forge link's target behind words of its
+ * own is not read (`FORGE_LINK_TARGET`).
  */
 export function internalCodesIn(
-  text: string,
+  written: string,
   keyPrefixes: readonly string[],
 ): { kind: string; quote: string }[] {
+  const text = shownOf(written);
   const found: { kind: string; quote: string }[] = [];
   const key = issueKeyRe(keyPrefixes);
   const kinds = key ? [{ kind: ISSUE_KEY, re: key }, ...INTERNAL_CODES] : INTERNAL_CODES;
@@ -112,7 +126,7 @@ export function internalCodesIn(
 
 /** The shape a post passes, said the same way by every refusal. */
 export const PLAIN_WORDS_SHAPE =
-  'Say it in plain words, with no issue key, MR or PR number, environment variable name, commit sha, room or thread id, uuid or credential word; an order number or a PO code such as PO001453760102901 may stay';
+  'Say it in plain words, with no issue key, MR or PR number, environment variable name, commit sha, room or thread id, uuid or credential word; an order number or a PO code such as PO001453760102901 may stay. Link a Forge item behind words of your own, [what it is](<base>/projects/<slug>/issues/<documentId>), never as a bare address';
 
 /** The door for a product's own code read as an issue key, said by every refusal of one. */
 export const USER_FACING_CODES_DOOR =
