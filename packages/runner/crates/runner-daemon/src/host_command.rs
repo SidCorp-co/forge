@@ -15,6 +15,7 @@ use std::time::{Duration, Instant};
 
 use runner_platform::config::Config;
 use runner_transport::CoreClient;
+use runner_workspace::pairing::box_name;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use tokio::io::{AsyncRead, AsyncReadExt};
@@ -82,7 +83,8 @@ pub(crate) async fn handle(client: &CoreClient, data: Value) {
 
 /// Whether this box binds `project_id` at all: a box runs commands only for a project it serves.
 pub(crate) fn project_bound_here(project_id: &str) -> Result<(), String> {
-    let cfg = Config::load().map_err(|e| format!("this box's config could not be read: {e}"))?;
+    let cfg = Config::load()
+        .map_err(|e| format!("the runner config on {} could not be read: {e}", box_name()))?;
     if cfg
         .bindings
         .values()
@@ -91,7 +93,8 @@ pub(crate) fn project_bound_here(project_id: &str) -> Result<(), String> {
         return Ok(());
     }
     Err(format!(
-        "this box binds no checkout to project {project_id}, so it runs no command for it"
+        "{} binds no checkout to project {project_id}, so it runs no command for it",
+        box_name()
     ))
 }
 
@@ -108,7 +111,8 @@ pub(crate) fn host_ok(host: &str) -> bool {
 pub(crate) fn ssh_args(host: &str, command: &str) -> Result<Vec<String>, String> {
     if !host_ok(host) {
         return Err(format!(
-            "{host:?} is not a host name this box passes to ssh: letters, digits, . _ -, starting with a letter or digit"
+            "{host:?} is not a host name {} passes to ssh: letters, digits, . _ -, starting with a letter or digit",
+            box_name()
         ));
     }
     let command = command.trim();
@@ -185,7 +189,7 @@ pub(crate) async fn run_with_env(
         .stderr(Stdio::piped())
         .kill_on_drop(true)
         .spawn()
-        .map_err(|e| not_started(program, &e, &runner_workspace::pairing::box_name()))?;
+        .map_err(|e| not_started(program, &e, &box_name()))?;
     let stdout = child.stdout.take().ok_or("no stdout")?;
     let stderr = child.stderr.take().ok_or("no stderr")?;
     let out = tokio::spawn(capped(stdout));
@@ -392,7 +396,7 @@ mod tests {
         let err = run(OsStr::new("/nonexistent/ssh"), &[], Duration::from_secs(1))
             .await
             .unwrap_err();
-        let box_name = runner_workspace::pairing::box_name();
+        let box_name = box_name();
         assert!(
             err.contains(&format!("/nonexistent/ssh is missing on {box_name}")),
             "{err}"
@@ -405,6 +409,19 @@ mod tests {
         .await
         .unwrap_err();
         assert!(bare.contains("on its PATH"), "{bare}");
+    }
+
+    /// Every refusal names the box the way the one for a program that cannot start does, never
+    /// "this box" (cleanup 21284cd0, after ISS-1367).
+    #[test]
+    fn a_refusal_names_the_box_it_came_from() {
+        let box_name = box_name();
+        let unbound = project_bound_here("no-such-project-cleanup-21284cd0").unwrap_err();
+        let host = ssh_args("-oProxyCommand=sh", "id").unwrap_err();
+        for err in [unbound, host] {
+            assert!(err.contains(&box_name), "{err}");
+            assert!(!err.contains("this box"), "{err}");
+        }
     }
 
     /// A script written with Windows line endings asks for `/bin/sh\r`, which no box has: the

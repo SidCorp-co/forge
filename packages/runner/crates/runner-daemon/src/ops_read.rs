@@ -83,13 +83,17 @@ pub(crate) async fn handle(client: &CoreClient, data: Value) {
 /// The checkout this box binds to `project_id`: where a `repo:` program is read from. A project this
 /// box binds no checkout to runs no read here.
 fn checkout_of(project_id: &str) -> Result<PathBuf, String> {
-    let cfg = Config::load().map_err(|e| format!("this box's config could not be read: {e}"))?;
+    let cfg = Config::load()
+        .map_err(|e| format!("the runner config on {} could not be read: {e}", box_name()))?;
     cfg.bindings
         .values()
         .find(|b| b.project_id.as_deref() == Some(project_id))
         .map(|b| b.repo_path.clone())
         .ok_or_else(|| {
-            format!("this box binds no checkout to project {project_id}, so it runs no read for it")
+            format!(
+                "{} binds no checkout to project {project_id}, so it runs no read for it",
+                box_name()
+            )
         })
 }
 
@@ -146,7 +150,8 @@ fn repo_program(rel: &str, checkout: &Path) -> Result<PathBuf, String> {
     })?;
     if !program.starts_with(&root) {
         return Err(format!(
-            "{REPO_PROGRAM}{rel} leads out of the project's checkout, so this box does not run it"
+            "{REPO_PROGRAM}{rel} leads out of the project's checkout, so {} does not run it",
+            box_name()
         ));
     }
     Ok(program)
@@ -215,7 +220,8 @@ pub(crate) fn program_and_args(argv: &[String]) -> Result<(&str, &[String]), Str
             .all(|seg| !seg.is_empty() && seg != "." && seg != "..");
     if !absolute {
         return Err(format!(
-            "{program:?} is not a program this box runs for a read: an absolute path with no . or .. segment"
+            "{program:?} is not a program {} runs for a read: an absolute path with no . or .. segment",
+            box_name()
         ));
     }
     if argv.len() > MAX_ARGS {
@@ -259,6 +265,16 @@ mod tests {
     #[test]
     fn the_program_is_an_absolute_path_never_a_name_or_a_climb() {
         assert!(program_and_args(&argv(&["/usr/bin/env"])).is_ok());
+        let named = program_and_args(&argv(&["hub-logs"])).unwrap_err();
+        assert!(
+            named.contains(&format!("a program {} runs", box_name())),
+            "{named}"
+        );
+        let unbound = checkout_of("no-such-project-cleanup-21284cd0").unwrap_err();
+        assert!(
+            unbound.contains(&box_name()) && !unbound.contains("this box"),
+            "{unbound}"
+        );
         for bad in [
             vec![],
             argv(&["hub-logs"]),
@@ -435,6 +451,10 @@ mod tests {
             .await
             .unwrap_err();
         assert!(out.contains("leads out of the project's checkout"), "{out}");
+        assert!(
+            out.contains(&format!("so {} does not run", box_name())),
+            "{out}"
+        );
         let missing = read_in(&argv(&["repo:scripts/ops/gone"]), Some(10_000), &[], &root)
             .await
             .unwrap_err();
