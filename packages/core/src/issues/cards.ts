@@ -65,7 +65,6 @@ export const ISSUE_REST_CARDS = {
       },
     ],
     practice: [
-      'A criterion that calls an outside provider says `integrationProof`: `live`, or `simulated` against a mock, which is not ready for a production approval ask.',
       'evidence is a list of strings (an attachment name, a URL or a repo path), never one string.',
       'Your own pass on work you built is kept as evidence and never counts; a fail always counts.',
       'A resend of the same verdict answers duplicate: true, so it is safe after a lost answer.',

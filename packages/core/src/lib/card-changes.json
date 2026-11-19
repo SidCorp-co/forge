@@ -260,9 +260,9 @@
     "by": "ISS-1251"
   },
   "POST /api/issues/:id/verdicts": {
-    "hash": "0cb7514c265c42b6",
-    "on": "2026-11-19",
-    "by": "ISS-1329"
+    "hash": "0c864300a8d0830e",
+    "on": "2026-11-18",
+    "by": "ISS-1308"
   },
   "POST /api/jobs/:id/cancel": {
     "hash": "4d79adfe28402c0b",
