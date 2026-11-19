@@ -11,8 +11,8 @@ export const MOCKUPS_GUIDE: CoreGuide = {
   audience: 'agent',
   title: 'Mockups: proposed, tried and discussed on the item they shape',
   summary:
-    'When to propose a mockup (MK-n) instead of describing a screen or building a local file, which item it belongs on, its kinds and limits, how a person tries it, pins comments to it and accepts or returns it in Approvals, how a next revision answers the comments, and how an accepted one is pinned into a requirement baseline.',
-  version: 1,
+    'When to propose a mockup (MK-n) instead of describing a screen or building a local file, which item it belongs on, its kinds and limits, how a person tries it, pins comments to it and accepts or returns it in Approvals, how a next revision answers the comments, and how an accepted one is pinned into a requirement baseline, and how one reaches the person who asked for it.',
+  version: 2,
   body: `## Mockups: proposed, tried and discussed on the item they shape
 
 A mockup (MK-n) is a screen or a call proposed for a person to try before anything is built: a
@@ -71,6 +71,15 @@ unpkg.com, load; nothing else does. State kept in the page lives only while it i
    an earlier revision is \`MOCKUP_COMMENT_UNKNOWN\`, one already settled \`MOCKUP_COMMENT_SETTLED\`, a
    mockup not returned or already revised \`MOCKUP_REVISES_INVALID\`. Earlier revisions stay readable.
    Read the comments first and settle every open one you addressed.
+
+### Delivering one to the person who asked
+The mockup lives on its item; what you send the person is a view of it, made the way they asked.
+- **Sharp.** Render at 2x device scale, or the source size, and capture the whole frame: never a
+  cropped or downscaled shot.
+- **In the format they named: a PDF, an image or the MK-n link.** Never another image where they
+  asked for a PDF.
+- **By the shortest route:** one message with the file or the link. Add no step, review or document
+  they did not ask for.
 
 ### Pinned into a baseline
 An **accepted** mockup of a requirement is pinned by its next agree or re-pin, beside the linked

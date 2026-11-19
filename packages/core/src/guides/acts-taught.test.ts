@@ -290,3 +290,26 @@ describe('the trace route is taught where a trace is written (FB-209)', () => {
     );
   });
 });
+
+describe('the mockups guide teaches delivering a mockup to the person who asked (ISS-1319)', () => {
+  // adminhub-api's L-39: a blurry Paycheck mockup, an image sent where a PDF was asked for, and a
+  // long PDF process the person never asked for: nothing taught how a mockup reaches a person
+  const prose = (slug: string) => body(slug).split(/\s+/).join(' ');
+
+  it('renders it sharp, in the format named, by the shortest route, with no process unasked', () => {
+    const all = prose('mockups');
+    const from = all.indexOf('### Delivering one');
+    expect(from, 'the mockups guide has no Delivering one section').toBeGreaterThan(-1);
+    const text = all.slice(from, all.indexOf('###', from + 3));
+    expect(text).toContain('2x device scale, or the source size');
+    expect(text).toContain('the whole frame');
+    expect(text).toMatch(/format they named: a PDF, an image or the MK-n link/);
+    expect(text).toContain('shortest route');
+    expect(text).toContain('no step, review or document they did not ask for');
+  });
+
+  it('points the product role at those lines where it sends a mockup to a person', () => {
+    expect(prose('product-role')).toContain('Sending a mockup to a person');
+    expect(prose('product-role')).toContain('`mockups` guide, *Delivering one*');
+  });
+});
