@@ -14,7 +14,8 @@
 
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { getStorage } from '../../src/integrations/index.js';
 import { api, type Body, patToken, userToken } from '../helpers/api.js';
 import {
   addProjectMember,
@@ -107,6 +108,31 @@ describe('one attachment of a feedback item deleted by its id (ISS-1327)', () =>
     expect(other.status, JSON.stringify(other.body)).toBeGreaterThanOrEqual(400);
     expect(JSON.stringify(other.body)).toContain('feedback.redact');
     expect(await names('FB-1')).toContain('kept.png');
+  });
+
+  // cleanup 21284cd0: a storage delete that failed was logged and answered 200 deleted, so a picture
+  // showing a secret was reported gone while its bytes stayed
+  it('refuses by name while storage keeps the file, keeping the attachment so a retry deletes it', async () => {
+    const secret = await attach(w.token, 'FB-1', 'secret-key.png');
+    const notes = async () =>
+      (
+        await rows<{ n: number }>(sql`
+          SELECT count(*)::int AS n FROM feedback_messages m JOIN feedback f ON f.id = m.feedback_id
+           WHERE f.project_id = ${w.projectId}::uuid AND f.fb_seq = 1`)
+      )[0]?.n;
+    const before = await notes();
+    const down = vi.spyOn(getStorage(), 'delete').mockRejectedValueOnce(new Error('bucket down'));
+    const kept = await detach(w.token, 'FB-1', secret, 'shows a secret key');
+    down.mockRestore();
+    expect(kept.status, JSON.stringify(kept.body)).toBe(503);
+    expect(codes(kept.body)).toEqual(['FEEDBACK_ATTACHMENT_STORAGE_KEPT']);
+    expect(await names('FB-1')).toContain('secret-key.png');
+    expect((await api(w.token, 'GET', `${base()}/FB-1/attachments/${secret}`)).status).toBe(200);
+    expect(await notes()).toBe(before);
+
+    const again = await detach(w.token, 'FB-1', secret, 'shows a secret key');
+    expect(again.status, JSON.stringify(again.body)).toBe(200);
+    expect(await names('FB-1')).not.toContain('secret-key.png');
   });
 
   it('lets the item’s writer delete one of its attachments, and the MCP twin delete by id', async () => {

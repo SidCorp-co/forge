@@ -14,6 +14,7 @@ import { DEVICE_REFUSAL_STATUSES } from "./devices.js";
 import { DOOR_REPORT_REFUSAL_STATUSES } from "./door-use.js";
 import { ECOSYSTEM_REFUSAL_STATUSES } from "./ecosystem.js";
 import { FAST_LANE_REFUSAL_STATUSES } from "./fast-lane.js";
+import { FEEDBACK_REFUSAL_STATUSES } from "./feedback.js";
 import { FEEDBACK_SERVER_KEY_REFUSAL_STATUSES } from "./feedback-server-keys.js";
 import { FORGE_FEEDBACK_REFUSAL_STATUSES } from "./forge-feedback.js";
 import { GIT_REFUSAL_STATUSES } from "./git.js";
@@ -85,6 +86,7 @@ const DECLARED: ReadonlyArray<
 	DOOR_REPORT_REFUSAL_STATUSES,
 	ECOSYSTEM_REFUSAL_STATUSES,
 	FAST_LANE_REFUSAL_STATUSES,
+	FEEDBACK_REFUSAL_STATUSES,
 	FEEDBACK_SERVER_KEY_REFUSAL_STATUSES,
 	FORGE_FEEDBACK_REFUSAL_STATUSES,
 	INSTANCE_SETTINGS_REFUSAL_STATUSES,

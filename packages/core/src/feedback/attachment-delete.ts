@@ -5,7 +5,10 @@
  * one attachment goes by its id, the item's other attachments and text stay, and why is written on
  * the item's record as an internal note naming the file, never its bytes. Its writer deletes it, as
  * does anyone holding `feedback.redact`; an id the item does not hold, an empty reason and an item
- * whose reporter data is already deleted are refused by name, and nothing is deleted.
+ * whose reporter data is already deleted are refused by name, and nothing is deleted. The bytes go
+ * inside the row's transaction: where storage keeps them, the row and the note roll back and the
+ * door answers FEEDBACK_ATTACHMENT_STORAGE_KEPT, so a picture is never reported gone while its bytes
+ * stay, and asking again retries (both storage drivers take a delete of what is gone as done).
  */
 
 import { feedbackKey } from '@forge/contracts/feedback';
@@ -50,7 +53,6 @@ export async function deleteAttachment(input: {
   const forbidden =
     first.reportedBy === actor.userId ? null : redactActRefusal(await roleFacts(actor, projectId));
   if (forbidden) return { ok: false, refusals: [forbidden] };
-  const held: { path: string | null } = { path: null };
   const refusals = await inTx(async (tx): Promise<Refusal[] | null> => {
     await lockFeedback(tx, projectId);
     const row = await rowIn(tx, projectId, first.id, true);
@@ -74,7 +76,6 @@ export async function deleteAttachment(input: {
         },
       ];
     }
-    held.path = gone.path;
     const note = storedText(
       await dataPolicyOf(projectId),
       `Attachment "${gone.name}" (${input.attachmentId}) deleted: ${why}`,
@@ -89,19 +90,25 @@ export async function deleteAttachment(input: {
       sentAgency: actor.agency,
       writtenLang: await writtenLangFor(actor, projectId, undefined, tx, why),
     });
-    return null;
+    return gone.path ? await bytesGone(gone.path, gone.name, feedbackKey(row.fbSeq)) : null;
   });
   if (refusals) return { ok: false, refusals };
-  const stored = held.path;
-  if (stored) {
-    await getStorage()
-      .delete(stored)
-      .catch((err: unknown) => {
-        logger.error(
-          { err, projectId, feedbackId: first.id, path: stored },
-          'feedback: a deleted attachment was not removed from storage',
-        );
-      });
-  }
   return answer(projectId, first.id, actor);
+}
+
+/** Delete the stored bytes, or the refusal naming that storage kept them (the caller rolls back). */
+async function bytesGone(path: string, name: string, key: string): Promise<Refusal[] | null> {
+  try {
+    await getStorage().delete(path);
+    return null;
+  } catch (err) {
+    logger.error({ err, path }, 'feedback: storage kept the bytes of an attachment being deleted');
+    return [
+      {
+        code: 'FEEDBACK_ATTACHMENT_STORAGE_KEPT',
+        path: '/attachment',
+        detail: `storage did not delete the file of "${name}" on ${key}, so its bytes are still stored and the attachment stays on the item. Nothing was deleted; ask again to retry, and if storage keeps refusing, an operator reads the server log for why.`,
+      },
+    ];
+  }
 }

@@ -19,6 +19,7 @@ import {
 	REGISTRY_ISSUE_PRIORITIES,
 } from "./pipeline-registry.js";
 import { REASON_LINE_MAX } from "./reason-text.js";
+import type { RefusalStatuses } from "./refusal.js";
 import { type Said, saidSchema } from "./said.js";
 import {
 	ATTENTION_LABELS,
@@ -366,6 +367,8 @@ export const FEEDBACK_REFUSAL_CODES = [
 	"FEEDBACK_ATTACHMENT_UNKNOWN",
 	/** Deleting one attachment says why, on the item's record (ISS-1327). */
 	"FEEDBACK_ATTACHMENT_REASON_REQUIRED",
+	/** Storage did not delete the attachment's bytes, so the attachment is kept and nothing deleted. */
+	"FEEDBACK_ATTACHMENT_STORAGE_KEPT",
 	// an attachment's bytes, refused under the names every attachment write uses (`attachments.ts`)
 	"EMPTY_FILE",
 	"FILE_TOO_LARGE",
@@ -389,6 +392,10 @@ export const FEEDBACK_REFUSAL_CODES = [
 	"CONTRACT_WAIT_ISSUE_FINISHED",
 ] as const;
 export type FeedbackRefusalCode = (typeof FEEDBACK_REFUSAL_CODES)[number];
+
+export const FEEDBACK_REFUSAL_STATUSES = {
+	FEEDBACK_ATTACHMENT_STORAGE_KEPT: 503,
+} as const satisfies RefusalStatuses<FeedbackRefusalCode>;
 
 export interface FeedbackRefusal {
 	code: FeedbackRefusalCode;
