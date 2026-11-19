@@ -5,10 +5,19 @@ use std::path::{Path, PathBuf};
 pub struct Scratch(PathBuf);
 
 impl Scratch {
+    /// `fbx-<name>-<8 hex>` under the temp dir. The suffix is short because a box's socket sits
+    /// under it and must fit [`crate::browser::SOCKET_PATH_MAX`], and macOS's temp dir alone is
+    /// about 49 bytes; a name already taken is drawn again, never shared.
     pub fn new(name: &str) -> Self {
-        let d = std::env::temp_dir().join(format!("fbx-{name}-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&d).expect("scratch dir");
-        Self(d)
+        loop {
+            let suffix = uuid::Uuid::new_v4().simple().to_string();
+            let d = std::env::temp_dir().join(format!("fbx-{name}-{}", &suffix[..8]));
+            match std::fs::create_dir(&d) {
+                Ok(()) => return Self(d),
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(e) => panic!("scratch dir {}: {e}", d.display()),
+            }
+        }
     }
 
     pub fn path(&self) -> &Path {
@@ -68,4 +77,16 @@ impl Drop for Scratch {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
     }
+}
+
+/// macOS's temp dir is long (`/var/folders/<2>/<28>/T/`, 49 bytes), and a box's socket under a
+/// scratch there must still fit: the whole-suite macOS leg refused every browser box test when the
+/// scratch carried a whole uuid (cleanup 21284cd0).
+#[test]
+fn a_box_socket_under_a_scratch_fits_under_macos_long_temp_dir() {
+    let mac_tmp = Path::new("/var/folders/h5/t85nd63d71x27_8gl5gw3l_w0000gn/T/");
+    let scratch = Scratch::new("display"); // the longest name a test here takes
+    let root = mac_tmp.join(scratch.path().file_name().unwrap()).join("s");
+    let dir = crate::browser::socket_dir(&root, box_id());
+    assert!(dir.is_ok(), "{dir:?}");
 }
