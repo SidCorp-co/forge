@@ -3,6 +3,7 @@
 // link to its request on the project's Secrets page (`secret-link.ts`), so no agent writes a settings
 // URL or picks a screen. A refusal names what the project declares instead, and nothing is recorded.
 
+import { parseSecretRef } from '@forge/contracts/project-config';
 import type { SupportSecretLinkRequest } from '@forge/contracts/support';
 import {
   connectionSlotKey,
@@ -31,8 +32,6 @@ export interface ResolvedSlot {
   /** Whether the slot holds a value now: its request opens on that, with nothing to do. */
   held: boolean;
 }
-
-const SECRET_REF = /^secret:\/\//;
 
 /** The fields each kind takes; any other is refused by name, never ignored. */
 const FIELDS: Record<SupportSecretLinkRequest['kind'], readonly string[]> = {
@@ -133,7 +132,7 @@ async function testingSlot(
       `testing profile ${profileId} declares no ${asked}; it declares ${names.join(', ') || 'none'}. One is declared on the profile by a project admin; ask the master with support.ask_master. No link was made.`,
     );
   }
-  if (!SECRET_REF.test(declared.credential)) {
+  if (!parseSecretRef(declared.credential)) {
     const key = declared.credential.replace(/^var:\/\//, '');
     return no(
       'SUPPORT_SECRET_SLOT_VARIABLE',

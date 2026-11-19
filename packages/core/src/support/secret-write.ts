@@ -7,6 +7,7 @@
 // Each use is kept on the ask (when, from where) and in the slot's own audit by fingerprint; a write
 // the slot's own door refuses gives the claim back, so the person can fix the file and PUT again.
 
+import { parseSecretRef } from '@forge/contracts/project-config';
 import { FILTERED } from '@forge/observability';
 import type { Context } from 'hono';
 import { Hono } from 'hono';
@@ -91,11 +92,17 @@ async function writeSlot(ask: AskRow, value: string, from: string): Promise<stri
     return written.fingerprint;
   }
   if (ask.kind === 'testing') {
-    const [, scope, name] = /^secret:\/\/([^/]+)\/(.+)$/.exec(s.ref ?? '') ?? [];
+    const ref = parseSecretRef(s.ref ?? '');
+    // the ask copied its profile's credential, which the profile's schema holds to this shape
+    if (!ref) {
+      throw new Error(
+        `secret ask ${ask.id} names ${JSON.stringify(s.ref)}, which is no secret://<scope>/<name>; nothing was written`,
+      );
+    }
     const written = await writeSecret({
       projectId: ask.projectId,
-      scope: scope ?? '',
-      name: name ?? '',
+      scope: ref.scope,
+      name: ref.name,
       value,
       actor: { id: null, tokenId: null, agency: 'human' },
       detail,

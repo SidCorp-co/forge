@@ -5,6 +5,7 @@
 // its label is its key or name in plain words, the key itself secondary text.
 
 import { createHash } from 'node:crypto';
+import { parseSecretRef } from '@forge/contracts/project-config';
 import {
   type SecretForm,
   type SecretHeld,
@@ -110,7 +111,6 @@ export function variableSlot(
 type Obj = Record<string, unknown>;
 const obj = (v: unknown): Obj =>
   v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Obj) : {};
-const SECRET_REF = /^secret:\/\/([^/]+)\/(.+)$/;
 
 /** Each testing profile's accounts and services whose credential is a stored secret. */
 async function testingGroups(
@@ -126,8 +126,9 @@ async function testingGroups(
   const groups = profiles.map((p): SecretSlotGroup => {
     const slots: SecretSlotView[] = [];
     const add = (kind: 'actor' | 'service', name: string, credential: string) => {
-      const ref = SECRET_REF.exec(credential);
-      if (!ref?.[1] || !ref[2]) return;
+      // a `var://` credential names a stored variable, not a secret
+      const ref = parseSecretRef(credential);
+      if (!ref) return;
       named.add(credential);
       const held = stored.get(credential);
       const slotKey = slotKeyOf({ projectId: s.projectId, key: credential, environment: null });
@@ -138,7 +139,7 @@ async function testingGroups(
         detail: `${p.profileId} · ${name}`,
         environment: null,
         tier: null,
-        door: { kind: 'secret', scope: ref[1], name: ref[2] },
+        door: { kind: 'secret', scope: ref.scope, name: ref.name },
         form: secretFormOf(kind === 'actor' ? 'signin' : 'value'),
         held: held ? heldOf(s, held.updatedAt, null, s.fills.get(slotKey)) : null,
       });

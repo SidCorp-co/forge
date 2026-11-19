@@ -4,6 +4,7 @@
 // already holds a value says so, with when and by whom, and that nothing is to do. Nothing here
 // answers a value: an agent reading it learns key names, scopes and shapes alone (REQ-80 BC-6).
 
+import { parseSecretRef } from '@forge/contracts/project-config';
 import type {
   SecretHeld,
   SecretRequestView,
@@ -31,7 +32,7 @@ const filledOf = (ask: AskRow, names: Map<string, string>): SecretHeld | null =>
 function askedSlot(ask: AskRow): SecretSlotView | null {
   const s = ask.slot;
   if (ask.kind !== 'testing' || !s.ref) return null;
-  const [, scope = '', name = ''] = /^secret:\/\/([^/]+)\/(.+)$/.exec(s.ref) ?? [];
+  const { scope, name } = parseSecretRef(s.ref) ?? { scope: '', name: '' };
   const slotName = s.actor ?? s.service ?? name;
   return {
     anchor: anchorOf(ask.slotKey),
