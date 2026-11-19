@@ -3,6 +3,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 
 vi.hoisted(() => {
   process.env.INTEGRATION_MASTER_KEY ??= Buffer.alloc(32, 5).toString('base64');
+  // the web app is served apart from core's own address: a reminder links the web app's pages
+  process.env.CORS_ORIGINS = 'https://web.forge.test';
 });
 
 import { db } from '../../src/db/client.js';
@@ -213,7 +215,7 @@ describe('ISS-1343: the morning reminder of what waits on a person', () => {
     expect(note).toContain('waited 12 hours');
     expect(note).toContain('recommended: "Ship it"');
     expect(note).toContain('owed by: @alice');
-    expect(linkOf(note, 1)).toMatch(new RegExp(`/projects/${slug}/issues/${issueId}$`));
+    expect(linkOf(note, 1)).toBe(`https://web.forge.test/projects/${slug}/issues/${issueId}`);
     for (const absent of [NIGHT, 'Rotate the relay key', 'Keep the old export']) {
       expect(note).not.toContain(absent);
     }

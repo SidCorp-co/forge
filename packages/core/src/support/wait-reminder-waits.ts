@@ -17,7 +17,7 @@ import { issues } from '../db/schema.js';
 import { agentQuestions } from '../db/schema-questions.js';
 import { assistantSpeakerLinks } from '../db/schema-speaker-links.js';
 import { supportActions } from '../db/schema-support.js';
-import { env } from '../lib/env.js';
+import { webBaseUrl } from '../lib/web-base-url.js';
 import { namedHolders } from '../permissions/index.js';
 import { ESCALATE_AFTER_DAYS } from '../questions/index.js';
 
@@ -100,7 +100,8 @@ export function ageOf(since: string | null, now: Date): string {
   return hours >= 48 ? `${Math.floor(hours / 24)} days` : `${hours} hours`;
 }
 
-const base = () => env.APP_BASE_URL.replace(/\/+$/, '');
+// the web app's origin, as every link support writes back to Forge takes it
+const base = () => webBaseUrl() ?? '';
 
 /** The Forge page a decision opens on: its issue by documentId, its own item, else the project's approvals. */
 function linkOf(slug: string, d: NeedsYouDecision, issueOf: ReadonlyMap<string, string>): string {
