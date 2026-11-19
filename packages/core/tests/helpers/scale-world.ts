@@ -183,7 +183,9 @@ export async function seedAtScale(
     INSERT INTO release_holds (project_id, issue_id, code, reason, owes, waiting_for)
     SELECT ${p}, id, 'RELEASE_CRITERIA_UNEARNED', 'no runtime witnessed it', 'human', 'a verdict at the running deployment'
       FROM issues WHERE project_id = ${p} AND status = 'awaiting_release' AND iss_seq % 2 = 0`);
-  await db.execute(sql`ANALYZE`);
+  // vacuumed as forge-dev's autovacuum keeps its tables: the live shape's updates leave 38 thousand
+  // dead verdicts, and autovacuum reaching them mid-read moved a read's buffers by a tenth
+  await db.execute(sql`VACUUM ANALYZE`);
   return p;
 }
 
