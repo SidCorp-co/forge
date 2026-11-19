@@ -87,6 +87,10 @@ describe('ISS-1238: a master edits or deletes its own post within the window', (
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(lineOf(id)?.text).toBe(FIXED);
     expect(res.body).toMatchObject({ rid: chat.rid2, messageId: id, text: FIXED });
+    // the thread's stored line reads as the room does, so a replay reads the edited words
+    const stored = await rows<{ content: string }>(sql`
+      SELECT content FROM conversation_messages WHERE external_id = ${id} AND role = 'assistant'`);
+    expect(stored.map((r) => r.content)).toEqual([FIXED]);
     const [act] = await rows<{
       kind: string;
       input: Record<string, unknown>;

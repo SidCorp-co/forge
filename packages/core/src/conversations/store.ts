@@ -444,8 +444,9 @@ export async function redactInboundContent(
 
 /**
  * A sent message's content replaced where the chat server replaced its text in place (a master's
- * post taking the bot's answer, `support/one-voice.ts:replaceAnswer`): the transport's id names it in
- * its conversation. How many rows it changed (0 or 1).
+ * post taking the bot's answer, `support/one-voice.ts:replaceAnswer`, or a master editing its own,
+ * `support/master-post-edit.ts:editMasterPost`): the transport's id names it in its conversation.
+ * How many rows it changed (0 or 1).
  */
 export async function replaceSentContent(
   args: { conversationId: string; externalId: string; content: string },

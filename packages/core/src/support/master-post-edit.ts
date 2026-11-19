@@ -12,6 +12,7 @@ import { supportMasterPostEditRequestSchema } from '@forge/contracts/support-cha
 import { asc, eq } from 'drizzle-orm';
 import type { Hono } from 'hono';
 import { z } from 'zod';
+import { replaceSentContent } from '../conversations/index.js';
 import { db } from '../db/client.js';
 import { supportActions } from '../db/schema-support.js';
 import { deleteRoomMessage, editProvenReply } from '../integrations/rocketchat/index.js';
@@ -212,6 +213,14 @@ export async function editMasterPost(
     admitted.value.proof,
   );
   if (!out.ok) return unchanged(messageId, room, 'edit', out.why);
+  // the thread's stored line reads as the room does, so a replay reads the edited words
+  if (post.conversationId) {
+    await replaceSentContent({
+      conversationId: post.conversationId,
+      externalId: messageId,
+      content: admitted.value.text,
+    });
+  }
   const at = await recordAct(actor, own.value, EDIT_TOOL, messageId, {
     before: own.value.text,
     text,
