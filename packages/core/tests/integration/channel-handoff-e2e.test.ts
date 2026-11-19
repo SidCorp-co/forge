@@ -119,6 +119,48 @@ describe('a master hands a finding from its issue to a linked project (ISS-1286)
       (thread.items as { body: string }[]).filter((c) => c.body.startsWith('Handed to ')),
     ).toHaveLength(1);
   });
+
+  it('a different finding handed from the same issue joins what it filed as a further report, never dropped', async () => {
+    const further = {
+      kind: 'bug',
+      title: 'The plugin retries a refused phase forever',
+      whereSeen: 'forge-runner drive, phase retry',
+      body: 'After a 409 the plugin posts the same phase every second until the job ends.',
+      severity: 'high',
+    };
+    const before = await pluginFeedbackCount();
+    const handed = status(
+      await say('masterForge', 'POST', `/api/projects/${w.project.forge}/channel/handoffs`, {
+        to: w.project.plugin,
+        item: issue.key,
+        ...further,
+      }),
+      200,
+    ).handoff;
+    expect([handed.to.feedback.key, handed.created]).toEqual([key, false]);
+    expect(await pluginFeedbackCount()).toBe(before);
+    // planted on the key ignoring content: the call answered the same and nothing was written
+    const said = ((await pluginFeedback(key)).occurrences as { said: string | null }[]).map(
+      (o) => o.said ?? '',
+    );
+    expect(said).toHaveLength(1);
+    for (const part of [further.title, further.body, further.whereSeen, 'high'])
+      expect(said[0]).toContain(part);
+    const thread = status(await say('masterForge', 'GET', `/api/issues/${issue.id}/comments`), 200);
+    expect((thread.items as { body: string }[]).map((c) => c.body)).toContain(
+      `Handed a further finding to forge-plugin's intake, joining forge-plugin ${key}, through ecosystem forge-platform.`,
+    );
+    // the same further finding handed again is a retry: nothing more is written
+    status(
+      await say('masterForge', 'POST', `/api/projects/${w.project.forge}/channel/handoffs`, {
+        to: w.project.plugin,
+        item: issue.key,
+        ...further,
+      }),
+      200,
+    );
+    expect((await pluginFeedback(key)).occurrences).toHaveLength(1);
+  });
 });
 
 describe('a master hands its own feedback item, found to be another project’s part', () => {

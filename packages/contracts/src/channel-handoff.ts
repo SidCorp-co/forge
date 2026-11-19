@@ -33,6 +33,9 @@ export interface ChannelHandoffView {
 		project: { id: string; slug: string };
 		feedback: { id: string; key: string };
 	};
-	/** False where the item was already handed there and that feedback is still open: nothing was written. */
+	/**
+	 * False where the item was already handed there and that feedback is still open: the same finding
+	 * again wrote nothing; a different one joined it as a further report, recorded on the sending item.
+	 */
 	created: boolean;
 }

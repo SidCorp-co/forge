@@ -9,18 +9,22 @@
  * ecosystem channel's to decide (`ecosystem/channel-handoff.ts`); this files what it decided.
  *
  * Handing the same item to the same project again, while what it filed there is open, joins that
- * item by its signal key and writes nothing, so a retried call never files a twin.
+ * item by its signal key. The same finding again is a retry and writes nothing, so a retried call
+ * never files a twin; a different finding joins it as a further report, an occurrence carrying its
+ * title, severity, where it was seen and its body, as a repeat of a signal does (`signal-filing.ts`),
+ * and the sending item records where it went, so a second finding is never dropped in silence.
  */
 
+import { createHash } from 'node:crypto';
 import { type FeedbackKind, type FeedbackSeverity, feedbackKey } from '@forge/contracts/feedback';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { postIssueNotice } from '../comments/index.js';
 import type { Tx } from '../db/client.js';
-import { feedback, feedbackMessages } from '../db/schema-feedback.js';
+import { feedback, feedbackMessages, feedbackOccurrences } from '../db/schema-feedback.js';
 import type { Refusal } from '../lib/refusal.js';
 import { embedFeedbackLater } from './embeddings.js';
 import { addOccurrenceIn } from './occurrences.js';
-import type { FeedbackActor } from './read.js';
+import type { FeedbackActor, Row } from './read.js';
 import { insertFeedbackIn, inTx, lockFeedback, preparedFeedback } from './service.js';
 import { openItemOf } from './signal-filing.js';
 
@@ -53,6 +57,9 @@ export type HandoffFiling =
 const handedTo = (h: Handoff, key: string) =>
   `Handed to ${h.to.slug}'s intake as ${h.to.slug} ${key}, through ecosystem ${h.via}.`;
 
+const handedFurther = (h: Handoff, key: string) =>
+  `Handed a further finding to ${h.to.slug}'s intake, joining ${h.to.slug} ${key}, through ecosystem ${h.via}.`;
+
 const handedFrom = (h: Handoff) =>
   `Handed from ${h.from.slug} ${h.from.item.key}, through ecosystem ${h.via}.`;
 
@@ -79,14 +86,64 @@ async function noteOn(
 }
 
 /** The record the sending item keeps of where its finding went. */
-async function recordOnSource(tx: Tx, h: Handoff, key: string): Promise<void> {
-  const said = handedTo(h, key);
+async function recordOnSource(tx: Tx, h: Handoff, said: string): Promise<void> {
   const { item } = h.from;
   if (item.kind === 'issue') {
     await postIssueNotice({ issueId: item.id, authorId: h.actor.userId, body: said }, tx);
     return;
   }
   await noteOn(tx, h, { projectId: h.from.id, feedbackId: item.id }, said);
+}
+
+/** Where a handed finding comes from, as its occurrence names it. */
+const sourceOf = (h: Handoff) => ({
+  projectId: h.from.id,
+  issueId: h.from.item.kind === 'issue' ? h.from.item.id : null,
+  runId: null,
+  clientVersion: null,
+});
+
+/** What a finding says, as stored: the fields a retry repeats and a further finding changes. */
+type Finding = Pick<Row, 'kind' | 'severity' | 'title' | 'body' | 'whereSeen'>;
+
+const digestOf = (f: Finding): string =>
+  createHash('sha256')
+    .update(JSON.stringify([f.kind, f.severity, f.title, f.body ?? null, f.whereSeen ?? null]))
+    .digest('hex')
+    .slice(0, 32);
+
+/** A further finding as its occurrence says it: title, severity and kind, where seen, then its body. */
+const furtherSaid = (f: Finding): string =>
+  [
+    f.title,
+    `Severity ${f.severity}, ${f.kind}${f.whereSeen ? `, seen at ${f.whereSeen}` : ''}.`,
+    f.body ?? '',
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+
+/**
+ * A finding handed again to the open item it filed: a retry of what it filed, or of a further
+ * finding already joined, writes nothing; a different one joins it as an occurrence and the sending
+ * item records it.
+ */
+async function joinOpen(tx: Tx, h: Handoff, open: Row, finding: Finding): Promise<void> {
+  const digest = digestOf(finding);
+  if (digest === digestOf(open)) return;
+  const dedupKey = `handoff:${open.id}:${digest}`;
+  const [joined] = await tx
+    .select({ id: feedbackOccurrences.id })
+    .from(feedbackOccurrences)
+    .where(
+      and(eq(feedbackOccurrences.feedbackId, open.id), eq(feedbackOccurrences.dedupKey, dedupKey)),
+    )
+    .limit(1);
+  if (joined) return;
+  await addOccurrenceIn(tx, open.id, h.actor, sourceOf(h), {
+    said: furtherSaid(finding),
+    dedupKey,
+  });
+  await recordOnSource(tx, h, handedFurther(h, feedbackKey(open.fbSeq)));
 }
 
 async function seqOf(tx: Tx, id: string): Promise<number> {
@@ -116,18 +173,20 @@ export async function fileHandoff(h: Handoff): Promise<HandoffFiling> {
     if (open) {
       id = open.id;
       seq = open.fbSeq;
+      await joinOpen(tx, h, open, {
+        kind: prepared.values.kind,
+        severity: prepared.values.severity ?? 'medium',
+        title: prepared.values.title,
+        body: prepared.values.body ?? null,
+        whereSeen: prepared.values.whereSeen ?? null,
+      });
       return null;
     }
     id = await insertFeedbackIn(tx, { ...prepared.values, signalKey });
     seq = await seqOf(tx, id);
-    await addOccurrenceIn(tx, id, h.actor, {
-      projectId: h.from.id,
-      issueId: h.from.item.kind === 'issue' ? h.from.item.id : null,
-      runId: null,
-      clientVersion: null,
-    });
+    await addOccurrenceIn(tx, id, h.actor, sourceOf(h));
     await noteOn(tx, h, { projectId: h.to.id, feedbackId: id }, handedFrom(h));
-    await recordOnSource(tx, h, feedbackKey(seq));
+    await recordOnSource(tx, h, handedTo(h, feedbackKey(seq)));
     created = true;
     return null;
   });
