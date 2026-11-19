@@ -229,6 +229,7 @@ export async function insertEvents(tx: Tx, events: readonly EventInput[]): Promi
                 slot: slotKeyOf(e),
                 fingerprint: e.newFingerprint,
                 via: e.detail?.via === 'presigned' ? ('presigned' as const) : ('page' as const),
+                by: e.actorId,
                 at: new Date().toISOString(),
               },
             },

@@ -1,6 +1,7 @@
 // ISS-1348 (owner, 2026-11-19), owned by the `support` domain beside its rooms (`schema-support.ts`):
 // a secret a room agent asked a person for, through the one secret door.
 
+import type { SecretShape } from '@forge/contracts/secret-slots';
 import { SECRET_SLOT_KINDS, SECRET_WRITE_VIAS } from '@forge/contracts/support';
 import { sql } from 'drizzle-orm';
 import {
@@ -13,6 +14,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { users } from './schema-auth.js';
 import { projects } from './schema-projects.js';
 import { supportRooms } from './schema-support.js';
 
@@ -21,7 +23,7 @@ const inList = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`
 /**
  * One ask a room agent made with `support.secret_link`: the slot it names (a variable at one
  * environment, a testing profile's credential, an integration's credential), the thread that asked,
- * and the link that opens that one field. `slot_key` names the slot as every write of it does, so a
+ * why, the value's expected shape, and the link that opens that one request on the Secrets page. `slot_key` names the slot as every write of it does, so a
  * value saved through any door finds the asks waiting on it and their threads hear that it was filled.
  *
  * Where the act asked for a pre-signed write, `write_hash` is the SHA-256 of its one-time token (the
@@ -43,6 +45,10 @@ export const supportSecretAsks = pgTable(
     slot: jsonb('slot').$type<Record<string, string | null>>().notNull(),
     slotKey: text('slot_key').notNull(),
     link: text('link').notNull(),
+    why: text('why').notNull(),
+    shape: jsonb('shape').$type<SecretShape>(),
+    example: text('example'),
+    askedFor: text('asked_for'),
     writeHash: text('write_hash'),
     writeExpiresAt: timestamp('write_expires_at', { withTimezone: true }),
     writeUsedAt: timestamp('write_used_at', { withTimezone: true }),
@@ -50,6 +56,7 @@ export const supportSecretAsks = pgTable(
     filledAt: timestamp('filled_at', { withTimezone: true }),
     filledFingerprint: text('filled_fingerprint'),
     filledVia: text('filled_via', { enum: SECRET_WRITE_VIAS }),
+    filledBy: uuid('filled_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
@@ -59,6 +66,7 @@ export const supportSecretAsks = pgTable(
     openIdx: index('support_secret_asks_open_idx')
       .on(t.slotKey, t.createdAt)
       .where(sql`filled_at IS NULL`),
+    projectIdx: index('support_secret_asks_project_idx').on(t.projectId, t.createdAt),
     threadIdx: index('support_secret_asks_thread_idx').on(t.roomId, t.thread, t.createdAt),
     kindChk: check(
       'support_secret_asks_kind_chk',

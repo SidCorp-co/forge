@@ -37,6 +37,7 @@ export async function tellSlotFilled(p: OutboxEventPayload<'secret.slotFilled'>)
   const asks = await fillAsks(p.slot, {
     fingerprint: p.fingerprint,
     via: p.via,
+    by: p.by,
     at: new Date(p.at),
   });
   const told = new Set<string>();

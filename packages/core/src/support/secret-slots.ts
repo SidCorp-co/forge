@@ -1,7 +1,7 @@
-// The slot a secret link names, resolved for one project (ISS-1348): each kind's own field, the page
-// that opens it, and the key every write of it is told by (`secret.slotFilled`). The agent names the
-// slot; core builds the link, so no agent writes a settings URL or picks a screen. A refusal names
-// what the project declares instead, and nothing is recorded.
+// The slot a secret link names, resolved for one project (ISS-1348): each kind's own field, and the
+// key every write of it is told by (`secret.slotFilled`). The agent names the slot; core builds the
+// link to its request on the project's Secrets page (`secret-link.ts`), so no agent writes a settings
+// URL or picks a screen. A refusal names what the project declares instead, and nothing is recorded.
 
 import type { SupportSecretLinkRequest } from '@forge/contracts/support';
 import {
@@ -11,19 +11,24 @@ import {
 } from '../integrations/index.js';
 import {
   declaredEnvironments,
+  listSecretNames,
   listTestingProfiles,
   slotKeyOf,
   variableHeld,
 } from '../project-config/index.js';
 import { no, type Outcome } from './outcome.js';
 
+/** The fields of the act that name a slot: the act's own, and the page's. */
+export type SlotNamed = Pick<
+  SupportSecretLinkRequest,
+  'kind' | 'environment' | 'key' | 'profile' | 'actor' | 'service' | 'provider'
+>;
+
 export interface ResolvedSlot {
   kind: SupportSecretLinkRequest['kind'];
   slot: Record<string, string | null>;
   slotKey: string;
-  /** The page's path and query after the web app's address, at the one field. */
-  path: string;
-  /** Whether the slot holds a value now: a link to a held one replaces it. */
+  /** Whether the slot holds a value now: its request opens on that, with nothing to do. */
   held: boolean;
 }
 
@@ -37,7 +42,7 @@ const FIELDS: Record<SupportSecretLinkRequest['kind'], readonly string[]> = {
 };
 const SLOT_FIELDS = ['environment', 'key', 'profile', 'actor', 'service', 'provider'] as const;
 
-function shapeRefused(input: SupportSecretLinkRequest): Outcome<never> | null {
+function shapeRefused(input: SlotNamed): Outcome<never> | null {
   const takes = FIELDS[input.kind];
   const stray = SLOT_FIELDS.filter((f) => input[f] !== undefined && !takes.includes(f));
   const missing =
@@ -77,34 +82,21 @@ async function variableSlot(
       `${project.slug} declares no environment ${environment}; it declares ${declared.map((e) => e.name).join(', ') || 'none'}, or null scopes the variable to every environment. No link was made.`,
     );
   }
-  const query = new URLSearchParams({ tab: 'variables', key, environment: environment ?? '*' });
   return {
     ok: true,
     value: {
       kind: 'variable',
       slot: { environment, key },
       slotKey: slotKeyOf({ projectId: project.id, key, environment }),
-      path: `/projects/${project.slug}/settings?${query.toString()}#variables`,
       held: await variableHeld(project.id, key, environment),
     },
   };
 }
 
-/** The Testing settings of `slug`, at the one slot named, with its value field open (ISS-1328). */
-export function secretLinkOf(
-  web: string,
-  slug: string,
-  profile: string,
-  slot: { actor: string } | { service: string },
-): string {
-  const [kind, name] = 'actor' in slot ? ['actor', slot.actor] : ['service', slot.service];
-  const query = new URLSearchParams({ tab: 'testing', profile, [kind]: name });
-  return `${web}/projects/${slug}/settings?${query.toString()}#profile-${profile}`;
-}
-
 async function testingSlot(
   project: { id: string; slug: string },
-  input: SupportSecretLinkRequest,
+  input: SlotNamed,
+  stored: (ref: string) => Promise<boolean>,
 ): Promise<Outcome<ResolvedSlot>> {
   const profileId = input.profile ?? '';
   if ((input.actor === undefined) === (input.service === undefined)) {
@@ -150,16 +142,13 @@ async function testingSlot(
     );
   }
   const slot = input.actor !== undefined ? { actor: input.actor } : { service: name };
-  const path = new URL(secretLinkOf('http://x', project.slug, profileId, slot));
   return {
     ok: true,
     value: {
       kind: 'testing',
       slot: { profile: profileId, ...slot, ref: declared.credential },
       slotKey: slotKeyOf({ projectId: project.id, key: declared.credential, environment: null }),
-      path: `${path.pathname}${path.search}${path.hash}`,
-      // a profile names only stored values: the master declares a slot before its value is given
-      held: true,
+      held: await stored(declared.credential),
     },
   };
 }
@@ -206,7 +195,6 @@ async function integrationSlot(
       kind: 'integration',
       slot: { provider, connection: connection.id },
       slotKey: connectionSlotKey(connection.id),
-      path: `/integrations?${new URLSearchParams({ connection: connection.id }).toString()}`,
       held: connection.secretsEnc !== null,
     },
   };
@@ -215,13 +203,17 @@ async function integrationSlot(
 /** The slot `input` names on `project`, or the refusal naming what it declares instead. */
 export async function resolveSlot(
   project: { id: string; slug: string },
-  input: SupportSecretLinkRequest,
+  input: SlotNamed,
 ): Promise<Outcome<ResolvedSlot>> {
   const shape = shapeRefused(input);
   if (shape) return shape;
   if (input.kind === 'variable') {
     return variableSlot(project, input.environment ?? null, input.key ?? '');
   }
-  if (input.kind === 'testing') return testingSlot(project, input);
+  if (input.kind === 'testing') {
+    const stored = async (ref: string) =>
+      (await listSecretNames(project.id)).some((s) => s.ref === ref);
+    return testingSlot(project, input, stored);
+  }
   return integrationSlot(project, input.provider ?? '');
 }

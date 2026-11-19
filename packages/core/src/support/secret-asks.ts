@@ -3,8 +3,9 @@
 // both win, and released where the write it carried was refused, so a person can fix the file and try
 // again before it expires.
 
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { OutboxEventPayload } from '@forge/contracts/outbox-events';
+import type { SecretShape } from '@forge/contracts/secret-slots';
 import type { SecretSlotKind } from '@forge/contracts/support';
 import { and, desc, eq, gt, gte, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -22,6 +23,8 @@ const ASK_OPEN_MS = 7 * 24 * 60 * 60_000;
 export const tokenHashOf = (token: string) => createHash('sha256').update(token).digest('hex');
 
 export interface NewAsk {
+  /** Chosen before the insert, so the link can name the request it lands on. */
+  id: string;
   projectId: string;
   roomId: string;
   thread: string;
@@ -29,7 +32,27 @@ export interface NewAsk {
   slot: Record<string, string | null>;
   slotKey: string;
   link: string;
+  why: string;
+  shape: SecretShape | null;
+  example: string | null;
+  askedFor: string | null;
 }
+
+/** A new ask of the same slot, for the same thread and reason: a fresh write URL on a request already made. */
+export const againOf = (ask: AskRow): NewAsk => ({
+  id: randomUUID(),
+  projectId: ask.projectId,
+  roomId: ask.roomId,
+  thread: ask.thread,
+  kind: ask.kind,
+  slot: ask.slot,
+  slotKey: ask.slotKey,
+  link: ask.link,
+  why: ask.why,
+  shape: ask.shape,
+  example: ask.example,
+  askedFor: ask.askedFor,
+});
 
 /** The ask recorded, with a one-time write token where `presign`; the token is answered once, here. */
 export async function recordAsk(
@@ -86,11 +109,16 @@ export async function askOfToken(token: string): Promise<AskRow | null> {
 /** Every unfilled ask for `slotKey`, marked filled by `fingerprint`; each ask is told once. */
 export async function fillAsks(
   slotKey: string,
-  fill: { fingerprint: string; via: 'page' | 'presigned'; at: Date },
+  fill: { fingerprint: string; via: 'page' | 'presigned'; by: string | null; at: Date },
 ): Promise<AskRow[]> {
   return db
     .update(supportSecretAsks)
-    .set({ filledAt: fill.at, filledFingerprint: fill.fingerprint, filledVia: fill.via })
+    .set({
+      filledAt: fill.at,
+      filledFingerprint: fill.fingerprint,
+      filledVia: fill.via,
+      filledBy: fill.by,
+    })
     .where(
       and(
         eq(supportSecretAsks.slotKey, slotKey),
@@ -99,6 +127,30 @@ export async function fillAsks(
       ),
     )
     .returning();
+}
+
+/** The asks made of a project in the last week, newest first: its Secrets page's requests. */
+export async function asksOfProject(projectId: string): Promise<AskRow[]> {
+  return db
+    .select()
+    .from(supportSecretAsks)
+    .where(
+      and(
+        eq(supportSecretAsks.projectId, projectId),
+        gte(supportSecretAsks.createdAt, new Date(Date.now() - ASK_OPEN_MS)),
+      ),
+    )
+    .orderBy(desc(supportSecretAsks.createdAt));
+}
+
+/** One ask of a project, by its id. */
+export async function askOf(projectId: string, id: string): Promise<AskRow | null> {
+  const [row] = await db
+    .select()
+    .from(supportSecretAsks)
+    .where(and(eq(supportSecretAsks.projectId, projectId), eq(supportSecretAsks.id, id)))
+    .limit(1);
+  return row ?? null;
 }
 
 /** The newest unfilled ask in a thread of a room, for a secret pasted there instead (ISS-1348 c4). */

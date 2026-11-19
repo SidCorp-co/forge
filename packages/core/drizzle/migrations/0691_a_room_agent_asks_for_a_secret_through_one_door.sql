@@ -1,9 +1,11 @@
 -- ISS-1348 (owner, 2026-11-19). A room agent asks a person for a secret through one door: the slot it
 -- names (a variable at one environment, a testing profile's credential, an integration's credential),
--- the thread that asked and the link that opens that one field. Where it asked for a one-time write
--- URL, the token's SHA-256 (never the token), when it expires and when and from where it was used. A
--- value saved through either door fills the asks waiting on its slot, by fingerprint alone, and their
--- threads hear so, through the new outbox event `secret.slotFilled`. No value is ever kept here.
+-- the thread that asked, why, and the value's expected shape, so the project's Secrets page lists it
+-- first as a request a person fills in one step (owner's ruling of 19/11). Where it asked for a
+-- one-time write URL, the token's SHA-256 (never the token), when it expires and when and from where it was used. A
+-- value saved through either door fills the asks waiting on its slot, by fingerprint and the account
+-- that saved it (none for a write URL), and their threads hear so, through the new outbox event
+-- `secret.slotFilled`. No value is ever kept here.
 --
 -- ROLLBACK: DROP TABLE IF EXISTS "support_secret_asks";
 --   DELETE FROM "outbox_event_types" WHERE "type" = 'secret.slotFilled' (only while no row carries it).
@@ -18,6 +20,10 @@ CREATE TABLE IF NOT EXISTS "support_secret_asks" (
 	"slot" jsonb NOT NULL,
 	"slot_key" text NOT NULL,
 	"link" text NOT NULL,
+	"why" text NOT NULL,
+	"shape" jsonb,
+	"example" text,
+	"asked_for" text,
 	"write_hash" text,
 	"write_expires_at" timestamp with time zone,
 	"write_used_at" timestamp with time zone,
@@ -25,6 +31,7 @@ CREATE TABLE IF NOT EXISTS "support_secret_asks" (
 	"filled_at" timestamp with time zone,
 	"filled_fingerprint" text,
 	"filled_via" text,
+	"filled_by" uuid REFERENCES "users"("id") ON DELETE set null,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "support_secret_asks_kind_chk" CHECK ("kind" IN ('variable', 'testing', 'integration')),
 	CONSTRAINT "support_secret_asks_via_chk" CHECK ("filled_via" IS NULL OR "filled_via" IN ('page', 'presigned')),
@@ -32,5 +39,6 @@ CREATE TABLE IF NOT EXISTS "support_secret_asks" (
 );--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "support_secret_asks_write_uq" ON "support_secret_asks" ("write_hash") WHERE write_hash IS NOT NULL;--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "support_secret_asks_open_idx" ON "support_secret_asks" ("slot_key", "created_at") WHERE filled_at IS NULL;--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "support_secret_asks_project_idx" ON "support_secret_asks" ("project_id", "created_at");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "support_secret_asks_thread_idx" ON "support_secret_asks" ("room_id", "thread", "created_at");--> statement-breakpoint
 INSERT INTO "outbox_event_types" ("type") VALUES ('secret.slotFilled') ON CONFLICT DO NOTHING;

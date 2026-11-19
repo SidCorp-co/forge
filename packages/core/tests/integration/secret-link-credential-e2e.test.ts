@@ -1,13 +1,15 @@
 /**
  * A credential given through a room agent's secret link reaches the master without passing through
- * chat (ISS-1328 c2, c4): the link opens the Testing settings at one service of the project's testing
- * profile, the page writes the value at that slot's own `secret://` through the project's secrets
- * door, and a run judging with the profile reads it at the testing-profile secrets door, naming the
+ * chat (ISS-1328 c2, c4; ISS-1348): the link opens the project's Secrets page, which lists the
+ * profile's service with the door its value is written at, the page writes the value at that slot's
+ * own `secret://` through the project's secrets door, and a run judging with the profile reads it at
+ * the testing-profile secrets door, naming the
  * service. Nobody pasted it anywhere: the value is written once, by the person, and read once, by the
  * run. Here the run is a review run a project admin declares over a box, the declared run a master's
  * `run declare` opens; the same door answers both.
  *
  * @direct-test-of packages/core/src/support/secret-link.ts
+ * @direct-test-of packages/core/src/support/secret-page.ts
  * @direct-test-of packages/core/src/project-config/testing-secrets.ts
  */
 
@@ -104,26 +106,20 @@ beforeAll(async () => {
 
 describe('a credential given through the secret link (ISS-1328)', () => {
   it('is kept at the slot the link names and read by the run at the testing-profile door', async () => {
-    const link = new URL(
-      secretLinkOf('https://forge.example.test', world.slug, 'stg', { service: 'pgprints' }),
-    );
+    const link = new URL(secretLinkOf('https://forge.example.test', world.slug, randomUUID()));
     expect(link.pathname).toBe(`/projects/${world.slug}/settings`);
-    const q = link.searchParams;
-    expect([q.get('tab'), q.get('profile'), q.get('service')]).toEqual([
-      'testing',
-      'stg',
-      'pgprints',
-    ]);
+    expect(link.searchParams.get('tab')).toBe('secrets');
 
-    // the page reads the slot's credential off the profile and writes the value there, once
-    const profile = await ok(
-      api(world.token, 'GET', `/api/projects/${world.projectId}/testing-profiles/stg`),
-    );
-    const services = (profile.document as { services: Record<string, { credential: string }> })
-      .services;
-    const [, scope, name] = /^secret:\/\/([^/]+)\/(.+)$/.exec(
-      services[q.get('service') ?? '']?.credential ?? '',
-    ) as RegExpExecArray;
+    // the page lists the profile's service, in plain words, with the door its value is written at
+    const page = await ok(api(world.token, 'GET', `/api/projects/${world.projectId}/support/secrets`));
+    const groups = page.groups as {
+      kind: string;
+      slots: { label: string; held: unknown; door: { kind: string; scope: string; name: string } }[];
+    }[];
+    const service = groups.find((g) => g.kind === 'testing')?.slots[0];
+    expect(service).toMatchObject({ label: 'Pgprints', door: { kind: 'secret' } });
+    expect(service?.held).not.toBeNull();
+    const { scope, name } = service?.door ?? { scope: '', name: '' };
     await ok(
       api(world.token, 'PUT', `/api/projects/${world.projectId}/secrets/${scope}/${name}`, {
         value: GIVEN,

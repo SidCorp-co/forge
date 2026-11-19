@@ -21,7 +21,7 @@ import { webBaseUrl } from '../lib/web-base-url.js';
 import { channelOfRoom, shownNames } from './channel.js';
 import { membersOf } from './channel-store.js';
 import { threadOf } from './rules.js';
-import { openAskIn, recordAsk } from './secret-asks.js';
+import { againOf, openAskIn, recordAsk } from './secret-asks.js';
 import { secretWriteOf } from './secret-link.js';
 import { slotLabelOf } from './secret-receipts.js';
 import { insertAction, type RoomRow } from './store.js';
@@ -125,18 +125,7 @@ async function doorLine(room: RoomRow, thread: string): Promise<string | null> {
   const asked = await openAskIn(room.id, thread);
   const web = webBaseUrl();
   if (asked && web) {
-    const { row, token } = await recordAsk(
-      {
-        projectId: asked.projectId,
-        roomId: room.id,
-        thread,
-        kind: asked.kind,
-        slot: asked.slot,
-        slotKey: asked.slotKey,
-        link: asked.link,
-      },
-      true,
-    );
+    const { row, token } = await recordAsk(againOf(asked), true);
     const write =
       token && row.writeExpiresAt ? secretWriteOf(web, token, row.writeExpiresAt) : null;
     return [

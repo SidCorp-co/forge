@@ -13,6 +13,7 @@ import { z } from "zod";
 import { ISSUE_STATUSES } from "./issue-machine.js";
 import { REASON_LINE_MAX, REASON_PARAGRAPH_MAX } from "./reason-text.js";
 import type { RefusalStatuses } from "./refusal.js";
+import { secretShapeSchema } from "./secret-slots.js";
 import type { OperationsScope, SupportRoomKind } from "./support-operations.js";
 
 /** The limits a support group runs under unless its binding names its own. */
@@ -1000,6 +1001,24 @@ export const supportSecretLinkRequestSchema = z.strictObject({
 		.describe(
 			"also answer a one-time write URL for this slot, for a value that lives in a file or a terminal",
 		),
+	why: z
+		.string()
+		.trim()
+		.min(3)
+		.max(300)
+		.describe("what the value is for, in plain words: the person reads it above the field"),
+	shape: secretShapeSchema
+		.optional()
+		.describe(
+			"the value's shape, so the page asks for it fitly: value (one secret, the default), file, mailbox (address, password, IMAP and SMTP host and port), signin (account, password), or { fields: [{ key, label, secret?, example? }] } written as one JSON object",
+		),
+	example: z
+		.string()
+		.trim()
+		.min(1)
+		.max(120)
+		.optional()
+		.describe("a made-up example of the value's form (GOCSPX-…, service-account.json), never the value"),
 });
 export type SupportSecretLinkRequest = z.infer<typeof supportSecretLinkRequestSchema>;
 
@@ -1887,6 +1906,14 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_SECRET_WRITE_EMPTY",
 	/** A write URL PUT with a body longer than a secret holds (ISS-1348). */
 	"SUPPORT_SECRET_WRITE_TOO_LONG",
+	/** A secret ask whose asking line or example holds what reads as a secret itself (ISS-1348). */
+	"SUPPORT_SECRET_ASK_HOLDS_SECRET",
+	/** A one-time write URL asked of a request already filled (ISS-1348). */
+	"SUPPORT_SECRET_ASK_FILLED",
+	/** A request of the Secrets page naming no ask of the project (ISS-1348). */
+	"SUPPORT_SECRET_ASK_UNKNOWN",
+	/** A one-time write URL asked by an agent credential: a person mints one on the page (ISS-1348). */
+	"SUPPORT_SECRET_ASK_PERSON_ONLY",
 	/** A secret link naming an actor or service its profile does not declare (ISS-1328). */
 	"SUPPORT_SECRET_SLOT_UNKNOWN",
 	/** A testing secret link naming a service whose credential is a stored variable: a variable link (ISS-1328). */
@@ -2121,6 +2148,10 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_SECRET_WRITE_ONLY: 403,
 	SUPPORT_SECRET_WRITE_EMPTY: 400,
 	SUPPORT_SECRET_WRITE_TOO_LONG: 400,
+	SUPPORT_SECRET_ASK_HOLDS_SECRET: 400,
+	SUPPORT_SECRET_ASK_FILLED: 409,
+	SUPPORT_SECRET_ASK_UNKNOWN: 404,
+	SUPPORT_SECRET_ASK_PERSON_ONLY: 403,
 	SUPPORT_SECRET_SLOT_UNKNOWN: 404,
 	SUPPORT_SECRET_SLOT_VARIABLE: 409,
 	SUPPORT_SECRET_LINK_NO_WEB: 503,

@@ -11,7 +11,7 @@ import { z } from 'zod';
 
 export const SECRET_LINK_TOOL_FIELDS = {
   ...supportSecretLinkRequestSchema
-    .omit({ thread: true, kind: true, project: true, environment: true, key: true })
+    .omit({ thread: true, kind: true, project: true, environment: true, key: true, why: true })
     .partial().shape,
   environment: supportPromiseRequestSchema.shape.environment
     .nullable()

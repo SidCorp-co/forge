@@ -14,7 +14,7 @@ export const SECRET_ACT_CARDS = {
     situations: [
       {
         when: 'you need a secret a person holds: a production or staging variable, a test account, an integration’s key',
-        do: 'call support.secret_link { thread, kind, … } naming the slot (presign: true where the value sits in a file) and give its link and command in your reply; you are told by fingerprint when it is filled',
+        do: 'call support.secret_link { thread, why, kind, …, shape? } naming the slot, why you need it and its shape (presign: true where the value sits in a file), and give its link and command in your reply; you are told by fingerprint when it is filled',
         watch:
           'never name a settings screen or write an address yourself, and never ask for the value in chat',
       },
@@ -27,14 +27,16 @@ export const SECRET_ACT_CARDS = {
     ],
     practice: [
       'Name the slot by kind: variable { environment, key } (null environment: every one), testing { profile, actor | service }, integration { provider }; project where it is another project’s.',
-      'A slot the project lacks opens as a new variable; a testing slot or connection it lacks is the master’s to declare (support.ask_master).',
-      'Once told it was filled, say it was received and go on: never ask for it twice.',
+      'Say why in plain words and the shape: value, file, mailbox, signin or { fields }; the person fills labelled boxes, never JSON, and reads why above them.',
+      'A variable the project lacks is asked as a new one; a testing slot or connection it lacks is the master’s to declare (support.ask_master). Once told it was filled, say so and go on.',
     ],
     example: {
       thread: '86aGqsokzYezYNdvF',
       kind: 'variable',
       environment: 'production',
       key: 'GOOGLE_CLIENT_SECRET',
+      why: 'Driver sign-in with Google needs it before the release',
+      example: 'GOCSPX-…',
       presign: true,
     },
     // ISS-1348: 19/11, epod: a screen named in prose, then a corrected link, then the owner pasted a

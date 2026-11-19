@@ -105,6 +105,7 @@ export {
   forgeBindingsTool,
   forgeConfigTool,
 } from './tool.js';
+export { lastFills, listVariables, type SlotFill, type VariableRow } from './secret-fills.js';
 export { variableHeld, writeVariableByGrant } from './variables-grant.js';
 export { declaredEnvironments } from './variables-service.js';
 export { slotKeyOf } from './variables-store.js';

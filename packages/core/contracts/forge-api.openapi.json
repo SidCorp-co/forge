@@ -53459,6 +53459,100 @@
         ]
       }
     },
+    "/api/projects/{id}/support/secrets": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.read"
+        },
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "param",
+          "query"
+        ]
+      }
+    },
+    "/api/projects/{id}/support/secrets/requests/{ask}/write-url": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ask",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.read"
+        },
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "param",
+          "query"
+        ]
+      }
+    },
     "/api/projects/{id}/support/session/agreements": {
       "post": {
         "parameters": [
@@ -57797,6 +57891,12 @@
                     ],
                     "description": "variable: the environment it is scoped to, or null for every environment"
                   },
+                  "example": {
+                    "description": "a made-up example of the value's form (GOCSPX-…, service-account.json), never the value",
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
                   "key": {
                     "description": "variable: its key",
                     "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,254}$",
@@ -57836,17 +57936,82 @@
                     "pattern": "^[a-zA-Z][a-zA-Z0-9-]{0,62}$",
                     "type": "string"
                   },
+                  "shape": {
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "value",
+                          "file",
+                          "mailbox",
+                          "signin"
+                        ],
+                        "type": "string"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "fields": {
+                            "items": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "example": {
+                                  "description": "a made-up example, never the value",
+                                  "maxLength": 80,
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "key": {
+                                  "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,62}$",
+                                  "type": "string"
+                                },
+                                "label": {
+                                  "description": "what a person reads above the box, in plain words",
+                                  "maxLength": 40,
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "secret": {
+                                  "description": "masked as a password is",
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "key",
+                                "label"
+                              ],
+                              "type": "object"
+                            },
+                            "maxItems": 12,
+                            "minItems": 2,
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "fields"
+                        ],
+                        "type": "object"
+                      }
+                    ],
+                    "description": "the value's shape, so the page asks for it fitly: value (one secret, the default), file, mailbox (address, password, IMAP and SMTP host and port), signin (account, password), or { fields: [{ key, label, secret?, example? }] } written as one JSON object"
+                  },
                   "thread": {
                     "description": "the thread: the id the message you answer carries as `thread` in what you were handed",
                     "maxLength": 64,
                     "minLength": 1,
                     "pattern": "^[A-Za-z0-9_-]+$",
                     "type": "string"
+                  },
+                  "why": {
+                    "description": "what the value is for, in plain words: the person reads it above the field",
+                    "maxLength": 300,
+                    "minLength": 3,
+                    "type": "string"
                   }
                 },
                 "required": [
                   "thread",
-                  "kind"
+                  "kind",
+                  "why"
                 ],
                 "type": "object"
               }

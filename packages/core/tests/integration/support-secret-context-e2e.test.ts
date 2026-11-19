@@ -9,8 +9,8 @@
  * said a key is coming, is filtered with the note; a sha sent alone in a thread about a commit is
  * not. The note on a thread's first secret says it once, names the credential door and asks the
  * deletion at most once; a later secret in that thread is told as already said, with no deletion
- * and no rotation ask. support.secret_link answers the Testing settings link of one declared slot,
- * and refuses by name a profile or slot the project does not declare.
+ * and no rotation ask. support.secret_link answers the Secrets page link of one declared slot's
+ * request (ISS-1348), and refuses by name a profile or slot the project does not declare.
  *
  * ISS-1353: a password written under a Vietnamese label, and an email and password pair answering a
  * thread that asked for a login, are each kept scrubbed and flagged; an email alone is kept as written.
@@ -91,6 +91,7 @@ describe('ISS-1326: a key sent alone is a secret where its thread says so', () =
         const link = await (act as Act)({
           action: 'secret_link',
           thread: m.thread,
+          why: 'The tests call PGPrints with it',
           kind: 'testing',
           profile: 'stg',
           service: 'pgprints',
@@ -222,7 +223,7 @@ describe('ISS-1353: account credentials written in chat are kept scrubbed and fl
 });
 
 describe('ISS-1328: support.secret_link answers the link of one declared slot', () => {
-  it('links the Testing settings at the slot, and refuses by name what the project does not declare', async () => {
+  it('links the slot’s request on the Secrets page, and refuses by name what the project does not declare', async () => {
     const put = (path: string, body: unknown) =>
       api(w.owner, 'PUT', `/api/projects/${w.projectId}${path}`, body);
     // a profile names only stored values: the master declares a slot before its value is given
@@ -272,22 +273,28 @@ describe('ISS-1328: support.secret_link answers the link of one declared slot', 
     ];
     await w.ask(w.chat.bob, 'Mình gửi key PGPrints test thế nào?', async (m, act) => {
       for (const t of tries)
-        answers.push(await act({ action: 'secret_link', thread: m.thread, kind: 'testing', ...t }));
+        answers.push(
+          await act({
+            action: 'secret_link',
+            thread: m.thread,
+            why: 'The tests call PGPrints with it',
+            kind: 'testing',
+            ...t,
+          }),
+        );
       return undefined;
     });
     const [service, actor, ...refused] = answers;
     expect(service).toMatchObject({
       link: expect.stringMatching(
-        new RegExp(
-          `/projects/${slug}/settings\\?tab=testing&profile=stg&service=pgprints#profile-stg$`,
-        ),
+        new RegExp(`/projects/${slug}/settings\\?tab=secrets&ask=[0-9a-f-]{36}$`),
       ),
       kind: 'testing',
       slot: { profile: 'stg', service: 'pgprints' },
     });
     expect(String(service?.says)).toContain('never ask anyone to rotate it');
     expect(actor).toMatchObject({ slot: { actor: 'supplier' } });
-    expect(String(actor?.link)).toContain('profile=stg&actor=supplier');
+    expect(String(actor?.link)).not.toBe(String(service?.link));
     expect(refused.map(code)).toEqual([
       'SUPPORT_SECRET_PROFILE_UNKNOWN',
       'SUPPORT_SECRET_SLOT_UNKNOWN',

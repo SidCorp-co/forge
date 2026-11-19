@@ -6,11 +6,12 @@ import { db } from '../db/client.js';
 import { connectionCredentialFilled } from '../integrations/index.js';
 import { emitEvent } from '../outbox/index.js';
 
-/** Tells the asking threads that `secrets` set the connection's credential, where they did. */
+/** Tells the asking threads that `by` set the connection's credential with `secrets`, where they did. */
 export async function tellCredentialFilled(
   connection: { id: string; provider: string },
   secrets: Record<string, unknown>,
+  by: string,
 ): Promise<void> {
-  const filled = connectionCredentialFilled(connection, secrets, 'page');
+  const filled = connectionCredentialFilled(connection, secrets, 'page', by);
   if (filled) await emitEvent(db, 'secret.slotFilled', filled);
 }

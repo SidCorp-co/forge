@@ -302,7 +302,7 @@ const inputSchema = z.strictObject({
     .max(600)
     .optional()
     .describe(
-      'reply, decide: one line, why; reference_add, reference_propose: what the project learns from the source; reference_cite: why you took or rejected it',
+      'reply, decide: one line, why; reference_add, reference_propose: what the project learns from the source; reference_cite: why you took or rejected it; secret_link: what the value is for, in plain words a person reads above the field',
     ),
   // a channel agent answers several groups: an act naming no thread or message of one names it here
   rid: channelRidSchema.optional(),
@@ -365,7 +365,7 @@ const SIGNATURES = [
   'reference_cite { source, ref, verdict: take | reject, why, about?, project? }',
   'reference_propose { kind, url, why, areas, evidence, title?, priority?, followReleases?, project? }',
   'term { thread, message, slug, title, means, module, quote, aliases?, anchor?, project? }',
-  'secret_link { thread, project?, kind: variable, environment (null: every environment), key | kind: testing, profile, actor | service | kind: integration, provider; presign? }',
+  'secret_link { thread, why, project?, kind: variable, environment (null: every environment), key | kind: testing, profile, actor | service | kind: integration, provider; shape?: value | file | mailbox | signin | { fields }, example?, presign? }',
 ];
 
 /** What every act shares, said once in the description and in a refusal. */

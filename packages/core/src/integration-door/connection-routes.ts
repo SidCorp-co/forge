@@ -398,7 +398,7 @@ integrationConnectionsRoutes.patch(
     if (!updated) throw notFound('connection');
     notifyConnectionChanged(existing.provider, id);
     // a thread that asked for this credential hears it was set, by fingerprint (ISS-1348)
-    if (connPatch.secrets) await tellCredentialFilled(existing, connPatch.secrets);
+    if (connPatch.secrets) await tellCredentialFilled(existing, connPatch.secrets, userId);
     return c.json({ connection: summarizeConnection(updated) });
   },
 );

@@ -19,7 +19,7 @@ export function mountSecretLinkSessionRoutes(app: Hono<{ Variables: AuthVars }>)
     SESSION_ONLY,
     strictBody(
       supportSecretLinkRequestSchema,
-      '{ thread, project?, kind: variable, environment, key | kind: testing, profile, actor | service | kind: integration, provider; presign? }',
+      '{ thread, why, project?, kind: variable, environment, key | kind: testing, profile, actor | service | kind: integration, provider; shape?, example?, presign? }',
     ),
     (c) => act(c, c.req.valid('param').id, { action: 'secret_link', ...c.req.valid('json') }),
   );

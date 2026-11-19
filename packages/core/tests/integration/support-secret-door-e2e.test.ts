@@ -14,7 +14,10 @@
  * - the thread that asked is told by fingerprint once the slot holds a value, through the write URL
  *   or the page, and the value is nowhere in the room's record, the audit or the outbox (c3);
  * - a secret pasted in a thread that asked for a slot is answered with that slot's link and a fresh
- *   write command (c4).
+ *   write command (c4);
+ * - the project's Secrets page lists each request first with why, its shape and who it was for, a
+ *   slot already held reads so with when and by whom, every secret is grouped by what uses it with no
+ *   value and no secret:// label, and the page mints a request's one-time write URL (c6 to c9).
  * Every value is an obvious fake planted for the test.
  *
  * @direct-test-of packages/core/src/support/secret-link.ts
@@ -23,6 +26,10 @@
  * @direct-test-of packages/core/src/support/secret-receipts.ts
  * @direct-test-of packages/core/src/support/secret-flag.ts
  * @direct-test-of packages/core/src/project-config/variables-grant.ts
+ * @direct-test-of packages/core/src/project-config/secret-fills.ts
+ * @direct-test-of packages/core/src/support/secret-page.ts
+ * @direct-test-of packages/core/src/support/secret-page-slots.ts
+ * @direct-test-of packages/core/src/support/secret-page-routes.ts
  */
 
 import { sql } from 'drizzle-orm';
@@ -190,16 +197,20 @@ describe('ISS-1346: the secret link names a project of the room’s reach', () =
     const ask = (project?: string) =>
       secretLink(room, {
         thread,
+        why: 'Tests read support mail as this mailbox',
         kind: 'testing',
         profile: 'stg',
         service: 'mail-support',
+        shape: 'mailbox',
         ...(project ? { project } : {}),
       });
     // planted on today's code: the link was the room's own project's, which declares no stg
     const named = linkOf(await ask(sibling.slug));
     expect(named.project).toBe(sibling.slug);
     expect(new URL(named.link).pathname).toBe(`/projects/${sibling.slug}/settings`);
-    expect(new URL(named.link).search).toBe('?tab=testing&profile=stg&service=mail-support');
+    expect(new URL(named.link).searchParams.get('tab')).toBe('secrets');
+    // the sibling's master stored the mailbox before anyone asked: the request opens on that
+    expect(named.held).toBe(true);
     expect(codeOf(await ask())).toBe('SUPPORT_SECRET_PROFILE_UNKNOWN');
     expect(codeOf(await ask('no-such-project'))).toBe('OPS_OUT_OF_SCOPE');
   });
@@ -214,30 +225,40 @@ describe('ISS-1348: one secret act for every kind of slot', () => {
     asked = linkOf(
       await secretLink(room, {
         thread,
+        why: 'Driver sign-in with Google needs it before the release',
         kind: 'variable',
         environment: 'production',
         key: 'GOOGLE_CLIENT_SECRET',
+        example: 'GOCSPX-…',
         presign: true,
       }),
     );
     const link = new URL(asked.link);
     expect(link.pathname).toBe(`/projects/${own.slug}/settings`);
-    expect(link.search).toBe('?tab=variables&key=GOOGLE_CLIENT_SECRET&environment=production');
-    expect(link.hash).toBe('#variables');
+    // the link lands on the request it recorded, on the one Secrets page
+    const [recorded] = await rows<{ id: string; why: string; example: string }>(
+      sql`SELECT id, why, example FROM support_secret_asks WHERE thread = ${thread} ORDER BY created_at LIMIT 1`,
+    );
+    expect(link.search).toBe(`?tab=secrets&ask=${recorded?.id}`);
+    expect(recorded).toMatchObject({
+      why: 'Driver sign-in with Google needs it before the release',
+      example: 'GOCSPX-…',
+    });
     expect(asked).toMatchObject({ kind: 'variable', held: false, project: own.slug });
     expect(asked.write).toMatchObject({ method: 'PUT', minutes: 15 });
     expect(asked.write?.command).toContain(`curl -X PUT --data-binary @`);
 
+    const why = 'Errors reach Sentry from every environment';
     const every = linkOf(
-      await secretLink(room, { thread, kind: 'variable', environment: null, key: 'SENTRY_DSN' }),
+      await secretLink(room, { thread, why, kind: 'variable', environment: null, key: 'SENTRY_DSN' }),
     );
-    expect(new URL(every.link).search).toBe('?tab=variables&key=SENTRY_DSN&environment=*');
+    expect(new URL(every.link).searchParams.get('tab')).toBe('secrets');
     expect(every.write).toBeUndefined();
     const connection = linkOf(
-      await secretLink(room, { thread, kind: 'integration', provider: 'rocketchat' }),
+      await secretLink(room, { thread, why, kind: 'integration', provider: 'rocketchat' }),
     );
-    expect(new URL(connection.link).pathname).toBe('/integrations');
-    expect(new URL(connection.link).searchParams.get('connection')).toBe(w.rcConnectionId);
+    expect(new URL(connection.link).searchParams.get('tab')).toBe('secrets');
+    expect(connection.slot.connection).toBe(w.rcConnectionId);
 
     const refused = await Promise.all(
       [
@@ -246,7 +267,7 @@ describe('ISS-1348: one secret act for every kind of slot', () => {
         { kind: 'variable' as const, environment: null, key: 'K', profile: 'stg' },
         { kind: 'testing' as const, environment: null },
         { kind: 'integration' as const, provider: 'sentry' },
-      ].map((slot) => secretLink(room, { thread, ...slot })),
+      ].map((slot) => secretLink(room, { thread, why, ...slot })),
     );
     expect(refused.map(codeOf)).toEqual([
       'SUPPORT_SECRET_ENVIRONMENT_UNKNOWN',
@@ -255,6 +276,15 @@ describe('ISS-1348: one secret act for every kind of slot', () => {
       'SUPPORT_SECRET_SLOT_SHAPE',
       'SUPPORT_SECRET_INTEGRATION_UNKNOWN',
     ]);
+    // a person reads the asking line on the page: one carrying a secret itself is refused
+    const leaked = await secretLink(room, {
+      thread,
+      why: `use password: ${VALUE}`,
+      kind: 'variable',
+      environment: 'production',
+      key: 'K',
+    });
+    expect(codeOf(leaked)).toBe('SUPPORT_SECRET_ASK_HOLDS_SECRET');
   });
 
   it('sets the slot once through the write URL and refuses reuse, expiry, a read and an empty body (c2)', async () => {
@@ -308,6 +338,7 @@ describe('ISS-1348: one secret act for every kind of slot', () => {
     const late = linkOf(
       await secretLink(room, {
         thread,
+        why: 'late',
         kind: 'variable',
         environment: 'staging',
         key: 'LATE',
@@ -368,6 +399,7 @@ describe('ISS-1348: one secret act for every kind of slot', () => {
     const stripe = linkOf(
       await secretLink(room, {
         thread: opened,
+        why: 'Card payments on staging',
         kind: 'variable',
         environment: 'staging',
         key: 'STRIPE_KEY',
@@ -386,5 +418,105 @@ describe('ISS-1348: one secret act for every kind of slot', () => {
     );
     expect(note).not.toContain(PASTED);
     expect(pasted).toBeTruthy();
+  });
+});
+
+describe('ISS-1348: one Secrets page, requests first (owner’s ruling of 19/11)', () => {
+  type Held = { at: string; by: string | null; via: string | null } | null;
+  type Slot = { anchor: string; label: string; detail: string; held: Held; form: { kind: string } };
+  type Read = {
+    requests: {
+      id: string;
+      askIds: string[];
+      why: string;
+      example: string | null;
+      askedFor: string | null;
+      slot: Slot;
+      filled: Held;
+    }[];
+    groups: { kind: string; name: string | null; usedIn: string[]; slots: Slot[] }[];
+  };
+  const page = async (project: string) => {
+    const res = await api(w.owner, 'GET', `/api/projects/${project}/support/secrets`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    return res.body as unknown as Read;
+  };
+
+  it('lists what is waiting first, says who filled the rest and how, and holds no value (c6, c8)', async () => {
+    const read = await page(w.projectId);
+    const labels = read.requests.map((r) => r.slot.label);
+    // STRIPE_KEY waits; GOOGLE_CLIENT_SECRET was set by its command, SENTRY_DSN on its page
+    expect(labels[0]).toBe('Stripe key');
+    expect(read.requests[0]).toMatchObject({
+      why: 'Card payments on staging',
+      askedFor: chat.alice.username,
+      filled: null,
+      slot: { detail: 'STRIPE_KEY', held: null, form: { kind: 'value' } },
+    });
+    const google = read.requests.find((r) => r.slot.detail === 'GOOGLE_CLIENT_SECRET');
+    expect(google?.slot.label).toBe('Google client secret');
+    expect(google?.slot.held).toMatchObject({ by: null, via: 'presigned' });
+    // the pasted secret's note made a second ask of the same slot: one request, both its asks
+    expect(read.requests[0]?.askIds.length).toBeGreaterThan(1);
+    const sentry = read.requests.find((r) => r.slot.detail === 'SENTRY_DSN');
+    const [owner] = await rows<{ name: string }>(
+      sql`SELECT coalesce(display_name, split_part(email, '@', 1)) AS name FROM users WHERE id = ${w.ownerId}::uuid`,
+    );
+    expect(sentry?.slot.held).toMatchObject({ by: owner?.name, via: 'page' });
+    expect(sentry?.filled).toMatchObject({ by: owner?.name, via: 'page' });
+
+    // grouped by what uses each: the app per environment; no value, and no secret:// as a label
+    const app = read.groups.filter((g) => g.kind === 'app').map((g) => g.name);
+    expect(app).toEqual(['staging', 'production', null]);
+    const text = JSON.stringify(read);
+    for (const value of [VALUE, VALUE_PAGE]) expect(text).not.toContain(value);
+    for (const s of read.groups.flatMap((g) => g.slots)) expect(s.label).not.toMatch(/secret:\/\//);
+  });
+
+  it('opens a request for a slot already held on that state, with the shape it asked for (c8, c7)', async () => {
+    const read = await page(sibling.id);
+    const [mailbox] = read.requests;
+    expect(mailbox?.slot).toMatchObject({
+      label: 'Mail support',
+      detail: 'stg · mail-support',
+      form: { kind: 'fields' },
+    });
+    expect(mailbox?.slot.held).not.toBeNull();
+    const testing = read.groups.find((g) => g.kind === 'testing');
+    expect(testing).toMatchObject({ name: 'stg', usedIn: ['staging'] });
+  });
+
+  it('mints a request’s one-time write URL for a person, once per ask, and refuses a filled or unknown one (c7)', async () => {
+    const read = await page(w.projectId);
+    const stripe = read.requests[0];
+    const minted = await api(
+      w.owner,
+      'POST',
+      `/api/projects/${w.projectId}/support/secrets/requests/${stripe?.id}/write-url`,
+    );
+    expect(minted.status, JSON.stringify(minted.body)).toBe(201);
+    expect(minted.body).toMatchObject({ method: 'PUT', minutes: 15 });
+    const set = await hit(String(minted.body.url), 'PUT', VALUE);
+    expect(set.status, JSON.stringify(set.body)).toBe(200);
+    expect(await hit(String(minted.body.url), 'PUT', VALUE)).toMatchObject({
+      code: 'SUPPORT_SECRET_WRITE_USED',
+    });
+    await settleOutbox();
+    const filled = (await page(w.projectId)).requests.find((r) => r.slot.detail === 'STRIPE_KEY');
+    expect(filled?.slot.held).toMatchObject({ via: 'presigned' });
+
+    const again = await api(
+      w.owner,
+      'POST',
+      `/api/projects/${w.projectId}/support/secrets/requests/${stripe?.id}/write-url`,
+    );
+    expect(again.body).toMatchObject({ error: { code: 'SUPPORT_SECRET_ASK_FILLED' } });
+    const unknown = await api(
+      w.owner,
+      'POST',
+      `/api/projects/${w.projectId}/support/secrets/requests/${sibling.id}/write-url`,
+    );
+    expect(unknown.status).toBe(404);
+    expect(unknown.body).toMatchObject({ error: { code: 'SUPPORT_SECRET_ASK_UNKNOWN' } });
   });
 });

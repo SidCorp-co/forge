@@ -179,7 +179,8 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:fire field:json:covers field:json:profile field:param:debt
     field:param:n field:param:environment field:param:proposal field:param:variable field:json:environment
     field:param:keyId field:param:messageId field:json:module field:param:relationId
-    field:json:pictures field:json:actor field:json:service field:json:provider field:param:actionId`,
+    field:json:pictures field:json:actor field:json:service field:json:provider field:param:actionId
+    field:json:shape field:param:ask`,
   'prose a person or an agent writes: a title, a body, a message, a note': words`
     field:json:about field:json:acceptanceCriteria field:json:alt field:json:answer
     field:json:assistantInstructions field:json:assumed field:json:body field:json:brief
@@ -195,7 +196,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:lines field:json:sides field:json:withoutClip field:json:rationale field:json:said
     field:json:statement field:json:askFor field:json:question field:json:words field:json:finding
     field:json:misread field:json:means field:json:quote field:json:aliases
-    field:json:trades field:json:costs field:json:endsWhen field:json:what`,
+    field:json:trades field:json:costs field:json:endsWhen field:json:what field:json:example`,
   'a command a support room runs on a host its grant names, and what the box answers it ran; core checks the grant before the box is asked, and the output is scrubbed before anyone reads it': words`
     field:json:command field:json:stdout field:json:stderr`,
   'a structured part of a record core validates and stores; it admits nobody': words`
@@ -327,11 +328,6 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     widget/stream.ts Context handed to hono:streamSSE in widgetStream`,
   'an outbound URL, header set or module URL core builds, never a request to core': lines`
     assistant/identity/link-url.ts URLSearchParams.toString in speakerLinkUrl
-    support/secret-slots.ts URLSearchParams.toString in secretLinkOf
-    support/secret-slots.ts URLSearchParams.toString in variableSlot
-    support/secret-slots.ts URLSearchParams.toString in integrationSlot
-    support/secret-slots.ts URL.search in testingSlot
-    support/secret-slots.ts URL.hash in testingSlot
     contracts-generate.ts URL.href in baseOf
     integrations/autoflow/refresh.ts URLSearchParams.toString in requestRefresh
     integration-door/github-connect-shared.ts URLSearchParams.toString in strandedAt

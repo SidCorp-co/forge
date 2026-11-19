@@ -25,6 +25,7 @@ export function connectionCredentialFilled(
   connection: { id: string; provider: string },
   secrets: Record<string, unknown>,
   via: 'page' | 'presigned',
+  by: string | null,
 ): OutboxEventPayload<'secret.slotFilled'> | null {
   const field = credentialFieldOf(connection.provider);
   const value = field ? secrets[field] : undefined;
@@ -34,6 +35,7 @@ export function connectionCredentialFilled(
     slot: connectionSlotKey(connection.id),
     fingerprint: fingerprintSecret(connection.id, value),
     via,
+    by,
     at: new Date().toISOString(),
   };
 }
@@ -78,7 +80,7 @@ export async function writeConnectionCredential(
   if (unfit?.length) throw new RefusalError(unfit, 'CONFIG_REFUSED');
   await updateConnection(connection.id, { secrets });
   notifyConnectionChanged(connection.provider, connection.id);
-  const filled = connectionCredentialFilled(connection, { [field]: value }, 'presigned');
+  const filled = connectionCredentialFilled(connection, { [field]: value }, 'presigned', null);
   if (!filled) throw new Error(`integrations: ${connection.provider} took an empty ${field}`);
   return filled;
 }

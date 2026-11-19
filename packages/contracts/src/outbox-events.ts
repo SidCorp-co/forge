@@ -653,20 +653,22 @@ export interface OutboxEventPayloads
 		/** When the accept was written (ISO 8601). */
 		at: string;
 	};
-	/** A personal access token of `userId` was minted, revoked, had its project list changed, or was used (at most once a minute). */
 	/**
 	 * A secret slot was given a value through any door (ISS-1348): a variable at one scope, a project
 	 * secret (`secret://`), or an integration connection's credential. `slot` names it as the room's
 	 * secret asks do (`support_secret_asks.slot_key`); `fingerprint` is the keyed digest the slot's
-	 * audit keeps, never the value; `via` says whether a page or a one-time write URL set it.
+	 * audit keeps, never the value; `via` says whether a page or a one-time write URL set it, and
+	 * `by` the account that set it through a page (null for a write URL, which names none).
 	 */
 	"secret.slotFilled": {
 		projectId: string | null;
 		slot: string;
 		fingerprint: string;
 		via: "page" | "presigned";
+		by: string | null;
 		at: string;
 	};
+	/** A personal access token of `userId` was minted, revoked, had its project list changed, or was used (at most once a minute). */
 	"credential.tokenChanged": {
 		userId: string;
 		tokenId: string;
