@@ -189,6 +189,11 @@ describe('the texts an agent reads give each finding its place', () => {
       'only for priority, a handoff or independent tracking',
       'cleanup done inside the fix; a defect only mentioned in a comment',
       '| A defect your fix needs, to bound its impact or prove itself | fix it there, and say so under `Extra fixes:`',
+      // ISS-1248 (epod L-25, L-30): confirm a missing capability, then one change request per capability
+      '| A capability the product lacks, met mid-task',
+      'confirm the need first (the task needs it and nothing that exists does it)',
+      'one change request per capability to the project that builds it (`channel.draft`), naming each interface missing it (admin, MCP, CLI), or the CLI alone where only the CLI lacks it',
+      'a workaround around the product (a raw API call, an outside rule) before the need is confirmed and requested',
     ]) {
       expect(affordances).toContain(row);
     }

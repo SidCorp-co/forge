@@ -352,6 +352,13 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
         watch: 'a feature never starts as an issue an agent filed',
         for: ['master', 'run', 'bot'],
       },
+      // ISS-1248: epod L-25, L-30 — agents reported or worked around a store capability before confirming the need
+      {
+        when: 'A capability the product lacks, met mid-task (a command, page or tool that is not there)',
+        do: 'confirm the need first (the task needs it and nothing that exists does it); then one change request per capability to the project that builds it (`channel.draft`), naming each interface missing it (admin, MCP, CLI), or the CLI alone where only the CLI lacks it',
+        watch: 'a workaround around the product (a raw API call, an outside rule) before the need is confirmed and requested',
+        for: ['master', 'run', 'bot'],
+      },
       {
         when: 'a person reports something broken or wrong in the product, or relays what a user reported',
         do: 'submit it as a bug in their words, its target the requirement it touches, found with requirements.similar',
