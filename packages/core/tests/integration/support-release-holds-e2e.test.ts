@@ -5,7 +5,7 @@
  * sidpeak's master. Here the read carries, from the release page's own answer, whose act a draft
  * waits on and since when, the approval it owes and who may give it, each issue not ready and why,
  * and the next step; it never claims nothing is happening, and a project out of the room's scope is
- * refused by name.
+ * refused by name. A go said in chat is recorded with support.release_decision (ISS-1313).
  *
  * @direct-test-of packages/core/src/support/ops-reads.ts
  * @direct-test-of packages/core/src/support/ops-release-holds.ts
@@ -175,6 +175,9 @@ describe("a room's release read says what holds a draft (sidpeak 0.22.0, FB-537)
     const page = await readRelease(projectId, '0.1.0', null);
     expect(page.waitingOn).toMatchObject({ kind: 'person', act: 'cut 0.1.0' });
     expect(draft?.holds?.approval).toContain('owed once it is cut');
+    // ISS-1313 (FB-730): a go said in chat goes to the door that takes it, never through a record
+    expect(draft?.holds?.approval).toContain('support.release_decision');
+    expect(draft?.holds?.approval).not.toContain('(support.record)');
   });
 
   it("a project out of the room's scope is refused by name, never an empty list", async () => {

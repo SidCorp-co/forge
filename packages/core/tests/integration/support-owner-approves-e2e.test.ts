@@ -7,6 +7,7 @@ vi.hoisted(() => {
 });
 
 import { rows } from '../helpers/factories.js';
+import { cutAndAsk } from '../helpers/release-approval.js';
 import { AgentWorld } from '../helpers/support-agent-world.js';
 import { code } from '../helpers/support-channel.js';
 import type { StandInRocketChat } from '../helpers/support-chat-server.js';
@@ -14,19 +15,28 @@ import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 // @direct-test-of packages/core/src/support/owner-approves.ts
 // @direct-test-of packages/core/src/support/propose.ts
 // @direct-test-of packages/core/src/feedback/external.ts
+// @direct-test-of packages/core/src/support/release-decision.ts
 //
 // ISS-1243: 16 of 79 bot records in adminhub-api, adminhub-fe and catalog-api were the owner's
 // approvals ("chuongld cho lên production…", "đồng ý MR…") filed as new Feedback beside the item
 // they approved; thread BeK4G held FB-15..19 of two projects. The owner's approval attaches to the
 // open item of the thread; a record he asks for there is refused until it says it is separate work.
 // alice is the owner the binding names (support-agent-world's OWNER_ID).
+// ISS-1313 (FB-730): his go on a release is no record and no item's approval: the refusal sends it to
+// support.release_decision, which takes it whatever open items the thread holds.
 
 const w = new AgentWorld();
 let chat: StandInRocketChat;
+let slug = '';
 
 beforeAll(async () => {
   await w.openAgent();
   chat = w.stand;
+  const [project] = await rows<{ slug: string }>(
+    sql`SELECT slug FROM projects WHERE id = ${w.projectId}`,
+  );
+  slug = String(project?.slug);
+  await cutAndAsk(w.projectId, w.ownerId, '0.31.0');
 }, 120_000);
 
 afterAll(() => w.stop());
@@ -64,6 +74,7 @@ describe('ISS-1243: an owner approval attaches to the item it approves', () => {
     let approved: Record<string, unknown> = {};
     let notHis: Record<string, unknown> = {};
     let unknown: Record<string, unknown> = {};
+    let release: Record<string, unknown> = {};
     const bobs = await w.hear(
       () => chat.say(chat.bob, 'any update on the refunds export?', asked.id),
       async (_t, act, message) => {
@@ -98,6 +109,14 @@ describe('ISS-1243: an owner approval attaches to the item it approves', () => {
           message: String(m.message),
           feedback: 'FB-999999',
         });
+        release = await act({
+          action: 'release_decision',
+          thread: m.thread,
+          message: String(m.message),
+          project: slug,
+          version: '0.31.0',
+          decision: 'approve',
+        });
         approved = await act({
           action: 'approve',
           thread: m.thread,
@@ -109,6 +128,12 @@ describe('ISS-1243: an owner approval attaches to the item it approves', () => {
     // [APPROVAL_FILED_AS_NEW] before the fix: the record was proposed, and filed on his word
     expect(code(record), JSON.stringify(record)).toBe('SUPPORT_RECORD_IS_APPROVAL');
     expect(JSON.stringify(record)).toContain(key);
+    // [RELEASE_GO_REFUSED_FOR_ITEMS] before the fix: the refusal named no door for a release go
+    expect(JSON.stringify(record)).toContain('support.release_decision');
+    // that door takes his go in a thread holding an open item it is not about: his chat account is
+    // no Forge account here, so it is kept, and nothing is decided until his admins name it
+    expect(code(release), JSON.stringify(release)).toBeUndefined();
+    expect(release).toMatchObject({ kept: true, version: '0.31.0' });
     expect(code(notHis), JSON.stringify(notHis)).toBe('SUPPORT_APPROVAL_NOT_THE_OWNERS');
     expect(code(unknown), JSON.stringify(unknown)).toBe('SUPPORT_APPROVAL_ITEM_UNKNOWN');
     expect(JSON.stringify(unknown)).toContain(key);
