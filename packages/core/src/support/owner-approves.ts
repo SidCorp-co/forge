@@ -128,6 +128,6 @@ export async function recordIsApproval(
   return no(
     'SUPPORT_RECORD_IS_APPROVAL',
     '/separate',
-    `this thread already holds ${named(open)}, still open, and the owner asks: where his words approve one of them, attach them with approve { thread, message, feedback } and file nothing; only where he asks for new work beside it, record again with separate: true. Nothing was proposed.`,
+    `this thread already holds ${named(open)}, still open, and the owner asks: where his words approve one of them, attach them with approve { thread, message, feedback } and file nothing; only where he asks for new work beside it, record again with separate: true. His go or no on a release is neither: record it with support.release_decision, whatever this thread holds. Nothing was proposed.`,
   );
 }

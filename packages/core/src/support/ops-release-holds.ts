@@ -65,7 +65,7 @@ const names = (people: readonly { name: string }[]) => people.map((p) => p.name)
 /** The approval a release owes or carries, as its page records it. */
 function approvalOf(r: ReleaseDetail): string {
   const chat =
-    "an approval said in chat counts only once recorded on the release: tell the project's master (support.record), who records it, never approve it yourself";
+    "a go or no a person says in chat is recorded on the release at once with support.release_decision citing their own message (the owner's is kept until his account is named), never through support.record, and never approved by you";
   const decided = r.approval?.decision ? r.approval : null;
   if (decided?.decidedBy && decided.decidedAt) {
     const said = decided.decision === 'approved' ? 'approved' : 'returned';
