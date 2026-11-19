@@ -10,7 +10,13 @@ import { requiresOnParam, requiresPublic } from '../permissions/index.js';
 import { findProjectOrgId } from '../projects/index.js';
 import { resolveGuide } from './integration-guides.js';
 import { getGuide, listGuides } from './registry.js';
-import { audienceMapPage, doorNamed, doorsPage, servedGuideBody } from './served.js';
+import {
+  audienceMapPage,
+  doorNamed,
+  doorsPage,
+  guideIndexBody,
+  servedGuideBody,
+} from './served.js';
 
 /**
  * Public, read-only surface for Forge capability guides (D2 in the plan —
@@ -67,11 +73,19 @@ function humanGuidesUrl(): string {
   return `${env.APP_BASE_URL.replace(/\/+$/, '')}/guides`;
 }
 
+const GUIDE_INDEX = {
+  slug: 'index',
+  audience: 'agent',
+  title: 'Forge guides',
+  summary: 'Every guide core serves, by slug, title and summary.',
+  version: 1,
+} as const;
+
 function validSlugsMessage(): string {
   const slugs = listGuides()
     .map((g) => g.slug)
     .join(', ');
-  return `guide not found. Valid slugs: ${slugs}. Readable pages: ${humanGuidesUrl()}`;
+  return `guide not found. The list: GET /api/guides (or guides/index.md). Valid slugs: ${slugs}. Readable pages: ${humanGuidesUrl()}`;
 }
 
 guideRoutes.get('/guides', GUIDE_CORPUS, noQuery, (c) => {
@@ -160,7 +174,11 @@ guideRoutes.get('/guides/:slug', GUIDE_CORPUS, noQuery, (c) => {
   const isMarkdown = raw.endsWith('.md');
   const slug = isMarkdown ? raw.slice(0, -3) : raw;
 
-  const guide = getGuide(slug);
+  // `index` is the list (ISS-1307), the name the MCP reads it by, served as a body like any guide
+  const guide =
+    slug === GUIDE_INDEX.slug
+      ? { ...GUIDE_INDEX, body: guideIndexBody(listGuides()) }
+      : getGuide(slug);
   if (!guide) {
     throw new HTTPException(404, {
       message: validSlugsMessage(),

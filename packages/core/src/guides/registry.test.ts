@@ -83,6 +83,30 @@ describe('the guide index', () => {
     expect(res.headers.get('content-type')).toContain('text/markdown');
     expect(await res.text()).toBe(getGuide('product-role')?.body);
   });
+
+  // ISS-1307: the MCP calls the list guide:index, so a reader carrying that name onto REST asks for
+  // guides/index.md; it reads the same slugs GET /api/guides lists, as a markdown body
+  it.each(['/guides/index.md', '/guides/index'])('%s reads every served slug', async (path) => {
+    const res = await guideRoutes.request(path);
+    expect(res.status, `${path} is not served`).toBe(200);
+    const body = path.endsWith('.md')
+      ? await res.text()
+      : ((await res.json()) as { guide: { body: string } }).guide.body;
+    const listed = (await (await guideRoutes.request('/guides')).json()) as {
+      guides: { slug: string; title: string }[];
+    };
+    for (const { slug, title } of listed.guides) {
+      expect(body, `the index leaves out ${slug}`).toContain(`[${title}](${slug}.md)`);
+    }
+  });
+
+  it('refuses a slug naming no guide, pointing at GET /api/guides besides the slugs', async () => {
+    const res = await guideRoutes.request('/guides/no-such-guide.md');
+    expect(res.status).toBe(404);
+    const detail = await res.text();
+    expect(detail).toContain('GET /api/guides');
+    expect(detail).toContain('product-role');
+  });
 });
 
 describe('the routes a guide cites', () => {

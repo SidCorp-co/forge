@@ -46,6 +46,22 @@ ${cards.join('\n\n')}
 `;
 }
 
+/**
+ * The guide list as a guide body (ISS-1307): the MCP reads it as `guide:index`, so a reader carrying
+ * that name onto REST asks for `guides/index.md`. Rendered from the registry `GET /api/guides` lists,
+ * so it names exactly the guides served; each link is relative, so it resolves under either mount.
+ */
+export function guideIndexBody(
+  guides: readonly Pick<ForgeGuide, 'slug' | 'title' | 'summary'>[],
+): string {
+  return `# Forge guides
+
+Every guide core serves; read one as \`GET /api/guides/<slug>.md\`. The same list as JSON: \`GET /api/guides\`.
+
+${guides.map((g) => `- [${g.title}](${g.slug}.md): ${g.summary}`).join('\n')}
+`;
+}
+
 /** Every door a card teaches, by audience and situation; the doors no card teaches yet are counted. */
 export function doorsPage(catalog: DoorCatalog): string {
   const taught = catalog.doors.filter((d) => d.card);
