@@ -106,14 +106,29 @@ const EnvSchema = z.object({
     .int()
     .positive()
     .default(5 * 1024 * 1024),
-  STORAGE_DRIVER: z
-    .enum(['local'], {
-      error: (issue) =>
-        issue.input === 's3'
-          ? "STORAGE_DRIVER=s3 is refused: no object-storage driver is built, so 's3' would accept the config and fail on the first upload; the only valid value is 'local'"
-          : undefined,
+  /** `local` keeps uploads under UPLOADS_DIR; `s3` keeps them in S3_BUCKET under S3_PREFIX (`storageEnvIssues`). */
+  STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
+  S3_ENDPOINT: z.url().optional(),
+  S3_REGION: z.string().min(1).optional(),
+  S3_BUCKET: z.string().min(1).optional(),
+  /** The folder every key lives under in a bucket other apps share, e.g. `forge-dev/`. */
+  S3_PREFIX: z
+    .string()
+    .min(1)
+    .refine((p) => !p.startsWith('/') && !p.split('/').includes('..'), {
+      error:
+        "S3_PREFIX is a folder inside the bucket such as 'forge-dev/': no leading '/', no '..'",
     })
-    .default('local'),
+    .optional(),
+  S3_FORCE_PATH_STYLE: z
+    .enum(['true', 'false', '1', '0'], {
+      error: (i) =>
+        `S3_FORCE_PATH_STYLE must be one of true, false, 1, 0; got ${JSON.stringify(i.input)}`,
+    })
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === 'true' || v === '1')),
+  S3_ACCESS_KEY_ID: z.string().min(1).optional(),
+  S3_SECRET_ACCESS_KEY: z.string().min(1).optional(),
   LITELLM_API_URL: z.url().optional(),
   LITELLM_API_KEY: z.string().min(1).optional(),
   LITELLM_MODEL: z.string().min(1).default('gpt-4o-mini'),
@@ -212,6 +227,33 @@ export function deployedEnvIssues(parsed: Env): string[] {
   return [];
 }
 
+/** Every setting the s3 driver reads, in the order a refusal names them. */
+export const S3_SETTINGS = [
+  'S3_ENDPOINT',
+  'S3_REGION',
+  'S3_BUCKET',
+  'S3_PREFIX',
+  'S3_FORCE_PATH_STYLE',
+  'S3_ACCESS_KEY_ID',
+  'S3_SECRET_ACCESS_KEY',
+] as const;
+
+/** The s3 settings `parsed` leaves unset, named; the values are never read out. */
+export function missingS3Settings(parsed: Pick<Env, (typeof S3_SETTINGS)[number]>): string[] {
+  return S3_SETTINGS.filter((name) => parsed[name] === undefined);
+}
+
+/**
+ * STORAGE_DRIVER=s3 with a setting missing would boot and fail on the first upload, so it is
+ * refused at boot naming each missing variable (ISS-1364, replacing ISS-190's refusal of s3 itself).
+ */
+export function storageEnvIssues(parsed: Env): string[] {
+  if (parsed.STORAGE_DRIVER !== 's3') return [];
+  return missingS3Settings(parsed).map(
+    (name) => `  - ${name}: required when STORAGE_DRIVER=s3; it is unset`,
+  );
+}
+
 const RETIRED_ENV_VARS: Record<string, string> = {
   RATE_LIMIT_PAT_MAX: 'RATE_LIMIT_PAT_READ_MAX and RATE_LIMIT_PAT_WRITE_MAX',
   RATE_LIMIT_PAT_WINDOW_MS: 'RATE_LIMIT_PAT_READ_WINDOW_MS and RATE_LIMIT_PAT_WRITE_WINDOW_MS',
@@ -249,6 +291,7 @@ function loadEnv(): Env {
   const deployed = [
     ...(preview === null ? [] : [`  - PREVIEW_DOMAIN: ${preview}.`]),
     ...deployedEnvIssues(parsed.data),
+    ...storageEnvIssues(parsed.data),
   ];
   if (deployed.length > 0) {
     throw new Error(`[@forge/core] Invalid environment:\n${deployed.join('\n')}`);

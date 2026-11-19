@@ -39,6 +39,7 @@
     "clean": "rm -rf dist",
     "contracts:generate": "tsx src/contracts-generate.ts",
     "cards:stamp": "tsx src/mcp/card-stamp.ts",
+    "storage:migrate-uploads": "node --env-file-if-exists=.env dist/integrations/storage/migrate-uploads.js",
     "oasdiff:fetch": "tsx src/ecosystem/contract/oasdiff-fetch.ts node_modules/.cache/oasdiff",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
@@ -46,6 +47,7 @@
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.63",
+    "@aws-sdk/client-s3": "3.1159.0",
     "@forge/contracts": "workspace:*",
     "@forge/observability": "workspace:*",
     "@graphql-inspector/core": "^8.0.0",

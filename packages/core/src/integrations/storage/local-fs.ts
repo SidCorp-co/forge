@@ -2,6 +2,16 @@ import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { isEnoent, type StorageAdapter } from './types.js';
 
+/** A path the s3 driver stored is refused by name, never read as a missing file on this disk. */
+function onDisk(path: string): string {
+  if (path.startsWith('s3://')) {
+    throw new Error(
+      `stored path ${path} was written by STORAGE_DRIVER=s3; the local driver cannot read it, so run with STORAGE_DRIVER=s3 and the S3_* settings it was stored under`,
+    );
+  }
+  return path;
+}
+
 export class LocalFsStorage implements StorageAdapter {
   constructor(private readonly root: string) {}
 
@@ -13,12 +23,12 @@ export class LocalFsStorage implements StorageAdapter {
   }
 
   async get(path: string): Promise<Buffer> {
-    return readFile(path);
+    return readFile(onDisk(path));
   }
 
   async delete(path: string): Promise<void> {
     try {
-      await unlink(path);
+      await unlink(onDisk(path));
     } catch (err) {
       if (isEnoent(err)) return;
       throw err;
