@@ -112,7 +112,7 @@ describe('the dispatch guide teaches batches by default', () => {
   it('names the role a builder run is declared as, a model refusal, and criteria on the record first', () => {
     expect(prose).toContain('`forge-runner run declare --role general-purpose`');
     expect(prose).toContain('or as another role than the one declared');
-    expect(prose).toContain('naming a model the box\'s account allows');
+    expect(prose).toContain("naming a model the box's account allows");
     expect(prose).toContain(
       "each issue's criteria are on its record (`PUT /api/issues/:id/criteria`), never only in its description",
     );
