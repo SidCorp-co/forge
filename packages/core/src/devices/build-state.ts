@@ -29,12 +29,15 @@ function judgeRelease(reference: ReferenceBuild): { state: RunnerBuildState; det
     return { state: 'unknown', detail: `release ${published.version} records no commit` };
   }
   if (head === null) {
-    return { state: 'unknown', detail: 'the runner on the default branch could not be read' };
+    return {
+      state: 'unknown',
+      detail: 'the runner on the branch its release line is cut from could not be read',
+    };
   }
   if (published.commit !== head) {
     return {
       state: 'behind',
-      detail: `release ${published.version} carries ${short(published.commit)}, and the default branch holds ${short(head)} — no release carries what landed`,
+      detail: `release ${published.version} carries ${short(published.commit)}, and its release branch holds ${short(head)} — no release carries what landed`,
     };
   }
   return { state: 'current', detail: `release ${published.version} is what landed` };

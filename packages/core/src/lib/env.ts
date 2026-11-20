@@ -119,6 +119,10 @@ const EnvSchema = z.object({
   S3_FORCE_PATH_STYLE: z.string().min(1).optional(),
   S3_ACCESS_KEY_ID: z.string().min(1).optional(),
   S3_SECRET_ACCESS_KEY: z.string().min(1).optional(),
+  // `main` (unset) or `dev`: which runner release line this core serves boxes (ISS-1358). Plain text
+  // here and refused by name only where the release fetch reads it (`runnerReleaseChannel`), so a
+  // misspelt value never stops a core from booting.
+  RUNNER_RELEASE_CHANNEL: z.string().min(1).optional(),
   LITELLM_API_URL: z.url().optional(),
   LITELLM_API_KEY: z.string().min(1).optional(),
   LITELLM_MODEL: z.string().min(1).default('gpt-4o-mini'),
@@ -289,6 +293,21 @@ export function s3SettingIssues(parsed: Pick<Env, (typeof S3_SETTINGS)[number]>)
 export function storageEnvIssues(parsed: Env): string[] {
   if (parsed.STORAGE_DRIVER !== 's3') return [];
   return s3SettingIssues(parsed);
+}
+
+/** A runner release line a core serves boxes from. */
+export type RunnerReleaseChannel = 'main' | 'dev';
+
+/**
+ * The runner release line `raw` names: `main` where it is unset, else `main` or `dev` as given. Any
+ * other value is refused by name, by the release fetch that reads it, never at boot.
+ */
+export function runnerReleaseChannel(raw: string | undefined): RunnerReleaseChannel {
+  if (raw === undefined || raw === 'main') return 'main';
+  if (raw === 'dev') return 'dev';
+  throw new Error(
+    `RUNNER_RELEASE_CHANNEL is "${raw}"; it takes main or dev, or is left unset for main`,
+  );
 }
 
 const RETIRED_ENV_VARS: Record<string, string> = {

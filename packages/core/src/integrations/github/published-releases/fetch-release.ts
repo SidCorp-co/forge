@@ -2,6 +2,7 @@ import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { argv } from 'node:process';
 import { pathToFileURL } from 'node:url';
+import { channelOfVersion, type RunnerReleaseChannel, servedRunnerChannel } from './channel.js';
 import { refreshMainRunnerHead } from './main-runner-head.js';
 import {
   downloadReleaseAsset,
@@ -16,12 +17,51 @@ const ASSET_PREFIX = 'forge-runner-';
 // a version number apart.
 const COMMIT_ASSET = 'COMMIT';
 
-/** Compare two dotted numeric versions; >0 if a>b, <0 if a<b, 0 if equal. */
+/** How far down GitHub's newest-first release list a channel's newest release is looked for. */
+const MAX_PAGES = 5;
+
+/**
+ * The ordering key of a version: X.Y.Z as numbers, then its rank among builds of that X.Y.Z — a
+ * pre-release such as `-rc.1` below the release, and a dev-line build `-dev.N` ABOVE it, because a
+ * dev build is that release plus what landed on `dev` since (ISS-1358) — then the pre-release's
+ * identifiers, numeric ones as numbers and below alphanumeric ones. The runner orders versions the
+ * same way (`runner-update`'s `is_newer`).
+ */
+function precedence(v: string): { xyz: number[]; rank: number; idents: (number | string)[] } {
+  const bare = (v.trim().replace(/^v/, '').split('+')[0] ?? '').trim();
+  const dash = bare.indexOf('-');
+  const core = dash === -1 ? bare : bare.slice(0, dash);
+  const pre = dash === -1 ? null : bare.slice(dash + 1);
+  const xyz = core.split('.').map((n) => Number.parseInt(n, 10) || 0);
+  const idents = (pre ?? '')
+    .split('.')
+    .filter((p) => p !== '')
+    .map((p) => (/^\d+$/.test(p) ? Number(p) : p));
+  const rank = pre === null ? 1 : idents[0] === 'dev' ? 2 : 0;
+  return { xyz, rank, idents };
+}
+
+function cmpIdent(a: number | string | undefined, b: number | string | undefined): number {
+  if (a === b) return 0;
+  if (a === undefined) return -1;
+  if (b === undefined) return 1;
+  if (typeof a === 'number' && typeof b === 'number') return a - b;
+  if (typeof a === 'number') return -1;
+  if (typeof b === 'number') return 1;
+  return a < b ? -1 : 1;
+}
+
+/** Compare two versions by [`precedence`]; >0 if a>b, <0 if a<b, 0 if equal. */
 export function cmpVersion(a: string, b: string): number {
-  const pa = a.split('.').map((n) => Number.parseInt(n, 10) || 0);
-  const pb = b.split('.').map((n) => Number.parseInt(n, 10) || 0);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
+  const pa = precedence(a);
+  const pb = precedence(b);
+  for (let i = 0; i < Math.max(pa.xyz.length, pb.xyz.length, 3); i++) {
+    const d = (pa.xyz[i] ?? 0) - (pb.xyz[i] ?? 0);
+    if (d !== 0) return d;
+  }
+  if (pa.rank !== pb.rank) return pa.rank - pb.rank;
+  for (let i = 0; i < Math.max(pa.idents.length, pb.idents.length); i++) {
+    const d = cmpIdent(pa.idents[i], pb.idents[i]);
     if (d !== 0) return d;
   }
   return 0;
@@ -33,14 +73,21 @@ function tagToVersion(tag: string): string {
 }
 
 /**
- * Pick the highest-semver published `runner-v*` release, ignoring drafts,
- * prereleases, and non-`runner-v` tags. Returns null when none qualify. Pure —
- * unit-tested in fetch-release.test.ts.
+ * Whether `r` is a release of `channel`'s line: on `main`, a published `runner-vX.Y.Z`; on `dev`, a
+ * published prerelease `runner-vX.Y.Z-dev.N`. Drafts and every other tag are on neither.
  */
-function pickLatestRunnerTag(releases: Release[]): Release | null {
-  const runner = releases.filter(
-    (r) => !r.draft && !r.prerelease && r.tag_name.startsWith(TAG_PREFIX),
-  );
+function onChannel(r: Release, channel: RunnerReleaseChannel): boolean {
+  if (r.draft || !r.tag_name.startsWith(TAG_PREFIX)) return false;
+  const line = channelOfVersion(tagToVersion(r.tag_name));
+  return channel === 'dev' ? r.prerelease && line === 'dev' : !r.prerelease && line === 'main';
+}
+
+/** The highest-versioned release of `channel`'s line in `releases`, or null when none is. */
+export function pickLatestRunnerRelease(
+  releases: Release[],
+  channel: RunnerReleaseChannel,
+): Release | null {
+  const runner = releases.filter((r) => onChannel(r, channel));
   if (runner.length === 0) return null;
   return runner.reduce((best, r) =>
     cmpVersion(tagToVersion(r.tag_name), tagToVersion(best.tag_name)) > 0 ? r : best,
@@ -56,8 +103,27 @@ async function fetchCommitAsset(release: Release): Promise<string | null> {
   return got.bytes.toString('utf8').trim() || null;
 }
 
-async function latestRunnerRelease(): Promise<Release | null> {
-  return pickLatestRunnerTag(await listRepoReleases(REPO));
+/**
+ * The newest release of `channel`'s line, read page by page down GitHub's newest-first list: dev
+ * prereleases are cut far more often than `main`'s releases and would push them off one page.
+ */
+async function latestRunnerRelease(channel: RunnerReleaseChannel): Promise<Release | null> {
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    const releases = await listRepoReleases(REPO, page);
+    const picked = pickLatestRunnerRelease(releases, channel);
+    if (picked !== null || releases.length === 0) return picked;
+  }
+  return null;
+}
+
+/**
+ * Whether the build on disk already answers for `channel`: the same version, or a higher one of
+ * the same line, so a stale read never moves a line backwards. A build of the other line is
+ * replaced, which is what switching a core's channel means.
+ */
+function servesAlready(current: string, version: string, channel: RunnerReleaseChannel): boolean {
+  if (current === version) return true;
+  return channelOfVersion(current) === channel && cmpVersion(current, version) >= 0;
 }
 
 async function run(): Promise<void> {
@@ -67,9 +133,12 @@ async function run(): Promise<void> {
     return;
   }
 
-  const release = await latestRunnerRelease();
+  const channel = servedRunnerChannel();
+  const release = await latestRunnerRelease(channel);
   if (!release) {
-    console.log('[runner-release] no published runner-v* release found — skipping');
+    console.log(
+      `[runner-release] no published ${channel}-channel runner-v* release found — skipping`,
+    );
     return;
   }
   const version = tagToVersion(release.tag_name);
@@ -77,8 +146,10 @@ async function run(): Promise<void> {
   const current = await readFile(join(dir, 'VERSION'), 'utf8')
     .then((s) => s.trim())
     .catch(() => '');
-  if (current && cmpVersion(current, version) >= 0) {
-    console.log(`[runner-release] up to date (have ${current}, latest ${version}) — skipping`);
+  if (current && servesAlready(current, version, channel)) {
+    console.log(
+      `[runner-release] up to date (have ${current}, latest ${channel} ${version}) — skipping`,
+    );
     return;
   }
 
@@ -113,7 +184,9 @@ async function run(): Promise<void> {
 
   // Write VERSION last — the install route keys "published?" off this file.
   await writeFile(join(dir, 'VERSION'), `${version}\n`, 'utf8');
-  console.log(`[runner-release] published runner ${version} (${commit ?? 'no commit'}) to ${dir}`);
+  console.log(
+    `[runner-release] published ${channel}-channel runner ${version} (${commit ?? 'no commit'}) to ${dir}`,
+  );
 }
 
 /** Whether this core serves runner builds from its own disk, and so keeps them fresh. */
@@ -127,7 +200,7 @@ export function servesRunnerReleases(): boolean {
  */
 export async function refetchRunnerRelease(): Promise<void> {
   await refreshMainRunnerHead();
-  await run().catch((err) => {
+  await run().catch((err: unknown) => {
     console.warn(
       `[runner-release] periodic refetch skipped: ${err instanceof Error ? err.message : String(err)}`,
     );

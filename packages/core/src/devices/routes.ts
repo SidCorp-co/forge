@@ -22,6 +22,7 @@ import { deviceProvisionRoutes } from './me-provisions.js';
 import { listDeviceAssignments } from './me-runners.js';
 import { deviceOrientationRevisions } from './orientation-revision.js';
 import { devicesPorts } from './ports.js';
+import { getPublishedRunnerBuild } from './published-build.js';
 import { pushDevice } from './push.js';
 import { deviceProjectAgentConfigs } from './read.js';
 import { refuseDevice } from './refusals.js';
@@ -104,10 +105,21 @@ deviceAuthRoutes.post(
     // each assigned project's orientation revision: a box rewrites a checkout's orientation when it
     // moved, within one beat and with no restart (ISS-1066); omitted where it could not be composed
     const orientations = await deviceOrientationRevisions(device.id);
+    // the build `install/latest.json` serves now: a box checks for an update when it moves, rather
+    // than only on its six-hour timer (ISS-1358); omitted where this core serves no runner build
+    const runnerRelease = await getPublishedRunnerBuild();
     return c.json({
       ok: true,
       serverTime: new Date().toISOString(),
       ...(orientations ? { orientations } : {}),
+      ...(runnerRelease
+        ? {
+            runnerRelease:
+              runnerRelease.commit === null
+                ? { version: runnerRelease.version }
+                : { version: runnerRelease.version, commit: runnerRelease.commit },
+          }
+        : {}),
       ...gate.ack,
       ...binaries.ack,
       ...disk.ack,

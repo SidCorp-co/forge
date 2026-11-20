@@ -29,10 +29,14 @@ export function publicApiHeaders(): Record<string, string> {
   return h;
 }
 
-export async function listRepoReleases(repo: string): Promise<PublicRelease[]> {
-  const res = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=50`, {
-    headers: publicApiHeaders(),
-  });
+/** One page of `repo`'s releases, newest first; an empty page is the end of the list. */
+export async function listRepoReleases(repo: string, page = 1): Promise<PublicRelease[]> {
+  const res = await fetch(
+    `https://api.github.com/repos/${repo}/releases?per_page=50&page=${page}`,
+    {
+      headers: publicApiHeaders(),
+    },
+  );
   if (!res.ok) throw new Error(`GitHub releases API ${res.status}`);
   return (await res.json()) as PublicRelease[];
 }
