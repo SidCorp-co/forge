@@ -45,7 +45,8 @@ export function parseCriteriaText(text: string | null | undefined): ParsedCriter
   const faults: CriteriaTextFault[] = [];
   const [first] = lead;
   if (first !== undefined && open.length > 0) {
-    const more = lead.length > 1 ? ` (and ${lead.length - 1} more line${lead.length > 2 ? 's' : ''})` : '';
+    const more =
+      lead.length > 1 ? ` (and ${lead.length - 1} more line${lead.length > 2 ? 's' : ''})` : '';
     faults.push({
       n: null,
       why: `the line "${clip(first)}"${more} stands before criterion ${open[0]?.n}: number it as a criterion of its own, or move it to the description`,

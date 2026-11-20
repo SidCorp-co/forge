@@ -53,9 +53,9 @@ describe('the criteria text a read serves', () => {
   ];
 
   it('is the rows rendered where the stored text has a prose lead line', () => {
-    expect(cleanCriteriaText('Scope: x\n1. The list loads in 2 s.\n2. A clerk sees it.', rows)).toBe(
-      '1. The list loads in 2 s.\n2. A clerk sees it.',
-    );
+    expect(
+      cleanCriteriaText('Scope: x\n1. The list loads in 2 s.\n2. A clerk sees it.', rows),
+    ).toBe('1. The list loads in 2 s.\n2. A clerk sees it.');
   });
 
   it('is the stored text where it parses cleanly', () => {

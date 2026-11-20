@@ -32,7 +32,6 @@ import { refuser } from '../../lib/refusal.js';
 import { tracedCodesOf, traceWordingsOf } from '../ports.js';
 import { notCloseVerdictSql } from './close-verdicts.js';
 import {
-  cleanCriteriaText,
   parseCriteriaText,
   renderCriteriaText,
   strayTraceTagsOf,
@@ -118,22 +117,6 @@ export async function liveRows(tx: Tx, issueId: string): Promise<LiveRow[]> {
     })
     .from(issueCriteria)
     .where(and(eq(issueCriteria.issueId, issueId), isNull(issueCriteria.retiredAt)));
-}
-
-/**
- * The `acceptanceCriteria` an issue read serves (ISS-1378): `criteria-text.ts:cleanCriteriaText`
- * over its live rows in their order, so a text stored with a prose line above criterion 1, which a
- * locked issue can no longer rewrite, reads as the criteria it holds. Rows are read only for such a text.
- */
-export async function servedCriteriaText(
-  issueId: string,
-  stored: string | null,
-): Promise<string | null> {
-  if (stored === null || parseCriteriaText(stored).faults.length === 0) return stored;
-  const rows = [...(await liveRows(db, issueId))].sort(
-    (a, b) => a.position - b.position || a.n - b.n,
-  );
-  return cleanCriteriaText(stored, rows);
 }
 
 /** The field a criteria write came through, which its refusals name. */

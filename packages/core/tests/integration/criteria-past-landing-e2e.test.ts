@@ -321,7 +321,8 @@ describe('a criteria text with a line before its first numbered criterion (ISS-1
   it('takes a well-numbered text whose criterion runs on an indented line', async () => {
     const r = await call('holder', 'POST', `/api/projects/${projectId}/issues`, {
       title: 'Filed with a criterion over two lines',
-      acceptanceCriteria: '1. The order list loads\n    in under 2 s.\n2. A clerk sees the new column.',
+      acceptanceCriteria:
+        '1. The order list loads\n    in under 2 s.\n2. A clerk sees the new column.',
     });
     const filed = ok(r, 201);
     expect(await liveStatements(String(filed.id))).toEqual([
@@ -333,7 +334,9 @@ describe('a criteria text with a line before its first numbered criterion (ISS-1
   it('reads a locked issue whose stored text carries the line back clean, its rows untouched', async () => {
     const id = await landed(['The order list loads in under 2 s.', 'A clerk sees the new column.']);
     // the text as the dropped-line write left it, before this refusal stood
-    await rows(sql`UPDATE issues SET acceptance_criteria = ${`${LEAD}\n${NUMBERED}`} WHERE id = ${id}`);
+    await rows(
+      sql`UPDATE issues SET acceptance_criteria = ${`${LEAD}\n${NUMBERED}`} WHERE id = ${id}`,
+    );
     const before = await rows(
       sql`SELECT id, n, statement, retired_at FROM issue_criteria WHERE issue_id = ${id} ORDER BY n`,
     );
