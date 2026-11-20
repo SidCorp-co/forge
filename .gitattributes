@@ -1,0 +1,21 @@
+# Files a generator script writes whole, marked linguist-generated (ISS-1375). A judge brief weighs
+# an issue's own lines by git blame and passes these over, so a later landing that only regenerates
+# one no longer reads as changing an earlier issue's work. Each line names what writes the file.
+# Hand-written source and lock files are not marked: a change to them is the issue's own.
+
+# pnpm --filter @forge/core contracts:generate (packages/core/src/contracts-generate.ts)
+packages/core/contracts/forge-api.openapi.json linguist-generated
+packages/core/contracts/forge-mcp.tools.json linguist-generated
+
+# pnpm --filter @forge/core cards:stamp (packages/core/src/mcp/card-stamp.ts)
+packages/core/src/lib/card-changes.json linguist-generated
+
+# the TanStack Router vite plugin (packages/web-v2/vite.config.ts) on dev and build
+packages/web-v2/src/routeTree.gen.ts linguist-generated
+
+# pnpm --filter web-v2 gen:help (packages/web-v2/scripts/gen-help-content.mjs), from content/help/
+packages/web-v2/src/features/docs/help-content.generated.ts linguist-generated
+packages/web-v2/src/features/docs/help-slugs.generated.json linguist-generated
+
+# node scripts/refresh-design-index.mjs
+.forge/design-index.json linguist-generated
