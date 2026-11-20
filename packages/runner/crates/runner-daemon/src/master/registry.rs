@@ -84,13 +84,15 @@ pub(crate) struct Registry {
 }
 
 impl Registry {
-    /// The tmux pane holding the project's conversation while its cutover
-    /// waits, where that is why the last sweep placed no master.
-    fn cutover_pane<'a>(&'a self, project_id: &str) -> Option<&'a str> {
+    /// What holds the project's conversation and the tmux pane holding it,
+    /// where no master is live and a cutover that waits is why the last sweep
+    /// placed none: the one reading of that wait every caller shares.
+    fn cutover_waits(&self, project_id: &str) -> Option<(&str, Option<&str>)> {
+        if self.live.contains_key(project_id) {
+            return None;
+        }
         match self.unplaced.get(project_id) {
-            Some(Unplaced::CutoverWaits {
-                pane: Some(pane), ..
-            }) => Some(pane),
+            Some(Unplaced::CutoverWaits { detail, pane }) => Some((detail, pane.as_deref())),
             _ => None,
         }
     }
@@ -154,20 +156,16 @@ impl Masters {
         if let Some(m) = reg.live.get(project_id) {
             return (m.name == pane).then(|| f(&m.session_id));
         }
-        (Registry::cutover_pane(&reg, project_id) == Some(pane)).then(|| f(waiting))
+        let waits_in = reg.cutover_waits(project_id).and_then(|(_, held)| held);
+        (waits_in == Some(pane)).then(|| f(waiting))
     }
 
     /// What holds `project_id`'s master in its tmux pane, and that pane, where
     /// a cutover that waits is why no master is placed (ISS-1304, ISS-1316).
     pub fn cutover_waits(&self, project_id: &str) -> Option<(String, Option<String>)> {
         let reg = self.0.lock().expect("masters poisoned");
-        if reg.live.contains_key(project_id) {
-            return None;
-        }
-        match reg.unplaced.get(project_id) {
-            Some(Unplaced::CutoverWaits { detail, pane }) => Some((detail.clone(), pane.clone())),
-            _ => None,
-        }
+        reg.cutover_waits(project_id)
+            .map(|(detail, pane)| (detail.to_string(), pane.map(str::to_string)))
     }
 
     /// Serve the live pane for this project under `session_id`, keeping
