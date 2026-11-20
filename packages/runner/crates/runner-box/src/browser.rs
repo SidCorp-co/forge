@@ -262,6 +262,7 @@ fn alive(_pid: i32) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use crate::testkit::Scratch;
 
     #[test]
@@ -288,6 +289,11 @@ mod tests {
         assert!(far.contains("not on this device's loopback"), "{far}");
     }
 
+    /// Unix only: the daemon's liveness is read by signalling its pid, and off unix [`alive`]
+    /// answers false for every pid, so there this test's own pid reads as a dead daemon. What that
+    /// leaves unproven on windows is the whole stream read: a windows box finds every browser
+    /// stream lost until liveness is read there.
+    #[cfg(unix)]
     #[test]
     fn the_stream_port_is_read_again_each_time_and_a_lost_one_fails_loudly() {
         let dir = Scratch::new("stream");

@@ -3,11 +3,21 @@
 //! an act on a box this runner does not hold is answered, never dropped.
 
 use super::*;
-use crate::browser::Browser;
 use crate::testkit::{box_id, Scratch};
+// The browser-stream tests below are unix only: a planted agent-browser daemon is this test's own
+// pid, and off unix `browser::alive` answers false for every pid, so the box reads its stream lost
+// before any viewer or input reaches it. Unproven on windows until liveness is read there: a
+// browser box's view and input streams, the hold that gates a person's input, and a warm box's
+// hand-out to a person.
+#[cfg(unix)]
+use crate::browser::Browser;
+#[cfg(unix)]
 use futures_util::StreamExt;
+#[cfg(unix)]
 use runner_preview::codec::{Channel, ResetCode};
+#[cfg(unix)]
 use runner_preview::tunnel::BoxEndpoints;
+#[cfg(unix)]
 use tokio::io::AsyncWriteExt;
 
 /// A stand-in for core: every report, and every clip uploaded (box, span, clip bytes).
@@ -75,6 +85,7 @@ pub(super) fn boxes(root: &Scratch, said: Arc<Said>) -> Boxes {
     Boxes::with(said, ctx, Some(root.path().join("held.json")), probe)
 }
 
+#[cfg(unix)]
 /// A browser box `id` whose agent-browser daemon is this test (its pid), its stream on `port`.
 fn plant_browser(b: &Boxes, root: &Scratch, id: &str, port: u16) -> PathBuf {
     let browser = Browser::new(
@@ -104,6 +115,7 @@ fn plant_browser(b: &Boxes, root: &Scratch, id: &str, port: u16) -> PathBuf {
     dir
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn a_lost_stream_port_fails_the_box_stream_lost_and_closes_it() {
     let id = box_id();
@@ -149,6 +161,7 @@ async fn a_lost_stream_port_fails_the_box_stream_lost_and_closes_it() {
     );
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn a_persons_input_reaches_the_browser_only_while_they_hold_the_box() {
     let id = box_id();
@@ -260,6 +273,7 @@ async fn a_box_that_fails_to_start_is_reported_start_failed_and_leaves_nothing_h
     assert!(held.is_empty());
 }
 
+#[cfg(unix)]
 /// A WebSocket server standing in for agent-browser's stream, accepting one client.
 fn accept_one(listener: tokio::net::TcpListener) -> tokio::task::JoinHandle<bool> {
     tokio::spawn(async move {
@@ -311,6 +325,7 @@ async fn a_box_opened_for_a_person_admits_their_input_stream_from_the_open() {
     );
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn a_warm_box_handed_to_a_person_admits_their_input_and_one_handed_to_the_agent_does_not() {
     let id = box_id();
