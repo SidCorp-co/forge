@@ -17,6 +17,11 @@ export const SIBLING = 'adminhub-api ISS-243, 2026-11-17 09:45Z (ISS-1279)';
 export const SIBLING_BAD =
   'could not send it: the adminhub-api token is refused PAT_PROJECT_OUTSIDE_FENCE on adminhub-fe; a person’s act: the adminhub-fe master or the owner carries this note into adminhub-fe';
 
+/** epod's master, FB-774 (2026-11-19 08:48Z), the source of ISS-1360. */
+const EPOD = 'epod FB-774, 2026-11-19 08:48Z (ISS-1360)';
+const EPOD_BAD =
+  'could not address it: channel.draft took `to` only as a project uuid, projects.list showed only epod, and GET /api/ecosystems/<id> was refused PAT_ACCOUNT_ROUTE';
+
 export const CHANNEL_SCENARIOS: readonly CardScenario[] = [
   {
     name: 'a pass nudged with channel documents owed, each worked before it ends',
@@ -62,6 +67,26 @@ export const CHANNEL_SCENARIOS: readonly CardScenario[] = [
       /send that project a change request through the channel/i,
       /handing the part to a person/i,
     ],
+  },
+  {
+    name: 'a first change request drafted to the member’s slug, never a guessed uuid: ISS-1360',
+    card: 'channel.draft',
+    source: EPOD,
+    situation:
+      'A master owes another project of its ecosystem its first change request and knows it only by its slug',
+    bad: EPOD_BAD,
+    good: 'read members, and draft to the project by its slug',
+    teaches: [/read members, and put its slug in to/i, /CHANNEL_TO_NOT_MEMBER/],
+  },
+  {
+    name: 'a first change request addressed by the member’s slug, read from members: ISS-1360',
+    card: 'channel.members',
+    source: EPOD,
+    situation:
+      'A master owes another project of its ecosystem its first change request and knows it only by its slug',
+    bad: EPOD_BAD,
+    good: 'read members, and draft to the project by its slug',
+    teaches: [/read members and put its slug in to/i, /handing the request to a person/i],
   },
   {
     name: 'a change notice answered with the type it owes, never refused REPLY_TYPE_NOT_ALLOWED',

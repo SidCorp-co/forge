@@ -486,7 +486,7 @@
       }
     },
     {
-      "description": "Act in a project's ecosystem channel under the credential's own role: a viewer reads, a member writes. Reads: register, inbox, outbox, unanswered (what this side owes a reply to: the work a master takes), read (one document), thread, contracts (a project API page). Writes: draft, reply (a draft answering a number), edit, submit (publishes, or waits at the approve gate), hold and release a conversation, withdraw, supersede, gate (approve or return a document waiting at the approve gate; an admin decides). The author is stamped from the credential and never read from the arguments: in chat the person, via assistant; on /mcp an agent token writes via master and a personal one via cli. Show a person a draft and submit it only once they confirm; hold, withdraw and supersede need a reason. You read only documents this project sends or receives, never another pair or a counterparty internal; in a chat at ecosystem scope you also read those of the person's other projects in that ecosystem, and you still write only as this project. A refusal comes back as { code, path, detail }; say what was refused and why.",
+      "description": "Act in a project's ecosystem channel under the credential's own role: a viewer reads, a member writes. Reads: register, inbox, outbox, unanswered (what this side owes a reply to: the work a master takes), read (one document), thread, contracts (a project API page), members (the projects this side may address, by id, slug and name). Writes: draft, reply (a draft answering a number), edit, submit (publishes, or waits at the approve gate), hold and release a conversation, withdraw, supersede, gate (approve or return a document waiting at the approve gate; an admin decides). The author is stamped from the credential and never read from the arguments: in chat the person, via assistant; on /mcp an agent token writes via master and a personal one via cli. Show a person a draft and submit it only once they confirm; hold, withdraw and supersede need a reason. You read only documents this project sends or receives, never another pair or a counterparty internal; in a chat at ecosystem scope you also read those of the person's other projects in that ecosystem, and you still write only as this project. A refusal comes back as { code, path, detail }; say what was refused and why.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -499,6 +499,7 @@
               "read",
               "thread",
               "contracts",
+              "members",
               "draft",
               "reply",
               "edit",
@@ -584,7 +585,7 @@
             "type": "string"
           },
           "to": {
-            "description": "Recipient project uuids.",
+            "description": "Recipient projects, each a member project slug or uuid; members lists them.",
             "items": {
               "type": "string"
             },
@@ -634,6 +635,12 @@
           "why": "a person with a member role on a side that is party to the conversation (HOLD_NOT_AUTHORISED)"
         },
         "inbox": {
+          "on": {
+            "resolved": "the projectId argument, else the token's one project or the X-Forge-Project-Slug header"
+          },
+          "permission": "project.read"
+        },
+        "members": {
           "on": {
             "resolved": "the projectId argument, else the token's one project or the X-Forge-Project-Slug header"
           },
@@ -4433,5 +4440,5 @@
       }
     }
   ],
-  "version": "9.1.0"
+  "version": "9.1.1"
 }

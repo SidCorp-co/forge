@@ -77,6 +77,8 @@ export const CHANNEL_REFUSAL_CODES = [
 	"CHANNEL_ECOSYSTEM_AMBIGUOUS",
 	"CHANNEL_PROJECT_UNNAMED",
 	"CHANNEL_PROJECT_OUTSIDE_TOKEN",
+	/** A draft's `to` names no member the ecosystem shows the sender, by slug or uuid; the refusal lists those it does (ISS-1360). */
+	"CHANNEL_TO_NOT_MEMBER",
 	/** A finding handed to a project no ecosystem shared with the sender shows it (ISS-1286). */
 	"HANDOFF_NOT_LINKED",
 	/** A handoff names no issue or feedback item of the project it is handed from. */
@@ -218,6 +220,7 @@ export const CHANNEL_READS = [
 	"read",
 	"thread",
 	"contracts",
+	"members",
 ] as const;
 export const CHANNEL_WRITES = [
 	"draft",

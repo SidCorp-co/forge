@@ -16,6 +16,7 @@ import type { ChannelOutcome } from './channel-act.js';
 import { channelRoleRefusal, type Writer, writerOfPrincipal } from './channel-author.js';
 import { supersede, withdraw } from './channel-ends.js';
 import { holdOrRelease } from './channel-holds.js';
+import { readChannelMembers } from './channel-members.js';
 import { inbox, outbox, readAs, threadAs, unanswered } from './channel-read.js';
 import { readRegister } from './channel-register.js';
 import { UUID_PATTERN } from './channel-schema.js';
@@ -41,7 +42,7 @@ import { namedRefusals, type SideCodes, sideOf } from './tool-side.js';
 
 const DESCRIPTION = [
   "Act in a project's ecosystem channel under the credential's own role: a viewer reads, a member writes.",
-  'Reads: register, inbox, outbox, unanswered (what this side owes a reply to: the work a master takes), read (one document), thread, contracts (a project API page).',
+  'Reads: register, inbox, outbox, unanswered (what this side owes a reply to: the work a master takes), read (one document), thread, contracts (a project API page), members (the projects this side may address, by id, slug and name).',
   'Writes: draft, reply (a draft answering a number), edit, submit (publishes, or waits at the approve gate), hold and release a conversation, withdraw, supersede, gate (approve or return a document waiting at the approve gate; an admin decides).',
   'The author is stamped from the credential and never read from the arguments: in chat the person, via assistant; on /mcp an agent token writes via master and a personal one via cli.',
   'Show a person a draft and submit it only once they confirm; hold, withdraw and supersede need a reason.',
@@ -152,6 +153,7 @@ const HANDLERS: Handlers = {
   thread: async (a, _side, _w, scope) =>
     threadView(await firstParty(scope.sides, (s) => threadAs(s, a.thread))),
   contracts: async (a, side, w, scope) => readApiPage(w.userId, a.project ?? side, scope.sides),
+  members: async (_a, side) => ({ ...(await readChannelMembers(side)) }),
   draft: async ({ ecosystem, ...input }, side, writer, scope) =>
     settled(
       await createDraft({
@@ -324,6 +326,7 @@ const PERMISSION = {
     unanswered: READ,
     read: READ,
     thread: READ,
+    members: READ,
     draft: WRITE,
     reply: WRITE,
     edit: WRITE,

@@ -14,6 +14,7 @@ import { type ChannelNeed, channelRoleRefusal, writerOf } from './channel-author
 import { supersede, withdraw } from './channel-ends.js';
 import { handOff } from './channel-handoff.js';
 import { holdOrRelease } from './channel-holds.js';
+import { readChannelMembers } from './channel-members.js';
 import { inbox, outbox, readAs, standingOf, threadAs, unanswered } from './channel-read.js';
 import { NUMBER_PATTERN } from './channel-schema.js';
 import { createDraft, editDraft, submit } from './channel-service.js';
@@ -65,7 +66,7 @@ const draftFields = {
 };
 
 const DRAFT_SHAPE =
-  '{ type, to, subject, dueBy?, inReplyTo?, body }; core sets id, from, number, state, gate and the author';
+  "{ type, to: [each a member project's slug or uuid], subject, dueBy?, inReplyTo?, body }; core sets id, from, number, state, gate and the author";
 
 const draftBody = zValidator(
   'json',
@@ -279,6 +280,14 @@ channelProjectRoutes.get('/:id/channel/unanswered', projectParam, READS, noQuery
   await mayAct(c, id, 'read');
   const documents = unansweredView(await unanswered(id));
   return c.json({ project: id, documents, returned: documents.length });
+});
+
+// Who this side may address in its ecosystems' channels, by id, slug and name and nothing else of
+// them (ISS-1360): a draft's `to` takes each by its slug or uuid.
+channelProjectRoutes.get('/:id/channel/members', projectParam, READS, noQuery, async (c) => {
+  const { id } = c.req.valid('param');
+  await mayAct(c, id, 'read');
+  return c.json(await readChannelMembers(id));
 });
 
 channelProjectRoutes.get('/:id/channel/outbox', projectParam, READS, noQuery, async (c) => {

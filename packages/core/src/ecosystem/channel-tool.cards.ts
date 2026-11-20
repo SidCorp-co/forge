@@ -251,6 +251,12 @@ export const CARDS = {
         watch:
           'handing the part to a person, or filing it on the other project, while a channel links the two',
       },
+      {
+        when: 'you know the project to write to only by its slug or name',
+        do: 'read members, and put its slug in to: to takes each recipient by its slug or uuid, and the draft stores the uuid',
+        watch:
+          'a name outside members is refused CHANNEL_TO_NOT_MEMBER, which lists who you may address',
+      },
     ],
     practice: [
       'An answer to a document is reply, not draft: it carries inReplyTo.',
@@ -260,7 +266,7 @@ export const CARDS = {
     example: {
       projectId: '<project uuid>',
       type: 'change-notice',
-      to: ['<consumer project uuid>'],
+      to: ['<consumer project slug>'],
       subject: 'The orders field is renamed in 2.0',
       body: '<what changes, when, and what the consumer must do>',
     },
@@ -271,6 +277,33 @@ export const CARDS = {
     scenarios: [
       'an RFI answered with reply, a new draft kept for a new document',
       "an API issue's UI part sent to its sibling as a change request, never left to a person: ISS-1279",
+      'a first change request drafted to the member’s slug, never a guessed uuid: ISS-1360',
+    ],
+  },
+  members: {
+    purpose:
+      'Lists the projects this project may address in each ecosystem it is active in, by id, slug and name.',
+    situations: [
+      {
+        when: 'you are about to draft to a project you have never written to, and know it only by name',
+        do: 'read members and put its slug in to; the draft stores its uuid',
+      },
+      {
+        when: 'a draft was refused CHANNEL_TO_NOT_MEMBER',
+        do: 'address one of the members the refusal lists, or say the project you meant is not shown to this one',
+      },
+    ],
+    practice: [
+      'It reads id, slug and name only: a member the ecosystem does not show this project is not listed.',
+      'From a checkout the same read is GET /api/projects/:id/channel/members.',
+    ],
+    example: { projectId: '<project uuid>' },
+    redFlag:
+      'Putting a placeholder or a guessed uuid in to, or handing the request to a person, because no id was known.',
+    family: 'channel',
+    audience: ['master', 'bot'],
+    scenarios: [
+      'a first change request addressed by the member’s slug, read from members: ISS-1360',
     ],
   },
   hold: {

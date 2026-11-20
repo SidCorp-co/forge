@@ -6,12 +6,14 @@ import { type ChannelOutcome, lockedSender, notIn, refuse, served, settle } from
 import type { Writer } from './channel-author.js';
 import { checked, parsedOrRefused } from './channel-checks.js';
 import { askGate } from './channel-gate-ask.js';
+import { recipientIds } from './channel-members.js';
 import { addDays, today } from './channel-rules.js';
 import {
   DOCUMENT_SCHEMA_ID,
   documentTypeWithArticle,
   type Gate,
   TYPE_ABBREVIATIONS,
+  UUID_PATTERN,
 } from './channel-schema.js';
 import { emitPublished } from './channel-signals.js';
 import { insertDraft, insertEvent, reserveNumber, rewriteDocument } from './channel-store.js';
@@ -43,7 +45,7 @@ async function defaultDue(
   if (input.type !== 'rfi' && input.type !== 'change-request') return undefined;
   const kind = input.type;
   const to = Array.isArray(input.to)
-    ? input.to.filter((t): t is string => typeof t === 'string')
+    ? input.to.filter((t): t is string => typeof t === 'string' && UUID_PATTERN.test(t))
     : [];
   const promised = [...(await readInterfaces(tx, to)).values()].flatMap((row) => {
     const parsed = interfaceDocumentSchema.safeParse(row.document);
@@ -81,6 +83,16 @@ function compose(
   };
 }
 
+// `to` names each recipient by a member's slug or uuid, and the document holds its uuid (ISS-1360)
+const addressed = async (
+  projectId: string,
+  ecosystem: { id: string; slug: string },
+  input: DraftInput,
+): Promise<DraftInput> => ({
+  ...input,
+  to: await recipientIds({ projectId, ecosystem, to: input.to }),
+});
+
 async function ecosystemOr(tx: Tx, id: string): Promise<EcosystemDocument> {
   const row = await readEcosystem(tx, id);
   if (!row)
@@ -102,12 +114,17 @@ export async function createDraft(args: {
     db.transaction(async (tx) => {
       const eco = await ecosystemOr(tx, args.ecosystemId);
       const id = randomUUID();
+      const input = await addressed(
+        args.projectId,
+        { id: args.ecosystemId, slug: eco.ecosystem.slug },
+        args.input,
+      );
       const doc = parsedOrRefused(
         compose(
           { id, ecosystem: args.ecosystemId, from: args.projectId, number: null },
-          args.input,
+          input,
           args.writer.author,
-          await defaultDue(tx, eco, args.input),
+          await defaultDue(tx, eco, input),
         ),
       );
       await insertDraft(tx, {
@@ -153,6 +170,11 @@ export async function editDraft(args: {
       }
       const eco = await ecosystemOr(tx, row.ecosystemId);
       const before = serve(row, []).document;
+      const input = await addressed(
+        row.fromProjectId,
+        { id: row.ecosystemId, slug: eco.ecosystem.slug },
+        args.input,
+      );
       const doc = parsedOrRefused(
         compose(
           {
@@ -162,9 +184,9 @@ export async function editDraft(args: {
             number: row.number,
             ...(before.gate ? { gate: before.gate } : {}),
           },
-          args.input,
+          input,
           args.writer.author,
-          await defaultDue(tx, eco, args.input),
+          await defaultDue(tx, eco, input),
         ),
       );
       await rewriteDocument(tx, row.id, {

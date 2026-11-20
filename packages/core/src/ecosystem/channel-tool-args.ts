@@ -9,6 +9,8 @@ import { DOCUMENT_TYPES } from './schema.js';
 const number = z.string().regex(NUMBER_PATTERN);
 const ref = z.string().refine((v) => UUID_PATTERN.test(v) || NUMBER_PATTERN.test(v));
 const reason = z.string().trim().min(1).max(REASON_LINE_MAX);
+/** A recipient, by a member project's slug or uuid: `members` lists them, and the draft stores the uuid. */
+const to = z.array(z.string().trim().min(1).max(100)).min(1);
 const content = {
   type: z.enum(DOCUMENT_TYPES),
   subject: z.string(),
@@ -30,16 +32,17 @@ const BY_ACTION = {
   read: z.strictObject({ ref }),
   thread: z.strictObject({ thread: number }),
   contracts: z.strictObject({ project: z.uuid().optional() }),
+  members: z.strictObject({}),
   draft: z.strictObject({
     ecosystem: z.uuid().optional(),
-    to: z.array(z.uuid()).min(1),
+    to,
     inReplyTo: number.optional(),
     ...content,
   }),
-  reply: z.strictObject({ inReplyTo: number, to: z.array(z.uuid()).min(1).optional(), ...content }),
+  reply: z.strictObject({ inReplyTo: number, to: to.optional(), ...content }),
   edit: z.strictObject({
     ref,
-    to: z.array(z.uuid()).min(1),
+    to,
     inReplyTo: number.optional(),
     ...content,
   }),
@@ -84,6 +87,7 @@ const SHAPES: Record<ChannelAction, string> = {
   read: '{ ref: a document uuid or number }',
   thread: '{ thread: the number that opened it }',
   contracts: '{ project?: a project uuid, this one when omitted }',
+  members: '{}',
   draft: '{ ecosystem?, type, to, subject, body, dueBy?, inReplyTo? }',
   reply: '{ inReplyTo, type, subject, body, to?, dueBy? }',
   edit: '{ ref, type, to, subject, body, dueBy?, inReplyTo? }',
@@ -134,7 +138,10 @@ export const CHANNEL_INPUT_SCHEMA: Record<string, unknown> = {
     thread: prop('The number of the document that opened the conversation.'),
     project: prop('contracts: the project whose API page to read.'),
     type: prop('Document type.', { type: 'string', enum: [...DOCUMENT_TYPES] }),
-    to: prop('Recipient project uuids.', { type: 'array', items: { type: 'string' } }),
+    to: prop('Recipient projects, each a member project slug or uuid; members lists them.', {
+      type: 'array',
+      items: { type: 'string' },
+    }),
     subject: prop('One-line subject, in English.'),
     body: prop('The type-specific body.', { type: 'object' }),
     dueBy: prop('YYYY-MM-DD; a default applies when omitted.'),

@@ -925,9 +925,9 @@
     "by": "ISS-1251"
   },
   "channel.draft": {
-    "hash": "1c35fedbc442aba8",
-    "on": "2026-11-17",
-    "by": "ISS-1279"
+    "hash": "36af8e77f6f1b0c1",
+    "on": "2026-11-20",
+    "by": "ISS-1360"
   },
   "channel.edit": {
     "hash": "ef688d5a5814d05c",
@@ -948,6 +948,11 @@
     "hash": "398f3e7cddbdb7e5",
     "on": "2026-11-17",
     "by": "ISS-1251"
+  },
+  "channel.members": {
+    "hash": "a38f3b77ca32c451",
+    "on": "2026-11-20",
+    "by": "ISS-1360"
   },
   "channel.outbox": {
     "hash": "3008e4b4a48dc0d0",
