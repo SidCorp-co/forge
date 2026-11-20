@@ -193,8 +193,11 @@ function keptLine(e: KeptEntry, project: { id: string; slug: string }, who: stri
   return `"${e.label}" (${e.kind}) kept in ${project.slug}'s vault as ${e.ref}: ${use}; it is revoked or replaced on its page${page ? ` ${page}` : ` (the Secrets page of ${project.slug})`}.`;
 }
 
-/** The note on a thread's secret: what was kept, said once in this reply; or, kept nothing, why. */
-function secretNote(input: {
+/**
+ * The note on a thread's secret: what was kept, said once in this reply, and nothing asked of its
+ * sender, not even a slot the thread asked for; or, where nothing was kept, why, with the door.
+ */
+export function secretNote(input: {
   messageId: string;
   who: string;
   kept: KeptEntry[];
@@ -209,7 +212,6 @@ function secretNote(input: {
       ...kept.map((e) => keptLine(e, project, who)),
       'Tell the room once, in this same reply and in your own words: what was kept, under which name, for which project, who can use it, and the page where it is revoked or replaced. Then go on with what they sent it for.',
       `The project's master reads it the same way; where the person wants the master to act with it, ask the master with support.ask_master naming its secret:// name, never the value.`,
-      ...(door ? [door] : []),
       NOTHING_ASKED,
     ].join(' ');
   }
@@ -239,8 +241,9 @@ export async function flagSecret(
 ): Promise<void> {
   const who = author.label ? `@${author.label}` : `account ${author.key}`;
   const again = await toldBefore(room.id, thread, messageId, author.key);
-  // a slot this thread asked for keeps its door in the note, kept value or not (ISS-1348 c4)
-  const door = await doorLine(room, thread);
+  // once a value is kept nothing more is asked of its sender (owner, 2026-11-20): the slot's door
+  // (ISS-1348 c4) is given only where nothing was kept and the thread still owes that slot
+  const door = kept.length > 0 ? null : await doorLine(room, thread);
   const [project] = await db
     .select({ id: projects.id, slug: projects.slug })
     .from(projects)

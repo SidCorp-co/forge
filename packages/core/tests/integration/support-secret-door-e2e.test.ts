@@ -13,8 +13,9 @@
  *   and an empty body are each refused by name, and the use is kept by fingerprint (c2);
  * - the thread that asked is told by fingerprint once the slot holds a value, through the write URL
  *   or the page, and the value is nowhere in the room's record, the audit or the outbox (c3);
- * - a secret pasted in a thread that asked for a slot is answered with that slot's link and a fresh
- *   write command (c4);
+ * - a secret pasted in a thread that asked for a slot is kept and named once, with no slot link and
+ *   no write command: nothing more is asked of its sender (c4 as the owner ruled on 2026-11-20,
+ *   ISS-1372);
  * - the project's Secrets page lists each request first with why, its shape and who it was for, a
  *   slot already held reads so with when and by whom, every secret is grouped by what uses it with no
  *   value and no secret:// label, and the page mints a request's one-time write URL (c6 to c9).
@@ -411,7 +412,7 @@ describe('ISS-1348: one secret act for every kind of slot', () => {
 });
 
 describe('ISS-1348: a pasted secret is answered with its slot’s door', () => {
-  it('answers a secret pasted in a thread that asked for a slot with its link and a fresh command (c4)', async () => {
+  it('keeps a secret pasted in a thread that asked for a slot and names it once, asking nothing more: no slot link, no command (c4, ISS-1372)', async () => {
     const opened = await threadOf('Cần STRIPE_KEY cho staging'); // i18n-allow: "need STRIPE_KEY for staging"
     const stripe = linkOf(
       await secretLink(room, {
@@ -429,10 +430,10 @@ describe('ISS-1348: a pasted secret is answered with its slot’s door', () => {
       })
       .toBe(1);
     const [note] = (await notesIn(opened)).filter((n) => n.includes('held a '));
-    expect(note).toContain(stripe.link);
-    expect(note).toMatch(
-      /curl -X PUT --data-binary @<file holding the value> '[^']+\/api\/secret-writes\/[A-Za-z0-9_-]{43}'/,
-    );
+    // the owner's ruling of 20/11: once the value is kept, the note names it and asks nothing more
+    expect(note).toMatch(/kept in [^ ]+'s vault as secret:\/\/kept\/[a-z0-9-]+/);
+    expect(note).not.toContain(stripe.link);
+    expect(note).not.toMatch(/curl -X PUT|\/api\/secret-writes\//);
     expect(note).not.toContain(PASTED);
     expect(pasted).toBeTruthy();
   });
@@ -473,8 +474,8 @@ describe('ISS-1348: one Secrets page, requests first (owner’s ruling of 19/11)
     const google = read.requests.find((r) => r.slot.detail === 'GOOGLE_CLIENT_SECRET');
     expect(google?.slot.label).toBe('Google client secret');
     expect(google?.slot.held).toMatchObject({ by: null, via: 'presigned' });
-    // the pasted secret's note made a second ask of the same slot: one request, both its asks
-    expect(read.requests[0]?.askIds.length).toBeGreaterThan(1);
+    // the pasted secret was kept, so its note made no second ask of the slot (ISS-1372)
+    expect(read.requests[0]?.askIds).toHaveLength(1);
     const sentry = read.requests.find((r) => r.slot.detail === 'SENTRY_DSN');
     const [owner] = await rows<{ name: string }>(
       sql`SELECT coalesce(display_name, split_part(email, '@', 1)) AS name FROM users WHERE id = ${w.ownerId}::uuid`,
