@@ -35,6 +35,8 @@
     }
   ],
   "timeout": "10s",
+  "aliveStatusCodesComment": "A host that is down or throttling says nothing about the page, so a 5xx and a 429 pass while a 404 stays dead. markdown-link-check 3.8.7 (the action pins it) asks a link HEAD then GET, so a 5xx is asked twice; it retries a 429 retryCount times on its retry-after, then reads the last answer against aliveStatusCodes. It retries no 5xx and prints no alive link in quiet mode, so an outage passes unseen (debt 9b525306: a github.com 503 failed the docs job).",
+  "aliveStatusCodes": [200, 429, 500, 502, 503, 504],
   "retryOn429": true,
   "retryCount": 2,
   "fallbackRetryDelay": "30s"
