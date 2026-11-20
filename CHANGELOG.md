@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.768] - 2026-11-20
+
+Prose above criterion 1 is refused; docs runs read test-store secrets
+
+### Fixed
+
+- **A criteria text with a line above criterion 1 is refused by name.** The refusal quotes the line: number it or move it to the description. A locked issue already holding one reads its criteria from its rows.
+- **A run over an issue with nothing to land reads its testing secrets.** A declared run on an unmarked issue reads the environment the project is judged on, delivery.judgedOn else production, writing no merge mark.
+
 ## [0.4.0-dev.767] - 2026-11-20
 
 Room replies are audited in the room's own language
