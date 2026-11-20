@@ -3,7 +3,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { Hono } from 'hono';
-import { getPublishedRunnerBuild, RELEASE_DIR } from './published-build.js';
+import { getPublishedRunnerBuild, releaseDir } from './published-build.js';
 
 export const installRoutes = new Hono();
 
@@ -346,7 +346,7 @@ exit 1
 
 installRoutes.get('/install.sh', (c) =>
   c.body(
-    RELEASE_DIR
+    releaseDir()
       ? INSTALL_SH.replace(/__BASE__/g, origin(c.req.url)).replace(
           /__PREFIX__/g,
           mountPrefix(c.req.path),
@@ -364,18 +364,19 @@ installRoutes.get('/install-plugin.sh', (c) =>
 );
 
 installRoutes.get('/install/latest.json', async (c) => {
-  if (!RELEASE_DIR) return c.json({ error: 'RUNNER_RELEASE_DIR not configured' }, 501);
+  const dir = releaseDir();
+  if (!dir) return c.json({ error: 'RUNNER_RELEASE_DIR not configured' }, 501);
   const published = await getPublishedRunnerBuild();
   if (!published) return c.json({ error: 'no release published' }, 404);
   const { version, commit } = published;
   const base = origin(c.req.url);
   const prefix = mountPrefix(c.req.path);
-  const files = await readdir(RELEASE_DIR).catch(() => [] as string[]);
+  const files = await readdir(dir).catch(() => [] as string[]);
   const assets: Record<string, { url: string; sha256: string }> = {};
   for (const f of files) {
     if (!f.startsWith(ASSET_PREFIX)) continue;
     const target = f.slice(ASSET_PREFIX.length);
-    const buf = await readFile(join(RELEASE_DIR, f));
+    const buf = await readFile(join(dir, f));
     assets[target] = {
       url: `${base}${prefix}/install/bin/${target}`,
       sha256: createHash('sha256').update(buf).digest('hex'),
@@ -388,16 +389,17 @@ installRoutes.get('/install/latest.json', async (c) => {
 });
 
 installRoutes.get('/install/bin/:target', async (c) => {
-  if (!RELEASE_DIR) return c.json({ error: 'RUNNER_RELEASE_DIR not configured' }, 501);
+  const dir = releaseDir();
+  if (!dir) return c.json({ error: 'RUNNER_RELEASE_DIR not configured' }, 501);
   const target = c.req.param('target').replace(/[^a-zA-Z0-9._-]/g, '');
   try {
-    const buf = await readFile(join(RELEASE_DIR, `${ASSET_PREFIX}${target}`));
+    const buf = await readFile(join(dir, `${ASSET_PREFIX}${target}`));
     return c.body(buf, 200, {
       'content-type': 'application/octet-stream',
       'content-disposition': `attachment; filename="forge-runner-${target}"`,
     });
   } catch {
-    const files = await readdir(RELEASE_DIR).catch(() => [] as string[]);
+    const files = await readdir(dir).catch(() => [] as string[]);
     const published = files
       .filter((f) => f.startsWith(ASSET_PREFIX))
       .map((f) => f.slice(ASSET_PREFIX.length));

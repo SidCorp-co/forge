@@ -1,7 +1,10 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-export const RELEASE_DIR = process.env.RUNNER_RELEASE_DIR ?? '';
+/** RUNNER_RELEASE_DIR, read at the moment of use, never at import; '' where it is unset. */
+export function releaseDir(): string {
+  return process.env.RUNNER_RELEASE_DIR ?? '';
+}
 
 /** What a published runner release is: a version and the commit it was built from. */
 interface PublishedRunnerBuild {
@@ -20,10 +23,11 @@ interface PublishedRunnerBuild {
  * every surface read healthy (ISS-1165).
  */
 export async function getPublishedRunnerBuild(): Promise<PublishedRunnerBuild | null> {
-  if (!RELEASE_DIR) return null;
+  const dir = releaseDir();
+  if (!dir) return null;
   const read = async (name: string) => {
     try {
-      return (await readFile(join(RELEASE_DIR, name), 'utf8')).trim() || null;
+      return (await readFile(join(dir, name), 'utf8')).trim() || null;
     } catch {
       return null;
     }
