@@ -90,3 +90,19 @@ describe('a glance is read behind the page as a read of its own (ISS-1070 r6)', 
     });
   });
 });
+
+describe('a forgotten cache stays empty behind it', () => {
+  it('a read running when the cache was forgotten lands nowhere, and the next read starts its own', async () => {
+    const { cache, hold } = counted();
+    const open = hold();
+    await cache.read(['a']);
+    await settled();
+    cache.forget();
+    open();
+    await settled();
+    // the read begun before the forget held nothing: the key reads pending, as a cold read must
+    expect((await cache.read(['a'])).values.get('a')).toEqual({ read: false });
+    await settled();
+    expect((await cache.read(['a'])).values.get('a')).toEqual({ read: true, value: 2 });
+  });
+});

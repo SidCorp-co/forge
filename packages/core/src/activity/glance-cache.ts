@@ -40,6 +40,8 @@ export function glanceCache<V>(
   /** How many times each key was marked stale: a read that began before a mark lands stale. */
   const marks = new Map<string, number>();
   const limiter = createLimiter(opts.concurrency);
+  /** Bumped by `forget`: a read begun before it lands nowhere, so a forgotten cache stays empty. */
+  let epoch = 0;
 
   /**
    * Read one key once at a time, behind the read that asked: it starts on the next turn of the event
@@ -49,6 +51,7 @@ export function glanceCache<V>(
     const running = reading.get(key);
     if (running) return running;
     const markedAtStart = marks.get(key) ?? 0;
+    const startedIn = epoch;
     // every promise of the read is made outside the asking request's timing, so its statements are
     // never counted as the request's own (`db/query-timing.ts:withoutQueryTiming`), and the read is a
     // read of its own (`db/read-memo.ts`): the projects it reads across batch at its quiet points,
@@ -61,6 +64,7 @@ export function glanceCache<V>(
           ),
         )
         .then((value) => {
+          if (startedIn !== epoch) return;
           // a mark made while this read ran may postdate what it read: the answer is kept, stale
           const stale = (marks.get(key) ?? 0) !== markedAtStart;
           held.set(key, { value, readAt: stale ? Number.NEGATIVE_INFINITY : Date.now() });
@@ -68,7 +72,9 @@ export function glanceCache<V>(
         .catch((err: unknown) => {
           logger.warn({ err, key }, `org activity: ${name} could not be read`);
         })
-        .finally(() => reading.delete(key)),
+        .finally(() => {
+          if (reading.get(key) === started) reading.delete(key);
+        }),
     );
     reading.set(key, started);
     return started;
@@ -126,9 +132,14 @@ export function glanceCache<V>(
     get inFlight(): number {
       return limiter.inFlight;
     },
-    /** Forget every held answer: a test's world reads its own. */
+    /**
+     * Forget every held answer, and every read still running: a test's world reads its own, so a
+     * read begun before the forget lands nowhere rather than filling the cache behind it.
+     */
     forget(): void {
       held.clear();
+      reading.clear();
+      epoch += 1;
     },
   };
 }
