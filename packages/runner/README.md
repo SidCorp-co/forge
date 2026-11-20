@@ -505,6 +505,24 @@ out is a GitHub Release carrying the two `forge-runner-<target>` binaries,
 `VERSION` and `COMMIT`. Core picks that up within 30 minutes and boxes with
 `update.auto` apply it on their next check.
 
+**`dev` has a line of its own (ISS-1358).** A push to `dev` touching
+`packages/runner/` runs the same workflow and cuts `runner-v<X.Y.Z>-dev.<n>`, where
+X.Y.Z is `main`'s newest release on Cargo's line, published through the same
+`runner-release.yml` as a GitHub **prerelease**. `main`'s line reads no prerelease,
+so it is unchanged. A core serves the dev line only where its
+`RUNNER_RELEASE_CHANNEL` is `dev`; unset or `main`, it serves `main`'s releases.
+A dev build sorts **above** the release it counts from and below the next one
+(`0.18.0` < `0.18.0-dev.1` < `0.18.0-dev.10` < `0.18.1`), in core and in the
+runner alike, so a dev box never takes `main`'s build of its number and never
+skips a newer dev build. `forge-runner status` names the release a binary came
+from, or says it is a hand build.
+
+**A box checks when its core's build moves.** Every heartbeat answer names the
+build `/api/install/latest.json` serves, and the daemon runs its update check the
+moment that differs from the build its last check read, rather than waiting out
+the six-hour timer. The check is the timer's own: the same `update.auto`, drain,
+probation and rollback.
+
 **`[workspace.package] version` in `Cargo.toml` is the LINE, not the released
 version.** It declares the major.minor; the patch is the release counter that
 `scripts/next-runner-version.mjs` reads off the existing tags, and the release
@@ -527,7 +545,8 @@ already carries is refused rather than released again — a rerun of an older re
 job would otherwise publish that code under a version higher than what followed it.
 
 Withdrawing a release takes two acts, not one: core's
-`packages/core/src/integrations/github/published-releases/fetch-release.ts` never moves `RUNNER_RELEASE_DIR` backwards,
+`packages/core/src/integrations/github/published-releases/fetch-release.ts` never moves `RUNNER_RELEASE_DIR` backwards
+within its channel's line (switching the channel replaces the other line's build),
 so deleting a tag and its GitHub Release leaves
 the bad build still being served. Either delete `VERSION` and the
 `forge-runner-*` assets from that directory on the core host, or publish a higher

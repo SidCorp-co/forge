@@ -209,6 +209,10 @@ services:
       RUNNER_RELEASE_DIR: ${RUNNER_RELEASE_DIR:-/data/runner-dist}
       # Repo whose `runner-v*` GitHub Releases the populate step pulls from.
       RUNNER_RELEASE_REPO: ${RUNNER_RELEASE_REPO:-SidCorp-co/forge}
+      # Which runner release line this core serves boxes (ISS-1358): unset or `main` is main's
+      # releases; `dev` is the newest dev-channel prerelease a push to dev cuts. Refused by name
+      # in the release fetch's log for any other value, never at boot.
+      RUNNER_RELEASE_CHANNEL: ${RUNNER_RELEASE_CHANNEL:-}
       # Optional GitHub token — only needed if the repo/releases are private or
       # to lift the 60-req/hr unauthenticated API limit. fetch-release.js reads
       # GITHUB_TOKEN; operators set RUNNER_RELEASE_GITHUB_TOKEN in `.env`.
