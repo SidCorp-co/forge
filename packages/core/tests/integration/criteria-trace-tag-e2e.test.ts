@@ -251,7 +251,7 @@ describe('the served guides', () => {
     expect(flow.status).toBe(200);
     const text = String(flow.body.text ?? '').replace(/\s+/gu, ' ');
     expect(text).toContain(
-      "A criterion traces a BC of the issue's requirement only where its line begins with the tag: `1. (REQ-n BC-m) <statement>`",
+      "A criterion traces a BC of the issue's requirement only where its line begins, after its number, with the tag: `1. (REQ-n BC-m) <statement>`",
     );
     expect(text).toContain(
       'The same tag anywhere else in the line traces nothing, so it is refused `CRITERIA_TRACE_NOT_LEADING`',
