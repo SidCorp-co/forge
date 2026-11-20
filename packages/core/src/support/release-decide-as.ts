@@ -7,6 +7,7 @@
 
 import type { SupportReleaseDecisionRequest } from '@forge/contracts/support-channel';
 import { outsideTokenScope } from '../credentials/pat-scope.js';
+import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
 import { actorFor, permissionRefusalFor, projectResource } from '../permissions/index.js';
 import {
@@ -179,21 +180,23 @@ export async function decideKeptGo(
     ...(kept.reason ? { reason: kept.reason } : {}),
   };
   const person: Asker = { key: kept.ownerKey, label: said.author, userId, via: 'link' };
-  const out = await outsideTokenScope(async (): Promise<OpsOutcome<unknown>> => {
-    try {
-      return await decideAs(
-        room,
-        input,
-        { id: kept.projectId, slug: kept.project },
-        person,
-        said,
-        (fn) => fn(),
+  let out: OpsOutcome<unknown>;
+  try {
+    out = await outsideTokenScope(() =>
+      decideAs(room, input, { id: kept.projectId, slug: kept.project }, person, said, (fn) => fn()),
+    );
+  } catch (err) {
+    // his go is already claimed: a fault says why it was not recorded, as an answer's does, and
+    // the other kept rows are still told
+    if (!isRefusal(err)) {
+      logger.error(
+        { err, version: kept.version, message: kept.message },
+        'support: a kept owner go failed',
       );
-    } catch (err) {
-      if (!isRefusal(err)) throw err;
-      return { ok: false, refusals: [...err.refusals] };
+      return { recorded: false, why: err instanceof Error ? err.message : String(err) };
     }
-  });
+    out = { ok: false, refusals: [...err.refusals] };
+  }
   await insertAction({
     roomId: room.id,
     projectId: room.projectId,

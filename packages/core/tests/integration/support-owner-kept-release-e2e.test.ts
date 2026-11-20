@@ -1,9 +1,22 @@
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
-vi.hoisted(() => {
+const decideFails = vi.hoisted(() => {
   // the bot's token is sealed in the integration vault
   process.env.INTEGRATION_MASTER_KEY ??= Buffer.alloc(32, 5).toString('base64');
+  return { on: false };
+});
+
+// a fault that is no refusal, as a dropped database connection is, while deciding a release
+vi.mock('../../src/release-batch/index.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../src/release-batch/index.js')>();
+  return {
+    ...real,
+    decideApprovalOfVersion: (...args: Parameters<typeof real.decideApprovalOfVersion>) => {
+      if (decideFails.on) throw new Error('Connection terminated unexpectedly');
+      return real.decideApprovalOfVersion(...args);
+    },
+  };
 });
 
 import { mintPat } from '../../src/credentials/pat.js';
@@ -176,6 +189,35 @@ describe("ISS-1313: an unlinked owner's go on a release is kept, and decided as 
     ).namings.find((n) => n.externalId === OWNER_ID && !n.undoneAt);
     const undone = await api(admin, 'DELETE', `${NAMED()}/${naming?.id}`, {
       reason: 'named an account that may not decide releases',
+    });
+    expect(undone.status, JSON.stringify(undone.body)).toBe(200);
+  });
+
+  it('says why where deciding it fails on a fault, and tells the room, never leaving it claimed', async () => {
+    const go = await goBy(chat.alice, GO);
+    expect(go.out).toMatchObject({ kept: true });
+    decideFails.on = true;
+    try {
+      const notes = await nameOwner(chuong);
+      // [KEPT_GO_SPENT] before the fix: the fault escaped, the row stayed {recording: true}, untold
+      await expect
+        .poll(async () => (await keptGoes()).at(-1)?.output, { timeout: 10_000 })
+        .toMatchObject({ recorded: false, why: 'Connection terminated unexpectedly' });
+      expect(await approvalOf(approvalId)).toMatchObject({ decision: null });
+      await expect
+        .poll(() => notes.some((n) => n.includes('was not recorded') && n.includes(go.id)), {
+          timeout: 10_000,
+        })
+        .toBe(true);
+    } finally {
+      decideFails.on = false;
+    }
+    const listed = await api(admin, 'GET', NAMED());
+    const naming = (
+      listed.body as { namings: { id: string; externalId: string; undoneAt: string | null }[] }
+    ).namings.find((n) => n.externalId === OWNER_ID && !n.undoneAt);
+    const undone = await api(admin, 'DELETE', `${NAMED()}/${naming?.id}`, {
+      reason: 'named again once deciding works',
     });
     expect(undone.status, JSON.stringify(undone.body)).toBe(200);
   });
