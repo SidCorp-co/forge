@@ -424,7 +424,10 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     },
     family: 'debt',
     audience: ['master', 'run'],
-    scenarios: ['a red rated high left as debt while the issue landed'],
+    scenarios: [
+      'a debt recorded beside an open debt on the same file',
+      'a red rated high left as debt while the issue landed',
+    ],
   }),
   card('POST /api/issues/:id/comments', 'comments', {
     purpose: "Writes on the issue what a person should know, in the agent's own words.",

@@ -655,7 +655,7 @@
     "by": "ISS-1251"
   },
   "POST /api/projects/:projectId/debts": {
-    "hash": "dbc000e688010dd8",
+    "hash": "5bfdfc4ddbbb8175",
     "on": "2026-11-20",
     "by": "ISS-1371"
   },
