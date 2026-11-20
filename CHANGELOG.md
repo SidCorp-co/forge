@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.758] - 2026-11-20
+
+A builder's own check now runs the format, lint and changelog checks the gate enforces
+
+### Fixed
+
+- **`pnpm test:changed` runs Biome, ESLint and the release-record check over what a branch touched.** A format slip or an over-budget changelog entry is red for the builder, before the batch gate.
+
 ## [0.4.0-dev.757] - 2026-11-19
 
 Release page summaries and row sentences open in a card over the page
