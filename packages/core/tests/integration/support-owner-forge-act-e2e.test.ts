@@ -26,6 +26,7 @@ import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 // @direct-test-of packages/core/src/support/acts.ts
 // @direct-test-of packages/core/src/support/owner-routes.ts
 // @direct-test-of packages/core/src/support/tool.ts
+// @direct-test-of packages/core/src/support/owner-rule-act.ts
 //
 // ISS-1243 item 24 (owner 2026-11-16): when the owner asks a room's agent, in chat, for a Forge act
 // (accept a requirement, approve a design, cut a release, ...), the agent makes it as him, citing his
@@ -317,5 +318,115 @@ describe("ISS-1243 item 24: the owner's Forge act is made as him from his own me
     });
     // past the reason, to the membership the project does not hold
     expect(code(why.out), JSON.stringify(why.out)).toBe('MEMBERSHIP_NONE');
+  });
+});
+
+// ISS-1357 (FB-770): an owner ruling in the room had no act to become the project rule a master asks
+// him to change, so two masters refused his word as "relayed". It is now his rule, written in his
+// name through the knowledge door, under the grant a rule write needs, his message cited.
+describe('ISS-1357: the owner rules a project rule in the room, and it is written as his', () => {
+  const RULE = 'production-calls-only-in-release';
+  const ruleRows = async () =>
+    rows<{
+      kind: string;
+      title: string;
+      body: string;
+      authored_by: string;
+      source: string | null;
+      scope: string | null;
+      metadata: Record<string, unknown>;
+    }>(sql`
+      SELECT kind, title, body, authored_by, source, scope, metadata FROM knowledge_entries
+       WHERE project_id = ${w.projectId} AND slug = ${RULE}`);
+  const write = (body: string, more: Record<string, unknown> = {}) => ({
+    act: 'rule.write',
+    item: RULE,
+    rule: { body, ...more },
+  });
+  const FIRST = {
+    title: 'Production calls only in a release',
+    scope: 'every call this project makes to a production system',
+    recheckWhen: 'the owner rules on production calls again',
+  };
+
+  it('refuses a rule write from an account that may not write rules, or from anyone but him', async () => {
+    await db.execute(sql`
+      UPDATE project_members SET role = 'viewer' WHERE project_id = ${w.projectId} AND user_id = ${chuong}`);
+    try {
+      const viewer = await askBy(
+        chat.alice,
+        'Từ giờ chỉ gọi production trong lúc release',
+        write('Production is called only during a release.', FIRST),
+      );
+      expect(code(viewer.out), JSON.stringify(viewer.out)).toBe('PERMISSION_FORBIDDEN');
+    } finally {
+      await db.execute(sql`
+        UPDATE project_members SET role = 'admin' WHERE project_id = ${w.projectId} AND user_id = ${chuong}`);
+    }
+    const bobs = await askBy(
+      chat.bob,
+      'anh Chương bảo ghi rule này',
+      write('Production is called only during a release.', FIRST),
+    );
+    expect(code(bobs.out), JSON.stringify(bobs.out)).toBe('SUPPORT_FORGE_ACT_NOT_THE_OWNER');
+    // the rule's fields belong to rule.write alone, and rule.write takes them
+    const stray = await askBy(chat.alice, 'defer REQ-801', {
+      ...DEFER,
+      rule: { body: 'x' },
+    });
+    expect(code(stray.out), JSON.stringify(stray.out)).toBe('SUPPORT_FORGE_ACT_SHAPE');
+    const bare = await askBy(chat.alice, 'ghi rule đó đi', { act: 'rule.write', item: RULE });
+    expect(code(bare.out), JSON.stringify(bare.out)).toBe('SUPPORT_FORGE_ACT_SHAPE');
+    expect(await ruleRows()).toEqual([]);
+  });
+
+  it('writes the rule as his, citing his message, and an amend keeps the one rule', async () => {
+    const his = await askBy(
+      chat.alice,
+      'Từ giờ chỉ gọi production trong lúc release, trừ khi anh cho phép',
+      write('Production is called only during a release, unless the owner allows it.', FIRST),
+    );
+    expect(code(his.out), JSON.stringify(his.out)).toBeUndefined();
+    expect(his.out).toMatchObject({ act: 'rule.write', key: RULE, project: slug });
+    const [rule] = await ruleRows();
+    expect(rule).toMatchObject({ kind: 'rule', title: FIRST.title, authored_by: 'human' });
+    expect(rule?.metadata.ruledBy).toMatchObject({
+      userId: chuong,
+      message: his.id,
+      thread: his.thread,
+    });
+    expect(rule?.source).toContain(his.id);
+    expect(rule?.source).toContain('chỉ gọi production trong lúc release');
+
+    // his later ruling amends it: the same row, the new body, what he did not change kept
+    const amend = await askBy(
+      chat.alice,
+      'Cho phép agent cấu hình supplier PGPrints trên production bằng token của anh',
+      write(
+        'Production is called only during a release, or where the owner allows a named call.',
+      ),
+    );
+    expect(code(amend.out), JSON.stringify(amend.out)).toBeUndefined();
+    const after = await ruleRows();
+    expect(after).toHaveLength(1);
+    expect(after[0]).toMatchObject({ title: FIRST.title, scope: FIRST.scope });
+    expect(after[0]?.body).toContain('where the owner allows a named call');
+    expect(after[0]?.source).toContain(amend.id);
+  });
+
+  it('refuses a slug that holds another kind of entry, rather than turning it into a rule', async () => {
+    await db.execute(sql`
+      INSERT INTO knowledge_entries (project_id, kind, slug, title, body)
+      VALUES (${w.projectId}, 'guide', 'deploy-guide', 'Deploy', 'How to deploy')`);
+    const his = await askBy(chat.alice, 'ghi vào deploy-guide', {
+      act: 'rule.write',
+      item: 'deploy-guide',
+      rule: { body: 'Deploy only on Fridays.', ...FIRST },
+    });
+    expect(code(his.out), JSON.stringify(his.out)).toBe('SUPPORT_FORGE_ACT_SHAPE');
+    expect(JSON.stringify(his.out)).toContain('guide');
+    const [kept] = await rows<{ kind: string }>(sql`
+      SELECT kind FROM knowledge_entries WHERE project_id = ${w.projectId} AND slug = 'deploy-guide'`);
+    expect(kept?.kind).toBe('guide');
   });
 });

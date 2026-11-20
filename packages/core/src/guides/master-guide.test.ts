@@ -113,6 +113,11 @@ describe('the master skill is a map, its method served by core (ISS-1251)', () =
       'send that project a change request through the channel',
       // another project's defect goes to its intake, recorded on both items (ISS-1286)
       '`…/channel/handoffs -X POST` files it there as feedback naming your item',
+      // the owner's ruling in his room is his word, never a relayed one (ISS-1357, FB-770)
+      "one the room records as his linked account's act, or quotes from his own message, is his word",
+      'record a decision citing that message, and ask him again only for an irreversible step, real money or a credential',
+      // the questions card beneath says the same where a master would ask him
+      'that is his word: act on it and record a decision citing his message',
     ]) {
       expect(MASTER).toContain(word);
     }
