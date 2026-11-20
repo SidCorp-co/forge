@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.759] - 2026-11-20
+
+A duplicate debt is recorded with a warning naming the open debt
+
+### Fixed
+
+- **Debt recorded on a file an open debt already names now says so.** The debts door still records it, and its answer names each such open debt by id, kind and where, for the Audit to clear together.
+
 ## [0.4.0-dev.758] - 2026-11-20
 
 A builder's own check now runs the format, lint and changelog checks the gate enforces
