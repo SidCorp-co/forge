@@ -174,7 +174,11 @@ describe('where the recording cannot come, the box says why', () => {
     expect(JSON.stringify(refused.json)).toContain('EMPTY_FILE');
     expect(await attachments(id)).toEqual([]);
     const session = ((await w.box(id)).recording as Doc).session as Doc;
-    expect(session).toMatchObject({ state: 'failed', fault: 'SEND_FAILED', clipAttachmentId: null });
+    expect(session).toMatchObject({
+      state: 'failed',
+      fault: 'SEND_FAILED',
+      clipAttachmentId: null,
+    });
     expect(session.detail).toContain('empty');
     // the clip's name is free again, so a whole send still lands
     const again = await upload(id);
