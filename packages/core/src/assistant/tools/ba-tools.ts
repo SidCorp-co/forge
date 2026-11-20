@@ -12,7 +12,7 @@ import { db } from '../../db/client.js';
 import { conversationMessages } from '../../db/schema-conversations.js';
 import { itemEmbeddings } from '../../db/schema-item-embeddings.js';
 import { chatModelName } from '../../integrations/llm/index.js';
-import { resolveIssueRouteRef } from '../../issues/index.js';
+import { resolveIssueRouteRef, servedCriteriaText } from '../../issues/index.js';
 import { dataPolicyOf, egressAt, egressDeep, egressOr, MCP_DOOR } from '../../lib/data-egress.js';
 import {
   type ContextScopedMcpToolFactory,
@@ -148,7 +148,10 @@ const readIssue =
         priority: row.priority,
         category: row.category,
         description: (row.description ?? '').slice(0, 8_000),
-        acceptanceCriteria: (row.acceptanceCriteria ?? '').slice(0, 8_000),
+        // the criteria as the issue read serves them (ISS-1378): a locked prose lead line left out
+        acceptanceCriteria: (
+          (await servedCriteriaText(row.id, row.acceptanceCriteria)) ?? ''
+        ).slice(0, 8_000),
         requirementId: row.requirementId,
       };
       return egressOr(await egressDeep(room.projectId, 'issue', answer, issue), {

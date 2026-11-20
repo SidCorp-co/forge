@@ -21,6 +21,7 @@
  * @direct-test-of packages/core/src/issues/project-issue-routes.ts
  * @direct-test-of packages/core/src/issues/criteria/served-text.ts
  * @direct-test-of packages/core/src/issues/close-in-scope.ts
+ * @direct-test-of packages/core/src/assistant/tools/ba-tools.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -58,6 +59,35 @@ let ownerId = '';
 let holderId = '';
 let unplant: (() => void) | null = null;
 let call: (who: string, method: string, path: string, body?: unknown) => Promise<Reply>;
+
+/** The criteria the BA assistant's ba_read_issue serves the project's owner for an issue. */
+async function baReadCriteria(issueId: string): Promise<unknown> {
+  const { CHAT_TURN_MENU, mintTurnCredential } = await import(
+    '../../src/credentials/turn-credential.js'
+  );
+  const { resolveTurnAuthority } = await import('../../src/permissions/index.js');
+  const { buildChatToolContext } = await import('../../src/assistant/tools/principal.js');
+  const { buildBaToolset } = await import('../../src/assistant/tools/ba-tools.js');
+  const resolved = await resolveTurnAuthority({ userId: ownerId, projectId, viaTokenId: null });
+  if (!resolved.ok) throw new Error(resolved.refusal.message);
+  const credential = await mintTurnCredential({
+    authority: resolved.authority,
+    menu: CHAT_TURN_MENU,
+    ttlMs: 600_000,
+  });
+  const tools = buildBaToolset(
+    buildChatToolContext({
+      credential,
+      projectSlug: 'criteria-past-landing',
+      turn: { conversationId: randomUUID(), speakerUserId: ownerId, handleUserId: null },
+    }),
+    { projectId, requirementId: randomUUID() },
+  );
+  const out = await tools.execute('ba_read_issue', JSON.stringify({ issue: issueId }));
+  const text = out.content.map((b) => (b.type === 'text' ? b.text : '')).join('');
+  expect(out.isError, text).toBeFalsy();
+  return (JSON.parse(text) as { acceptanceCriteria?: unknown }).acceptanceCriteria;
+}
 
 async function boxPat(userId: string, name: string): Promise<string> {
   const { mintPat } = await import('../../src/credentials/pat.js');
@@ -344,6 +374,7 @@ describe('a criteria text with a line before its first numbered criterion (ISS-1
     );
     const read = ok(await call('holder', 'GET', `/api/issues/${id}`));
     expect(read.acceptanceCriteria).toBe(NUMBERED);
+    expect(await baReadCriteria(id)).toBe(NUMBERED);
     expect(
       await rows(
         sql`SELECT id, n, statement, retired_at FROM issue_criteria WHERE issue_id = ${id} ORDER BY n`,

@@ -76,6 +76,7 @@ export {
 export { namedCriteriaOf } from './criteria/criterion-names.js';
 export { requirementRecordingSessionOf } from './criteria/recording-session.js';
 export { retieTracedCriteria } from './criteria/retie.js';
+export { servedCriteriaText } from './criteria/served-text.js';
 export {
   type CriterionWithVerdict,
   listCriteriaOf,
