@@ -956,14 +956,21 @@ export const SUPPORT_ACTIONS = [
 ] as const;
 
 /** The kinds of slot the one secret door opens (ISS-1348). */
-export const SECRET_SLOT_KINDS = ["variable", "testing", "integration"] as const;
+export const SECRET_SLOT_KINDS = [
+	"variable",
+	"testing",
+	"integration",
+] as const;
 export type SecretSlotKind = (typeof SECRET_SLOT_KINDS)[number];
 
 /** How a slot was given its value: through its page in Forge, or a one-time write URL. */
 export const SECRET_WRITE_VIAS = ["page", "presigned"] as const;
 
 const slotName = (what: string) =>
-	z.string().regex(/^[a-zA-Z][a-zA-Z0-9-]{0,62}$/, what).optional();
+	z
+		.string()
+		.regex(/^[a-zA-Z][a-zA-Z0-9-]{0,62}$/, what)
+		.optional();
 
 /**
  * The one secret door (ISS-1328, ISS-1348): the slot a person gives a value for, by kind, and core
@@ -987,7 +994,9 @@ export const supportSecretLinkRequestSchema = z.strictObject({
 		.regex(/^[a-z][a-z0-9-]{0,62}$/, "an environment the project declares")
 		.nullable()
 		.optional()
-		.describe("variable: the environment it is scoped to, or null for every environment"),
+		.describe(
+			"variable: the environment it is scoped to, or null for every environment",
+		),
 	key: z
 		.string()
 		.regex(/^[A-Za-z_][A-Za-z0-9_]{0,254}$/, "an environment variable name")
@@ -998,8 +1007,12 @@ export const supportSecretLinkRequestSchema = z.strictObject({
 		.regex(/^[a-z][a-z0-9-]{0,62}$/, "a testing profile id")
 		.optional()
 		.describe("testing: the profile, by its id"),
-	actor: slotName("an actor name").describe("testing: the actor the value signs in as; or service"),
-	service: slotName("a service name").describe("testing: the service the value is a key of; or actor"),
+	actor: slotName("an actor name").describe(
+		"testing: the actor the value signs in as; or service",
+	),
+	service: slotName("a service name").describe(
+		"testing: the service the value is a key of; or actor",
+	),
 	provider: z
 		.string()
 		.regex(/^[a-z][a-z0-9-]{0,62}$/, "an integration provider")
@@ -1016,7 +1029,9 @@ export const supportSecretLinkRequestSchema = z.strictObject({
 		.trim()
 		.min(3)
 		.max(300)
-		.describe("what the value is for, in plain words: the person reads it above the field"),
+		.describe(
+			"what the value is for, in plain words: the person reads it above the field",
+		),
 	shape: secretShapeSchema
 		.optional()
 		.describe(
@@ -1028,9 +1043,13 @@ export const supportSecretLinkRequestSchema = z.strictObject({
 		.min(1)
 		.max(120)
 		.optional()
-		.describe("a made-up example of the value's form (GOCSPX-…, service-account.json), never the value"),
+		.describe(
+			"a made-up example of the value's form (GOCSPX-…, service-account.json), never the value",
+		),
 });
-export type SupportSecretLinkRequest = z.infer<typeof supportSecretLinkRequestSchema>;
+export type SupportSecretLinkRequest = z.infer<
+	typeof supportSecretLinkRequestSchema
+>;
 
 /**
  * A person redacting a secret a room kept unscrubbed in a member's message (ISS-1353): the message's
@@ -1043,7 +1062,9 @@ export const supportRedactRequestSchema = z.strictObject({
 		.trim()
 		.min(3)
 		.max(500)
-		.describe("why the message is redacted, kept on the record of the redaction"),
+		.describe(
+			"why the message is redacted, kept on the record of the redaction",
+		),
 });
 export type SupportRedactRequest = z.infer<typeof supportRedactRequestSchema>;
 
