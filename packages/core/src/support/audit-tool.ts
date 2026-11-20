@@ -54,7 +54,7 @@ const CARDS = {
       },
       {
         when: 'you see an act you should have reached for and did not',
-        do: 'name it in missed by the name your map or forge_find gives it, with why, so its card is counted',
+        do: 'name it in missed by its forge_find name, with why, so its card is counted',
       },
     ],
     practice: [
