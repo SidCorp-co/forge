@@ -228,7 +228,7 @@ export const SELF_AUDIT_FAILED_MAX = 12;
 
 /**
  * Each line the output fails, with why: a line of the role's rubric, or the red flag of a card it
- * tripped, named by that card's door as forge_find lists it.
+ * tripped, named by that card's door as your map or forge_find names it.
  */
 export const selfAuditFailedSchema = z
 	.array(
@@ -247,7 +247,7 @@ export const selfAuditFailedSchema = z
 				.max(300)
 				.optional()
 				.describe(
-					"the door whose card's red flag you tripped, as forge_find lists it (`issues.transition`)",
+					"the door whose card's red flag you tripped, as your map or forge_find names it (`issues.transition`, `issues.merge`)",
 				),
 			why: z.string().trim().min(3).max(REASON_LINE_MAX),
 		}),
@@ -303,7 +303,7 @@ const selfAuditFields = {
 	missed: auditMissedSchema
 		.optional()
 		.describe(
-			"each capability you should have reached for and did not, by its name as forge_find lists it, with why; leave it out where none",
+			"each capability you should have reached for and did not, by its name as your map or forge_find gives it, with why; leave it out where none",
 		),
 };
 

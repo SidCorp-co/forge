@@ -4,7 +4,7 @@
   "generator": "packages/core/src/contracts-generate.ts",
   "tools": [
     {
-      "description": "self { as: master | run, output: { kind: issue, ref: ISS-n }, failed: [{ line | redFlag, why }], missed?: [{ door, why }] }: audit your own finished output once, as the role whose rubric you hold. failed names each rubric line it fails (master: delegated, one_gate, state_true, defects_placed, asked_only_owed, tidy; run: criteria_proven, in_scope, refused_loudly, state_true, defects_placed, docs_true) or the card whose red flag you tripped ({ redFlag: <door>, why }); [] where it fails none. missed names each capability you should have reached for, by its forge_find name. Each door is read against the catalog and an unknown one refused SELF_AUDIT_DOOR_UNKNOWN; nothing is kept on a refusal. A failed verdict becomes a correction on the issue, which the steward draws lessons from; the capabilities page counts your misses. A second audit of one output in one role answers the first, already: true.",
+      "description": "self { as: master | run, output: { kind: issue, ref: ISS-n }, failed: [{ line | redFlag, why }], missed?: [{ door, why }] }: audit your own finished output once, as the role whose rubric you hold. failed names each rubric line it fails (master: delegated, one_gate, state_true, defects_placed, asked_only_owed, tidy; run: criteria_proven, in_scope, refused_loudly, state_true, defects_placed, docs_true) or the card whose red flag you tripped ({ redFlag: <door>, why }); [] where it fails none. missed names each capability you should have reached for, by the name your map or forge_find gives it. Each door is read against the catalog and an unknown one refused SELF_AUDIT_DOOR_UNKNOWN; nothing is kept on a refusal. A failed verdict becomes a correction on the issue, which the steward draws lessons from; the capabilities page counts your misses. A second audit of one output in one role answers the first, already: true.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -34,7 +34,7 @@
                   "type": "string"
                 },
                 "redFlag": {
-                  "description": "the door whose card's red flag you tripped, as forge_find lists it (`issues.transition`)",
+                  "description": "the door whose card's red flag you tripped, as your map or forge_find names it (`issues.transition`, `issues.merge`)",
                   "maxLength": 300,
                   "minLength": 3,
                   "type": "string"
@@ -54,7 +54,7 @@
             "type": "array"
           },
           "missed": {
-            "description": "each capability you should have reached for and did not, by its name as forge_find lists it, with why; leave it out where none",
+            "description": "each capability you should have reached for and did not, by its name as your map or forge_find gives it, with why; leave it out where none",
             "items": {
               "additionalProperties": false,
               "properties": {
@@ -4440,5 +4440,5 @@
       }
     }
   ],
-  "version": "9.1.2"
+  "version": "9.1.3"
 }

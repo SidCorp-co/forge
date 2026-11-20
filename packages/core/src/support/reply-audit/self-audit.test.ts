@@ -8,9 +8,9 @@ import { describe, expect, it } from 'vitest';
 import { catalogOf } from '../../mcp/door-catalog.js';
 import { judgeSelfAudit } from './self-audit.js';
 
-const card = (id: string, redFlag?: string) => ({
+const card = (id: string, redFlag?: string, owner = 'x') => ({
   id,
-  owner: 'x',
+  owner,
   purpose: 'Does it.',
   situations: [{ when: 'you need it', do: 'call it' }],
   practice: ['Call it once.'],
@@ -33,6 +33,13 @@ const catalog = catalogOf([
     summary: null,
     feature: 'forge_issues',
     card: card('issues.get'),
+  },
+  {
+    id: 'POST /api/issues/:id/merge',
+    surface: 'rest',
+    summary: null,
+    feature: 'issues',
+    card: card('POST /api/issues/:id/merge', 'Marking merged before the gate ran.', 'issues'),
   },
 ]);
 
@@ -96,6 +103,26 @@ describe("an agent's audit of its own output", () => {
     if (!out.ok) expect(out.refusals[0]).toMatchObject({ code, path });
   });
 
+  it('reads a REST door by the capability name its Tier-0 map gives it, kept under its route', () => {
+    // [MAP_NAME_REFUSED] before the fix: issues.merge was refused SELF_AUDIT_DOOR_UNKNOWN
+    expect(
+      judgeSelfAudit(
+        'master',
+        [{ redFlag: 'issues.merge', why: 'marked merged before the gate' }],
+        [{ door: 'issues.merge', why: 'never marked it merged' }],
+        catalog,
+      ),
+    ).toEqual({
+      ok: true,
+      value: {
+        failed: [
+          { line: 'red_flag:POST /api/issues/:id/merge', why: 'marked merged before the gate' },
+        ],
+        missed: [{ door: 'POST /api/issues/:id/merge', why: 'never marked it merged' }],
+      },
+    });
+  });
+
   it('refuses a missed door Forge serves none as, under the self-audit code', () => {
     const out = judgeSelfAudit('master', [], [{ door: 'issues.mindread', why: 'x y z' }], catalog);
     expect(out.ok).toBe(false);
@@ -104,6 +131,7 @@ describe("an agent's audit of its own output", () => {
         code: 'SELF_AUDIT_DOOR_UNKNOWN',
         path: '/missed/0/door',
       });
+      expect(out.refusals[0]?.detail).toContain('as your map or forge_find names it');
     }
   });
 });

@@ -17,6 +17,7 @@ import { db } from '../../db/client.js';
 import { conversations } from '../../db/schema-conversations.js';
 import { supportActions } from '../../db/schema-support.js';
 import { supportReplyVerdicts } from '../../db/schema-support-verdicts.js';
+import { doorNamed as servedDoorNamed } from '../../guides/index.js';
 import { auditCorrectionRef, recordCorrection } from '../../lessons/index.js';
 import { doorCatalog } from '../../lib/door-catalog.js';
 import { supportConfigOf } from '../grants.js';
@@ -140,12 +141,13 @@ const reasonOf = (j: Judgement) =>
   );
 
 /**
- * The door a capability is named as: an action as forge_find lists it, a route, or a route the catalog
- * folds into an action, which is that action. Null where Forge serves no such door.
+ * The door a capability is named as: an action as forge_find lists it, the capability name a Tier-0
+ * map gives a REST door (`issues.merge`), a twin or card id, a route, or a route the catalog folds
+ * into an action, which is that action. Null where Forge serves no such door.
  */
 export function doorNamed(ref: string, catalog = doorCatalog()) {
   return (
-    catalog.doors.find((d) => d.id === ref) ??
+    servedDoorNamed(catalog, ref) ??
     (/^[A-Z]+ \//.test(ref) ? catalog.doorOf({ tool: 'rest', action: ref }) : null)
   );
 }
@@ -159,7 +161,7 @@ export const doorUnknown = <T>(
   no(
     code,
     path,
-    `${ref} is no door Forge serves: name a capability as forge_find lists it (\`support.member\`) or as a route (\`POST /api/projects/:id/feedback\`). Nothing was kept.`,
+    `${ref} is no door Forge serves: name a capability as your map or forge_find names it (\`support.member\`, \`issues.merge\`) or as a route (\`POST /api/projects/:id/feedback\`). Nothing was kept.`,
   );
 
 /**

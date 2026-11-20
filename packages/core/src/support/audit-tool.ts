@@ -34,7 +34,7 @@ const rubric = (role: 'master' | 'run') => Object.keys(ROLE_RUBRICS[role]).join(
 const DESCRIPTION = [
   `self ${SELF_AUDIT_SHAPE}: audit your own finished output once, as the role whose rubric you hold.`,
   `failed names each rubric line it fails (master: ${rubric('master')}; run: ${rubric('run')}) or the card whose red flag you tripped ({ redFlag: <door>, why }); [] where it fails none.`,
-  'missed names each capability you should have reached for, by its forge_find name. Each door is read against the catalog and an unknown one refused SELF_AUDIT_DOOR_UNKNOWN; nothing is kept on a refusal.',
+  'missed names each capability you should have reached for, by the name your map or forge_find gives it. Each door is read against the catalog and an unknown one refused SELF_AUDIT_DOOR_UNKNOWN; nothing is kept on a refusal.',
   'A failed verdict becomes a correction on the issue, which the steward draws lessons from; the capabilities page counts your misses. A second audit of one output in one role answers the first, already: true.',
 ].join(' ');
 
@@ -54,7 +54,7 @@ const CARDS = {
       },
       {
         when: 'you see an act you should have reached for and did not',
-        do: 'name it in missed by its forge_find name, with why, so its card is counted',
+        do: 'name it in missed by the name your map or forge_find gives it, with why, so its card is counted',
       },
     ],
     practice: [
