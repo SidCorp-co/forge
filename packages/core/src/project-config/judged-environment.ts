@@ -27,16 +27,24 @@ export function judgingEnvironmentOf(document: ProjectDocument): JudgingEnvironm
   return { name, basis: judgedOn ? 'judgedOn' : 'production', testing: testing ?? null };
 }
 
+/** Where the environment a judge reads for was named from: the issue's landing, or (an issue with
+ *  nothing landed, read by a declared run) the environment the project judges its work on. */
+type JudgedBasis = 'landing' | JudgingEnvironment['basis'];
+
 // the environment a job judges is the one deploying the branch its issue's work landed on —
 // the target the merge mark recorded — so no deployment is read and no dispatcher writes a field.
 // Where several deploy that branch, the testing profile the caller names picks the one that names
-// it; the read stays refused by name where none or more than one does.
+// it; the read stays refused by name where none or more than one does. With `unmarked: 'judging'`
+// (a declared run, ISS-1379), an issue carrying no merge mark at all — a docs or screenshot issue
+// whose work lands nowhere — is judged on `judgingEnvironmentOf`, as a requirement run is, and no
+// mark is written; a mark standing with no target keeps its refusal.
 export async function judgedEnvironment(
   issueId: string | null,
   document: ProjectDocument,
   judge: string,
   profileId: string,
-): Promise<Refused | { ok: true; environment: string; testing: string }> {
+  opts: { unmarked?: 'refuse' | 'judging' } = {},
+): Promise<Refused | { ok: true; environment: string; testing: string; basis: JudgedBasis }> {
   const [issue] = issueId
     ? await db
         .select({ mergedAt: issues.mergedAt, target: issues.mergedTarget })
@@ -50,6 +58,9 @@ export async function judgedEnvironment(
       'TESTING_SECRETS_NOT_LANDED',
       `${judge} works no issue, so no landed work names the environment it judges.`,
     );
+  }
+  if (!issue.target && !issue.mergedAt && opts.unmarked === 'judging') {
+    return judgingFallback(issueId as string, document);
   }
   if (!issue.target) {
     // a mark already standing is refused MARK_ALREADY_STANDS, so the way out names the clear first
@@ -80,7 +91,7 @@ export async function judgedEnvironment(
     const naming = deploying.filter((e) => e.declaration.testing === profileId);
     const [named, ...alsoNamed] = naming;
     if (named && alsoNamed.length === 0) {
-      return { ok: true, environment: named.name, testing: profileId };
+      return { ok: true, environment: named.name, testing: profileId, basis: 'landing' };
     }
     const listed = deploying
       .map(
@@ -106,5 +117,34 @@ export async function judgedEnvironment(
       `environment \`${only.name}\`, which deploys \`${target}\`, names no testing profile (\`environments.${only.name}.testing\`).`,
     );
   }
-  return { ok: true, environment: only.name, testing: only.declaration.testing };
+  return {
+    ok: true,
+    environment: only.name,
+    testing: only.declaration.testing,
+    basis: 'landing',
+  };
+}
+
+/** An issue with no merge mark, read by a declared run: the environment the project is judged on. */
+function judgingFallback(
+  issueId: string,
+  document: ProjectDocument,
+): Refused | { ok: true; environment: string; testing: string; basis: JudgedBasis } {
+  const judging = judgingEnvironmentOf(document);
+  if (!judging) {
+    return refuse(
+      422,
+      'TESTING_SECRETS_NOT_LANDED',
+      `issue ${issueId}: its work has not landed (no merge mark), and the project names no environment its work is judged on: no \`delivery.judgedOn\` and no production environment. Where its work lands, mark it merged with its target first. Where it has nothing to land (a docs or screenshot issue), name the environment this project is judged on in \`delivery.judgedOn\` and read again; no merge mark is needed. Nothing was read.`,
+    );
+  }
+  const said = judging.basis === 'judgedOn' ? 'delivery.judgedOn' : 'its production environment';
+  if (!judging.testing) {
+    return refuse(
+      404,
+      'TESTING_SECRETS_NO_TESTING_PROFILE',
+      `environment \`${judging.name}\`, which issue ${issueId} is judged on (${said}, its work having landed nowhere), names no testing profile (\`environments.${judging.name}.testing\`).`,
+    );
+  }
+  return { ok: true, environment: judging.name, testing: judging.testing, basis: judging.basis };
 }

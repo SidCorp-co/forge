@@ -222,7 +222,8 @@ export const DECLARED_RUN_REFUSAL = {
  * the box's own credential, so the call names the run, and core's record of that run on that box
  * binds the read to its project and the issues it was declared over (adminhub-fe ISS-68's stg
  * judges, 2026-10-27). Its environment is the one deploying the branch an issue of the run landed
- * on, as for a job; the read is audited on that issue and its values scrubbed from what the run's
+ * on, as for a job, or, where an issue carries no merge mark at all, the one the project is judged
+ * on (ISS-1379); the read is audited on that issue and its values scrubbed from what the run's
  * session posts.
  */
 async function resolveForDeclaredRun(args: {
@@ -248,14 +249,26 @@ async function resolveForDeclaredRun(args: {
   }
   let judged: Awaited<ReturnType<typeof judgedEnvironment>> | null = null;
   let issueId: string | null = null;
+  // an issue with nothing landed is judged where the project is (ISS-1379); a landing still wins
+  let unlanded: { read: typeof judged; id: string } | null = null;
   for (const id of run.issueIds) {
-    const read = await judgedEnvironment(id, project.document, judge, profileId);
+    const read = await judgedEnvironment(id, project.document, judge, profileId, {
+      unmarked: 'judging',
+    });
     if (read.ok && read.testing === profileId) {
+      if (read.basis !== 'landing') {
+        unlanded ??= { read, id };
+        continue;
+      }
       judged = read;
       issueId = id;
       break;
     }
     if (!judged || (!judged.ok && read.ok)) judged = read;
+  }
+  if (!issueId && unlanded) {
+    judged = unlanded.read;
+    issueId = unlanded.id;
   }
   if (!judged) {
     return refuse(
