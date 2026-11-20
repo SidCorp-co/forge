@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.760] - 2026-11-20
+
+Dev runner builds that dev boxes can auto-update to
+
+### Added
+
+- **A dev push touching the runner now publishes a dev-channel runner build.** A core set to the dev channel serves it; its boxes check for it on their next heartbeat and never step back to a main build.
+
 ## [0.4.0-dev.759] - 2026-11-20
 
 A duplicate debt is recorded with a warning naming the open debt
