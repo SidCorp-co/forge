@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.767] - 2026-11-20
+
+Room replies are audited in the room's own language
+
+### Fixed
+
+- **A room reply is held to the language the room is answered in.** support.audit no longer fails a Vietnamese reply to a Vietnamese member because the project writes its records in English; it reads the person's language, then the persona's.
+
 ## [0.4.0-dev.766] - 2026-11-20
 
 Requirements guide teaches sourcing money golden figures and marking own-rule backends disputed
