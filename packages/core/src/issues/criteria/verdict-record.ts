@@ -48,8 +48,8 @@ import {
   verdictDraftFault,
 } from './verdict-input.js';
 import { offLandingFault } from './verdict-landing.js';
-import { skipOverPassFault, uncountedOnReleaseFault } from './verdict-release-build.js';
 import { verdictRefused } from './verdict-refused.js';
+import { skipOverPassFault, uncountedOnReleaseFault } from './verdict-release-build.js';
 import { repeatedVerdict } from './verdict-repeat.js';
 import { declaredRunOf, judgeDoors, judgeRoleFault } from './verdict-role.js';
 

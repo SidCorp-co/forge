@@ -20,8 +20,8 @@ import { and, desc, eq, type SQL } from 'drizzle-orm';
 import type { Tx } from '../../db/client.js';
 import { criterionVerdicts } from '../../db/schema-issue-criteria.js';
 import { readProjectDocument, releasesCarryingAt } from '../ports.js';
-import type { VerdictRefusal } from './verdict-input.js';
 import { countingOf } from './verdict-counting.js';
+import type { VerdictRefusal } from './verdict-input.js';
 
 type Identity = Partial<
   Pick<
@@ -116,12 +116,7 @@ export async function skipOverPassFault(
       at: criterionVerdicts.createdAt,
     })
     .from(criterionVerdicts)
-    .where(
-      and(
-        eq(criterionVerdicts.criterionId, args.criterionId),
-        at,
-      ),
-    )
+    .where(and(eq(criterionVerdicts.criterionId, args.criterionId), at))
     .orderBy(desc(criterionVerdicts.createdAt), desc(criterionVerdicts.id));
   const counting = await countingOf(tx, issue.projectId, rows);
   const stands = rows.find((r) => counting.get(r.id)?.notCounted == null);

@@ -118,5 +118,7 @@ export async function releasesCarryingAt(
   const whole = sha.trim().toLowerCase();
   if (!WHOLE.test(whole)) return [];
   const runs = await shippedReleaseRuns(issue.projectId, { built: whole });
-  return runs.filter((r) => r.commit === whole && r.issueIds.includes(issue.id)).map((r) => r.version);
+  return runs
+    .filter((r) => r.commit === whole && r.issueIds.includes(issue.id))
+    .map((r) => r.version);
 }

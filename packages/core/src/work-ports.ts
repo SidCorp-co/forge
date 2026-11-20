@@ -162,9 +162,9 @@ import {
   pendingProdConfirmsOfRuns,
   releasedLineReads,
   releaseEndsRun,
-  releasesCarryingAt,
   releaseHoldsOf,
   releaseRunParked,
+  releasesCarryingAt,
   settleChangeRequestRelease,
   unobservedBuildOf,
 } from './release-batch/index.js';
