@@ -25,6 +25,9 @@ on:
     branches: [main, dev]
     paths:
       - "packages/runner/**"
+      # how the runner is built is part of the runner: a change to its build cuts a
+      # release of the newest runner commit, as the step below names it (ISS-1358)
+      - ".github/workflows/runner-release.yml"
 
 permissions:
   contents: write
