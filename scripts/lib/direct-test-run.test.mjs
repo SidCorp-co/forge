@@ -14,11 +14,14 @@ import {
   archmapScope,
   check,
   describeChecks,
+  lintCommand,
   notRun,
   owedBy,
   run,
   runArchmap,
   runDirectTests,
+  runFormLints,
+  runReleaseRecord,
   runSelection,
 } from './direct-test-run.mjs';
 import { stripComments } from './gate.mjs';
@@ -353,6 +356,184 @@ describe("a builder's run checks the architecture contracts over what it touched
     expect(out.refusal).toMatch(
       /archmap cannot run in this checkout[\s\S]*pnpm install --frozen-lockfile/,
     );
+  });
+});
+
+describe("a builder's run lints what it touched and judges its changelog fragment, as verify does (ISS-1370)", () => {
+  const CORE_LINT = 'biome check src tests --max-diagnostics=none';
+  const WEB_LINT =
+    'eslint --pass-on-unpruned-suppressions --format ./eslint/count-formatter.mjs src';
+  let tree = '';
+  beforeAll(() => {
+    tree = mkdtempSync(join(tmpdir(), 'direct-test-run-form-'));
+    const files = {
+      'packages/core/package.json': JSON.stringify({
+        name: '@forge/core',
+        scripts: { lint: CORE_LINT },
+      }),
+      'packages/web-v2/package.json': JSON.stringify({
+        name: 'web-v2',
+        scripts: { lint: WEB_LINT },
+      }),
+      'packages/web-v2/eslint/count-formatter.mjs': '',
+    };
+    for (const dir of [
+      'node_modules',
+      'packages/core/node_modules',
+      'packages/web-v2/node_modules',
+      'packages/core/src',
+      'packages/core/tests',
+      'packages/web-v2/src',
+      'packages/web-v2/eslint',
+      'scripts',
+    ])
+      mkdirSync(join(tree, dir), { recursive: true });
+    for (const [path, text] of Object.entries(files)) writeFileSync(join(tree, path), text);
+  });
+  afterAll(() => rmSync(tree, { recursive: true, force: true }));
+
+  /** A stand-in for `run` answering each command with `out` and `fails`, recording where it ran. */
+  const lintRecorder = ({ fails = () => false, out = () => 'Checked 1 file(s)\n' } = {}) => {
+    const calls = [];
+    const exec = (argv, cwd, opts = {}) => {
+      calls.push({ argv, cwd: relative(tree, cwd) || '.', capture: opts.capture === true });
+      const ok = !fails(argv);
+      return {
+        ok,
+        status: ok ? 0 : 1,
+        error: null,
+        stdout: out(argv),
+        stderr: '',
+        startedAt: Date.now(),
+        durationMs: 3,
+      };
+    };
+    return { calls, exec };
+  };
+  const quiet = (fn) => {
+    const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    try {
+      return fn();
+    } finally {
+      write.mockRestore();
+    }
+  };
+
+  it("runs each form lint's own command over the touched files under its directories, never the tree", () => {
+    const { calls, exec } = lintRecorder();
+    const out = quiet(() =>
+      runFormLints(
+        tree,
+        [
+          { path: 'packages/core/src/a.ts', change: 'added' },
+          { path: 'packages/core/tests/b.test.ts', change: 'changed' },
+          { path: 'packages/core/src/gone.ts', change: 'removed' },
+          { path: 'packages/core/drizzle/meta/_journal.json', change: 'changed' },
+          { path: 'packages/web-v2/src/page.tsx', change: 'changed' },
+          { path: 'scripts/lib/x.mjs', change: 'changed' },
+          { path: 'docs/VISION.md', change: 'changed' },
+        ],
+        { exec },
+      ),
+    );
+    expect(out.refusal).toBeNull();
+    expect(calls.map((c) => [c.cwd, c.argv.join(' ')])).toEqual([
+      ['packages/core', 'pnpm exec biome check --max-diagnostics=none src/a.ts tests/b.test.ts'],
+      [
+        'packages/web-v2',
+        'pnpm exec eslint --pass-on-unpruned-suppressions --format ./eslint/count-formatter.mjs src/page.tsx',
+      ],
+      ['.', 'pnpm exec biome check scripts/lib/x.mjs'],
+    ]);
+    expect(out.checks.map((c) => [c.name, c.kind, c.scope, c.result, c.files])).toEqual([
+      [
+        'core lint',
+        'conformance',
+        'form',
+        'pass',
+        ['packages/core/src/a.ts', 'packages/core/tests/b.test.ts'],
+      ],
+      ['web lint', 'conformance', 'form', 'pass', ['packages/web-v2/src/page.tsx']],
+      ['scripts lint', 'conformance', 'form', 'pass', ['scripts/lib/x.mjs']],
+    ]);
+    expect(out.checks[0].command).toBe(
+      '(cd packages/core && pnpm exec biome check --max-diagnostics=none <2 files>)',
+    );
+  });
+
+  it('a format or lint red in a touched file is a red check naming it', () => {
+    const { exec } = lintRecorder({ fails: (argv) => argv.includes('src/a.ts') });
+    const out = quiet(() =>
+      runFormLints(tree, touchedOf('packages/core/src/a.ts', 'scripts/y.mjs'), { exec }),
+    );
+    expect(out.checks.map((c) => [c.name, c.result, c.files])).toEqual([
+      ['core lint', 'fail', ['packages/core/src/a.ts']],
+      ['web lint', 'none', []],
+      ['scripts lint', 'pass', ['scripts/y.mjs']],
+    ]);
+  });
+
+  it('a lint that read none of the files handed it says none, never pass', () => {
+    // Biome handed only a file its config ignores reads 0 files and exits 1 ("No files were processed")
+    const { exec } = lintRecorder({ fails: () => true, out: () => 'Checked 0 files in 3ms.\n' });
+    const out = quiet(() => runFormLints(tree, touchedOf('scripts/README.md'), { exec }));
+    expect(out.checks.find((c) => c.name === 'scripts lint')).toMatchObject({
+      result: 'none',
+      files: ['scripts/README.md'],
+      note: expect.stringMatching(/read none of the touched files/),
+    });
+  });
+
+  it('a change touching no linted file and no fragment reports each check as none, at no time, running nothing', () => {
+    const { calls, exec } = lintRecorder();
+    const touched = touchedOf('docs/VISION.md', 'packages/core/drizzle/0001_x.sql');
+    const out = runFormLints(tree, touched, { exec });
+    const record = runReleaseRecord(tree, touched, { exec });
+    expect(calls).toEqual([]);
+    expect([...out.checks, record].map((c) => [c.name, c.scope, c.result, c.durationMs])).toEqual([
+      ['core lint', 'form', 'none', 0],
+      ['web lint', 'form', 'none', 0],
+      ['scripts lint', 'form', 'none', 0],
+      ['release-record', 'record', 'none', 0],
+    ]);
+    expect(describeChecks([record])[0]).toMatch(
+      /^ {2}none\s+release-record\s+record\s+0\.0s\s+— no touched changelog fragment/,
+    );
+  });
+
+  it("runs verify's own release-record command where a fragment, the record or its amnesty is touched", () => {
+    const VERIFY_RECORD = CHECKS.find((c) => c.label === 'release-record').cmd;
+    for (const path of [
+      'changelog.d/iss-1.fixed.md',
+      'CHANGELOG.md',
+      '.forge/changelog-amnesty.json',
+    ]) {
+      const { calls, exec } = lintRecorder({ fails: () => true });
+      const red = quiet(() => runReleaseRecord(tree, touchedOf(path, 'docs/x.md'), { exec }));
+      expect(calls.map((c) => [c.cwd, c.argv])).toEqual([['.', VERIFY_RECORD]]);
+      expect([red.name, red.kind, red.scope, red.result, red.files]).toEqual([
+        'release-record',
+        'conformance',
+        'record',
+        'fail',
+        [path],
+      ]);
+    }
+  });
+
+  it('a lint verify runs as no package script this run can narrow is refused by name', () => {
+    const bare = mkdtempSync(join(tmpdir(), 'direct-test-run-form-bare-'));
+    try {
+      expect(lintCommand(bare, ['pnpm', '--filter', '@forge/core', 'lint'])).toEqual({
+        refusal: expect.stringMatching(/pnpm --filter @forge\/core lint` names no package script/),
+      });
+      const { calls, exec } = lintRecorder();
+      const out = runFormLints(bare, touchedOf('packages/core/src/a.ts'), { exec });
+      expect(out).toEqual({ checks: [], refusal: expect.stringMatching(/^core lint: /) });
+      expect(calls).toEqual([]);
+    } finally {
+      rmSync(bare, { recursive: true, force: true });
+    }
   });
 });
 

@@ -6,8 +6,9 @@
 
 import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { FRAGMENT_DIR } from './changelog-fragments.mjs';
 import {
   fileModulesOf,
   indexTests,
@@ -18,7 +19,7 @@ import {
   selectDirect,
 } from './direct-tests.mjs';
 import { gitOut } from './gate.mjs';
-import { buildsOwed, rebuildPackages } from './package-builds.mjs';
+import { buildsOwed, packageDirs, rebuildPackages } from './package-builds.mjs';
 import { absentPrerequisites, remedyLines } from './prerequisite.mjs';
 import { CHECKS } from './verify-checks.mjs';
 
@@ -182,6 +183,170 @@ export function runArchmap(root, touched, { exec = run } = {}) {
     ],
     refusal: null,
   };
+}
+
+/** A check verify runs, by its label; one renamed out from under this run fails it by name. */
+function verifyCheck(label) {
+  const found = CHECKS.find((c) => c.label === label);
+  if (!found) {
+    throw new Error(
+      `verify-checks.mjs declares no \`${label}\` check, which test:changed runs over the touched files`,
+    );
+  }
+  return found;
+}
+
+/** verify's form-axis lints, which a builder's run narrows to the files it touched (ISS-1370). */
+const FORM_LINTS = ['core lint', 'web lint', 'scripts lint'].map(verifyCheck);
+/** verify's record-axis check, run whole where the change touched what it reads (ISS-1370). */
+const RELEASE_RECORD = verifyCheck('release-record');
+/** What check-release-record.mjs reads: the record, its fragments and the amnesty file. */
+const RECORD_READS = new RegExp(
+  `^(?:CHANGELOG\\.md|${FRAGMENT_DIR}/.+|\\.forge/changelog-amnesty\\.json)$`,
+);
+
+/**
+ * Where a lint verify runs reads from and the program it runs: `pnpm exec <argv>` at the root, or
+ * `pnpm --filter <package> <script>` as that package's own script, in its directory.
+ */
+export function lintCommand(root, cmd) {
+  if (cmd[0] === 'pnpm' && cmd[1] === 'exec') return { cwd: '.', argv: cmd.slice(2) };
+  if (cmd[0] === 'pnpm' && cmd[1] === '--filter' && cmd.length === 4) {
+    const dir = packageDirs(root).get(cmd[2]);
+    const script = dir
+      ? JSON.parse(readFileSync(join(root, dir, 'package.json'), 'utf8')).scripts?.[cmd[3]]
+      : undefined;
+    if (script) return { cwd: dir, argv: script.trim().split(/\s+/) };
+  }
+  return { refusal: `\`${show(cmd)}\` names no package script this run can narrow to its files` };
+}
+
+/** The lint's argv with its directory arguments taken out, and those directories. */
+function lintScope(root, { cwd, argv }) {
+  const isDir = (a, i) =>
+    i > 0 &&
+    !a.startsWith('-') &&
+    existsSync(join(root, cwd, a)) &&
+    statSync(join(root, cwd, a)).isDirectory();
+  return {
+    flags: argv.filter((a, i) => !isDir(a, i)),
+    dirs: argv.filter(isDir),
+  };
+}
+
+/** The touched files still on disk under the lint's directories, relative to where it runs. */
+function lintedFiles(touched, cwd, dirs) {
+  const prefix = cwd === '.' ? '' : `${cwd}/`;
+  return touched
+    .filter((t) => t.change !== 'removed' && t.path.startsWith(prefix))
+    .map((t) => t.path.slice(prefix.length))
+    .filter((rel) => dirs.some((d) => rel.startsWith(`${d}/`)));
+}
+
+/**
+ * Run a check's command capturing its output, and read its scanned count; the output is printed
+ * unless the check read no file, whose own complaint about that is the `none` this run reports.
+ */
+function runCaptured(exec, argv, cwd, scanned) {
+  const r = exec(argv, cwd, { capture: true });
+  const out = `${r.stdout}${r.stderr}`;
+  const m = scanned ? out.match(scanned) : null;
+  const count = m ? Number(m[1]) : null;
+  if (out.trim() && count !== 0) process.stdout.write(out.endsWith('\n') ? out : `${out}\n`);
+  return { ...r, scanned: count };
+}
+
+/** A check this run owed nothing to: it says so, at no time. */
+const noneTouched = (name, scope, command, note) =>
+  check({
+    name,
+    kind: 'conformance',
+    scope,
+    command,
+    files: [],
+    result: 'none',
+    startedAt: Date.now(),
+    durationMs: 0,
+    note,
+  });
+
+/**
+ * verify's form-axis lints (Biome over core and the scripts, ESLint over web-v2) over the touched
+ * files each one reads, with the lint's own command and config: its directory arguments replaced by
+ * the touched files under them, so a builder sees a format or lint red before the landing's
+ * `pnpm verify` does, and no lint reads the whole tree. A lint that reads none of the files handed
+ * it says `none`.
+ */
+export function runFormLints(root, touched, { exec = run } = {}) {
+  const checks = [];
+  for (const lint of FORM_LINTS) {
+    const at = lintCommand(root, lint.cmd);
+    if (at.refusal) return { checks: [], refusal: `${lint.label}: ${at.refusal}` };
+    const { flags, dirs } = lintScope(root, at);
+    const files = lintedFiles(touched, at.cwd, dirs);
+    const where = at.cwd === '.' ? '' : `cd ${at.cwd} && `;
+    const command = `(${where}pnpm exec ${show(flags)} <${files.length} files>)`;
+    if (files.length === 0) {
+      checks.push(noneTouched(lint.label, lint.axis, command, 'no touched file this lint reads'));
+      continue;
+    }
+    const missing = absentPrerequisites(root, lint.needs);
+    if (missing.length) {
+      return {
+        checks: [],
+        refusal: `${lint.label} cannot run in this checkout, so the touched files were not linted:\n${remedyLines(missing).join('\n')}`,
+      };
+    }
+    const r = runCaptured(
+      exec,
+      ['pnpm', 'exec', ...flags, ...files],
+      join(root, at.cwd),
+      lint.scanned,
+    );
+    const read = r.scanned !== 0;
+    checks.push(
+      check({
+        name: lint.label,
+        kind: 'conformance',
+        scope: lint.axis,
+        command,
+        files: files.map((f) => (at.cwd === '.' ? f : `${at.cwd}/${f}`)),
+        result: !read ? 'none' : r.ok ? 'pass' : 'fail',
+        startedAt: r.startedAt,
+        durationMs: r.durationMs,
+        ...(read ? {} : { note: 'the lint read none of the touched files under its directories' }),
+      }),
+    );
+  }
+  return { checks, refusal: null };
+}
+
+/**
+ * verify's record-axis check, `check-release-record.mjs`, where the change touched the record, a
+ * `changelog.d/` fragment or the amnesty file: it judges against the merge-base as verify does, so a
+ * fragment over its word budget is red here before the landing's gate. Otherwise `none`.
+ */
+export function runReleaseRecord(root, touched, { exec = run } = {}) {
+  const files = touched.filter((t) => RECORD_READS.test(t.path)).map((t) => t.path);
+  if (files.length === 0) {
+    return noneTouched(
+      RELEASE_RECORD.label,
+      RELEASE_RECORD.axis,
+      show(RELEASE_RECORD.cmd),
+      'no touched changelog fragment or record',
+    );
+  }
+  const r = runCaptured(exec, RELEASE_RECORD.cmd, root, null);
+  return check({
+    name: RELEASE_RECORD.label,
+    kind: 'conformance',
+    scope: RELEASE_RECORD.axis,
+    command: show(RELEASE_RECORD.cmd),
+    files,
+    result: r.ok ? 'pass' : 'fail',
+    startedAt: r.startedAt,
+    durationMs: r.durationMs,
+  });
 }
 
 /**

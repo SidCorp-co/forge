@@ -46,7 +46,7 @@ export function buildMismatch(root, dir) {
 }
 
 /** Each workspace package's directory by its name, read from `packages/<dir>/package.json`. */
-function packageDirs(root) {
+export function packageDirs(root) {
   const dirs = new Map();
   const base = join(root, 'packages');
   if (!existsSync(base)) return dirs;

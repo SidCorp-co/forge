@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// A developer's run before a push (REQ-36 BC-7, BC-17): the typecheck, verify's archmap check over
-// the touched code, and the DIRECT tests of what this checkout changed against the branch it lands
+// A developer's run before a push (REQ-36 BC-7, BC-17): the typecheck, verify's archmap check and
+// form-axis lints (Biome, ESLint) over the touched code, its release-record check where a changelog
+// fragment is touched (ISS-1370), and the DIRECT tests of what this checkout changed against the branch it lands
 // on, committed or not, in every package, and a line for each thing it ran. The selection is `scripts/lib/direct-tests.mjs`'s. One thing widens
 // it: a touched path `.forge/high-impact-paths.json` lists runs the direct core integration tests
 // too, as `--integration` does, printing the path and its reason (`lib/high-impact-paths.mjs`,
@@ -27,6 +28,8 @@ import {
   describeChecks,
   runArchmap,
   runDirectTests,
+  runFormLints,
+  runReleaseRecord,
   runTypecheck,
   touchedBetween,
 } from './lib/direct-test-run.mjs';
@@ -91,6 +94,12 @@ ran.push(...direct.checks);
 const archmap = runArchmap(ROOT, touched);
 if (archmap.refusal) die(archmap.refusal);
 ran.push(...archmap.checks);
+// verify's form-axis lints over the touched files each reads, and its record check where a changelog
+// fragment or the record is touched, so a format or entry-budget red is the builder's, not the
+// landing gate's (ISS-1370).
+const lints = runFormLints(ROOT, touched);
+if (lints.refusal) die(lints.refusal);
+ran.push(...lints.checks, runReleaseRecord(ROOT, touched));
 
 const head = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).stdout.trim();
 const dirty =
