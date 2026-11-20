@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.762] - 2026-11-20
+
+A credential handed over in a project room is now kept, not dropped
+
+### Fixed
+
+- **A credential handed over in a bound room is kept, not dropped.** The project's vault holds it before the message is recorded; its master reads it once an admin's; the room hears what was kept; nobody is asked to delete.
+
 ## [0.4.0-dev.761] - 2026-11-20
 
 Verdicts no release counts are refused, and the owner's room can write a project rule
