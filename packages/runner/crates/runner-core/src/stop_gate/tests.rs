@@ -79,6 +79,7 @@ fn standing(pid: u32, command: &str) -> Standing {
         pid,
         command: command.into(),
         started_at: 0,
+        run: None,
     }
 }
 
@@ -87,6 +88,7 @@ fn facts<'a>(tree: &'a Path, issues: Vec<(String, Issue)>) -> Facts<'a> {
         run_id: "296f5496-870e-428f-b386-d1c6007bfd9c",
         agent: "agent-297",
         tree,
+        tree_held: TreeHeld::Own,
         runner: "/opt/forge runner/bin/forge-runner",
         issues,
         dirty: Ok(vec![]),
@@ -201,6 +203,100 @@ fn a_process_standing_refuses_naming_its_pid_and_command() {
         "{r}"
     );
     assert!(r.contains("`kill 4242`"), "{r}");
+}
+
+const RUN: &str = "296f5496-870e-428f-b386-d1c6007bfd9c";
+
+fn marked(pid: u32, command: &str, run: &str) -> Standing {
+    Standing {
+        run: Some(run.into()),
+        ..standing(pid, command)
+    }
+}
+
+/// FB-787's checkout: a qa judge declared with no tree of its own, over the
+/// repository's main working tree that its master works in.
+fn judge_in_the_shared_checkout(tree: &Path) -> Facts<'_> {
+    let mut f = facts(tree, vec![]);
+    f.tree_held = TreeHeld::Shared(format!(
+        "{} is the repository's main working tree",
+        tree.display()
+    ));
+    f
+}
+
+/// ISS-1374: the master's git fetch and its prepush in a worktree nested in
+/// the checkout started after the judge was declared, and stand in the tree it
+/// was declared over; neither is the judge's, so it stops on its first try.
+#[test]
+fn a_masters_process_in_the_shared_checkout_does_not_hold_a_tree_less_judge() {
+    let tree = PathBuf::from("/home/dev/forge/projects/epodsystem-core");
+    let mut f = judge_in_the_shared_checkout(&tree);
+    f.standing = Ok(vec![
+        standing(1_833_700, "git fetch glab-resolve"),
+        standing(1_833_812, "bash ./scripts/prepush.sh"),
+        standing(1_833_900, "tail --pid=1833630 -f /dev/null"),
+    ]);
+    let v = decide(&f);
+    assert_eq!(v.outcome, Outcome::Passed, "{v:?}");
+    assert!(v.conditions.is_empty(), "{v:?}");
+    // Held to nothing it can know as its own, it says so where the hook prints.
+    let said = v.unread.join("\n");
+    assert!(said.contains("main working tree"), "{said}");
+    assert!(said.contains(&format!("FORGE_RUN={RUN}")), "{said}");
+    assert!(said.contains("3 processes"), "{said}");
+}
+
+/// A process systemd --user parents in the checkout (a credential helper, a
+/// compose its master started) carries no mark of this run: not the judge's.
+#[test]
+fn a_systemd_parented_process_in_the_shared_checkout_does_not_hold_it() {
+    let tree = PathBuf::from("/home/dev/forge/projects/epodsystem-core");
+    let mut f = judge_in_the_shared_checkout(&tree);
+    f.standing = Ok(vec![
+        standing(6_900, "git-credential-glab get"),
+        marked(6_901, "docker compose up", "93b1f1b0-another-run"),
+    ]);
+    let v = decide(&f);
+    assert_eq!(v.outcome, Outcome::Passed, "{v:?}");
+}
+
+/// The judge's own child, started with the run's id exported, still holds it,
+/// and it alone is named.
+#[test]
+fn a_runs_own_child_in_the_shared_checkout_still_holds_it() {
+    let tree = PathBuf::from("/home/dev/forge/projects/epodsystem-core");
+    let mut f = judge_in_the_shared_checkout(&tree);
+    f.standing = Ok(vec![
+        standing(1_833_700, "git fetch glab-resolve"),
+        marked(1_900_001, "pnpm dev --port 5199", RUN),
+    ]);
+    let v = decide(&f);
+    let r = refused(&v);
+    assert_eq!(v.conditions, vec![Condition::ProcessRunning]);
+    assert!(r.contains("pid 1900001 (pnpm dev --port 5199)"), "{r}");
+    assert!(r.contains("`kill 1900001`"), "{r}");
+    assert!(!r.contains("1833700"), "{r}");
+}
+
+/// In the run's own tree a process it left is still held whoever parents it
+/// now (a dev server backgrounded with `&` is re-parented the moment its shell
+/// exits), and a process another run marked as its own is that run's.
+#[test]
+fn in_its_own_tree_a_run_is_held_to_what_it_left_and_not_to_another_runs() {
+    let tree = PathBuf::from("/r/.claude/worktrees/ISS-1374");
+    let mut f = facts(&tree, vec![]);
+    f.standing = Ok(vec![
+        standing(4242, "node server.js"),
+        marked(4243, "docker compose up", RUN),
+        marked(4244, "vitest", "another-run"),
+    ]);
+    let v = decide(&f);
+    let r = refused(&v);
+    assert!(r.contains("2 processes"), "{r}");
+    assert!(r.contains("`kill 4242 4243`"), "{r}");
+    assert!(!r.contains("4244"), "{r}");
+    assert!(v.unread.is_empty(), "{v:?}");
 }
 
 #[test]

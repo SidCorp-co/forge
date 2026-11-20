@@ -16,7 +16,7 @@ use std::time::Duration;
 use runner_core::ledger::Ledger;
 use runner_core::stop_gate::{
     decide, journal_line, porcelain_paths, refused_in_a_row, written_since, Activity, Facts, Issue,
-    Outcome, Since, Uncommitted, Verdict, JOURNAL,
+    Outcome, Since, TreeHeld, Uncommitted, Verdict, JOURNAL,
 };
 use runner_platform::standing;
 use runner_transport::CoreClient;
@@ -109,6 +109,7 @@ async fn judge(ctx: &Ctx, agent_id: Option<&str>, dir: Option<&Path>) -> Option<
         run_id: &run.run_id,
         agent: agent_id,
         tree: &run.worktree_path,
+        tree_held: tree_held(&run.worktree_path).await,
         runner: &runner,
         issues,
         dirty: dirty_in(&run.worktree_path),
@@ -152,6 +153,27 @@ pub fn dirty_in(tree: &Path) -> Result<Vec<Uncommitted>, String> {
         ));
     }
     Ok(porcelain_paths(&String::from_utf8_lossy(&out.stdout)))
+}
+
+/// Whether the run's tree is its own or a checkout it shares (ISS-1374), as git
+/// reads the path. A linked worktree is the run's; the repository's main working
+/// tree, which its master works in and the other worktrees nest under, is not,
+/// and nor is a directory inside a checkout. A path git cannot place is read as
+/// the run's, which holds it to what stands there as before.
+async fn tree_held(tree: &Path) -> TreeHeld {
+    use runner_workspace::worktree::{kind_at, Kind};
+    match kind_at(tree).await {
+        Kind::MainWorkingTree => TreeHeld::Shared(format!(
+            "{} is the repository's main working tree",
+            tree.display()
+        )),
+        Kind::Enclosed(top) => TreeHeld::Shared(format!(
+            "{} is a directory inside the checkout at {}",
+            tree.display(),
+            top.display()
+        )),
+        Kind::Linked | Kind::NotAWorktree | Kind::Unknown => TreeHeld::Own,
+    }
 }
 
 /// The processes standing in the tree since the run was declared, this hook's

@@ -49,7 +49,9 @@ pub enum Condition {
     /// The run's worktree has uncommitted changes. Named and journalled,
     /// never refused on its own (ISS-1251).
     WorktreeDirty,
-    /// A process the run started still stands in its worktree.
+    /// A process the run started still stands in its worktree: in a tree of
+    /// its own, one started there since the declaration; in a checkout it
+    /// shares, one whose environment names the run ([`TreeHeld`]).
     ProcessRunning,
 }
 
@@ -157,11 +159,30 @@ pub enum Issue {
     Unread(String),
 }
 
+/// Whose the run's tree is, which decides which processes standing in it are
+/// the run's (ISS-1374).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TreeHeld {
+    /// A linked worktree the run was declared over: the run's own, so a process
+    /// started in it since the declaration is the run's, unless its environment
+    /// names another run. A dev server backgrounded there is re-parented to
+    /// init or a subreaper the moment its shell exits, and is still the run's.
+    Own,
+    /// A checkout the run shares, and why: the repository's main working tree,
+    /// where its master and every other session work too, and under which the
+    /// other worktrees nest. Neither where a process stands nor who parents it
+    /// says the run started it, so only a process whose environment names this
+    /// run is held to it. A judge declared with no tree of its own reads so.
+    Shared(String),
+}
+
 pub struct Facts<'a> {
     pub run_id: &'a str,
     /// The subagent the box bound the run to: the one stopping.
     pub agent: &'a str,
     pub tree: &'a Path,
+    /// Whether `tree` is the run's own or a checkout it shares.
+    pub tree_held: TreeHeld,
     /// The `forge-runner` a hint names: the binary judging the stop, so the
     /// hint runs as written where `forge-runner` is not on PATH.
     pub runner: &'a str,
@@ -169,7 +190,8 @@ pub struct Facts<'a> {
     pub issues: Vec<(String, Issue)>,
     /// The tree's uncommitted paths, or why they could not be read.
     pub dirty: Result<Vec<Uncommitted>, String>,
-    /// The processes standing in the tree since the declaration, or why not read.
+    /// The processes standing in the tree since the declaration, or why not
+    /// read; which of them are the run's is `decide`'s, by `tree_held`.
     pub standing: Result<Vec<Standing>, String>,
     /// How many of this run's stops were refused in a row before this one.
     pub refused_in_a_row: usize,
@@ -322,6 +344,37 @@ fn standing_line(tree: &Path, standing: &[Standing]) -> String {
     )
 }
 
+/// Which of the processes standing in the run's tree since its declaration
+/// the run started, and how many it did not (ISS-1374). In its own tree every
+/// one but a process another run's id marks; in a checkout it shares only one
+/// whose environment names this run, because where it stands and who parents
+/// it are its master's and every other session's as much as this run's.
+fn runs_own(f: &Facts<'_>, standing: &[Standing]) -> (Vec<Standing>, usize) {
+    let (its, others): (Vec<&Standing>, Vec<&Standing>) =
+        standing.iter().partition(|s| match (&f.tree_held, &s.run) {
+            (_, Some(run)) => run == f.run_id,
+            (TreeHeld::Own, None) => true,
+            (TreeHeld::Shared(_), None) => false,
+        });
+    (its.into_iter().cloned().collect(), others.len())
+}
+
+/// What the hook says of a run held only to the processes its own id marks.
+fn shared_line(run_id: &str, why: &str, others: usize) -> String {
+    let left = match others {
+        0 => String::new(),
+        1 => "; 1 process standing there since its declaration carries no such mark and is               left to whoever started it"
+            .to_string(),
+        n => format!(
+            "; {n} processes standing there since its declaration carry no such mark and are              left to whoever started them"
+        ),
+    };
+    format!(
+        "the processes this run started: {why}, shared with its master and every other session,          so the run owns no tree there and is held only to a process whose environment carries          {}={run_id}{left}",
+        runner_platform::standing::RUN_VAR
+    )
+}
+
 fn held_line(key: &str, id: &str, runner: &str) -> String {
     format!(
         "{key} is in_progress under this run, and nothing has been written on it since it was \
@@ -354,10 +407,15 @@ pub fn decide(f: &Facts<'_>) -> Verdict {
         Err(why) => unread.push(format!("the worktree: {why}")),
     }
     match &f.standing {
-        Ok(standing) if !standing.is_empty() => {
-            lines.push((Condition::ProcessRunning, standing_line(f.tree, standing)));
+        Ok(standing) => {
+            let (its, others) = runs_own(f, standing);
+            if !its.is_empty() {
+                lines.push((Condition::ProcessRunning, standing_line(f.tree, &its)));
+            }
+            if let TreeHeld::Shared(why) = &f.tree_held {
+                unread.push(shared_line(f.run_id, why, others));
+            }
         }
-        Ok(_) => {}
         Err(why) => unread.push(format!("the process table: {why}")),
     }
     let conditions: Vec<Condition> = lines.iter().map(|(c, _)| *c).collect();

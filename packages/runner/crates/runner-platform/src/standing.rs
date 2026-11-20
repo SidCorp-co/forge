@@ -3,10 +3,12 @@
 //!
 //! The stop gate asks this of a run's worktree (`runner_core::stop_gate`). A
 //! subagent runs inside its master's Claude Code process, so the process tree
-//! cannot say which run started what; the worktree can, because it is that one
-//! run's own. Descent from the host is not asked: a process backgrounded with
-//! `&` or `nohup` is re-parented to init the moment its shell exits, and is
-//! exactly the one left standing.
+//! cannot say which run started what; a worktree of the run's own can, and so
+//! can the run's id in a process's environment ([`RUN_VAR`]), which is all a
+//! checkout the run shares with its master leaves to go on (ISS-1374). Descent
+//! from the host is not asked: a process backgrounded with `&` or `nohup` is
+//! re-parented to init the moment its shell exits, and is exactly the one left
+//! standing.
 //!
 //! Every read is of a `/proc`-shaped tree rooted where the caller says, so a
 //! test plants one. Off Linux there is no such tree and every reading answers
@@ -31,6 +33,25 @@ pub struct Standing {
     pub command: String,
     /// When it started, in seconds since the epoch.
     pub started_at: i64,
+    /// The run its environment names in [`RUN_VAR`], if it names one: a
+    /// process a run's shell started with the run's id exported carries it, and
+    /// so does everything that process starts (ISS-1374).
+    pub run: Option<String>,
+}
+
+/// The variable a run exports its id in (`FORGE_RUN=<id>`, the brief's own
+/// line), which every process it starts inherits.
+pub const RUN_VAR: &str = "FORGE_RUN";
+
+/// The value of [`RUN_VAR`] in `pid`'s environment, where it is set and readable.
+fn run_of(root: &Path, pid: u32) -> Option<String> {
+    let raw = std::fs::read(root.join(pid.to_string()).join("environ")).ok()?;
+    let prefix = format!("{RUN_VAR}=");
+    raw.split(|b| *b == 0).find_map(|kv| {
+        let v = kv.strip_prefix(prefix.as_bytes())?;
+        let v = String::from_utf8_lossy(v).trim().to_string();
+        (!v.is_empty()).then_some(v)
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -144,6 +165,7 @@ pub fn standing_in(root: &Path, tree: &Path, since: i64, exclude: &[u32]) -> Rea
             pid,
             command: command_of(root, pid),
             started_at,
+            run: run_of(root, pid),
         });
     }
     found.sort_by_key(|s| s.pid);
@@ -237,6 +259,11 @@ mod tests {
             &sibling,
             "a sibling tree sharing the prefix",
         );
+        std::fs::write(
+            t.root.join("101").join("environ"),
+            "PATH=/usr/bin\0FORGE_RUN=96b0c1e2\0HOME=/h\0",
+        )
+        .unwrap();
         let Reading::Read(found) = standing_in(&t.root, &tree, since, &[105]) else {
             panic!("the planted table was read as unreadable");
         };
@@ -244,6 +271,9 @@ mod tests {
         assert_eq!(pids, vec![100, 101], "{found:?}");
         assert_eq!(found[0].command, "cargo watch -x test");
         assert_eq!(found[0].started_at, BOOT + 600);
+        // ISS-1374: the run a process's environment names is read with it.
+        assert_eq!(found[0].run, None);
+        assert_eq!(found[1].run.as_deref(), Some("96b0c1e2"));
     }
 
     #[test]

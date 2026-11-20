@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use runner_core::stop_gate::{
-    decide, porcelain_paths, Facts, Issue, Outcome, COMMIT_TEXT, HELD_TEXT,
+    decide, porcelain_paths, Facts, Issue, Outcome, TreeHeld, COMMIT_TEXT, HELD_TEXT,
 };
 
 /// What a run writes: an apostrophe, double quotes, a line break, and the
@@ -146,6 +146,7 @@ fn the_held_hint_filled_with_prose_posts_it_as_the_comment_body() {
         run_id: "296f5496-870e-428f-b386-d1c6007bfd9c",
         agent: "agent-297",
         tree: &tree,
+        tree_held: TreeHeld::Own,
         runner: env!("CARGO_BIN_EXE_forge-runner"),
         issues: vec![(
             "ISS-297".into(),
@@ -239,6 +240,7 @@ fn the_dirty_hint_filled_with_prose_commits_it_as_the_message() {
         run_id: "296f5496-870e-428f-b386-d1c6007bfd9c",
         agent: "agent-297",
         tree: &tree,
+        tree_held: TreeHeld::Own,
         runner: env!("CARGO_BIN_EXE_forge-runner"),
         // a dirty tree alone holds no stop (ISS-1251): the hint rides a held issue's refusal
         issues: vec![(
@@ -283,6 +285,7 @@ fn the_dirty_hint_commits_a_deletion_already_staged() {
         run_id: "296f5496-870e-428f-b386-d1c6007bfd9c",
         agent: "agent-297",
         tree: &tree,
+        tree_held: TreeHeld::Own,
         runner: env!("CARGO_BIN_EXE_forge-runner"),
         // a dirty tree alone holds no stop (ISS-1251): the hint rides a held issue's refusal
         issues: vec![(
@@ -335,6 +338,7 @@ fn the_hint_after_a_failed_commit_runs_as_written() {
             run_id: "296f5496-870e-428f-b386-d1c6007bfd9c",
             agent: "agent-297",
             tree: &tree,
+            tree_held: TreeHeld::Own,
             runner: env!("CARGO_BIN_EXE_forge-runner"),
             issues: vec![(
                 "ISS-297".into(),
