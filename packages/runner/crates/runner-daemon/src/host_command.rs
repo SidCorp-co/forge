@@ -189,7 +189,16 @@ pub(crate) async fn run_with_env(
         .stderr(Stdio::piped())
         .kill_on_drop(true)
         .spawn()
-        .map_err(|e| not_started(program, &e, &box_name()))?;
+        .map_err(|e| {
+            // the child searches the PATH it is handed where `env` sets one, else the box's own
+            let path = env
+                .iter()
+                .rev()
+                .find(|(k, _)| k == "PATH")
+                .map(|(_, v)| std::ffi::OsString::from(v))
+                .or_else(|| std::env::var_os("PATH"));
+            not_started(program, &e, &box_name(), path.as_deref())
+        })?;
     let stdout = child.stdout.take().ok_or("no stdout")?;
     let stderr = child.stderr.take().ok_or("no stderr")?;
     let out = tokio::spawn(capped(stdout));
@@ -217,16 +226,31 @@ pub(crate) async fn run_with_env(
 /// Why `program` did not start on the box called `box_name`, told apart where the OS cannot (ISS-1367):
 /// execve answers ENOENT both for a program that is not there and for a script whose `#!` names an
 /// interpreter that is not, so a program that is there has its first line read. Nothing of the file
-/// past its interpreter line is said.
-pub(crate) fn not_started(program: &OsStr, e: &io::Error, box_name: &str) -> String {
+/// past its interpreter line is said. A bare name is first found on `search_path`, the PATH the
+/// spawn searched, and its file read the same way.
+pub(crate) fn not_started(
+    program: &OsStr,
+    e: &io::Error,
+    box_name: &str,
+    search_path: Option<&OsStr>,
+) -> String {
     let shown = program.to_string_lossy();
     if e.kind() != io::ErrorKind::NotFound {
         return format!("{shown} could not run on {box_name}: {e}");
     }
-    let path = Path::new(program);
-    if path.parent().is_none_or(|p| p.as_os_str().is_empty()) {
-        return format!("{shown} is missing on {box_name}: no program of that name on its PATH");
-    }
+    let named = Path::new(program);
+    let found;
+    let path = if named.parent().is_none_or(|p| p.as_os_str().is_empty()) {
+        let Some(on_path) = search_path.and_then(|dirs| on_path(program, dirs)) else {
+            return format!(
+                "{shown} is missing on {box_name}: no program of that name on its PATH"
+            );
+        };
+        found = on_path;
+        found.as_path()
+    } else {
+        named
+    };
     if !path.exists() {
         return format!("{shown} is missing on {box_name}: no such file");
     }
@@ -256,6 +280,26 @@ pub(crate) fn not_started(program: &OsStr, e: &io::Error, box_name: &str) -> Str
         ""
     };
     format!("{shown} could not start on {box_name}: its interpreter line {line:?} {lacked}{crlf}")
+}
+
+/// The first file named `program` in `dirs` that a spawn would run: a file, executable on unix.
+fn on_path(program: &OsStr, dirs: &OsStr) -> Option<std::path::PathBuf> {
+    std::env::split_paths(dirs)
+        .map(|dir| dir.join(program))
+        .find(|candidate| {
+            let Ok(meta) = std::fs::metadata(candidate) else {
+                return false;
+            };
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                meta.is_file() && meta.permissions().mode() & 0o111 != 0
+            }
+            #[cfg(not(unix))]
+            {
+                meta.is_file()
+            }
+        })
 }
 
 /// The file's first line where it is a `#!` line, read no further than [`LINE_CAP`] bytes.
@@ -452,6 +496,16 @@ mod tests {
         assert!(err.contains("names a program not found"), "{err}");
         assert!(err.contains("Windows line endings"), "{err}");
         assert!(!err.contains("echo hi"), "{err}");
+
+        // named bare, the same script is found on the PATH the spawn searched and read the same
+        // way, never said missing from that PATH (cleanup be0527ad)
+        let path = [(String::from("PATH"), dir.to_string_lossy().into_owned())];
+        let bare = run_with_env(OsStr::new("crlf"), &[], Duration::from_secs(5), &path)
+            .await
+            .unwrap_err();
+        assert!(bare.starts_with("crlf could not start"), "{bare}");
+        assert!(bare.contains("names a program not found"), "{bare}");
+        assert!(!bare.contains("on its PATH"), "{bare}");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }
