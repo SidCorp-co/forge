@@ -13,8 +13,8 @@ export const REQUIREMENT_LIFECYCLE_GUIDE: CoreGuide = {
   audience: 'agent',
   title: 'Requirements: revisions, agreement, baselines and delivery',
   summary:
-    "How a requirement (REQ-n) is written in immutable revisions with stable business criteria (BC-n), proposed, accepted and agreed under a baseline pinning its designs — by its checklist and the project's master outside a strict profile, by a holder of requirements.approve where the project's gates keep a person —, re-pinned, deferred, moved into delivery and to delivered by an act, accepted (by its checklist or by decision) or dropped; and why an issue planned against it reads changed-since-plan.",
-  version: 14,
+    "How a requirement (REQ-n) is written in immutable revisions with stable business criteria (BC-n), proposed, accepted and agreed under a baseline pinning its designs — by its checklist and the project's master outside a strict profile, by a holder of requirements.approve where the project's gates keep a person —, re-pinned, deferred, moved into delivery and to delivered by an act, accepted (by its checklist or by decision) or dropped; why an issue planned against it reads changed-since-plan; and the source a money figure in a criterion or a shared scenario suite names, and when a suite more than one backend runs marks a scenario disputed.",
+  version: 15,
   doors: ['POST /api/projects/:id/requirements/:req/issues'],
   body: `## Requirements: revisions, agreement, baselines and delivery
 

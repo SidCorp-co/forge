@@ -257,6 +257,14 @@ describe('a door is taught on its card, and every page that names it renders tha
 // ISS-1376 (FB-788, gwork L-89): a money figure in a criterion or a suite names its source, and a
 // backend following a recorded rule of its own makes the scenario disputed, never failed.
 describe('a money golden figure and a suite more than one backend runs (ISS-1376)', () => {
+  it('is found from the guide index by its money figures and shared scenario suites', async () => {
+    const res = await guideRoutes.request('/guides');
+    const { guides } = (await res.json()) as { guides: { slug: string; summary: string }[] };
+    const summary = guides.find((g) => g.slug === 'requirement-lifecycle')?.summary ?? '';
+    expect(summary).toContain('money figure');
+    expect(summary).toContain('shared scenario suite');
+  });
+
   it('names each money figure’s source and never fails a backend on spec text alone', async () => {
     const section = between(
       await served('requirement-lifecycle'),
