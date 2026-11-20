@@ -111,7 +111,11 @@ export { releasedLineReads } from './released-line.js';
 export { readServedAncestry, type ServedAncestryPassResult } from './served-ancestry.js';
 export { servedOnEnvironment } from './serving-reading.js';
 export { type RangeChange, type RangeReading, readRange } from './shipped-range.js';
-export { type ShippedReleaseRun, shippedReleaseRuns } from './shipped-releases.js';
+export {
+  releasesCarryingAt,
+  type ShippedReleaseRun,
+  shippedReleaseRuns,
+} from './shipped-releases.js';
 export { stewardReleaseFacts } from './steward-release-facts.js';
 export { releaseToolView } from './tool-view.js';
 export { recoverUnstartedReleaseBatches } from './unstarted-recovery.js';

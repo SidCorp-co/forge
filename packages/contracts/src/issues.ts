@@ -65,6 +65,10 @@ export const VERDICT_REFUSAL_CODES = [
 	"VERDICT_COMMIT_UNPLACED",
 	"VERDICT_RUNTIME_NOT_FULL",
 	"VERDICT_RUNTIME_UNOBSERVED",
+	/** A commit or runtime verdict at a shipped release's build carrying the issue, whose identity that release never counts (ISS-1355). */
+	"VERDICT_IDENTITY_NOT_COUNTED",
+	/** A skip where the criterion stands on a counted pass at the same build, which it would take away (ISS-1355). */
+	"VERDICT_SKIP_OVER_PASS",
 	/** A release that is no release version (ISS-900). */
 	"VERDICT_RELEASE_SHAPE",
 	/** A release on a project whose production reads the commit it serves, or has none (ISS-900). */

@@ -48,6 +48,7 @@ import {
   verdictDraftFault,
 } from './verdict-input.js';
 import { offLandingFault } from './verdict-landing.js';
+import { skipOverPassFault, uncountedOnReleaseFault } from './verdict-release-build.js';
 import { verdictRefused } from './verdict-refused.js';
 import { repeatedVerdict } from './verdict-repeat.js';
 import { declaredRunOf, judgeDoors, judgeRoleFault } from './verdict-role.js';
@@ -386,6 +387,22 @@ export async function recordVerdict(
     routed: route?.judge ?? null,
   });
   if (notOwn) throw verdictRefused(notOwn);
+  // a verdict at a shipped release's build that release never counts, and a skip taking a pass away
+  // at its own build, are refused by name rather than answered for nothing (ISS-1355)
+  const uncounted = await uncountedOnReleaseFault(
+    issue,
+    draft.criterion,
+    identity,
+    route?.class ?? null,
+  );
+  if (uncounted) throw verdictRefused(uncounted);
+  const overPass = await skipOverPassFault(tx, issue, {
+    criterionId: criterion.id,
+    criterion: draft.criterion,
+    verdict: draft.verdict,
+    identity,
+  });
+  if (overPass) throw verdictRefused(overPass);
   const repeat = { criterionId: criterion.id, runSessionId, draft, identity, judge };
   const repeated = await repeatedVerdict(tx, repeat);
   if (repeated) {

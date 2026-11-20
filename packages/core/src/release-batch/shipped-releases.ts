@@ -104,3 +104,19 @@ export function releasesAt<R extends ShippedRelease>(sha: string, releases: read
   const named = releases.filter((r) => r.commit.startsWith(s));
   return new Set(named.map((r) => r.commit)).size === 1 ? named : [];
 }
+
+/**
+ * The versions of the releases Forge recorded shipping at the whole commit `sha` that carry the issue
+ * (ISS-1355): the releases a verdict judged at that build is weighed on, which the verdict door asks
+ * so a verdict none of them would count is refused rather than kept for nothing. Empty where none
+ * shipped there carrying it, as before any release exists.
+ */
+export async function releasesCarryingAt(
+  issue: { id: string; projectId: string },
+  sha: string,
+): Promise<string[]> {
+  const whole = sha.trim().toLowerCase();
+  if (!WHOLE.test(whole)) return [];
+  const runs = await shippedReleaseRuns(issue.projectId, { built: whole });
+  return runs.filter((r) => r.commit === whole && r.issueIds.includes(issue.id)).map((r) => r.version);
+}

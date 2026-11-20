@@ -258,6 +258,9 @@ interface IssuePorts {
   /** Where the project declares no production environment, the build a verdict on the issue counts
    *  at (`release-batch/judged-build.ts:unobservedBuildOf`); null where it declares one, or nothing. */
   unobservedBuildOf: (issue: { id: string; projectId: string }) => Promise<JudgedBuild | null>;
+  /** The versions of the shipped releases at a whole commit that carry the issue
+   *  (`release-batch/shipped-releases.ts:releasesCarryingAt`); empty where none does. */
+  releasesCarryingAt: (issue: { id: string; projectId: string }, sha: string) => Promise<string[]>;
   /** On a change-request project, each issue's head through the one predicate
    *  (`release-batch/landed-build.ts:deliveryHeadsOf`); null on any other project. */
   deliveryHeadsOf: (
@@ -457,6 +460,7 @@ export const liveReachOfIssue = port('liveReachForIssue');
 export const judgedBuildOf = port('judgedBuildOf');
 export const criteriaWeighingOf = port('criteriaWeighingOf');
 export const unobservedBuildOf = port('unobservedBuildOf');
+export const releasesCarryingAt = port('releasesCarryingAt');
 export const deliveryHeadsOf = port('deliveryHeadsOf');
 
 export const getLoopThresholds = port('getLoopThresholds');

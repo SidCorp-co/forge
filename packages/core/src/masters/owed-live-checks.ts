@@ -52,7 +52,7 @@ function ownLiveChecksLine(checks: readonly LiveCheckOwed[]): string {
   if (checks.length === 0) return '';
   const versions = [...new Set(checks.map((c) => c.version))].join(', ');
   const keys = checks.map((c) => `${c.key} ${c.issueId}`).join(', ');
-  return ` ${checks.length} issue${agrees(checks.length, '', 's')} the shipped release ${versions} carried ${agrees(checks.length, 'owes its', 'owe their')} live verdict (${keys}): nothing has judged ${agrees(checks.length, 'its', 'their')} criteria on what production serves. Declare a judging run, \`--role qa\`, to judge each criterion there and record its verdict, or move a criterion that cannot be judged there out on the record; \`${guideCall('qa')}\` is how.`;
+  return ` ${checks.length} issue${agrees(checks.length, '', 's')} the shipped release ${versions} carried ${agrees(checks.length, 'owes its', 'owe their')} live verdict (${keys}): nothing has judged ${agrees(checks.length, 'its', 'their')} criteria on what production serves. Declare a judging run, \`--role qa\`, to judge each criterion there and record its verdict, or move a criterion that cannot be judged there out on the record without unearning it, through the verdict door (\`POST /api/issues/:id/verdicts\`): \`skipped\` at the release build naming what is missing, which never displaces a pass there, or a commit pass naming the owner's accepting \`decision\` in \`acceptedOn\`; \`${guideCall('qa')}\` is how.`;
 }
 
 /**
