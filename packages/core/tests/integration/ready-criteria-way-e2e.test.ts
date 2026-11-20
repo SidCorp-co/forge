@@ -98,7 +98,7 @@ describe('a requirement-linked draft with no criteria', () => {
     expect(refusals[0]?.detail).toContain(
       'What are its criteria, each traced to a BC of that revision? The issue has no acceptance criteria. ' +
         "They are the run's to write: declare a run over this draft (forge-runner run declare), and that run writes them, " +
-        'each line starting with the BC it proves, as "(REQ-4 BC-<m>) <statement>", ' +
+        'each a numbered line led by the BC it proves, as "1. (REQ-4 BC-<m>) <statement>", ' +
         'and then opens it.',
     );
     expect(await statusOf()).toBe('draft');

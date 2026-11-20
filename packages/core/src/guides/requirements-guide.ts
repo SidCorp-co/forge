@@ -21,7 +21,7 @@ export const REQUIREMENT_LIFECYCLE_GUIDE: CoreGuide = {
 A requirement (REQ-n) is the business intent a set of issues delivers. Its text never changes in place:
 it lives in numbered revisions, and each revision carries business criteria under stable codes
 (BC-1, BC-2, …) that issues trace their own criteria to: an issue criterion traces one where its
-line opens with the tag, \`(REQ-n BC-m) <statement>\`, and nowhere else.
+numbered line opens with the tag, \`1. (REQ-n BC-m) <statement>\`, and nowhere else.
 \`POST /api/issues/:id/criteria/traces { ties: [{ n, code }] }\` TIES the issue's existing line n to a
 BC, keeping its verdicts; \`POST /api/issues/:id/criteria/traces { codes }\` ADDS a criterion per code
 to the issue, worded as the BC, for a BC no line says; it takes only BCs of the issue's own

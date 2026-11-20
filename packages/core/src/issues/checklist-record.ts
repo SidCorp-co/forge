@@ -207,7 +207,7 @@ export function criteriaAnswerOf(rows: readonly CriterionTrace[], p: Planned): R
     // The criteria are the run's to write, so the mover is told how a run comes to write them.
     return {
       gap: 'The issue has no acceptance criteria.',
-      fix: `They are the run's to write: declare a run over this draft (forge-runner run declare), and that run writes them, each line starting with the BC it proves, as "(${p.key ?? 'REQ-<n>'} BC-<m>) <statement>", and then opens it.`,
+      fix: `They are the run's to write: declare a run over this draft (forge-runner run declare), and that run writes them, each a numbered line led by the BC it proves, as "1. (${p.key ?? 'REQ-<n>'} BC-<m>) <statement>", and then opens it.`,
     };
   }
   const revision = p.key === null ? null : plannedAgainst(p);

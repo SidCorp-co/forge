@@ -104,9 +104,9 @@ A plan is optional: write one where a reader should see the approach before the 
 where the change explains itself. The criteria are what the release judges the work by.
 \`PATCH /api/issues/:id\` writes \`acceptanceCriteria\` (and \`plan\`, where you write one). Criteria
 are numbered lines (\`1. …\`), one outcome a reader can check without opening the diff. A repeated
-number, a number with no statement, or a line above criterion 1 (a \`Scope:\` lead: number it or
-move it to the description) is refused \`CRITERIA_TEXT_UNPARSEABLE\`; text with no numbered line
-writes no criteria at all, so read the field back.
+number, a number with no statement, a line above criterion 1 (a \`Scope:\` lead: number it or
+move it to the description), or text with no numbered line at all (\`(REQ-n BC-m) …\` lines with no
+\`1.\` among them) is refused \`CRITERIA_TEXT_UNPARSEABLE\`, and nothing is written; empty text writes none.
 
 The criteria are on the record before the issue lands: a list only in the description is no
 criterion. Taking an issue that has none while its description lists some answers a
@@ -125,8 +125,8 @@ the sibling's routes; \`requirement: null\` is an issue delivering none. A desig
 links or pins reads the same way, \`GET /api/issues/:id/requirement/designs/:workflow\` (its steps
 view, \`revision?\`, \`stepFrom?\`, \`stepTo?\`); any other design is refused 404 by name.
 
-A criterion traces a BC of the issue's requirement only where its line begins with the tag:
-\`1. (REQ-n BC-m) <statement>\`, one BC per criterion, uppercase, at the revision the plan was
+A criterion traces a BC of the issue's requirement only where its line begins, after its number,
+with the tag: \`1. (REQ-n BC-m) <statement>\`, one BC per criterion, uppercase, at the revision the plan was
 written against. The same tag anywhere else in the line traces nothing, so it is refused
 \`CRITERIA_TRACE_NOT_LEADING\`; a lead tag of another shape (two codes, lowercase) is
 \`CRITERIA_TRACE_INVALID\`. A REQ or BC named in prose, without the parentheses, is text. On
@@ -486,8 +486,9 @@ requirement — and the close names where each one went. **The run holding the i
 write its release note (step 3), read it back with \`GET /api/issues/:id\`, then
 \`POST /api/issues/:id/transition\` \`{ toStatus: 'closed', unmet: [{ criterion: 3, to: { issue: '<its key>' } }, { criterion: 4, to: 'requirement' }] }\`
 from \`awaiting_release\`, \`unmet\` left out where every criterion is met; a criterion whose newest
-verdict is a fail, or one named with nowhere to go, is refused \`CLOSE_CRITERION_UNPLACED\`, and a
-close with no release note recorded \`CLOSE_RELEASE_NOTE_MISSING\`. A release that claims an issue
+verdict is a fail, or one named with nowhere to go, is refused \`CLOSE_CRITERION_UNPLACED\`, a
+close with no release note recorded \`CLOSE_RELEASE_NOTE_MISSING\`, and one whose criteria text
+no criterion was read from \`CLOSE_CRITERIA_TEXT_UNREAD\`: add them once from the holder first. A release that claims an issue
 still at \`awaiting_release\` closes it too; one you closed it carries as it stands. Whether the work is live is read from that release's record, never from \`closed\`. On a project that
 declares no production environment that release is the recorded landing
 (\`POST /api/projects/:id/release-records\`): the agent's record in its own words, a version

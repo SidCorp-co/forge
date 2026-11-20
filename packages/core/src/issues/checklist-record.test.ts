@@ -127,10 +127,10 @@ describe("the issue-ready record reader's words", () => {
   it('send a draft with no criteria to a run declared over it, which writes them and opens it', () => {
     expect(criteriaAnswerOf([], planned({}))).toEqual({
       gap: 'The issue has no acceptance criteria.',
-      fix: 'They are the run\'s to write: declare a run over this draft (forge-runner run declare), and that run writes them, each line starting with the BC it proves, as "(REQ-7 BC-<m>) <statement>", and then opens it.',
+      fix: 'They are the run\'s to write: declare a run over this draft (forge-runner run declare), and that run writes them, each a numbered line led by the BC it proves, as "1. (REQ-7 BC-<m>) <statement>", and then opens it.',
     });
     const unlinked = criteriaAnswerOf([], planned({ key: null, status: null }));
-    expect('fix' in unlinked && unlinked.fix).toContain('as "(REQ-<n> BC-<m>) <statement>"');
+    expect('fix' in unlinked && unlinked.fix).toContain('as "1. (REQ-<n> BC-<m>) <statement>"');
   });
 
   // ISS-778: the plan is the run's to write once it claims the open issue, so no answer asks for one

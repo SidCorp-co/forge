@@ -260,7 +260,7 @@ describe('the served guides', () => {
     const lifecycle = await api(token, 'GET', '/api/guides/requirement-lifecycle.md');
     expect(lifecycle.status).toBe(200);
     expect(String(lifecycle.body.text ?? '').replace(/\s+/gu, ' ')).toContain(
-      'an issue criterion traces one where its line opens with the tag, `(REQ-n BC-m) <statement>`, and nowhere else',
+      'an issue criterion traces one where its numbered line opens with the tag, `1. (REQ-n BC-m) <statement>`, and nowhere else',
     );
   });
 });
