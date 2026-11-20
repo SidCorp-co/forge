@@ -420,7 +420,10 @@ written by the run holding it (`NOT_THE_HOLDER` for anyone else) over its record
 (`packages/core/src/issues/close-note-guard.ts:closeNoteFault`, `CLOSE_RELEASE_NOTE_MISSING`), each
 criterion it did not meet moved out first (`packages/core/src/issues/close-in-scope.ts`,
 `CLOSE_CRITERION_UNPLACED`), or by a release
-that claimed it, and it needs the merge either way (`CLOSE_REQUIRES_SHIPPED`). On a project with
+that claimed it, and it needs the merge either way (`CLOSE_REQUIRES_SHIPPED`). Either close is refused
+while the issue's criteria text holds words and no live criterion was read from it
+(`packages/core/src/issues/close-in-scope.ts:criteriaTextUnread`, `CLOSE_CRITERIA_TEXT_UNREAD`): its
+holder adds them once first (`packages/core/src/issues/criteria/late-add.ts:lockReading`). On a project with
 no production environment that release is the recorded landing
 (`packages/core/src/release-batch/recorded-landing.ts:recordLanding`), which keeps the commit the
 agent names as evidence, never checked, and records an issue whose mark names no commit with its build
