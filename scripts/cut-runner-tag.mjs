@@ -30,14 +30,19 @@ export function tagTarget(cwd, tag) {
 
 /** The `runner-v*` tags on `tag`'s line at `commit`, split by whether a release is published. */
 function standingAt(cwd, commit, tag, published) {
-  let atCommit = [];
+  let atCommit;
   try {
     atCommit = git(cwd, ['tag', '--points-at', commit, '--list', 'runner-v*'])
       .split('\n')
       .map((s) => s.trim())
       .filter(Boolean);
-  } catch {
-    atCommit = [];
+  } catch (err) {
+    // A failed read is not "no tag here": reading it as one would cut a tag beside a release.
+    const why = (err instanceof Error && (err.stderr || err.message)) || String(err);
+    throw new Error(
+      `reading the runner tags at ${commit} failed, so whether it is already released is ` +
+        `unknown: git tag --points-at: ${String(why).trim()}. Nothing was pushed.`,
+    );
   }
   return tagsAtCommit(atCommit, published, lineOf(tag));
 }

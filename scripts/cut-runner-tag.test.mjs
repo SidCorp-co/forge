@@ -131,6 +131,17 @@ describe('a tag whose build never published is not a release', () => {
     ]);
   });
 
+  it('refuses by name when the tags at the commit cannot be read, never reading none', () => {
+    const missing = 'no-such-commit';
+    expect(() => releasesAt(work, missing, 'runner-v0.18.9', [])).toThrow(
+      /reading the runner tags at no-such-commit failed.*git tag --points-at: .*malformed object name/,
+    );
+    expect(() =>
+      cutRunnerTag({ cwd: work, tag: 'runner-v0.18.9', commit: missing, published: [] }),
+    ).toThrow(/reading the runner tags .* failed/);
+    expect(git(work, 'tag', '--list', 'runner-v0.18.9')).toBe('');
+  });
+
   it('refuses a cut that is not told which releases are published', () => {
     expect(() => cutRunnerTag({ cwd: work, tag: 'runner-v0.18.9', commit: shared })).toThrow(
       /published releases are required/,
