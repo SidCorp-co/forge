@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.770] - 2026-11-20
+
+Dev's whole suite green again: the release-hold test meets the verdict door
+
+### Fixed
+
+- **Dev's whole suite is green again on the release-hold test.** The case now judges its second criterion short instead of posting a skip over a pass, which the verdict door refuses.
+
 ## [0.4.0-dev.769] - 2026-11-20
 
 Criteria text with no numbered line is refused, so no issue closes unjudged
