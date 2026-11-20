@@ -214,16 +214,32 @@ export class SupportWorld {
    * Binding warms the session, and the two bindings' changes can each start a warm-up turn: wait
    * until every one has ended (a tools re-tell owed to a busy session paid as the sweep pays it), so
    * a test's first message meets one idle, resident session and not a warm-up still running.
+   *
+   * `ms` bounds the warm-up, not the outbox drain before each look: under a loaded suite one drain
+   * alone took 9 to 10 s (a warm-up 0.8 s at the median, 1.3 s at p95), so two drains ran the old
+   * shared 20 s out with the session already idle. The drain keeps its own bound and names what it
+   * waited on (`settleOutbox`); a timeout here names the state the room was left in.
    */
   async settleWarm(ms = 20_000): Promise<void> {
     const { warmColdRooms } = await import('../../src/support/index.js');
-    const until = Date.now() + ms;
+    let until = Date.now() + ms;
     let quiet = 0;
+    let last = 'no room';
     while (quiet < 3) {
-      if (Date.now() > until) throw new Error(`the room's session was still warming after ${ms}ms`);
+      if (Date.now() > until) {
+        throw new Error(
+          `the room's session was still warming after ${ms}ms: ${last}, ` +
+            `${this.undelivered.length} turn(s) undelivered`,
+        );
+      }
+      const drain = Date.now();
       await settleOutbox();
+      until += Date.now() - drain;
       await warmColdRooms();
       const [room] = await this.rooms();
+      last = room
+        ? `resident ${room.resident}, session ${room.sessionStatus}, box ${this.box.idle() ? 'idle' : 'running a turn'}`
+        : 'no room';
       const settled =
         room?.resident === true && room.sessionStatus === 'completed' && this.box.idle();
       quiet = settled ? quiet + 1 : 0;
