@@ -403,7 +403,7 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     situations: [
       {
         when: 'A technical defect of your own that stands alone: against an existing expectation, debt, code to simplify, contract typing (a missing index, an untyped route)',
-        do: 'debt for the Audit, `projects/<id>/debts -X POST` with its evidence; an issue of its own (kind as `category`, module as primary label, `Found in:`) only for priority, a handoff or independent tracking (`what-is-an-issue`, *Where what you find goes*)',
+        do: 'debt for the Audit, `projects/<id>/debts -X POST` with its evidence, and read its `DEBT_WHERE_OVERLAPS` warning: a duplicate of an open debt is named on the issue for the Audit to clear together; an issue of its own (kind as `category`, module as primary label, `Found in:`) only for priority, a handoff or independent tracking (`what-is-an-issue`, *Where what you find goes*)',
         watch: 'cleanup done inside the fix; a defect only mentioned in a comment',
       },
     ],

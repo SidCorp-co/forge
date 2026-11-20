@@ -655,9 +655,9 @@
     "by": "ISS-1251"
   },
   "POST /api/projects/:projectId/debts": {
-    "hash": "6e0b81922c1c03be",
-    "on": "2026-11-16",
-    "by": "ISS-1251"
+    "hash": "dbc000e688010dd8",
+    "on": "2026-11-20",
+    "by": "ISS-1371"
   },
   "POST /api/projects/:projectId/debts/:debt/carry": {
     "hash": "7d6d7832f59e14eb",

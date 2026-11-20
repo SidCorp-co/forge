@@ -204,6 +204,15 @@ export const DELIVERY_SCENARIOS: readonly CardScenario[] = [
     teaches: [/RED_RATED_HIGH/, /with its evidence/i],
   },
   {
+    name: 'a debt recorded beside an open debt on the same file',
+    card: 'POST /api/projects/:projectId/debts',
+    source: 'FB-785: debt 541e869a beside open 79da9a3e and 560e2da6 (ISS-1371)',
+    situation: 'A run records a red whose where names a file an open debt already names',
+    bad: 'it recorded the duplicate unread, and no door withdraws it',
+    good: 'read the overlap warning and name the duplicate on the issue for the Audit',
+    teaches: [/DEBT_WHERE_OVERLAPS/, /Audit to clear together/i],
+  },
+  {
     name: 'an unverified memory hit acted on as a fact',
     card: 'POST /api/memory/search',
     source: 'memory grep-dev-not-checkout and verify-builder-could-not-read (ISS-998)',
