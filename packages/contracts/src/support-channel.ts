@@ -381,7 +381,7 @@ export const supportForgeActRequestSchema = z.strictObject({
 		})
 		.optional()
 		.describe(
-			"rule.write only: the rule as he ruled it, { title, body, module?, injection?, scope?, recheckWhen? }; an amend keeps each field you leave out, a new rule needs title, scope and recheckWhen",
+			"rule.write only: the rule as he ruled it, { title, body, module?, injection?, scope?, recheckWhen? }; an amend keeps each field you leave out, a new rule needs title, scope and recheckWhen. His own account writes it under project.write: one that may not write the project is refused PERMISSION_FORBIDDEN, nothing written",
 		),
 });
 export type SupportForgeActRequest = z.infer<
