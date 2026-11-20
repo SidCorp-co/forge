@@ -39,10 +39,33 @@ describe('a line before the first numbered criterion', () => {
     ]);
   });
 
-  it('leaves text with no numbered line at all as unnumbered, not faulted', () => {
-    const parsed = parseCriteriaText('The list loads fast.');
-    expect(parsed.faults).toEqual([]);
-    expect(parsed.unnumbered).toBe(true);
+});
+
+// ISS-1380 (FB-791, gwork ISS-320): lines opening `(REQ-22 BC-1) …` with no `1.` read as no
+// criterion and no fault, so the text was stored, no row written, every verdict refused, and the
+// close went through with none.
+describe('a text holding words and no numbered line', () => {
+  it('is a fault quoting its first line and showing the numbered trace form', () => {
+    const parsed = parseCriteriaText(
+      '(REQ-22 BC-1) The timesheet totals the week.\n(REQ-22 BC-2) A manager approves it.',
+    );
+    expect(parsed.criteria).toEqual([]);
+    expect(parsed.faults).toHaveLength(1);
+    const [fault] = parsed.faults;
+    expect(fault?.n).toBeNull();
+    expect(fault?.why).toContain('"(REQ-22 BC-1) The timesheet totals the week."');
+    expect(fault?.why).toContain('a criterion is a numbered line');
+    expect(fault?.why).toContain('`1. (REQ-<n> BC-<m>) <statement>`');
+  });
+
+  it('is a fault for plain prose too', () => {
+    expect(parseCriteriaText('The list loads fast.').faults).toHaveLength(1);
+  });
+
+  it('is no fault where the text is empty or blank, which writes no criteria', () => {
+    for (const text of [null, undefined, '', '  \n\t\n']) {
+      expect(parseCriteriaText(text)).toEqual({ criteria: [], faults: [] });
+    }
   });
 });
 

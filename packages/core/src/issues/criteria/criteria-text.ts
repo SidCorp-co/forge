@@ -17,9 +17,10 @@ interface ParsedCriteriaText {
   readonly criteria: readonly ParsedCriterion[];
   /** Why the text cannot be read as criteria; non-empty means `criteria` must not be written. */
   readonly faults: readonly CriteriaTextFault[];
-  /** True where the text holds words but no numbered line at all. */
-  readonly unnumbered: boolean;
 }
+
+/** The numbered trace form every refusal of an unnumbered criterion shows (ISS-1380). */
+export const NUMBERED_TRACE_FORM = '`1. (REQ-<n> BC-<m>) <statement>`';
 
 /** Collapse runs of whitespace, so a re-wrapped line is the same criterion and not a reworded one. */
 export function normalizeStatement(statement: string): string {
@@ -44,6 +45,14 @@ export function parseCriteriaText(text: string | null | undefined): ParsedCriter
   }
   const faults: CriteriaTextFault[] = [];
   const [first] = lead;
+  // words and no number read as no criterion at all: written, the issue reaches its close with none
+  // on the record and every verdict is refused, so the text is refused instead (ISS-1380)
+  if (first !== undefined && open.length === 0) {
+    faults.push({
+      n: null,
+      why: `the text holds no numbered line, so no criterion can be read from it (it opens "${clip(first)}"): a criterion is a numbered line, \`1. <statement>\`, and one tracing a BC is ${NUMBERED_TRACE_FORM}`,
+    });
+  }
   if (first !== undefined && open.length > 0) {
     const more =
       lead.length > 1 ? ` (and ${lead.length - 1} more line${lead.length > 2 ? 's' : ''})` : '';
@@ -62,11 +71,7 @@ export function parseCriteriaText(text: string | null | undefined): ParsedCriter
     seen.add(n);
     criteria.push({ n, statement });
   }
-  return {
-    criteria: faults.length > 0 ? [] : criteria,
-    faults,
-    unnumbered: open.length === 0 && body.trim() !== '',
-  };
+  return { criteria: faults.length > 0 ? [] : criteria, faults };
 }
 
 const QUOTE_MAX = 160;

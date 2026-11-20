@@ -91,16 +91,8 @@ export function planIssueBackfill(
   const at = (source: string | null, n: number | null, why: string) =>
     `issue ${issue.id}${source ? ` record ${source}` : ''}${n === null ? '' : ` criterion ${n}`}: ${why}`;
   const parsed = parseCriteriaText(issue.acceptanceCriteria);
+  // a text with no numbered line is one of these faults (ISS-1380), so no criterion is written
   for (const fault of parsed.faults) refusals.push(at(null, fault.n, fault.why));
-  if (parsed.unnumbered) {
-    refusals.push(
-      at(
-        null,
-        null,
-        'acceptance_criteria holds text and no numbered line, so no criterion was written',
-      ),
-    );
-  }
   const numbers = new Set(parsed.criteria.map((c) => c.n));
   const verdicts: BackfillVerdict[] = [];
   for (const rec of records) {
