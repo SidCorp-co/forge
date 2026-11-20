@@ -15,13 +15,14 @@ import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import { supportActions } from '../db/schema-support.js';
 import { logger } from '../lib/logger.js';
+import { webBaseUrl } from '../lib/web-base-url.js';
 import { emitNotification } from '../notifications/index.js';
 import { readProjectDocument } from '../project-config/index.js';
 import { deliverWaiting } from './dispatch.js';
 import { grantsOf, supportConfigOf } from './grants.js';
 import { no, type Outcome } from './outcome.js';
 import { sharedRoomOf } from './project-thread.js';
-import type { Refusal } from './refusals.js';
+import { type Refusal, refusalOf } from './refusals.js';
 import { checkThreadOf } from './rules.js';
 import { insertAction, type RoomRow, roomsOfProject } from './store.js';
 import { technicalChannelOf } from './technical-channel.js';
@@ -186,6 +187,12 @@ async function tellUnreached(
   });
 }
 
+const NO_WEB = refusalOf(
+  'SUPPORT_REMINDER_NO_WEB',
+  PATH,
+  'this Forge knows no address of its web app (CORS_ORIGINS is unset), so no wait has a page to link to; set CORS_ORIGINS to the web app origin',
+);
+
 /** One project's morning: handed once where it is due and anything waits, refused by name where it cannot go. */
 async function fireProject(
   project: { id: string; slug: string; name: string },
@@ -203,6 +210,11 @@ async function fireProject(
   const namespace = route.ok ? (await roomAuth(route.value.room)).namespace : null;
   const waits = dueWaits(await projectWaits(project.id, project.slug, namespace, now), now);
   if (waits.length === 0) return false;
+  if (!webBaseUrl()) {
+    // every wait is handed with its page's link: with no web address they would open nowhere
+    await tellUnreached(project, day, waits, NO_WEB);
+    return false;
+  }
   if (!route.ok) {
     const [refusal] = route.refusals;
     if (refusal) await tellUnreached(project, day, waits, refusal);

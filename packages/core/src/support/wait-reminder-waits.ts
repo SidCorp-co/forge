@@ -93,7 +93,8 @@ export function ageOf(since: string | null, now: Date): string {
   return hours >= 48 ? `${Math.floor(hours / 24)} days` : `${hours} hours`;
 }
 
-// the web app's origin, as every link support writes back to Forge takes it
+// the web app's origin, as every link support writes back to Forge takes it; a morning is refused
+// SUPPORT_REMINDER_NO_WEB before it is handed where there is none (`wait-reminder.ts:fireProject`)
 const base = () => webBaseUrl() ?? '';
 
 /** The Forge page a decision opens on: its issue by documentId, its own item, else the project's approvals. */

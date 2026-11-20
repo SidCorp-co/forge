@@ -6,6 +6,12 @@ vi.hoisted(() => {
   // the web app is served apart from core's own address: a reminder links the web app's pages
   process.env.CORS_ORIGINS = 'https://web.forge.test';
 });
+// a core that knows no web address: its waits would be handed with links that open nowhere
+const web = vi.hoisted(() => ({ unset: false }));
+vi.mock('../../src/lib/web-base-url.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../src/lib/web-base-url.js')>();
+  return { webBaseUrl: () => (web.unset ? undefined : real.webBaseUrl()) };
+});
 
 import { db } from '../../src/db/client.js';
 import { namespaceFromServerUrl } from '../../src/integrations/rocketchat/namespace.js';
@@ -330,6 +336,40 @@ describe('ISS-1343: the morning reminder of what waits on a person', () => {
     expect(alerts).toHaveLength(1);
     expect(alerts[0]?.title).toContain('reminder not sent');
     expect(alerts[0]?.body).toContain('SUPPORT_TECHNICAL_CHANNEL_UNREACHABLE');
+  });
+
+  it('refuses by name, on the bell of whoever it waits on, a morning whose waits have no web page to link', async () => {
+    const unlinked = await createTestProject(w.ownerId);
+    await addProjectMember(unlinked.id, w.ownerId, 'owner');
+    const loose = await createTestIssue(unlinked.id, w.ownerId, 12, {
+      status: 'in_progress',
+      createdAt: new Date(morning.getTime() - 72 * HOUR),
+    });
+    const asked = await api(w.owner, 'POST', '/api/questions', {
+      issueId: loose.id,
+      prompt: 'Approve the new supplier?',
+      options: [
+        { id: 'yes', label: 'Yes', authority: 'writer', bindsTo: 'project', executedBy: 'agent' },
+      ],
+      recommendedOptionId: 'yes',
+    });
+    expect(asked.status, JSON.stringify(asked.body)).toBe(201);
+    await db.execute(
+      sql`UPDATE agent_questions SET created_at = now() - interval '2 days', steps = (SELECT jsonb_agg(s - 'askedAt') FROM jsonb_array_elements(steps) s) WHERE id = ${String(asked.body.id)}::uuid`,
+    );
+    forgetSettledMornings();
+    web.unset = true;
+    try {
+      await fireWaitReminders(new Date(morning.getTime() + 144 * HOUR));
+    } finally {
+      web.unset = false;
+    }
+    const alerts = await rows<{ title: string; body: string }>(sql`
+      SELECT n.title, n.body FROM notifications n
+       WHERE n.project_id = ${unlinked.id}::uuid AND n.type = 'ops_alert'`);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]?.title).toContain('reminder not sent');
+    expect(alerts[0]?.body).toContain('SUPPORT_REMINDER_NO_WEB');
   });
 });
 

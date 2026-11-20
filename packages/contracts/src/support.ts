@@ -1951,6 +1951,8 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_SECRET_SLOT_VARIABLE",
 	/** A secret link asked of a core that knows no web app address to link to (ISS-1328). */
 	"SUPPORT_SECRET_LINK_NO_WEB",
+	/** A morning reminder due on a core that knows no web app address to link its waits to. */
+	"SUPPORT_REMINDER_NO_WEB",
 	/** The chat server could not be read for the picture (ISS-1010). */
 	"SUPPORT_IMAGE_UNREACHABLE",
 	/** A master's post names an image no issue, comment or session upload has (ISS-1024). */
@@ -2188,6 +2190,7 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_SECRET_SLOT_UNKNOWN: 404,
 	SUPPORT_SECRET_SLOT_VARIABLE: 409,
 	SUPPORT_SECRET_LINK_NO_WEB: 503,
+	SUPPORT_REMINDER_NO_WEB: 503,
 	SUPPORT_IMAGE_UNREACHABLE: 503,
 	SUPPORT_POST_IMAGE_UNKNOWN: 404,
 	SUPPORT_POST_IMAGE_UNREADABLE: 403,
