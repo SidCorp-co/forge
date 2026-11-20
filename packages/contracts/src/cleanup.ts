@@ -123,14 +123,18 @@ export const recordDebtsRequestSchema = z.strictObject({
 export type RecordDebtsRequest = z.infer<typeof recordDebtsRequestSchema>;
 
 /**
- * What the debts door says about an item it recorded and the writer should not miss (ISS-1251):
- * `RED_RATED_HIGH`, a red the writer rated high, which holds its issue and is fixed there (BC-3).
+ * What the debts door says about an item it recorded and the writer should not miss: `RED_RATED_HIGH`,
+ * a red the writer rated high, which holds its issue and is fixed there (BC-3, ISS-1251), and
+ * `DEBT_WHERE_OVERLAPS`, an item whose `where` names a file an open debt of the project already
+ * names, one per such debt (ISS-1371). Both are recorded all the same; neither is a refusal.
  */
 export interface DebtWarning {
-	code: "RED_RATED_HIGH";
-	/** The item's rating, as a JSON pointer into the write. */
+	code: "RED_RATED_HIGH" | "DEBT_WHERE_OVERLAPS";
+	/** The item's rating or `where`, as a JSON pointer into the write. */
 	path: string;
 	detail: string;
+	/** The open debt an overlap names, for `DEBT_WHERE_OVERLAPS`. */
+	debt?: { id: string; kind: DebtKind; where: string };
 }
 
 /**

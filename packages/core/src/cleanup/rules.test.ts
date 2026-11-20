@@ -3,7 +3,15 @@
  */
 import type { CleanupReportRequest } from '@forge/contracts/cleanup';
 import { describe, expect, it } from 'vitest';
-import { cleanupBrief, debtWarnings, reportOwed, reportRefusals, windowOffWords } from './rules.js';
+import {
+  cleanupBrief,
+  debtWarnings,
+  overlapWarnings,
+  reportOwed,
+  reportRefusals,
+  wherePaths,
+  windowOffWords,
+} from './rules.js';
 
 const impact = (rating: 'low' | 'medium' | 'high') =>
   ({ type: 'data', rating, reason: `rated ${rating}` }) as const;
@@ -17,8 +25,20 @@ const report = (over: Partial<CleanupReportRequest> = {}): CleanupReportRequest 
   ...over,
 });
 const open = [
-  { id: D1, where: 'packages/core/src/a.ts', rating: 'high' as const, carried: false },
-  { id: D2, where: 'scripts/gate.mjs', rating: 'medium' as const, carried: true },
+  {
+    id: D1,
+    kind: 'red' as const,
+    where: 'packages/core/src/a.ts',
+    rating: 'high' as const,
+    carried: false,
+  },
+  {
+    id: D2,
+    kind: 'debt' as const,
+    where: 'scripts/gate.mjs',
+    rating: 'medium' as const,
+    carried: true,
+  },
 ];
 
 describe('debt an agent records (REQ-79 BC-3)', () => {
@@ -42,6 +62,62 @@ describe('debt an agent records (REQ-79 BC-3)', () => {
     expect(
       debtWarnings([{ kind: 'debt', where: 'x', detail: 'y', impact: impact('high') }]),
     ).toEqual([]);
+  });
+});
+
+describe('a debt whose where names a file an open debt names (ISS-1371)', () => {
+  const item = (where: string) => ({
+    kind: 'debt' as const,
+    where,
+    detail: 'drifts',
+    impact: impact('low'),
+  });
+
+  it('reads files and deep paths out of a where, dropping anchors, never prose, versions or a package root', () => {
+    expect(
+      wherePaths(
+        '`./.forge/archmap/src/cli.mjs:main` against MANIFEST.json, and/or packages/web-v2 (v1.31.1, e.g. ISS-1338) support/x.ts#L12 packages/web-v2/src/features/boxes/',
+      ),
+    ).toEqual([
+      '.forge/archmap/src/cli.mjs',
+      'MANIFEST.json',
+      'support/x.ts',
+      'packages/web-v2/src/features/boxes',
+    ]);
+  });
+
+  it('names each open debt sharing a file, by id, kind and where, on the item it overlaps', () => {
+    const warned = overlapWarnings(
+      [item('scripts/other.mjs'), item('packages/core/src/a.ts:readA and scripts/gate.mjs')],
+      open,
+    );
+    expect(warned.map((w) => [w.code, w.path, w.debt])).toEqual([
+      [
+        'DEBT_WHERE_OVERLAPS',
+        '/items/1/where',
+        { id: D1, kind: 'red', where: 'packages/core/src/a.ts' },
+      ],
+      [
+        'DEBT_WHERE_OVERLAPS',
+        '/items/1/where',
+        { id: D2, kind: 'debt', where: 'scripts/gate.mjs' },
+      ],
+    ]);
+    expect(warned[0]?.detail).toContain(D1);
+    expect(warned[0]?.detail).toContain('Audit clears them together');
+  });
+
+  it('matches a shorter path ending the longer at a slash, and a bare file name only itself', () => {
+    expect(overlapWarnings([item('core/src/a.ts')], open).map((w) => w.debt?.id)).toEqual([D1]);
+    expect(overlapWarnings([item('a.ts')], open)).toEqual([]);
+    expect(overlapWarnings([item('packages/core/src/ab.ts')], open)).toEqual([]);
+  });
+
+  it('warns on nothing where no file is shared, or nothing is open', () => {
+    expect(overlapWarnings([item('packages/core'), item('the release page hero')], open)).toEqual(
+      [],
+    );
+    expect(overlapWarnings([item('packages/core/src/a.ts')], [])).toEqual([]);
   });
 });
 

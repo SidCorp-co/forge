@@ -171,6 +171,54 @@ describe('cleanup debt (BC-3, BC-1)', () => {
     ]);
   });
 
+  // ISS-1371: a second debt on a file an open debt names is recorded, and the answer names that debt
+  it('records a debt on a file an open debt names and warns naming that debt, never a cleared one', async () => {
+    const item = (where: string) => ({
+      kind: 'debt',
+      where,
+      detail: 'the vendored copy drifts from its manifest',
+      impact: { type: 'config', rating: 'low', reason: 'a gate, the app is untouched' },
+    });
+    const first = await debts({
+      items: [item('.forge/archmap/src/cli.mjs, .forge/archmap/MANIFEST.json')],
+    });
+    const [openId] = first.body.debts;
+    expect(first.body.warnings).toEqual([]);
+
+    const again = await debts({
+      items: [
+        item('packages/core/src/x.ts'),
+        item('./.forge/archmap/src/cli.mjs:main against its MANIFEST'),
+      ],
+    });
+    expect(again.status).toBe(201);
+    expect(again.body.debts).toHaveLength(2);
+    expect(again.body.warnings).toEqual([
+      expect.objectContaining({
+        code: 'DEBT_WHERE_OVERLAPS',
+        path: '/items/1/where',
+        debt: {
+          id: openId,
+          kind: 'debt',
+          where: '.forge/archmap/src/cli.mjs, .forge/archmap/MANIFEST.json',
+        },
+      }),
+    ]);
+    expect(again.body.warnings[0].detail).toContain(openId);
+    expect((await ledger()).body.open).toHaveLength(3);
+
+    const elsewhere = await debts({ items: [item('scripts/other-gate.mjs')] });
+    expect(elsewhere.body.warnings).toEqual([]);
+
+    const open = (await ledger()).body.open as Doc[];
+    const cleared = await reportCleanup({
+      cleared: open.map((d) => ({ debt: d.id, how: 'fixed' })),
+    });
+    expect(cleared.status).toBe(201);
+    const afterClear = await debts({ items: [item('.forge/archmap/src/cli.mjs')] });
+    expect(afterClear.body.warnings).toEqual([]);
+  });
+
   it('is refused on a project that turned fast delivery off', async () => {
     await fastOff();
     const res = await debts({ items: [red('low')] });

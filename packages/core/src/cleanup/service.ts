@@ -34,6 +34,7 @@ import {
   type CleanupRefusal,
   debtWarnings,
   FAST_DELIVERY_OFF_DETAIL,
+  overlapWarnings,
   reportOwed,
   reportRefusals,
   windowOffWords,
@@ -146,6 +147,8 @@ export async function recordDebts(args: {
     }
     issueId = issue.id;
   }
+  // read before the write, so an item is never warned against itself (ISS-1371)
+  const open = await openDebts(db, projectId);
   const debts = await insertDebts(db, {
     projectId,
     issueId,
@@ -157,7 +160,7 @@ export async function recordDebts(args: {
     debts,
     window,
     windowOff: windowOffWords(projectId, window),
-    warnings: debtWarnings(request.items),
+    warnings: [...debtWarnings(request.items), ...overlapWarnings(request.items, open)],
   };
 }
 

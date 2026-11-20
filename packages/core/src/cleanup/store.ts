@@ -131,6 +131,7 @@ export async function openDebts(
   const rows = await executor
     .select({
       id: deliveryDebts.id,
+      kind: deliveryDebts.kind,
       where: deliveryDebts.location,
       rating: deliveryDebts.impactRating,
       carriedAt: deliveryDebts.carriedAt,

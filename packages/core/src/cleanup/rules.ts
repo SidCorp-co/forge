@@ -9,6 +9,7 @@ import {
   type CleanupRefusalCode,
   type CleanupReportRequest,
   type DebtItem,
+  type DebtKind,
   type DebtWarning,
   HOLDING_RATING,
   type Impact,
@@ -45,9 +46,79 @@ export function debtWarnings(items: readonly DebtItem[]): DebtWarning[] {
   );
 }
 
+/** A path whose last segment is a file name with an extension; a bare name needs two letters of it. */
+const FILE_IN_PATH = /\w\.[A-Za-z][A-Za-z0-9]{0,7}$/;
+const BARE_FILE = /^[\w.-]*\w\.[A-Za-z][A-Za-z0-9]{1,7}$/;
+
+/** A path naming a place: a file, or one three segments deep, never `and/or` or a package root. */
+const namesPlace = (t: string) =>
+  t.includes('/')
+    ? FILE_IN_PATH.test(t) || t.split('/').filter(Boolean).length >= 3
+    : BARE_FILE.test(t);
+
+/**
+ * The file paths a debt's `where` names (ISS-1371): each token naming a file (`x.ts`, `a/b/x.mjs`) or
+ * a path three segments deep, with its `:symbol` or line anchor, `#L` fragment, leading `./` and
+ * trailing `/` dropped. Prose, versions, ids and a bare package root such as `packages/web-v2` name
+ * no path.
+ */
+export function wherePaths(where: string): string[] {
+  const paths = where
+    .split(/[\s,;()[\]{}<>"'`]+/)
+    .map((t) =>
+      t
+        .replace(/#.*$/, '')
+        .replace(/:[^/]*$/, '')
+        .replace(/^(\.\/)+/, '')
+        .replace(/[./]+$/, ''),
+    )
+    .filter(namesPlace);
+  return [...new Set(paths)];
+}
+
+/**
+ * Two paths name one file where they are equal, or where the longer ends in the shorter at a `/` and
+ * the shorter holds a `/` itself (`support/x.ts` is `packages/core/src/support/x.ts`; a bare `index.ts`
+ * is only itself).
+ */
+function samePath(a: string, b: string): boolean {
+  if (a === b) return true;
+  const [short, long] = a.length < b.length ? [a, b] : [b, a];
+  return short.includes('/') && long.endsWith(`/${short}`);
+}
+
+/**
+ * A warning per open debt whose `where` shares a file path with an item's (ISS-1371): the item is
+ * recorded all the same, and no door withdraws it, so the answer names the open debt for the writer
+ * to judge. Read against the debt open before the write, so an item never names itself.
+ */
+export function overlapWarnings(
+  items: readonly DebtItem[],
+  open: readonly Pick<OpenDebt, 'id' | 'kind' | 'where'>[],
+): DebtWarning[] {
+  const openPaths = open.map((d) => ({ d, paths: wherePaths(d.where) }));
+  return items.flatMap((item, i) => {
+    const mine = wherePaths(item.where);
+    return openPaths.flatMap(({ d, paths }) => {
+      const shared = mine.find((p) => paths.some((q) => samePath(p, q)));
+      return shared === undefined
+        ? []
+        : [
+            {
+              code: 'DEBT_WHERE_OVERLAPS' as const,
+              path: `/items/${i}/where`,
+              detail: `\`${shared}\` is also named by open debt ${d.id} (${d.kind}: ${d.where}). This item is recorded all the same, and no door withdraws it: where it is the same defect, name both ids on the issue you are working so the Audit clears them together; where it is another defect at that path, leave it`,
+              debt: { id: d.id, kind: d.kind, where: d.where },
+            },
+          ];
+    });
+  });
+}
+
 /** An open debt as a report is checked against it: its id and where it is, for the refusal's words. */
 export interface OpenDebt {
   id: string;
+  kind: DebtKind;
   where: string;
   rating: Impact['rating'];
   /** Carried under a priced amnesty (BC-10): it remains, and never turns a report red. */
