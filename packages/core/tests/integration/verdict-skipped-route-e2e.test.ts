@@ -5,12 +5,21 @@
  * the issue rail's tally, the requirement's coverage and the release criteria bar's fold. A person
  * judging again records a newer verdict, and the newest is the one counted. Through the app's own
  * routes, against real Postgres.
+ *
+ * ISS-1355 (adminhub-api FB-767): seven skips recorded as `runtime` at production's commit on a project
+ * whose releases count commit verdicts were answered 201 and counted for nothing, so the owed-verdict
+ * nudge repeated; and a skip after a pass at the same build took the pass away.
+ *
+ * @direct-test-of packages/core/src/issues/criteria/verdict-release-build.ts
+ * @direct-test-of packages/core/src/release-batch/shipped-releases.ts
  */
 
 import type { IssueCriteriaTally } from '@forge/contracts/issue-standing';
 import { criterionStandingOf } from '@forge/contracts/verdict-identity';
 import { verifiedOf } from '@forge/contracts/verified-rule';
+import { sql } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { db } from '../../src/db/client.js';
 import { totalsOf } from '../../src/release-batch/release-view.js';
 import { api, userToken } from '../helpers/api.js';
 import {
@@ -21,6 +30,7 @@ import {
   truncateAll,
 } from '../helpers/factories.js';
 import { plantLiveBuild } from '../helpers/live-build.js';
+import { seedProjectDocument } from '../helpers/release-world.js';
 
 const LIVE = '0d91ae7c74f70295ede115463b17559e650b5207';
 
@@ -77,14 +87,45 @@ async function tracedClosedIssue(): Promise<{ issueId: string; req: string }> {
   return { issueId, req };
 }
 
-const judge = (issueId: string, verdict: string, reason: string | null) =>
+const judge = (
+  issueId: string,
+  verdict: string,
+  reason: string | null,
+  identity: Record<string, string> = { kind: 'commit', sha: LIVE },
+) =>
   api(token, 'POST', `/api/issues/${issueId}/verdicts`, {
     criterion: 1,
     verdict,
     reason,
-    identity: { kind: 'commit', sha: LIVE },
+    identity,
     evidence: verdict === 'skipped' ? [] : ['reminder-1440.png'],
   });
+
+/** A release the batch cut and finished at `commit`, carrying `issueIds`. */
+async function shipped(version: string, commit: string, issueIds: readonly string[]) {
+  const at = new Date().toISOString();
+  await db.execute(sql`
+    INSERT INTO pipeline_runs (id, project_id, kind, status, started_at, finished_at, release_version, release_released_at, metadata)
+    VALUES (gen_random_uuid(), ${projectId}, 'system', 'completed', ${at}, ${at}, ${version}, ${at},
+            ${JSON.stringify({ issueIds, source: 'release-batch', finish: { state: 'finished', commit } })}::jsonb)`);
+}
+
+/** The project's releases judged on its `dev` environment (`delivery.judgedOn`, REQ-36 BC-18). */
+const judgedOnDev = () =>
+  seedProjectDocument(projectId, ownerId, {
+    environments: {
+      dev: {
+        tier: 'dev',
+        deploysFrom: 'main',
+        deployment: { mode: 'external' },
+        url: 'https://dev.example.test',
+      },
+    },
+    extra: { delivery: { judgedOn: 'dev' } as never },
+  });
+
+const refusalOf = (body: Record<string, unknown>) =>
+  (body.error as { refusals: Array<{ code: string; path: string; detail: string }> }).refusals[0];
 
 /** Every count a person reads the criterion in: the rail's tally, the BC, and the release fold. */
 async function counted(issueId: string, req: string) {
@@ -191,5 +232,81 @@ describe('a person records "could not judge"', () => {
       bc: 'passing',
       release: { proven: 1, open: 0 },
     });
+  });
+});
+
+describe('a verdict at a shipped release build (ISS-1355)', () => {
+  const runtime = { kind: 'runtime', ref: LIVE };
+  const NO_ROUTE = 'No route: production needs a paid order nobody may place.';
+
+  it('refuses a runtime skip a commit-judged release never counts, naming the commit, and writes nothing', async () => {
+    const { issueId, req } = await tracedClosedIssue();
+    await shipped('0.28.0', LIVE, [issueId]);
+
+    const r = await judge(issueId, 'skipped', NO_ROUTE, runtime);
+
+    expect(r.status, JSON.stringify(r.body)).toBe(422);
+    const refused = refusalOf(r.body);
+    expect(refused).toMatchObject({ code: 'VERDICT_IDENTITY_NOT_COUNTED', path: '/identity' });
+    expect(refused?.detail).toContain(`{ kind: 'commit', sha: '${LIVE}' }`);
+    expect(refused?.detail).toContain('release 0.28.0');
+    expect((await counted(issueId, req)).latest).toBeNull();
+
+    // the identity it names is taken
+    expect((await judge(issueId, 'skipped', NO_ROUTE)).status).toBe(201);
+  });
+
+  it('takes the same runtime verdict where the project names its testing environment', async () => {
+    const { issueId } = await tracedClosedIssue();
+    await shipped('0.28.0', LIVE, [issueId]);
+    await judgedOnDev();
+
+    const r = await judge(issueId, 'skipped', NO_ROUTE, runtime);
+
+    expect(r.status, JSON.stringify(r.body)).toBe(201);
+  });
+
+  it('refuses a commit verdict a release judged on dev never counts, naming the runtime', async () => {
+    const { issueId } = await tracedClosedIssue();
+    await shipped('0.28.0', LIVE, [issueId]);
+    await judgedOnDev();
+
+    const r = await judge(issueId, 'pass', 'Seen on dev');
+
+    expect(r.status, JSON.stringify(r.body)).toBe(422);
+    expect(refusalOf(r.body)?.detail).toContain(`{ kind: 'runtime', ref: '${LIVE}' }`);
+  });
+
+  it('leaves a verdict at a landing no shipped release was built at untouched', async () => {
+    const { issueId } = await tracedClosedIssue();
+    await shipped('0.27.0', '1'.repeat(40), [issueId]);
+
+    expect((await judge(issueId, 'skipped', NO_ROUTE, runtime)).status).toBe(201);
+  });
+});
+
+describe('a skip after a pass at the same build (ISS-1355)', () => {
+  it('is refused naming the pass, and the criterion stays proven', async () => {
+    const { issueId, req } = await tracedClosedIssue();
+    expect((await judge(issueId, 'pass', 'Seen on the live deployment')).status).toBe(201);
+
+    const r = await judge(issueId, 'skipped', 'No route this time: the credential lapsed.');
+
+    expect(r.status, JSON.stringify(r.body)).toBe(422);
+    expect(refusalOf(r.body)).toMatchObject({ code: 'VERDICT_SKIP_OVER_PASS', path: '/verdict' });
+    expect(await counted(issueId, req)).toMatchObject({
+      latest: 'pass',
+      tally: expect.objectContaining({ met: 1, skipped: 0 }),
+      bc: 'passing',
+      release: { proven: 1, open: 0 },
+    });
+  });
+
+  it('is taken at another build, where the pass does not stand', async () => {
+    const { issueId } = await tracedClosedIssue();
+    expect((await judge(issueId, 'pass', 'Seen on the live deployment')).status).toBe(201);
+
+    const elsewhere = { kind: 'commit', sha: '2'.repeat(40) };
+    expect((await judge(issueId, 'skipped', 'Not deployed there', elsewhere)).status).toBe(201);
   });
 });

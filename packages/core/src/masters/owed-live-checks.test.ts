@@ -53,6 +53,11 @@ describe('the live verdicts a shipped release owes', () => {
       '1 issue the shipped release 1.48.0 carried owes its live verdict (ISS-1 i-1)',
     );
     expect(line).toContain('`--role qa`');
+    // ISS-1355: the door that moves a criterion out without unearning it, named in the nudge
+    expect(line).toContain(
+      'out on the record without unearning it, through the verdict door (`POST /api/issues/:id/verdicts`)',
+    );
+    expect(line).toContain('which never displaces a pass there');
   });
 });
 
