@@ -9,6 +9,10 @@
  *
  * @direct-test-of packages/core/src/middleware/pat-fence.ts
  * @direct-test-of packages/core/src/ecosystem/fence-way.ts
+ * @direct-test-of packages/core/src/ecosystem/channel-members.ts
+ *
+ * ISS-1360 (FB-774) adds the first change request of a fenced master that knows its counterparty
+ * only by slug: `to` takes the member's slug, and the channel's members read names who it may address.
  */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, type MockInstance, vi } from 'vitest';
@@ -179,5 +183,104 @@ describe('where no channel carries a document, the refusal says so and who links
     expect(hidden.detail.replaceAll(w.project.store, '<p>')).toBe(
       absent.detail.replaceAll(none, '<p>'),
     );
+  });
+});
+
+/**
+ * ISS-1360 (FB-774): epod's master, fenced to its own project, could not address its first change
+ * request to sid-desk: `to` took only a uuid, and no door it reached named its ecosystem's members.
+ */
+describe('a fenced master addresses its first change request by the member’s slug (ISS-1360)', () => {
+  const own = () => `/api/projects/${w.project.forge}/channel`;
+  const request = (to: string[]) => ({
+    ecosystem: w.eco,
+    type: 'change-request',
+    to,
+    subject: 'Let the form webhook carry signed file links',
+    body: {
+      contract: 'forge/forge-api',
+      need: 'The form webhook carries a signed link to each uploaded file.',
+      rationale: 'The receiver cannot read a file the webhook only names.',
+      impactIfDeclined: 'Each upload is fetched again by hand.',
+      urgency: 'normal',
+    },
+  });
+  const mcp = async (args: Record<string, unknown>) => {
+    const res = await w.app.request('/mcp', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${w.tokens.masterForge}`,
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'forge_channel', arguments: { projectId: w.project.forge, ...args } },
+      }),
+    });
+    expect(res.status, await res.clone().text()).toBe(200);
+    const body = (await res.json()) as {
+      result?: { isError?: boolean; content?: { text?: string }[] };
+    };
+    const text = body.result?.content?.map((c) => c.text ?? '').join('') ?? '';
+    return { isError: body.result?.isError ?? false, text, json: JSON.parse(text || 'null') };
+  };
+  const pluginName = async () => {
+    const { db } = await import('../../src/db/client.js');
+    const { sql } = await import('drizzle-orm');
+    const rows = (await db.execute(
+      sql`SELECT name FROM projects WHERE id = ${w.project.plugin}`,
+    )) as unknown as { name: string }[];
+    return String(rows[0]?.name);
+  };
+
+  it('reads its ecosystem’s members, id, slug and name only, on the channel’s route and tool', async () => {
+    const expected = {
+      project: w.project.forge,
+      ecosystems: [
+        {
+          ecosystem: { id: w.eco, slug: 'forge-platform' },
+          members: [{ id: w.project.plugin, slug: 'forge-plugin', name: await pluginName() }],
+        },
+      ],
+    };
+    expect(ok(await say('masterForge', 'GET', `${own()}/members`))).toEqual(expected);
+    const tool = await mcp({ action: 'members' });
+    expect(tool.isError, tool.text).toBe(false);
+    expect(tool.json).toEqual(expected);
+    const outside = await say(
+      'masterForge',
+      'GET',
+      `/api/projects/${w.project.plugin}/channel/members`,
+    );
+    expect(outside.json?.error?.code, JSON.stringify(outside.json)).toBe(
+      'PAT_PROJECT_OUTSIDE_FENCE',
+    );
+  });
+
+  it('drafts to a member by its slug, on the tool and the route, and the draft holds its uuid', async () => {
+    const tool = await mcp({ action: 'draft', ...request(['forge-plugin']) });
+    expect(tool.isError, tool.text).toBe(false);
+    expect(tool.json.document.to).toEqual([w.project.plugin]);
+    const rest = ok(await say('masterForge', 'POST', `${own()}/drafts`, request(['forge-plugin'])));
+    expect(rest.document.to).toEqual([w.project.plugin]);
+  });
+
+  it('refuses a slug or uuid naming no member it is shown, listing the members it may address', async () => {
+    for (const to of ['sid-desk', 'store-x', 'forge-internal', randomUUID()]) {
+      const r = await say('masterForge', 'POST', `${own()}/drafts`, request([to]));
+      expect(r.status, JSON.stringify(r.json)).toBe(422);
+      const [refusal] = r.json.error.refusals as { code: string; path: string; detail: string }[];
+      expect([refusal?.code, refusal?.path], to).toEqual(['CHANNEL_TO_NOT_MEMBER', '/to/0']);
+      expect(refusal?.detail).toContain(`forge-plugin (${await pluginName()})`);
+      expect(refusal?.detail).not.toContain(w.project.store);
+      expect(refusal?.detail).not.toMatch(/store-x \(|forge-internal \(/);
+    }
+    const tool = await mcp({ action: 'draft', ...request(['sid-desk']) });
+    expect(tool.isError, tool.text).toBe(true);
+    expect(tool.text).toContain('CHANNEL_TO_NOT_MEMBER');
+    expect(tool.text).toContain('forge-plugin');
   });
 });
