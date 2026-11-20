@@ -356,7 +356,8 @@ describe('a criteria text with a line before its first numbered criterion (ISS-1
 // was stored and no row written; every verdict was refused VERDICT_CRITERION_UNKNOWN ("its criteria
 // are none"), and `awaiting_release → closed` went through with no verdict at all.
 describe('a criteria text holding words and no numbered line (ISS-1380)', () => {
-  const TRACED = '(REQ-22 BC-1) The timesheet totals the week.\n(REQ-22 BC-2) A manager approves it.';
+  const TRACED =
+    '(REQ-22 BC-1) The timesheet totals the week.\n(REQ-22 BC-2) A manager approves it.';
   const refusalOf = (r: Reply): Doc | undefined => ((r.json as Doc).error?.refusals ?? [])[0];
 
   it('refuses a filing of trace-led lines with no number, showing the numbered form, and files nothing', async () => {

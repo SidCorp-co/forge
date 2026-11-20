@@ -38,7 +38,6 @@ describe('a line before the first numbered criterion', () => {
       { n: 2, statement: 'A clerk sees it.' },
     ]);
   });
-
 });
 
 // ISS-1380 (FB-791, gwork ISS-320): lines opening `(REQ-22 BC-1) …` with no `1.` read as no

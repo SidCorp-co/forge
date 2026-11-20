@@ -428,7 +428,12 @@ async function criteriaTextUnread(ctx: GuardContext): Promise<GuardFault | null>
   return {
     code: 'CLOSE_CRITERIA_TEXT_UNREAD',
     detail: `an issue closes when its criteria are met in scope, and this one's \`acceptanceCriteria\` holds text from which no criterion was read: it has no numbered line, so no criterion stands for a verdict to name. Put them on the record once, from the run holding it: \`PUT /api/issues/${id}/criteria\` { "criteria": [{ "statement": "(REQ-<n> BC-<m>) <statement>" }, …] }, or the field as numbered lines (${NUMBERED_TRACE_FORM}); then judge them and close, with \`unmet\` for any it did not meet.`,
-    details: { from: ctx.from, to: ctx.to, liveCriteria: 0, route: `PUT /api/issues/${id}/criteria` },
+    details: {
+      from: ctx.from,
+      to: ctx.to,
+      liveCriteria: 0,
+      route: `PUT /api/issues/${id}/criteria`,
+    },
   };
 }
 
