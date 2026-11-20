@@ -2,12 +2,18 @@
 /**
  * Create a `runner-v*` tag and push it, WITHOUT forcing: a tag that already exists
  * fails the run, because a moved release tag leaves two binaries claiming one
- * version. <tag> <commit> [--remote <name>] [--cwd <dir>]
+ * version. <tag> <commit> --published <file> [--remote <name>] [--cwd <dir>]
  *
  * The dev line's prereleases (`runner-vX.Y.Z-dev.N`, ISS-1358) and `main`'s releases are two
  * lines over shared commits: a commit is refused only where its own line already released it.
+ *
+ * Released means a GitHub Release is PUBLISHED for the tag (ISS-1373): the tag is cut before
+ * the build, so a failed or skipped build leaves a tag that is no release. Where `tag` already
+ * stands unpublished at `commit`, it is reused: nothing is pushed, and the release is built
+ * under it. `--published` is the file of published tags the workflow read with its token.
  */
 import { execFileSync } from 'node:child_process';
+import { lineOf, readPublished, tagsAtCommit } from './next-runner-version.mjs';
 
 function git(cwd, args) {
   return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
@@ -22,34 +28,54 @@ export function tagTarget(cwd, tag) {
   }
 }
 
-/** Whether `tag` is on the dev line rather than `main`'s. */
-function isDevTag(tag) {
-  return /-dev\.\d+$/.test(tag);
-}
-
-/** The `runner-v*` tags on `tag`'s line pointing at `commit`, if any. */
-export function releasesAt(cwd, commit, tag) {
+/** The `runner-v*` tags on `tag`'s line at `commit`, split by whether a release is published. */
+function standingAt(cwd, commit, tag, published) {
+  let atCommit = [];
   try {
-    return git(cwd, ['tag', '--points-at', commit, '--list', 'runner-v*'])
+    atCommit = git(cwd, ['tag', '--points-at', commit, '--list', 'runner-v*'])
       .split('\n')
       .map((s) => s.trim())
-      .filter(Boolean)
-      .filter((t) => isDevTag(t) === isDevTag(tag));
+      .filter(Boolean);
   } catch {
-    return [];
+    atCommit = [];
   }
+  return tagsAtCommit(atCommit, published, lineOf(tag));
 }
 
-/** Create `tag` at `commit`. Refuses an existing tag, or an already-released commit. */
-export function cutRunnerTag({ cwd, tag, commit, remote = 'origin' }) {
+/** The tags on `tag`'s line at `commit` that carry a published GitHub Release, if any. */
+export function releasesAt(cwd, commit, tag, published) {
+  return standingAt(cwd, commit, tag, published).released;
+}
+
+/**
+ * Create `tag` at `commit`, or reuse it where it already stands there unpublished. Refuses an
+ * already-released commit, a tag standing elsewhere, and a new tag beside an unpublished one.
+ */
+export function cutRunnerTag({ cwd, tag, commit, remote = 'origin', published }) {
+  if (published === undefined || published === null) {
+    throw new Error(
+      'the published releases are required (--published <file>): without them a tag whose ' +
+        'build never published cannot be told from a release. Nothing was pushed.',
+    );
+  }
   // A rerun of an older run allocates a HIGHER version from today's tags and would
   // publish yesterday's code under it: numerically forward, functionally back.
-  const already = releasesAt(cwd, commit, tag);
+  const { released: already, unpublished } = standingAt(cwd, commit, tag, published);
   if (already.length > 0) {
     throw new Error(
       `${commit} is already released as ${already.join(', ')} — nothing to release, and ` +
         `cutting ${tag} here would publish that code under a higher version than what ` +
         `followed it. Nothing was pushed.`,
+    );
+  }
+  if (unpublished.includes(tag)) {
+    // Its build failed or was skipped: the release is still owed, under this same tag.
+    return { tag, commit, reused: true };
+  }
+  if (unpublished.length > 0) {
+    throw new Error(
+      `${commit} carries ${unpublished.join(', ')} with no published release — release it under ` +
+        `that tag rather than cutting ${tag} beside it. Nothing was pushed.`,
     );
   }
   const existing = tagTarget(cwd, tag);
@@ -72,7 +98,7 @@ export function cutRunnerTag({ cwd, tag, commit, remote = 'origin' }) {
         `${err instanceof Error ? err.message.trim() : String(err)}`,
     );
   }
-  return { tag, commit };
+  return { tag, commit, reused: false };
 }
 
 function main() {
@@ -84,10 +110,23 @@ function main() {
   const positional = args.filter((a, i) => !a.startsWith('--') && !args[i - 1]?.startsWith('--'));
   const [tag, commit] = positional;
   if (!tag || !commit) {
-    throw new Error('usage: cut-runner-tag.mjs <tag> <commit> [--remote <name>] [--cwd <dir>]');
+    throw new Error(
+      'usage: cut-runner-tag.mjs <tag> <commit> --published <file> [--remote <name>] [--cwd <dir>]',
+    );
   }
-  cutRunnerTag({ cwd: opt('cwd', process.cwd()), tag, commit, remote: opt('remote', 'origin') });
-  process.stdout.write(`cut ${tag} at ${commit}\n`);
+  const publishedFile = opt('published', undefined);
+  const { reused } = cutRunnerTag({
+    cwd: opt('cwd', process.cwd()),
+    tag,
+    commit,
+    remote: opt('remote', 'origin'),
+    published: publishedFile === undefined ? undefined : readPublished(publishedFile),
+  });
+  process.stdout.write(
+    reused
+      ? `${tag} stands at ${commit} with no published release — releasing under it, nothing pushed\n`
+      : `cut ${tag} at ${commit}\n`,
+  );
 }
 
 if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {

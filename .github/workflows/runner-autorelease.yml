@@ -20,14 +20,22 @@ name: runner-autorelease
 # prerelease through the same runner-release.yml, so `main`'s line, which reads
 # no prerelease, is unchanged. A core whose RUNNER_RELEASE_CHANNEL is `dev` serves
 # it; every other core never sees it.
+#
+# A commit is released only where a GitHub Release is PUBLISHED for its line's tag at
+# it (ISS-1373). The tag is cut before the build, so a failed or skipped build leaves
+# a tag with no release; the next run for that commit builds and publishes under that
+# same tag, computing no new version and moving no tag.
 on:
   push:
     branches: [main, dev]
     paths:
       - "packages/runner/**"
       # how the runner is built is part of the runner: a change to its build cuts a
-      # release of the newest runner commit, as the step below names it (ISS-1358)
+      # release of the newest runner commit, as the step below names it (ISS-1358),
+      # and so does a change to how that release is numbered and tagged (ISS-1373)
       - ".github/workflows/runner-release.yml"
+      - "scripts/cut-runner-tag.mjs"
+      - "scripts/next-runner-version.mjs"
 
 permissions:
   contents: write
@@ -62,11 +70,25 @@ jobs:
       - name: The runner this release is cut from
         id: head
         run: echo "sha=$(git log -1 --format=%H -- packages/runner)" >> "$GITHUB_OUTPUT"
+      # A tag is not a release: only a published (non-draft) GitHub Release is. The
+      # scripts read this list from a file and never call the network themselves.
+      - name: The runner releases already published
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh api --paginate "repos/$REPO/releases?per_page=100" \
+            --jq '.[] | select(.draft | not) | .tag_name' > "$RUNNER_TEMP/published-releases.txt"
+      # Where the commit's own line tag stands unpublished, this is that tag's version.
       - name: The version this release carries
         id: next
         env:
           CHANNEL: ${{ github.ref_name }}
-        run: node scripts/next-runner-version.mjs --channel "$CHANNEL" >> "$GITHUB_OUTPUT"
+          SHA: ${{ steps.head.outputs.sha }}
+        run: |
+          node scripts/next-runner-version.mjs --channel "$CHANNEL" --sha "$SHA" \
+            --published "$RUNNER_TEMP/published-releases.txt" >> "$GITHUB_OUTPUT"
+      # An unpublished tag already at the commit is reused: nothing pushed, nothing moved.
       - name: Cut the tag
         env:
           TAG: ${{ steps.next.outputs.tag }}
@@ -74,7 +96,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          node scripts/cut-runner-tag.mjs "$TAG" "$SHA"
+          node scripts/cut-runner-tag.mjs "$TAG" "$SHA" --published "$RUNNER_TEMP/published-releases.txt"
 
   # Called, not triggered: a tag pushed with this workflow's own GITHUB_TOKEN
   # does not start a workflow run, so the release has to be invoked here.

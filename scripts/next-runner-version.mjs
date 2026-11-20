@@ -9,7 +9,13 @@
  * line, or the declared patch where there is none, then `-dev.<n>` counted per base.
  * A dev version always carries that suffix and a `main` one never does, so the two
  * lines cannot cut the same tag, and `main`'s count reads past every dev tag.
- * [--channel main|dev]
+ *
+ * A commit is released on its line only where a GitHub Release is PUBLISHED for a tag at it
+ * (ISS-1373). The tag is cut before the build, so a build that failed or was skipped leaves a
+ * tag with no release: the next run for that commit reuses that tag rather than computing a new
+ * version. The published tags are read by the workflow, which has the token; this script reads
+ * them from a file and never calls the network.
+ * --sha <commit> --published <file> [--channel main|dev]
  */
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -18,6 +24,62 @@ const CARGO_PATH = 'packages/runner/Cargo.toml';
 const TAG_PREFIX = 'runner-v';
 const CHANNELS = ['main', 'dev'];
 const DEV_TAG = /^(\d+)\.(\d+)\.(\d+)-dev\.(\d+)$/;
+
+/** The line a runner tag is on: `dev` for `-dev.<n>` (ISS-1358), `main` for any other. */
+export function lineOf(tag) {
+  return /-dev\.\d+$/.test(tag) ? 'dev' : 'main';
+}
+
+/**
+ * The `runner-v*` tags at one commit on `channel`'s line, split by whether a GitHub Release is
+ * published for each. Only `released` makes the commit released; an `unpublished` tag is one
+ * whose build never published, and the commit's release is still owed under it.
+ *
+ * @param {string[]} atCommit the tags pointing at the commit
+ * @param {Iterable<string>} published the tags carrying a published (non-draft) GitHub Release
+ * @param {'main' | 'dev'} channel
+ */
+export function tagsAtCommit(atCommit, published, channel) {
+  const isPublished = new Set(published);
+  const onLine = atCommit.filter((t) => t.startsWith(TAG_PREFIX) && lineOf(t) === channel);
+  return {
+    released: onLine.filter((t) => isPublished.has(t)),
+    unpublished: onLine.filter((t) => !isPublished.has(t)),
+  };
+}
+
+/** The tag names in a published-releases file, one per line. */
+export function readPublished(file) {
+  return readFileSync(file, 'utf8')
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/** `[major, minor, patch, n]` for a tag of `channel`'s shape, or null. */
+function lineKey(tag, channel) {
+  const v = tag.slice(TAG_PREFIX.length);
+  if (channel === 'dev') {
+    const m = DEV_TAG.exec(v);
+    return m ? [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4])] : null;
+  }
+  const t = triple(v);
+  return t ? [...t, 0] : null;
+}
+
+/** The highest unpublished tag of `channel`'s shape at the commit, where none there is released. */
+function owedTag(standing, channel) {
+  const { released, unpublished } = tagsAtCommit(standing.atCommit, standing.published, channel);
+  if (released.length > 0) return null;
+  const keyed = unpublished
+    .map((tag) => ({ tag, key: lineKey(tag, channel) }))
+    .filter(({ key }) => key !== null)
+    .sort(
+      (a, b) =>
+        a.key[0] - b.key[0] || a.key[1] - b.key[1] || a.key[2] - b.key[2] || a.key[3] - b.key[3],
+    );
+  return keyed.at(-1)?.tag ?? null;
+}
 
 /** The `[workspace.package] version` in a Cargo manifest, or null. */
 export function workspaceVersion(cargoToml) {
@@ -52,8 +114,10 @@ function devReleases(tags) {
  * @param {string} cargoToml raw `packages/runner/Cargo.toml`
  * @param {string[]} tags every tag in the repository
  * @param {'main' | 'dev'} channel the line being cut
+ * @param {{ atCommit: string[], published: Iterable<string> }} [standing] the tags at the commit
+ *   being released, and the tags with a published release; absent, no tag is reused
  */
-export function nextRunnerVersion(cargoToml, tags, channel = 'main') {
+export function nextRunnerVersion(cargoToml, tags, channel = 'main', standing = undefined) {
   const declared = workspaceVersion(cargoToml);
   if (declared === null) {
     throw new Error(`${CARGO_PATH} declares no [workspace.package] version — nothing to release`);
@@ -77,6 +141,12 @@ export function nextRunnerVersion(cargoToml, tags, channel = 'main') {
     );
   }
 
+  const owed = standing === undefined ? null : owedTag(standing, channel);
+  if (owed !== null) {
+    const version = owed.slice(TAG_PREFIX.length);
+    return { version, tag: owed, prerelease: channel === 'dev', reused: true };
+  }
+
   const onLine = released.filter(([ma, mi]) => ma === major && mi === minor);
   if (channel === 'dev') {
     const base = onLine.length === 0 ? patch : Math.max(...onLine.map(([, , p]) => p));
@@ -85,11 +155,11 @@ export function nextRunnerVersion(cargoToml, tags, channel = 'main') {
       .map(({ n }) => n);
     const n = counted.length === 0 ? 1 : Math.max(...counted) + 1;
     const version = `${major}.${minor}.${base}-dev.${n}`;
-    return { version, tag: `${TAG_PREFIX}${version}`, prerelease: true };
+    return { version, tag: `${TAG_PREFIX}${version}`, prerelease: true, reused: false };
   }
   const next = onLine.length === 0 ? patch : Math.max(...onLine.map(([, , p]) => p)) + 1;
   const version = `${major}.${minor}.${next}`;
-  return { version, tag: `${TAG_PREFIX}${version}`, prerelease: false };
+  return { version, tag: `${TAG_PREFIX}${version}`, prerelease: false, reused: false };
 }
 
 /** The `--channel` argument: `main` where absent, refused by name where it is neither line. */
@@ -103,18 +173,54 @@ export function parseChannel(args) {
   return value;
 }
 
-function main() {
-  const cargoToml = readFileSync(CARGO_PATH, 'utf8');
-  const tags = execFileSync('git', ['tag', '--list', `${TAG_PREFIX}*`], { encoding: 'utf8' })
+/**
+ * `--sha` and `--published`, both required: without them a tag whose build never published reads
+ * as a release, or a published one as owed, and either is the wrong release.
+ */
+export function parseStanding(args) {
+  const value = (name) => {
+    const i = args.indexOf(`--${name}`);
+    const v = i === -1 ? undefined : args[i + 1];
+    return v === undefined || v.startsWith('--') ? null : v;
+  };
+  const sha = value('sha');
+  if (sha === null) {
+    throw new Error('--sha <commit> is required: the commit this release is cut from');
+  }
+  const publishedFile = value('published');
+  if (publishedFile === null) {
+    throw new Error(
+      '--published <file> is required: the runner-v* tags with a published GitHub Release, one per ' +
+        'line, without which a tag whose build never published cannot be told from a release',
+    );
+  }
+  return { sha, publishedFile };
+}
+
+const listTags = (args) =>
+  execFileSync('git', ['tag', ...args, '--list', `${TAG_PREFIX}*`], { encoding: 'utf8' })
     .split('\n')
     .map((s) => s.trim())
     .filter(Boolean);
-  const { version, tag, prerelease } = nextRunnerVersion(
+
+function main() {
+  const args = process.argv.slice(2);
+  const channel = parseChannel(args);
+  const { sha, publishedFile } = parseStanding(args);
+  const cargoToml = readFileSync(CARGO_PATH, 'utf8');
+  const standing = {
+    atCommit: listTags(['--points-at', sha]),
+    published: readPublished(publishedFile),
+  };
+  const { version, tag, prerelease, reused } = nextRunnerVersion(
     cargoToml,
-    tags,
-    parseChannel(process.argv.slice(2)),
+    listTags([]),
+    channel,
+    standing,
   );
-  process.stdout.write(`version=${version}\ntag=${tag}\nprerelease=${prerelease}\n`);
+  process.stdout.write(
+    `version=${version}\ntag=${tag}\nprerelease=${prerelease}\nreused=${reused}\n`,
+  );
 }
 
 if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {

@@ -106,7 +106,7 @@ describe('a tag whose build never published is not a release', () => {
     }
   });
 
-  it("a tag at another commit is still never moved, published or not", () => {
+  it('a tag at another commit is still never moved, published or not', () => {
     expect(() =>
       cutRunnerTag({ cwd: work, tag: 'runner-v0.18.0-dev.5', commit: shared, published: [] }),
     ).toThrow(/runner-v0\.18\.0-dev\.5 already exists at .* never moved/);
@@ -120,9 +120,11 @@ describe('a tag whose build never published is not a release', () => {
     ).toEqual({ tag: 'runner-v0.18.1', commit: shared, reused: false });
     // dev's published release does not stop main reusing its own unpublished tag
     const published = ['runner-v0.18.0-dev.7'];
-    expect(cutRunnerTag({ cwd: work, tag: 'runner-v0.18.1', commit: shared, published })).toEqual(
-      { tag: 'runner-v0.18.1', commit: shared, reused: true },
-    );
+    expect(cutRunnerTag({ cwd: work, tag: 'runner-v0.18.1', commit: shared, published })).toEqual({
+      tag: 'runner-v0.18.1',
+      commit: shared,
+      reused: true,
+    });
     expect(releasesAt(work, shared, 'runner-v0.18.1', published)).toEqual([]);
     expect(releasesAt(work, shared, 'runner-v0.18.0-dev.8', published)).toEqual([
       'runner-v0.18.0-dev.7',

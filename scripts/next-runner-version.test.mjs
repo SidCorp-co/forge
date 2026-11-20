@@ -104,9 +104,12 @@ describe('a tag at the commit with no published release', () => {
       atCommit: ['runner-v0.18.0-dev.2', 'runner-v0.18.0'],
       published: ['runner-v0.18.0-dev.2'],
     };
-    expect(
-      nextRunnerVersion(cargo('0.18.0'), [...tags, 'runner-v0.18.0'], 'main', both),
-    ).toEqual({ version: '0.18.0', tag: 'runner-v0.18.0', prerelease: false, reused: true });
+    expect(nextRunnerVersion(cargo('0.18.0'), [...tags, 'runner-v0.18.0'], 'main', both)).toEqual({
+      version: '0.18.0',
+      tag: 'runner-v0.18.0',
+      prerelease: false,
+      reused: true,
+    });
   });
 
   it("a main tag is invisible to dev's line", () => {
