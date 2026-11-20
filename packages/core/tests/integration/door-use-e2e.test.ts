@@ -256,6 +256,9 @@ describe("a box credential's writes count under the session they were made in (I
     // the run names itself; the master names nothing, and with two sessions live nothing is guessed
     expect((await write({ 'x-forge-run': run?.id as string })).status).toBe(400);
     expect((await write()).status).toBe(400);
+    // each act's session is named after its answer (pat-act-record.ts:sessionOfAct), so both are
+    // recorded before the run ends; under load the lookup otherwise reads the run already over
+    await backgroundSettled();
     await withKernelMarker(db, (tx) =>
       tx.execute(sql`UPDATE agent_sessions SET status = 'completed' WHERE id = ${run?.id}`),
     );
