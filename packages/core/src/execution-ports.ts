@@ -28,7 +28,7 @@ import {
   unansweredDocuments,
 } from './ecosystem/index.js';
 import { fileSignalFeedback, owedAgentConfirms, owedTriages } from './feedback/index.js';
-import { cmpVersion, mainRunnerHead } from './integrations/github/index.js';
+import { channelRunnerHead, cmpVersion } from './integrations/github/index.js';
 import {
   applyGrantedMcpServers,
   decryptSecret,
@@ -374,7 +374,7 @@ export function provideExecutionPorts(): void {
     withDeclaredSource,
     projectsWithHostCredential,
     isHttpsGitUrl,
-    mainRunnerHead,
+    channelRunnerHead,
     cmpVersion,
     checkoutOrientation: servedCheckoutOrientation,
     recordOrientationCarried,

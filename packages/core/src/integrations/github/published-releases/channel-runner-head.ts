@@ -13,7 +13,7 @@ const RUNNER_PATH = 'packages/runner';
 let cached: string | null = null;
 
 /** The head this process last read, or null when it has never read one. */
-export function mainRunnerHead(): string | null {
+export function channelRunnerHead(): string | null {
   return cached;
 }
 
@@ -21,7 +21,7 @@ export function mainRunnerHead(): string | null {
  * Answers null rather than throwing, and the cache keeps what it last knew: one bad
  * response is not evidence that the branch moved.
  */
-export async function refreshMainRunnerHead(): Promise<string | null> {
+export async function refreshChannelRunnerHead(): Promise<string | null> {
   let branch = 'the channel branch';
   try {
     branch = channelBranch(servedRunnerChannel());

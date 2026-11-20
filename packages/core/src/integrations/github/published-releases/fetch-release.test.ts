@@ -1,5 +1,5 @@
 // @direct-test-of packages/core/src/integrations/github/published-releases/channel.ts
-// @direct-test-of packages/core/src/integrations/github/published-releases/main-runner-head.ts
+// @direct-test-of packages/core/src/integrations/github/published-releases/channel-runner-head.ts
 // @direct-test-of packages/core/src/devices/install-routes.ts
 //
 // ISS-1358: a core whose RUNNER_RELEASE_CHANNEL is `dev` serves the newest dev-channel prerelease

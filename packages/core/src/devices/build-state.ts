@@ -12,8 +12,11 @@ interface DeviceBuild {
 interface ReferenceBuild {
   /** The newest published release, or null where nothing is published. */
   published: { version: string; commit: string | null } | null;
-  /** The newest commit under the runner package on the default branch, or null. */
-  mainRunnerHead: string | null;
+  /**
+   * The newest commit under the runner package on the branch the served channel's releases are
+   * cut from (`main`, or `dev` on RUNNER_RELEASE_CHANNEL=dev), or null.
+   */
+  channelHead: string | null;
 }
 
 function short(sha: string): string {
@@ -21,7 +24,7 @@ function short(sha: string): string {
 }
 
 function judgeRelease(reference: ReferenceBuild): { state: RunnerBuildState; detail: string } {
-  const { published, mainRunnerHead: head } = reference;
+  const { published, channelHead: head } = reference;
   if (published === null) {
     return { state: 'unknown', detail: 'no runner release is published' };
   }
@@ -114,16 +117,17 @@ interface DeviceRowBuild {
  */
 export async function annotateDeviceBuilds<T extends DeviceRowBuild>(rows: T[]) {
   const published = await getPublishedRunnerBuild();
-  const head = devicesPorts().mainRunnerHead();
+  const head = devicesPorts().channelRunnerHead();
   return rows.map((r) => {
     const build = compareRunnerBuild(
       { version: r.agentVersion, commit: r.agentCommit },
-      { published, mainRunnerHead: head },
+      { published, channelHead: head },
     );
     return {
       ...r,
       latestAgentVersion: published?.version ?? null,
       latestAgentCommit: published?.commit ?? null,
+      // The answer's field keeps its name (web reads it); it carries the channel branch's head.
       mainRunnerHead: head,
       agentBuildState: build.state,
       runnerReleaseState: build.releaseState,

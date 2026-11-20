@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { argv } from 'node:process';
 import { pathToFileURL } from 'node:url';
 import { channelOfVersion, type RunnerReleaseChannel, servedRunnerChannel } from './channel.js';
-import { refreshMainRunnerHead } from './main-runner-head.js';
+import { refreshChannelRunnerHead } from './channel-runner-head.js';
 import {
   downloadReleaseAsset,
   listRepoReleases,
@@ -199,7 +199,7 @@ export function servesRunnerReleases(): boolean {
  * of what a box is compared against, read once per tick rather than per request.
  */
 export async function refetchRunnerRelease(): Promise<void> {
-  await refreshMainRunnerHead();
+  await refreshChannelRunnerHead();
   await run().catch((err: unknown) => {
     console.warn(
       `[runner-release] periodic refetch skipped: ${err instanceof Error ? err.message : String(err)}`,

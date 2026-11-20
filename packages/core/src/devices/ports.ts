@@ -62,7 +62,7 @@ interface DevicesPorts {
   >;
   projectsWithHostCredential(projectIds: string[]): Promise<Set<string>>;
   isHttpsGitUrl(url: string | null | undefined): boolean;
-  mainRunnerHead(): string | null;
+  channelRunnerHead(): string | null;
   cmpVersion(a: string, b: string): number;
   /** The orientation a box writes into a checkout of the project: the one affordances table and the project's always-applied rules. */
   checkoutOrientation(projectId: string, slug: string): Promise<string>;

@@ -46,7 +46,7 @@ import { readIssueForecast, releaseClaimsFor, releaseLegFor } from './forecast/i
 import { provideAssistantMethod } from './guides/index.js';
 import { valueCheckHeld } from './intake/index.js';
 import { registerAllIntegrations } from './integration-registry.js';
-import { refreshMainRunnerHead, servesRunnerReleases } from './integrations/github/index.js';
+import { refreshChannelRunnerHead, servesRunnerReleases } from './integrations/github/index.js';
 import {
   assertVaultBootSafety,
   provideForgeReads,
@@ -466,7 +466,7 @@ if (isMain) {
   );
 
   await startTimers(coreTimers());
-  if (servesRunnerReleases()) void refreshMainRunnerHead();
+  if (servesRunnerReleases()) void refreshChannelRunnerHead();
 
   let shuttingDown = false;
   const shutdown = async (signal: string) => {
