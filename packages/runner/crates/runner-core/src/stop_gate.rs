@@ -363,14 +363,18 @@ fn runs_own(f: &Facts<'_>, standing: &[Standing]) -> (Vec<Standing>, usize) {
 fn shared_line(run_id: &str, why: &str, others: usize) -> String {
     let left = match others {
         0 => String::new(),
-        1 => "; 1 process standing there since its declaration carries no such mark and is               left to whoever started it"
+        1 => "; 1 process standing there since its declaration carries no such mark and is \
+               left to whoever started it"
             .to_string(),
         n => format!(
-            "; {n} processes standing there since its declaration carry no such mark and are              left to whoever started them"
+            "; {n} processes standing there since its declaration carry no such mark and are \
+             left to whoever started them"
         ),
     };
     format!(
-        "the processes this run started: {why}, shared with its master and every other session,          so the run owns no tree there and is held only to a process whose environment carries          {}={run_id}{left}",
+        "the processes this run started: {why}, shared with its master and every other session, \
+         so the run owns no tree there and is held only to a process whose environment carries \
+         {}={run_id}{left}",
         runner_platform::standing::RUN_VAR
     )
 }

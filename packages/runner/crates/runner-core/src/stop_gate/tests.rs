@@ -245,6 +245,10 @@ fn a_masters_process_in_the_shared_checkout_does_not_hold_a_tree_less_judge() {
     assert!(said.contains("main working tree"), "{said}");
     assert!(said.contains(&format!("FORGE_RUN={RUN}")), "{said}");
     assert!(said.contains("3 processes"), "{said}");
+    assert!(
+        !said.contains("  "),
+        "the line reads as one sentence: {said}"
+    );
 }
 
 /// A process systemd --user parents in the checkout (a credential helper, a
