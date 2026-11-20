@@ -22,7 +22,6 @@ vi.hoisted(() => {
 import { agentSessionsPorts } from '../../src/agent-sessions/ports.js';
 import { mintPat } from '../../src/credentials/pat.js';
 import { ensureMasterSession } from '../../src/devices/index.js';
-import { logger } from '../../src/lib/logger.js';
 import { actingSecretRefsOfSession } from '../../src/project-config/index.js';
 import { api, userToken } from '../helpers/api.js';
 import {
@@ -35,6 +34,7 @@ import {
   world,
 } from '../helpers/declared-run-secrets-world.js';
 import { bindTestRunner, createTestDevice, createTestIssue, rows } from '../helpers/factories.js';
+import { type LogLines, recordLogLines } from '../helpers/log-lines.js';
 
 const ACTING = 'secret://test-store/docs-epodsystem-key';
 const RUNS_ONLY = 'secret://test-store/runs-only-key';
@@ -92,17 +92,12 @@ async function seedActing(): Promise<void> {
 }
 
 /** Every line the process logged while a case ran, as the logger was handed it. */
-const logged: string[] = [];
+let log: LogLines;
 
 beforeEach(async () => {
   await seedDeclaredRunWorld();
   await seedActing();
-  logged.length = 0;
-  for (const level of ['trace', 'debug', 'info', 'warn', 'error', 'fatal'] as const) {
-    vi.spyOn(logger, level).mockImplementation(((...args: unknown[]) => {
-      logged.push(JSON.stringify(args, (_k, v) => (v instanceof Error ? v.message : v)));
-    }) as never);
-  }
+  log = recordLogLines();
 });
 
 afterEach(() => {
@@ -298,6 +293,8 @@ describe('BC-4: every read is recorded, and the value leaves only in the read', 
       key: ACTING,
       detail: { acting: { reader: 'runs', session: ran.session, run: ran.runId } },
     });
+    const logged = log.lines;
+    expect(logged.length).toBeGreaterThan(0);
     const everything = JSON.stringify({ audit, logged, refusals: refusals.map((r) => r.body) });
     expect(everything).not.toContain(ACTING_VALUE);
     expect(everything).not.toContain(RUNS_VALUE);

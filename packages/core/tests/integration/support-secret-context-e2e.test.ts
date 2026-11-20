@@ -41,15 +41,15 @@ vi.hoisted(() => {
 
 import { db } from '../../src/db/client.js';
 import { ensureMasterSession } from '../../src/devices/index.js';
-import { logger } from '../../src/lib/logger.js';
 import { api } from '../helpers/api.js';
 import { rows } from '../helpers/factories.js';
+import { type LogLines, recordLogLines } from '../helpers/log-lines.js';
 import { type Act, ChannelWorld, code } from '../helpers/support-channel.js';
 import type { Member, TurnMessage } from '../helpers/support-world.js';
 
 const w = new ChannelWorld();
 /** Every line the process logged, as the logger was handed it (ISS-1372). */
-const logged: string[] = [];
+let log: LogLines;
 // obvious fakes, built here so no literal key sits in the tree
 const KEY = 'a1b2c3d4e5f60718'.repeat(2);
 const KEY_TWO = '0f1e2d3c4b5a6978'.repeat(2);
@@ -59,14 +59,8 @@ const DECLINED = 'không cần xóa'; // i18n-allow: the owner's words on 18/11,
 beforeAll(async () => {
   await w.open();
   // every line logged is recorded, so a planted value can be looked for in all of them (ISS-1372);
-  // the world's own spy on errors keeps doing what it did
-  for (const level of ['trace', 'debug', 'info', 'warn', 'error', 'fatal'] as const) {
-    const before = logger[level].bind(logger) as (...a: unknown[]) => void;
-    vi.spyOn(logger, level).mockImplementation(((...args: unknown[]) => {
-      logged.push(JSON.stringify(args, (_k, v) => (v instanceof Error ? v.message : v)));
-      return before(...args);
-    }) as never);
-  }
+  // the world's own spy on errors keeps doing what it did, the recorder calling on to it
+  log = recordLogLines();
   const carol = await w.confirm('carol', {
     roles: ['technical'],
     askFor: 'deleting chat messages',
@@ -440,6 +434,7 @@ describe('ISS-1372: a credential handed over in a bound room is kept, not droppe
     }
     expect(hits).toEqual([]);
     const prompts = JSON.stringify(w.box.turns);
+    const logged = log.lines;
     expect(logged.length).toBeGreaterThan(0);
     for (const v of planted) {
       expect(logged.filter((l) => l.includes(v))).toEqual([]);

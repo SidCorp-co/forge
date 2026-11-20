@@ -53,6 +53,7 @@ import {
 } from '../helpers/beta-port-world.js';
 import { closeWorld, ok, requester, startQueue, testEnv } from '../helpers/ecosystem-world.js';
 import { createTestProject, createTestUser, rows } from '../helpers/factories.js';
+import type { LogLines } from '../helpers/log-lines.js';
 
 let baseUrl = '';
 let say: Say;
@@ -60,19 +61,15 @@ let ownerId = '';
 let scheduleProjectId = '';
 let twin = { id: '', slug: '' };
 let betaProjectId = '';
-const logged: string[] = [];
+let log: LogLines;
 
 beforeAll(async () => {
   testEnv();
   baseUrl = await startBeta();
   const { app } = await import('../../src/index.js');
   await startQueue();
-  const { logger } = await import('../../src/lib/logger.js');
-  for (const level of ['info', 'warn', 'error', 'debug'] as const) {
-    vi.spyOn(logger, level).mockImplementation(((...args: unknown[]) => {
-      logged.push(JSON.stringify(args));
-    }) as never);
-  }
+  const { recordLogLines } = await import('../helpers/log-lines.js');
+  log = recordLogLines();
   const { signUserToken } = await import('../../src/credentials/jwt.js');
   ownerId = (await createTestUser({ verified: true })).id;
   scheduleProjectId = (await createTestProject(ownerId)).id;
@@ -506,6 +503,8 @@ describe('a beta port bound and its token (ISS-923)', () => {
       )
     ).map((r) => r.text);
     expect(items.length).toBeGreaterThan(3);
+    const logged = log.lines;
+    expect(logged.length).toBeGreaterThan(0);
     for (const text of [
       ...outputs.map((o) => o.text),
       ...comments,
