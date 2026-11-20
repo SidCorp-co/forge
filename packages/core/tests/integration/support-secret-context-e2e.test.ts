@@ -364,6 +364,12 @@ describe('ISS-1372: a credential handed over in a bound room is kept, not droppe
       409,
       'ACTING_SECRET_KEPT_PENDING',
     ]);
+    // nor at the secret's own door, where a write is an admin's word on it (cleanup be0527ad)
+    const door = `/api/projects/${w.projectId}/secrets/kept/${entry.name}`;
+    const put = await api(master, 'PUT', door, { value: OTHER_TOKEN });
+    for (const res of [put, await api(master, 'DELETE', door)]) {
+      expect([res.status, code(res.body)]).toEqual([403, 'KEPT_SECRET_PERSON_ONLY']);
+    }
     // a stranger and an agent's token are refused; the owner approves it
     const approve = (token: string) =>
       api(token, 'POST', `/api/projects/${w.projectId}/kept-secrets/${entry.name}/approval`);

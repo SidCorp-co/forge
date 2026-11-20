@@ -3,7 +3,10 @@
 // running judge reads it at. A person reads a secret's name here and its value nowhere.
 
 import { secretRefOf } from '@forge/contracts/project-config';
-import { SUPPORT_OWNER_CREDENTIAL_SCOPE } from '@forge/contracts/support';
+import {
+  SUPPORT_KEPT_SECRET_SCOPE,
+  SUPPORT_OWNER_CREDENTIAL_SCOPE,
+} from '@forge/contracts/support';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -142,6 +145,26 @@ function reservedScope(c: Context, id: string, scope: string) {
   return null;
 }
 
+/**
+ * A credential kept from a room is written or removed here by a person alone: `kept-secrets.ts`
+ * reads a write at this door as an admin's word on the entry, so an agent's token would be approving
+ * itself the value it wrote. Its own doors refuse an agent the same way (`kept-secret-routes.ts`).
+ */
+function keptByAgent(c: Context<{ Variables: AuthVars }>, id: string, scope: string, name: string) {
+  if (scope !== SUPPORT_KEPT_SECRET_SCOPE || restActor(c).agency !== 'agent') return null;
+  return refused(
+    c,
+    [
+      {
+        code: 'KEPT_SECRET_PERSON_ONLY',
+        path: '/scope',
+        detail: `${secretRefOf(scope, name)} is a credential kept from a room, and it is replaced or removed by a person holding project admin, never by an agent's token: the write would make it usable with no person's word. A person approves it at POST /api/projects/${id}/kept-secrets/${name}/approval or discards it at DELETE /api/projects/${id}/kept-secrets/${name}. Nothing was changed.`,
+      },
+    ],
+    'CONFIG_REFUSED',
+  );
+}
+
 const vaultUnset = (code: string) =>
   new HTTPException(503, {
     message:
@@ -166,7 +189,7 @@ projectSecretRoutes.put(
   ),
   async (c) => {
     const { id, scope, name } = c.req.valid('param');
-    const reservedAnswer = reservedScope(c, id, scope);
+    const reservedAnswer = reservedScope(c, id, scope) ?? keptByAgent(c, id, scope, name);
     if (reservedAnswer) return reservedAnswer;
     const actor = restActor(c);
     const outcome = await writeSecret({
@@ -202,7 +225,7 @@ projectSecretRoutes.patch(
   ),
   async (c) => {
     const { id, scope, name } = c.req.valid('param');
-    const reservedAnswer = reservedScope(c, id, scope);
+    const reservedAnswer = reservedScope(c, id, scope) ?? keptByAgent(c, id, scope, name);
     if (reservedAnswer) return reservedAnswer;
     const { set } = c.req.valid('json');
     const bad = mergeSetRefusals(set);
@@ -250,6 +273,8 @@ projectSecretRoutes.delete(
     if (scope === SUPPORT_OWNER_CREDENTIAL_SCOPE) {
       return refused(c, reserved(ownerScopeSays(id, 'removed')), 'CONFIG_REFUSED');
     }
+    const keptAnswer = keptByAgent(c, id, scope, name);
+    if (keptAnswer) return keptAnswer;
     const actor = restActor(c);
     const outcome = await deleteSecret({
       projectId: id,
