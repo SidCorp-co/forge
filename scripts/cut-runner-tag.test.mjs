@@ -9,7 +9,7 @@
 // one whose build failed stands with no release; the next run builds under that same tag.
 
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -140,6 +140,58 @@ describe('a tag whose build never published is not a release', () => {
       cutRunnerTag({ cwd: work, tag: 'runner-v0.18.9', commit: missing, published: [] }),
     ).toThrow(/reading the runner tags .* failed/);
     expect(git(work, 'tag', '--list', 'runner-v0.18.9')).toBe('');
+  });
+
+  it('an autorelease over a released commit cuts nothing and ends green, an explicit cut still refused', () => {
+    // a push changing only how the runner is built lands on a runner commit already released
+    const published = ['runner-v0.18.0-dev.5'];
+    const before = remoteTags();
+    expect(
+      cutRunnerTag({
+        cwd: work,
+        tag: 'runner-v0.18.0-dev.9',
+        commit: failed,
+        published,
+        skipReleased: true,
+      }),
+    ).toEqual({
+      tag: 'runner-v0.18.0-dev.9',
+      commit: failed,
+      reused: false,
+      released: ['runner-v0.18.0-dev.5'],
+    });
+    expect(git(work, 'tag', '--list', 'runner-v0.18.0-dev.9')).toBe('');
+    expect(remoteTags()).toBe(before);
+
+    // the workflow's own call: exit 0, a notice, and no release owed
+    const listed = join(root, 'published.txt');
+    const output = join(root, 'github-output.txt');
+    writeFileSync(listed, `${published.join('\n')}\n`);
+    const cli = (...flags) =>
+      spawnSync(
+        process.execPath,
+        [
+          join(import.meta.dirname, 'cut-runner-tag.mjs'),
+          ...flags,
+          'runner-v0.18.0-dev.9',
+          failed,
+          '--published',
+          listed,
+          '--cwd',
+          work,
+          '--output',
+          output,
+        ],
+        { encoding: 'utf8' },
+      );
+    const skipped = cli('--skip-released');
+    expect(skipped.status, skipped.stderr).toBe(0);
+    expect(skipped.stdout).toMatch(/^::notice::.* already released as runner-v0\.18\.0-dev\.5/);
+    expect(readFileSync(output, 'utf8')).toBe('owed=false\n');
+    const explicit = cli();
+    expect(explicit.status).toBe(1);
+    expect(explicit.stderr).toMatch(/already released as runner-v0\.18\.0-dev\.5/);
+    expect(git(work, 'tag', '--list', 'runner-v0.18.0-dev.9')).toBe('');
   });
 
   it('refuses a cut that is not told which releases are published', () => {

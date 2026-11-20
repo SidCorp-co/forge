@@ -541,9 +541,10 @@ The stamped commit is the newest commit that **touched `packages/runner`**, not 
 head of the push that carried it: one push can hold a runner commit followed by an
 unrelated one, and core reads the branch the same way, so stamping the push head
 would leave a freshly updated box reading as behind for ever. A commit that a
-**published** GitHub Release on its own line already carries is refused rather than
-released again — a rerun of an older release job would otherwise publish that code
-under a version higher than what followed it. A tag with no published release (its
+**published** GitHub Release on its own line already carries is never released again
+— a rerun of an older release job would otherwise publish that code under a version
+higher than what followed it. An explicit cut of it is refused; the autorelease, run
+by a push that changed only the release scripts, ends green with a notice instead. A tag with no published release (its
 build failed or was skipped) is no release: the next run rebuilds under that same
 tag, and cuts no new one beside it (ISS-1373, `scripts/cut-runner-tag.mjs`).
 

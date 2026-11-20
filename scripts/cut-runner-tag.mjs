@@ -2,7 +2,8 @@
 /**
  * Create a `runner-v*` tag and push it, WITHOUT forcing: a tag that already exists
  * fails the run, because a moved release tag leaves two binaries claiming one
- * version. <tag> <commit> --published <file> [--remote <name>] [--cwd <dir>]
+ * version. <tag> <commit> --published <file> [--skip-released] [--output <file>] [--remote <name>]
+ * [--cwd <dir>]
  *
  * The dev line's prereleases (`runner-vX.Y.Z-dev.N`, ISS-1358) and `main`'s releases are two
  * lines over shared commits: a commit is refused only where its own line already released it.
@@ -11,8 +12,15 @@
  * the build, so a failed or skipped build leaves a tag that is no release. Where `tag` already
  * stands unpublished at `commit`, it is reused: nothing is pushed, and the release is built
  * under it. `--published` is the file of published tags the workflow read with its token.
+ *
+ * `--skip-released` is the autorelease's: a push that changes only how the runner is built or
+ * tagged lands on a runner commit that may already be released, and there is then nothing new to
+ * release. Its commit, released on its own line, cuts nothing and ends with a notice rather than
+ * the refusal an explicit cut gets. `--output <file>` appends `owed=true|false` to it (the step's
+ * `$GITHUB_OUTPUT`), so the release job runs only where a release is owed.
  */
 import { execFileSync } from 'node:child_process';
+import { appendFileSync } from 'node:fs';
 import { lineOf, readPublished, tagsAtCommit } from './next-runner-version.mjs';
 
 function git(cwd, args) {
@@ -55,8 +63,16 @@ export function releasesAt(cwd, commit, tag, published) {
 /**
  * Create `tag` at `commit`, or reuse it where it already stands there unpublished. Refuses an
  * already-released commit, a tag standing elsewhere, and a new tag beside an unpublished one.
+ * With `skipReleased`, an already-released commit cuts nothing and answers `released` instead.
  */
-export function cutRunnerTag({ cwd, tag, commit, remote = 'origin', published }) {
+export function cutRunnerTag({
+  cwd,
+  tag,
+  commit,
+  remote = 'origin',
+  published,
+  skipReleased = false,
+}) {
   if (published === undefined || published === null) {
     throw new Error(
       'the published releases are required (--published <file>): without them a tag whose ' +
@@ -66,6 +82,9 @@ export function cutRunnerTag({ cwd, tag, commit, remote = 'origin', published })
   // A rerun of an older run allocates a HIGHER version from today's tags and would
   // publish yesterday's code under it: numerically forward, functionally back.
   const { released: already, unpublished } = standingAt(cwd, commit, tag, published);
+  if (already.length > 0 && skipReleased) {
+    return { tag, commit, reused: false, released: already };
+  }
   if (already.length > 0) {
     throw new Error(
       `${commit} is already released as ${already.join(', ')} — nothing to release, and ` +
@@ -112,25 +131,34 @@ function main() {
     const i = args.indexOf(`--${name}`);
     return i === -1 ? fallback : args[i + 1];
   };
-  const positional = args.filter((a, i) => !a.startsWith('--') && !args[i - 1]?.startsWith('--'));
+  const flags = ['--skip-released'];
+  const takesValue = (a) => a?.startsWith('--') && !flags.includes(a);
+  const positional = args.filter((a, i) => !a.startsWith('--') && !takesValue(args[i - 1]));
   const [tag, commit] = positional;
   if (!tag || !commit) {
     throw new Error(
-      'usage: cut-runner-tag.mjs <tag> <commit> --published <file> [--remote <name>] [--cwd <dir>]',
+      'usage: cut-runner-tag.mjs <tag> <commit> --published <file> [--skip-released] ' +
+        '[--output <file>] [--remote <name>] [--cwd <dir>]',
     );
   }
   const publishedFile = opt('published', undefined);
-  const { reused } = cutRunnerTag({
+  const output = opt('output', undefined);
+  const { reused, released } = cutRunnerTag({
     cwd: opt('cwd', process.cwd()),
     tag,
     commit,
     remote: opt('remote', 'origin'),
     published: publishedFile === undefined ? undefined : readPublished(publishedFile),
+    skipReleased: args.includes('--skip-released'),
   });
+  if (output !== undefined) appendFileSync(output, `owed=${released === undefined}\n`);
   process.stdout.write(
-    reused
-      ? `${tag} stands at ${commit} with no published release — releasing under it, nothing pushed\n`
-      : `cut ${tag} at ${commit}\n`,
+    released !== undefined
+      ? `::notice::${commit} is already released as ${released.join(', ')} on its line — nothing ` +
+          `new to release, so no tag was cut and no release is built\n`
+      : reused
+        ? `${tag} stands at ${commit} with no published release — releasing under it, nothing pushed\n`
+        : `cut ${tag} at ${commit}\n`,
   );
 }
 

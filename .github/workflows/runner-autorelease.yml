@@ -30,9 +30,11 @@ on:
     branches: [main, dev]
     paths:
       - "packages/runner/**"
-      # how the runner is built is part of the runner: a change to its build cuts a
-      # release of the newest runner commit, as the step below names it (ISS-1358),
-      # and so does a change to how that release is numbered and tagged (ISS-1373)
+      # how the runner is built is part of the runner: a change to its build releases
+      # the newest runner commit, as the step below names it (ISS-1358), and so does a
+      # change to how that release is numbered and tagged (ISS-1373) — where that
+      # commit has no published release on its line yet. Where it has one, nothing new
+      # is released: the tag job ends green with a notice and the release job is skipped.
       - ".github/workflows/runner-release.yml"
       - "scripts/cut-runner-tag.mjs"
       - "scripts/next-runner-version.mjs"
@@ -55,6 +57,7 @@ jobs:
       version: ${{ steps.next.outputs.version }}
       tag: ${{ steps.next.outputs.tag }}
       sha: ${{ steps.head.outputs.sha }}
+      owed: ${{ steps.cut.outputs.owed }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -89,19 +92,24 @@ jobs:
           node scripts/next-runner-version.mjs --channel "$CHANNEL" --sha "$SHA" \
             --published "$RUNNER_TEMP/published-releases.txt" >> "$GITHUB_OUTPUT"
       # An unpublished tag already at the commit is reused: nothing pushed, nothing moved.
+      # A commit already released on its line cuts nothing and owes no release (a push
+      # changing only the release scripts): a notice, never a red run.
       - name: Cut the tag
+        id: cut
         env:
           TAG: ${{ steps.next.outputs.tag }}
           SHA: ${{ steps.head.outputs.sha }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          node scripts/cut-runner-tag.mjs "$TAG" "$SHA" --published "$RUNNER_TEMP/published-releases.txt"
+          node scripts/cut-runner-tag.mjs "$TAG" "$SHA" --published "$RUNNER_TEMP/published-releases.txt" \
+            --skip-released --output "$GITHUB_OUTPUT"
 
   # Called, not triggered: a tag pushed with this workflow's own GITHUB_TOKEN
   # does not start a workflow run, so the release has to be invoked here.
   release:
     needs: tag
+    if: needs.tag.outputs.owed == 'true'
     permissions:
       contents: write
     uses: ./.github/workflows/runner-release.yml
