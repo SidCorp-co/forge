@@ -15,12 +15,13 @@ import { listReleases, parseReleaseVersion } from '../release-batch/index.js';
 import { memberMessage } from './channel-store.js';
 import { grantsOf, isNamedOwner, supportConfigOf } from './grants.js';
 import { keepOwnerGo, ownerSetupStep } from './kept-answers.js';
-import { forgeUserOfWriter } from './ops-asker.js';
+import { forgeUserOrSilence } from './ops-asker.js';
 import { projectInScope } from './ops-scope.js';
 import type { OpsOutcome } from './ops-types.js';
 import { asAsker } from './ops-writes.js';
 import { no } from './outcome.js';
 import { decideAs } from './release-decide-as.js';
+import { namingStep } from './setup-step.js';
 import { insertAction, type RoomRow } from './store.js';
 
 /**
@@ -87,17 +88,24 @@ async function decide(
     );
   }
   // an account his admins named in this project resolves here too, as his answers do (ISS-1313)
-  const person = await forgeUserOfWriter(
+  const { person, silent } = await forgeUserOrSilence(
     room,
     { key: said.authorKey, label: said.author },
     'releases.approve',
     project.value.id,
   );
   if (!person.ok) {
-    if (isNamedOwner(grantsOf(await supportConfigOf(room)), said.authorKey)) {
-      return keepGo(room, input, project.value, said.authorKey);
+    if (!isNamedOwner(grantsOf(await supportConfigOf(room)), said.authorKey)) return person;
+    // kept only where he is unmapped: an owner the chat server would not name just now may be one
+    // Forge already knows, whose kept go no admin's naming would ever come to decide
+    if (silent) {
+      return no(
+        'OPS_ASKER_UNMAPPED',
+        '/message',
+        `the chat server would not say who ${said.author ? `@${said.author}` : `account ${said.authorKey}`} is just now, so his word can be neither decided nor kept: cite message ${input.message} again in a moment. Where it never says, his account is named once: ${await namingStep(project.value.id, 'his')}. Nothing was decided`,
+      );
     }
-    return person;
+    return keepGo(room, input, project.value, said.authorKey);
   }
   return decideAs(room, input, project.value, person.value, said, (fn) =>
     asAsker(person.value, project.value.id, fn),

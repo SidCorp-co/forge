@@ -64,6 +64,8 @@ export class StandInRocketChat implements ChatServer {
   readonly reactions: { messageId: string; emoji: string }[] = [];
   /** The address the server reports for an account (`users.info`), where a test set one. */
   readonly emails = new Map<string, string>();
+  /** Whether `users.info` fails, as a chat server that does not answer just then does. */
+  usersInfoDown = false;
   /** Whether the bot is a member of the group (`subscriptions.getOne` answers its subscription). */
   botIsMember = true;
   private server!: Server;
@@ -214,6 +216,7 @@ export class StandInRocketChat implements ChatServer {
         this.kicked.push({ rid: String(body.roomId), userId: String(body.userId) });
         return json(200, { success: true });
       case '/api/v1/users.info': {
+        if (this.usersInfoDown) return json(503, { success: false, error: 'Service Unavailable' });
         const id = url.searchParams.get('userId') ?? '';
         const member = [this.alice, this.bob].find((m) => m.userId === id);
         if (!member) return json(400, { success: false, error: 'User not found' });

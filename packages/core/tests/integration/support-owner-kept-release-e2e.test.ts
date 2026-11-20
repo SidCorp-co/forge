@@ -34,6 +34,7 @@ let slug = '';
 let admin = '';
 let adminId = '';
 let chuong = '';
+let chuongEmail = '';
 let member = '';
 let approvalId = '';
 
@@ -98,7 +99,9 @@ beforeAll(async () => {
   adminId = a.id;
   admin = await userToken(a.id);
   // chuong may decide a release (admin); a member writes but holds no releases.approve
-  chuong = (await createTestUser({ verified: true })).id;
+  const c = await createTestUser({ verified: true });
+  chuong = c.id;
+  chuongEmail = c.email;
   await addProjectMember(w.projectId, chuong, 'admin');
   member = (await createTestUser({ verified: true })).id;
   await addProjectMember(w.projectId, member, 'member');
@@ -110,6 +113,23 @@ beforeAll(async () => {
 afterAll(() => w.stop());
 
 describe("ISS-1313: an unlinked owner's go on a release is kept, and decided as his once named", () => {
+  it('keeps nothing where the chat server would not say who he is, since he may be mapped', async () => {
+    // his address is a Forge account's, verified: only the chat server's silence hides it
+    chat.emails.set(OWNER_ID, chuongEmail);
+    chat.usersInfoDown = true;
+    try {
+      const go = await goBy(chat.alice, GO);
+      // [KEPT_ON_SILENCE] before the fix: kept, waiting on a naming no admin would ever make
+      expect(code(go.out), JSON.stringify(go.out)).toBe('OPS_ASKER_UNMAPPED');
+      expect(JSON.stringify(go.out)).toContain('again in a moment');
+      expect(await keptGoes()).toEqual([]);
+      expect(await approvalOf(approvalId)).toMatchObject({ decision: null });
+    } finally {
+      chat.usersInfoDown = false;
+      chat.emails.delete(OWNER_ID);
+    }
+  });
+
   it('keeps his go, tells the room it waits on an admin step, and decides nothing yet', async () => {
     const go = await goBy(chat.alice, GO);
     // [GO_DROPPED] before the fix: refused OPS_ASKER_UNMAPPED and nothing kept

@@ -66,6 +66,52 @@ export async function askerOf(
 }
 
 /**
+ * The Forge user one of the room's writers is, or why they are nobody Forge can name: `silent` where
+ * the only fault is a chat server that would not say who the account is, which a later ask may clear
+ * and which is never proof they are unmapped.
+ */
+async function nameWriter(
+  room: RoomRow,
+  writer: { key: string; label: string | null },
+  projectId?: string,
+): Promise<{ ok: true; value: Asker } | { ok: false; why: string; silent: boolean }> {
+  const nobody = (why: string, silent = false) => ({ ok: false as const, why, silent });
+  const { auth, namespace } = await roomAuth(room);
+  const linked = await resolveSpeaker(
+    { source: 'rocketchat', namespace, externalId: writer.key, label: writer.label },
+    projectId,
+  );
+  if (linked.linked) return { ok: true, value: { ...writer, userId: linked.userId, via: 'link' } };
+  const profile = await fetchUserProfile(auth, writer.key).catch(() => null);
+  if (!profile) return nobody('the chat server would not say who the account is', true);
+  if (!profile.email) return nobody('the account has no address on the chat server');
+  if (!profile.emailVerified) return nobody(`the chat server has not verified ${profile.email}`);
+  const userId = await verifiedUserIdByEmail(profile.email);
+  if (!userId) return nobody(`no Forge account holds ${profile.email}, verified`);
+  return { ok: true, value: { ...writer, userId, via: 'email' } };
+}
+
+/**
+ * The Forge user one of the room's writers is, or the refusal saying they are nobody Forge knows,
+ * with `silent` as `nameWriter` says. `projectId`, the project the act is on, also resolves an
+ * account its admins named there.
+ */
+export async function forgeUserOrSilence(
+  room: RoomRow,
+  writer: { key: string; label: string | null },
+  needs?: string,
+  projectId?: string,
+): Promise<{ person: Outcome<Asker>; silent: boolean }> {
+  const named = await nameWriter(room, writer, projectId);
+  if (named.ok) return { person: named, silent: false };
+  const who = writer.label ? `@${writer.label}` : `account ${writer.key}`;
+  return {
+    person: await unmapped(projectId ?? room.projectId, who, named.why, needs),
+    silent: named.silent,
+  };
+}
+
+/**
  * The Forge user one of the room's writers is, or the refusal saying they are nobody Forge knows.
  * `projectId`, the project the act is on, also resolves an account its admins named there.
  */
@@ -75,21 +121,7 @@ export async function forgeUserOfWriter(
   needs?: string,
   projectId?: string,
 ): Promise<Outcome<Asker>> {
-  const who = writer.label ? `@${writer.label}` : `account ${writer.key}`;
-  const nobody = (why: string) => unmapped(projectId ?? room.projectId, who, why, needs);
-  const { auth, namespace } = await roomAuth(room);
-  const linked = await resolveSpeaker(
-    { source: 'rocketchat', namespace, externalId: writer.key, label: writer.label },
-    projectId,
-  );
-  if (linked.linked) return { ok: true, value: { ...writer, userId: linked.userId, via: 'link' } };
-  const profile = await fetchUserProfile(auth, writer.key).catch(() => null);
-  if (!profile) return nobody('the chat server would not say who the account is');
-  if (!profile.email) return nobody('the account has no address on the chat server');
-  if (!profile.emailVerified) return nobody(`the chat server has not verified ${profile.email}`);
-  const userId = await verifiedUserIdByEmail(profile.email);
-  if (!userId) return nobody(`no Forge account holds ${profile.email}, verified`);
-  return { ok: true, value: { ...writer, userId, via: 'email' } };
+  return (await forgeUserOrSilence(room, writer, needs, projectId)).person;
 }
 
 /**
