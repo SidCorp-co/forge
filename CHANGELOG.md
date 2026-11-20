@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.769] - 2026-11-20
+
+Criteria text with no numbered line is refused, so no issue closes unjudged
+
+### Fixed
+
+- **Criteria text with no numbered line is refused by name.** The write shows the numbered trace form and stores nothing; an issue already holding such text is refused its close until its holder adds the criteria once.
+
 ## [0.4.0-dev.768] - 2026-11-20
 
 Prose above criterion 1 is refused; docs runs read test-store secrets
