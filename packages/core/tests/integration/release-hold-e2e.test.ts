@@ -3,6 +3,8 @@
  * without a person, or carries the reason it may not as a standing `release_holds` record
  * (`release-batch/hold.ts`, its one writer). Against real Postgres: what is asserted is what the
  * table holds after a sweep tick.
+ *
+ * @direct-test-of packages/core/src/issues/criteria/verdict-release-build.ts
  */
 
 import { sql } from 'drizzle-orm';
@@ -145,12 +147,15 @@ describe('a held row says why, and keeps one record per reason', () => {
     const id = await heldRow();
     await sweep();
 
-    // a skip, not a fail: a fail reopens the issue (ISS-683, REQ-74 BC-3), which takes it off the release
-    await fx.postVerdict(id, verdictComment([verdictBlock(1, 'pass'), verdictBlock(2, 'skipped')]));
+    // a short, not a fail: a fail reopens the issue (ISS-683, REQ-74 BC-3), which takes it off the
+    // release; nor a skip, which the door refuses over criterion 2's pass at this build (ISS-1355)
+    await fx.postVerdict(id, verdictComment([verdictBlock(1, 'pass'), verdictBlock(2, 'short')]));
     await sweep();
 
+    expect((await stored(id)).status).toBe('awaiting_release');
     const hold = await holdOf(id);
     expect(hold?.reason).toContain('criterion 2');
+    expect(hold?.reason).toContain('judged short');
     expect(hold?.reason).not.toContain('criterion 1:');
     const history = await holdHistory(id);
     expect(history).toHaveLength(2);
