@@ -18,7 +18,7 @@ import type { IssueCriteriaTally } from '@forge/contracts/issue-standing';
 import { criterionStandingOf } from '@forge/contracts/verdict-identity';
 import { verifiedOf } from '@forge/contracts/verified-rule';
 import { sql } from 'drizzle-orm';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { totalsOf } from '../../src/release-batch/release-view.js';
 import { api, userToken } from '../helpers/api.js';
@@ -29,8 +29,25 @@ import {
   makeAgreeReady,
   truncateAll,
 } from '../helpers/factories.js';
+import {
+  F4,
+  LATER,
+  landedIssue,
+  seedLandedWorld,
+  verdict,
+  world,
+} from '../helpers/landed-world.js';
 import { plantLiveBuild } from '../helpers/live-build.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
+
+// the landed world's history (`helpers/landed-history.ts`): LATER holds the landing F4
+vi.mock('../../src/release-batch/ancestry-source.js', async (importOriginal) => {
+  const { reader } = await import('../helpers/landed-history.js');
+  return {
+    ...(await importOriginal<typeof import('../../src/release-batch/ancestry-source.js')>()),
+    ancestrySourceFor: async () => ({ kind: 'box', why: 'the planted box', reader }),
+  };
+});
 
 const LIVE = '0d91ae7c74f70295ede115463b17559e650b5207';
 
@@ -102,11 +119,16 @@ const judge = (
   });
 
 /** A release the batch cut and finished at `commit`, carrying `issueIds`. */
-async function shipped(version: string, commit: string, issueIds: readonly string[]) {
+async function shipped(
+  version: string,
+  commit: string,
+  issueIds: readonly string[],
+  project: string = projectId,
+) {
   const at = new Date().toISOString();
   await db.execute(sql`
     INSERT INTO pipeline_runs (id, project_id, kind, status, started_at, finished_at, release_version, release_released_at, metadata)
-    VALUES (gen_random_uuid(), ${projectId}, 'system', 'completed', ${at}, ${at}, ${version}, ${at},
+    VALUES (gen_random_uuid(), ${project}, 'system', 'completed', ${at}, ${at}, ${version}, ${at},
             ${JSON.stringify({ issueIds, source: 'release-batch', finish: { state: 'finished', commit } })}::jsonb)`);
 }
 
@@ -308,5 +330,40 @@ describe('a skip after a pass at the same build (ISS-1355)', () => {
 
     const elsewhere = { kind: 'commit', sha: '2'.repeat(40) };
     expect((await judge(issueId, 'skipped', 'Not deployed there', elsewhere)).status).toBe(201);
+  });
+});
+
+describe('a skip at a release build after an earned landing pass (ISS-1355)', () => {
+  /** Criterion 1's weighing, as the criteria read answers it. */
+  const weighingOf = async (issueId: string) => {
+    const rows = await api(world.token, 'GET', `/api/issues/${issueId}/criteria`);
+    expect(rows.status, JSON.stringify(rows.body)).toBe(200);
+    const criteria = rows.body.criteria as Array<{
+      n: number;
+      weighing: { earned: boolean | null; reason: string };
+    }>;
+    return criteria.find((c) => c.n === 1)?.weighing;
+  };
+
+  it('leaves the criterion earned at its landing', async () => {
+    // verdicts owed, so the gate weighs the criteria at the build it delivers, its landing F4
+    await seedLandedWorld({ verdictsRequired: true });
+    const issueId = await landedIssue(5, F4);
+    await verdict(issueId, 1, 'pass', F4);
+    const before = await weighingOf(issueId);
+    expect(before, JSON.stringify(before)).toMatchObject({ earned: true });
+    await shipped('0.29.0', LATER, [issueId], world.projectId);
+
+    const r = await api(world.token, 'POST', `/api/issues/${issueId}/verdicts`, {
+      criterion: 1,
+      verdict: 'skipped',
+      reason: 'No route on the release build: the credential lapsed.',
+      identity: { kind: 'commit', sha: LATER },
+    });
+
+    expect(r.status, JSON.stringify(r.body)).toBe(422);
+    expect(refusalOf(r.body)).toMatchObject({ code: 'VERDICT_SKIP_OVER_PASS', path: '/verdict' });
+    const after = await weighingOf(issueId);
+    expect(after, `${r.status} ${JSON.stringify(after)}`).toMatchObject({ earned: true });
   });
 });

@@ -4,7 +4,9 @@
 //   at a shipped release's build carrying the issue, an identity that release    VERDICT_IDENTITY_NOT_COUNTED
 //   never counts (`release-page.ts:countedForClass`): a runtime where the
 //   project names no testing environment, a commit where it names one
-//   a skip where the criterion stands on a counted pass at that same build       VERDICT_SKIP_OVER_PASS
+//   a skip where the criterion stands on a counted pass at that same build,      VERDICT_SKIP_OVER_PASS
+//   or where its landing earned it (its weighing's basis `landing` or
+//   `delivered`, no `delivery.judgedOn`), at whatever build the skip names
 //
 // The first reads the one rule every count of a release's proof reads, so the door and the release
 // never disagree; a verdict at a landing, before any release ships at its commit, is never asked. The
@@ -19,7 +21,8 @@ import { countedForClass } from '@forge/contracts/release-page';
 import { and, desc, eq, type SQL } from 'drizzle-orm';
 import type { Tx } from '../../db/client.js';
 import { criterionVerdicts } from '../../db/schema-issue-criteria.js';
-import { readProjectDocument, releasesCarryingAt } from '../ports.js';
+import { weighingOf } from '../criteria-weighing.js';
+import { criteriaWeighingOf, readProjectDocument, releasesCarryingAt } from '../ports.js';
 import { countingOf } from './verdict-counting.js';
 import type { VerdictRefusal } from './verdict-input.js';
 
@@ -96,18 +99,14 @@ function sameBuild(identity: Identity): SQL | null {
   return kind && at ? (and(eq(criterionVerdicts.identityKind, kind), at) ?? null) : null;
 }
 
-/**
- * Why a `skipped` verdict may not be kept: the criterion stands on a pass at the same build that
- * counts (the newest verdict there a builder's barred pass does not hide, as `judgesVerdict` reads
- * it), so the skip would take that pass away. Null for any other verdict or standing.
- */
-export async function skipOverPassFault(
+/** The newest counted verdict at the same build as `identity`, where it is a pass; else null. */
+async function passAtSameBuild(
   tx: Tx,
-  issue: { id: string; projectId: string },
-  args: { criterionId: string; criterion: number; verdict: string; identity: Identity },
-): Promise<VerdictRefusal | null> {
-  if (args.verdict !== 'skipped') return null;
-  const at = sameBuild(args.identity);
+  projectId: string,
+  criterionId: string,
+  identity: Identity,
+): Promise<{ id: string; at: Date } | null> {
+  const at = sameBuild(identity);
   if (at === null) return null;
   const rows = await tx
     .select({
@@ -116,15 +115,52 @@ export async function skipOverPassFault(
       at: criterionVerdicts.createdAt,
     })
     .from(criterionVerdicts)
-    .where(and(eq(criterionVerdicts.criterionId, args.criterionId), at))
+    .where(and(eq(criterionVerdicts.criterionId, criterionId), at))
     .orderBy(desc(criterionVerdicts.createdAt), desc(criterionVerdicts.id));
-  const counting = await countingOf(tx, issue.projectId, rows);
+  const counting = await countingOf(tx, projectId, rows);
   const stands = rows.find((r) => counting.get(r.id)?.notCounted == null);
-  if (stands?.verdict !== 'pass') return null;
-  return {
+  return stands?.verdict === 'pass' ? stands : null;
+}
+
+const KEEP = `a skip names only what this judge could not reach: kept, it would take that pass away. The criterion stays earned; send nothing, or a \`fail\` naming what you saw where it no longer holds. Nothing was written.`;
+
+/**
+ * Why a `skipped` verdict may not be kept: the criterion stands on a pass at the same build that
+ * counts (the newest verdict there a builder's barred pass does not hide, as `judgesVerdict` reads
+ * it), or its landing earned it where the issue's own weighing is the gate (basis `landing` or
+ * `delivered`), which reads the newest verdict whatever build it names. Either way the skip would
+ * take the pass away. Null for any other verdict or standing. On a `landing` basis a release reads a
+ * criterion its landing earned as proven (`criterion-reading.ts`), so the refused skip leaves no
+ * release asking for it; on a `served` basis, or where the project names `delivery.judgedOn`, a
+ * release counts only a verdict at its own build, so the skip is that release's record, and taken.
+ */
+export async function skipOverPassFault(
+  tx: Tx,
+  issue: { id: string; projectId: string },
+  args: { criterionId: string; criterion: number; verdict: string; identity: Identity },
+): Promise<VerdictRefusal | null> {
+  if (args.verdict !== 'skipped') return null;
+  const refuse = (detail: string): VerdictRefusal => ({
     code: 'VERDICT_SKIP_OVER_PASS',
     criterion: args.criterion,
     path: '/verdict',
-    detail: `criterion ${args.criterion} stands on a pass at this same build (verdict \`${stands.id}\`, ${stands.at.toISOString()}), and a skip names only what this judge could not reach: kept, it would take that pass away from every count of proof. The criterion stays earned; send nothing, or a \`fail\` naming what you saw where it no longer holds. Nothing was written.`,
-  };
+    detail: `${detail}, and ${KEEP}`,
+  });
+  const same = await passAtSameBuild(tx, issue.projectId, args.criterionId, args.identity);
+  if (same) {
+    return refuse(
+      `criterion ${args.criterion} stands on a pass at this same build (verdict \`${same.id}\`, ${same.at.toISOString()})`,
+    );
+  }
+  const weighed = weighingOf(await criteriaWeighingOf(issue), args.criterion);
+  const basis = weighed.weighedOn.basis;
+  if (weighed.earned !== true || (basis !== 'landing' && basis !== 'delivered')) return null;
+  // judged on a testing environment, a release counts only the runtime verdict at its build, so a
+  // skip there is that release's record of what is missing and is taken (ISS-1280)
+  if (judgedOnOf((await readProjectDocument(issue.projectId))?.document.delivery) !== null) {
+    return null;
+  }
+  return refuse(
+    `criterion ${args.criterion} is earned at this issue's landing (${weighed.reason}), and its landing weighs the newest verdict whatever build it names`,
+  );
 }

@@ -104,7 +104,7 @@ Read these before judging anything, while whoever sent you can still equip you.
 A criterion you have no route to is a \`skipped\` naming what is missing. Where every criterion you
 were given would be one, say so and stop: a credential or a person is what was owed, not a run.
 A skip moves a criterion out on the record without unearning it: where it stands on a pass at the same
-build the skip is refused \`VERDICT_SKIP_OVER_PASS\`, and the pass stands. At a shipped release's
+build, or on one its landing earned, the skip is refused \`VERDICT_SKIP_OVER_PASS\`, and the pass stands. At a shipped release's
 build, an identity that release never counts is refused \`VERDICT_IDENTITY_NOT_COUNTED\`, naming the
 one it counts: the commit, or a runtime where the project names \`delivery.judgedOn\`.
 
