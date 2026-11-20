@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.763] - 2026-11-20
+
+A runner build that failed to publish can be released again
+
+### Fixed
+
+- **A runner commit whose release build failed is released on the next run.** Only a published GitHub Release counts; an unpublished tag is reused under its version, and a change to the release scripts starts a release.
+
 ## [0.4.0-dev.762] - 2026-11-20
 
 A credential handed over in a project room is now kept, not dropped
