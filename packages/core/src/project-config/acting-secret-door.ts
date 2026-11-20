@@ -153,7 +153,7 @@ async function keptDeclaration(projectId: string, name: string): Promise<ActingS
   if (entry.state === 'pending') {
     throw refuse(
       'ACTING_SECRET_KEPT_PENDING',
-      `${ref} was handed over in a room by ${entry.from.label ?? entry.from.chatKey}, who holds no project admin, so it waits for a project admin's approval until ${entry.expiresAt} (POST /api/projects/${projectId}/kept-secrets/${name}/approval). Nothing was read.`,
+      `${ref} was handed over in a room by ${entry.from.label ?? entry.from.chatKey}, who holds no project admin, so it waits for a person holding project admin to approve it until ${entry.expiresAt}; never ask the sender for it again. Nothing was read.`,
     );
   }
   if (entry.state !== 'usable') {

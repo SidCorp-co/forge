@@ -189,7 +189,7 @@ function keptLine(e: KeptEntry, project: { id: string; slug: string }, who: stri
   const use =
     e.state === 'usable'
       ? `usable now by ${project.slug}'s master and its runs, read at GET /api/projects/${project.id}/acting-secrets/${SUPPORT_KEPT_SECRET_SCOPE}/${e.name} and audited on every read; acts done with it are recorded as ${e.actsAs}`
-      : `${who} holds no project admin on ${project.slug}, so nobody reads it until a project admin approves it (POST /api/projects/${project.id}/kept-secrets/${e.name}/approval), and it is destroyed unused at ${e.expiresAt}`;
+      : `${who} holds no project admin on ${project.slug}, so nobody reads it until a person holding project admin approves it in Forge, and it is destroyed unused at ${e.expiresAt}`;
   return `"${e.label}" (${e.kind}) kept in ${project.slug}'s vault as ${e.ref}: ${use}; it is revoked or replaced on its page${page ? ` ${page}` : ` (the Secrets page of ${project.slug})`}.`;
 }
 

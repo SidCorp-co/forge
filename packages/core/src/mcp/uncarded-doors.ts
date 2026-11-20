@@ -153,6 +153,8 @@ export const UNCARDED_DOORS: Readonly<Record<keyof typeof UNCARDED_WHY, readonly
     'DELETE /api/projects/:id/runners/:runnerId',
     'PATCH /api/projects/:id/runners/:runnerId',
     'POST /api/projects/:id/runners/:runnerId/clear-error',
+    'DELETE /api/projects/:id/kept-secrets/:name',
+    'POST /api/projects/:id/kept-secrets/:name/approval',
     'DELETE /api/projects/:id/secrets/:scope/:name',
     'PUT /api/projects/:id/secrets/:scope/:name',
     'POST /api/projects/:id/status/reports',
