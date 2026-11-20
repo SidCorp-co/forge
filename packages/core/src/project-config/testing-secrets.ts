@@ -247,10 +247,11 @@ async function resolveForDeclaredRun(args: {
       `project ${run.projectId} declares no project document, so no environment names a testing profile.`,
     );
   }
-  let judged: Awaited<ReturnType<typeof judgedEnvironment>> | null = null;
+  type Judged = Awaited<ReturnType<typeof judgedEnvironment>>;
+  let judged: Judged | null = null;
   let issueId: string | null = null;
   // an issue with nothing landed is judged where the project is (ISS-1379); a landing still wins
-  let unlanded: { read: typeof judged; id: string } | null = null;
+  let unlanded: { read: Judged; id: string } | null = null;
   for (const id of run.issueIds) {
     const read = await judgedEnvironment(id, project.document, judge, profileId, {
       unmarked: 'judging',
