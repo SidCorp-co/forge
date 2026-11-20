@@ -20,6 +20,7 @@
  * @direct-test-of packages/core/src/issues/criteria/criteria-text.ts
  * @direct-test-of packages/core/src/issues/project-issue-routes.ts
  * @direct-test-of packages/core/src/issues/criteria/served-text.ts
+ * @direct-test-of packages/core/src/issues/close-in-scope.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -348,5 +349,85 @@ describe('a criteria text with a line before its first numbered criterion (ISS-1
         sql`SELECT id, n, statement, retired_at FROM issue_criteria WHERE issue_id = ${id} ORDER BY n`,
       ),
     ).toEqual(before);
+  });
+});
+
+// ISS-1380 (FB-791, gwork ISS-320): its criteria opened `(REQ-22 BC-1) …` with no `1.`, so the text
+// was stored and no row written; every verdict was refused VERDICT_CRITERION_UNKNOWN ("its criteria
+// are none"), and `awaiting_release → closed` went through with no verdict at all.
+describe('a criteria text holding words and no numbered line (ISS-1380)', () => {
+  const TRACED = '(REQ-22 BC-1) The timesheet totals the week.\n(REQ-22 BC-2) A manager approves it.';
+  const refusalOf = (r: Reply): Doc | undefined => ((r.json as Doc).error?.refusals ?? [])[0];
+
+  it('refuses a filing of trace-led lines with no number, showing the numbered form, and files nothing', async () => {
+    const title = 'Filed with trace-led lines and no numbers';
+    const r = await call('holder', 'POST', `/api/projects/${projectId}/issues`, {
+      title,
+      acceptanceCriteria: TRACED,
+    });
+    expect(r.status, JSON.stringify(r.json)).toBe(422);
+    expect(codesOf(r)).toEqual(['CRITERIA_TEXT_UNPARSEABLE']);
+    const detail = String(refusalOf(r)?.detail);
+    expect(detail).toContain('"(REQ-22 BC-1) The timesheet totals the week."');
+    expect(detail).toContain('a criterion is a numbered line');
+    expect(detail).toContain('`1. (REQ-<n> BC-<m>) <statement>`');
+    expect(await rows(sql`SELECT id FROM issues WHERE title = ${title}`)).toEqual([]);
+  });
+
+  it('refuses the field on an update, writing neither the text nor a row', async () => {
+    const filed = ok(
+      await call('owner', 'POST', `/api/projects/${projectId}/issues`, {
+        title: 'Updated to trace-led lines and no numbers',
+      }),
+      201,
+    );
+    const id = String(filed.id);
+    const r = await call('owner', 'PATCH', `/api/issues/${id}`, { acceptanceCriteria: TRACED });
+    expect(r.status, JSON.stringify(r.json)).toBe(422);
+    expect(codesOf(r)).toEqual(['CRITERIA_TEXT_UNPARSEABLE']);
+    const [held] = await rows<{ acceptance_criteria: string | null }>(
+      sql`SELECT acceptance_criteria FROM issues WHERE id = ${id}`,
+    );
+    expect(held?.acceptance_criteria).toBeNull();
+    expect(await liveStatements(id)).toEqual([]);
+  });
+
+  it('refuses the close of an issue holding such text from before, then closes it after the late add', async () => {
+    const id = await landed();
+    // the text as gwork ISS-320 held it, stored before this refusal stood, with no row read from it
+    await rows(sql`UPDATE issues SET acceptance_criteria = ${TRACED} WHERE id = ${id}`);
+    ok(await call('holder', 'PATCH', `/api/issues/${id}`, leaseBody('holder')));
+    ok(
+      await call('holder', 'PATCH', `/api/issues/${id}`, {
+        releaseNotes: { section: 'Skip', userFacing: '-' },
+      }),
+    );
+    const close = () =>
+      call('holder', 'POST', `/api/issues/${id}/transition`, { toStatus: 'closed' });
+    const refused = await close();
+    expect(refused.status, JSON.stringify(refused.json)).toBe(422);
+    expect(codesOf(refused)).toEqual(['CLOSE_CRITERIA_TEXT_UNREAD']);
+    expect(String(refusalOf(refused)?.detail)).toContain(`PUT /api/issues/${id}/criteria`);
+    const statusOf = async () =>
+      (await rows<{ status: string }>(sql`SELECT status FROM issues WHERE id = ${id}`))[0]?.status;
+    expect(await statusOf()).toBe('awaiting_release');
+    // this test issue serves no requirement, so the add carries the words without their trace
+    ok(await put(id, ['The timesheet totals the week.', 'A manager approves it.']));
+    expect(await liveStatements(id)).toHaveLength(2);
+    const closed = await close();
+    expect(closed.status, JSON.stringify(closed.json)).toBe(200);
+    expect(await statusOf()).toBe('closed');
+  });
+
+  it('closes an issue with no criteria text at all, as before', async () => {
+    const id = await landed();
+    ok(await call('holder', 'PATCH', `/api/issues/${id}`, leaseBody('holder')));
+    ok(
+      await call('holder', 'PATCH', `/api/issues/${id}`, {
+        releaseNotes: { section: 'Skip', userFacing: '-' },
+      }),
+    );
+    const r = await call('holder', 'POST', `/api/issues/${id}/transition`, { toStatus: 'closed' });
+    expect(r.status, JSON.stringify(r.json)).toBe(200);
   });
 });

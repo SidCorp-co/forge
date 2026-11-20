@@ -19,7 +19,7 @@ import { issues } from '../db/schema.js';
 import { issueCriteria } from '../db/schema-issue-criteria.js';
 import { readAdoptionDelivery } from './adoption-delivery.js';
 import { closeNoteFault } from './close-note-guard.js';
-import { renderCriteriaText } from './criteria/criteria-text.js';
+import { NUMBERED_TRACE_FORM, renderCriteriaText } from './criteria/criteria-text.js';
 import { listCriteria } from './criteria/store.js';
 import { designShortfall, readDesignDelivery } from './design-delivered-guard.js';
 import { issueDisplayIds } from './display-ids.js';
@@ -363,7 +363,9 @@ export async function inScopeGuard(
   const rows = (await ctx.executor.execute(
     sql`SELECT release_batch_run_id FROM issues WHERE id = ${ctx.issue.id}`,
   )) as unknown as Array<{ release_batch_run_id: string | null }>;
-  if (rows[0]?.release_batch_run_id) return unmetUnread(ctx, 'a release claimed it');
+  if (rows[0]?.release_batch_run_id) {
+    return (await criteriaTextUnread(ctx)) ?? unmetUnread(ctx, 'a release claimed it');
+  }
   // an adoption-only issue ships nothing either: the record it adopted is what landed (REQ-5 BC-17)
   const adoption = await readAdoptionDelivery(ctx.executor, ctx.issue.id);
   if (adoption.refs && !adoption.shortfall) return unmetUnread(ctx, 'it is adoption-only');
@@ -381,6 +383,8 @@ export async function inScopeGuard(
       details: { ...held.details, designOnly: design.designOnly, adopted: adoption.refs },
     };
   }
+  const unread = await criteriaTextUnread(ctx);
+  if (unread) return unread;
   const unnoted = await closeNoteFault(ctx, tx);
   if (unnoted) return unnoted;
   const scope = await closeScopeOf(
@@ -402,6 +406,30 @@ export async function inScopeGuard(
   }
   if (moved) moved.moves = scope.moves;
   return null;
+}
+
+/**
+ * A close of an issue whose stored criteria text holds words while no live criterion stands (ISS-1380,
+ * gwork ISS-320): the text was never read as criteria, so every verdict was refused and a close
+ * would say met in scope over none. Refused by name, naming the one add after landing
+ * (`late-add.ts:lockReading`) as the way on; once it writes the rows, the close reads them as before.
+ */
+async function criteriaTextUnread(ctx: GuardContext): Promise<GuardFault | null> {
+  const [row] = (await ctx.executor.execute(sql`
+    SELECT i.acceptance_criteria AS text,
+           (SELECT count(*)::int FROM issue_criteria c
+             WHERE c.issue_id = i.id AND c.retired_at IS NULL) AS live
+      FROM issues i WHERE i.id = ${ctx.issue.id}::uuid`)) as unknown as Array<{
+    text: string | null;
+    live: number;
+  }>;
+  if (!row || (row.text ?? '').trim() === '' || Number(row.live) > 0) return null;
+  const id = ctx.issue.id;
+  return {
+    code: 'CLOSE_CRITERIA_TEXT_UNREAD',
+    detail: `an issue closes when its criteria are met in scope, and this one's \`acceptanceCriteria\` holds text from which no criterion was read: it has no numbered line, so no criterion stands for a verdict to name. Put them on the record once, from the run holding it: \`PUT /api/issues/${id}/criteria\` { "criteria": [{ "statement": "(REQ-<n> BC-<m>) <statement>" }, …] }, or the field as numbered lines (${NUMBERED_TRACE_FORM}); then judge them and close, with \`unmet\` for any it did not meet.`,
+    details: { from: ctx.from, to: ctx.to, liveCriteria: 0, route: `PUT /api/issues/${id}/criteria` },
+  };
 }
 
 /**

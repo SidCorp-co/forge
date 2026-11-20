@@ -44,6 +44,8 @@
  *                      its newest verdict a fail) moved out on the record, to an
  *                      issue or the requirement (`close-in-scope.ts`); a release's
  *                      close answers its own criteria hold
+ *                      criteria text holding words, no live criterion read    CLOSE_CRITERIA_TEXT_UNREAD
+ *                      from it: the holder adds them once first
  *                      the holder's close: a release note recorded, `Skip`       CLOSE_RELEASE_NOTE_MISSING
  *                      included (`close-note-guard.ts`); a release's is not asked
  *                      from any other live status, or from awaiting_release      DESIGN_NOT_DELIVERED

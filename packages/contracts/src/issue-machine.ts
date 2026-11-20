@@ -67,6 +67,8 @@ export const ISSUE_TRANSITION_REFUSAL_CODES = [
 	"CLOSE_ONLY_BY_RELEASE",
 	/** A close leaving a criterion it did not meet with no destination named for it. */
 	"CLOSE_CRITERION_UNPLACED",
+	/** A close of an issue whose criteria text holds words and no live criterion was read from it (ISS-1380). */
+	"CLOSE_CRITERIA_TEXT_UNREAD",
 	/** `unmet` on a move whose target is not `closed`: only a close moves criteria out. */
 	"UNMET_NOT_APPLICABLE",
 	/** A holder's close of an issue that ships, with no release note recorded on it (ISS-1293). */
