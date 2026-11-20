@@ -56,10 +56,10 @@ async function running(open: Doc = {}): Promise<string> {
 }
 
 /** The device's upload of the whole recording, through the span clip's door. */
-async function upload(id: string, clip: Buffer = Buffer.from(WEBM)) {
+async function upload(id: string, clip: Buffer = Buffer.from(WEBM), still = Buffer.from(PNG)) {
   const form = new FormData();
   form.set('clip', new File([new Uint8Array(clip)], 'clip.webm', { type: 'video/webm' }));
-  form.set('still', new File([Buffer.from(PNG)], 'still.png', { type: 'image/png' }));
+  form.set('still', new File([new Uint8Array(still)], 'still.png', { type: 'image/png' }));
   const r = await w.app.request(`/api/boxes/${id}/spans/session/clip`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${w.deviceToken}`, 'X-Forge-Lifecycle': '10' },
@@ -162,6 +162,27 @@ describe('where the recording cannot come, the box says why', () => {
       state: 'failed',
       fault: 'TOO_LARGE',
       detail: 'the recording is 31457280 bytes at its smallest, over the 10485760 a box sends',
+    });
+  });
+
+  it('says SEND_FAILED where an attachment is refused, leaves no half pair, and takes a retry', async () => {
+    const id = await running({ record: true });
+    await w.say('agent', 'POST', `/api/boxes/${id}/close`, {});
+    // the clip is taken and the still refused: neither stays, and the record is not left `sending`
+    const refused = await upload(id, Buffer.from(WEBM), Buffer.alloc(0));
+    expect(refused.status, JSON.stringify(refused.json)).toBeGreaterThanOrEqual(400);
+    expect(JSON.stringify(refused.json)).toContain('EMPTY_FILE');
+    expect(await attachments(id)).toEqual([]);
+    const session = ((await w.box(id)).recording as Doc).session as Doc;
+    expect(session).toMatchObject({ state: 'failed', fault: 'SEND_FAILED', clipAttachmentId: null });
+    expect(session.detail).toContain('empty');
+    // the clip's name is free again, so a whole send still lands
+    const again = await upload(id);
+    expect(again.status, JSON.stringify(again.json)).toBe(200);
+    expect(await attachments(id)).toHaveLength(2);
+    expect(((await w.box(id)).recording as Doc).session).toMatchObject({
+      state: 'attached',
+      fault: null,
     });
   });
 

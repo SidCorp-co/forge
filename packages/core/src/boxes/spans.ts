@@ -11,7 +11,7 @@ import { RELEASE_CLIP_MAX_BYTES, RELEASE_CLIP_MAX_SECONDS } from '@forge/contrac
 import { and, eq, ne } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { type BoxRow, type BoxSpanRow, boxes, boxSpans } from '../db/schema-boxes.js';
-import { persistIssueAttachment } from '../issues/index.js';
+import { discardIssueAttachments, persistIssueAttachment } from '../issues/index.js';
 import { accessFor, type BoxActor, pushBox, refuse, tellChanged } from './access.js';
 import { spanRecord } from './read.js';
 import { rowOf } from './service.js';
@@ -205,13 +205,19 @@ export async function persistClip(
     mime: clip.mime,
     bytes: clip.bytes,
   });
-  const stillFile = await persistIssueAttachment({
-    ...owner,
-    name: `${base}.png`,
-    mime: still.mime,
-    bytes: still.bytes,
-  });
-  return { clipFile, stillFile };
+  try {
+    const stillFile = await persistIssueAttachment({
+      ...owner,
+      name: `${base}.png`,
+      mime: still.mime,
+      bytes: still.bytes,
+    });
+    return { clipFile, stillFile };
+  } catch (err) {
+    // the pair lands whole or not at all: a clip left behind would take its name from every retry
+    await discardIssueAttachments([clipFile.id]);
+    throw err;
+  }
 }
 
 /**

@@ -253,7 +253,8 @@ export function decodeAndValidateAttachments(
  * recoverable; leaving the ROW is not, because the issue then shows an
  * attachment from a batch that was refused.
  */
-async function discardIssueAttachments(ids: readonly string[]): Promise<void> {
+/** Removes attachments a half-done write left behind, file and row; a storage miss is not an error. */
+export async function discardIssueAttachments(ids: readonly string[]): Promise<void> {
   if (ids.length === 0) return;
   const rows = await db
     .select({ id: issueAttachments.id, path: issueAttachments.path })

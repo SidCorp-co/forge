@@ -8,10 +8,13 @@
 
 import type { BoxReport } from '@forge/contracts/box-wire';
 import { BOX_LIMITS, type BoxRecord, type BoxSessionFault } from '@forge/contracts/boxes';
-import { and, eq, lt, or } from 'drizzle-orm';
+import { and, eq, lt, ne, or } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { type BoxRow, boxes } from '../db/schema-boxes.js';
 import { boxDeviceOf } from '../devices/index.js';
+import { discardIssueAttachments } from '../issues/index.js';
+import { env } from '../lib/env.js';
+import { isRefusal } from '../lib/refusal.js';
 import { pushBox, refuse, tellChanged } from './access.js';
 import { boxById, boxRecord } from './read.js';
 import { CLIP_MIMES, persistClip } from './spans.js';
@@ -44,11 +47,19 @@ export function sessionAtEnd(row: BoxRow, now = new Date()): { set: SessionSet; 
   return { set: { sessionState: 'sending', sessionAt: now }, send: true };
 }
 
+/**
+ * The most a whole recording may weigh: `BOX_LIMITS.sessionMaxBytes`, or less where this core keeps
+ * attachments smaller (`UPLOADS_MAX_BYTES`), so a clip within it is never refused by the attachment.
+ */
+function sessionCap(): number {
+  return Math.min(BOX_LIMITS.sessionMaxBytes, env.UPLOADS_MAX_BYTES);
+}
+
 /** The device sends the kept recording; pushed after the end's `box.close`, in its transaction. */
 export async function sendSession(tx: Tx, row: Pick<BoxRow, 'id' | 'deviceId'>): Promise<void> {
   await pushBox(tx, row.deviceId, 'box.recording.upload', {
     boxId: row.id,
-    maxBytes: BOX_LIMITS.sessionMaxBytes,
+    maxBytes: sessionCap(),
   });
 }
 
@@ -121,8 +132,9 @@ export async function attachSession(
     await failSession(row, 'SEND_FAILED', detail);
     throw refuse('BOX_SPAN_INVALID', detail, '/clip');
   }
-  if (clip.bytes.byteLength > BOX_LIMITS.sessionMaxBytes) {
-    const detail = `the recording is ${clip.bytes.byteLength} bytes, over the ${BOX_LIMITS.sessionMaxBytes} a box sends to Forge`;
+  const cap = sessionCap();
+  if (clip.bytes.byteLength > cap) {
+    const detail = `the recording is ${clip.bytes.byteLength} bytes, over the ${cap} a box sends to Forge`;
     await failSession(row, 'TOO_LARGE', detail);
     throw refuse('BOX_SPAN_INVALID', detail, '/clip');
   }
@@ -132,7 +144,16 @@ export async function attachSession(
     uploaderId: row.createdBy,
     uploaderAgency: row.openedAs === 'person' ? ('human' as const) : ('agent' as const),
   };
-  const { clipFile, stillFile } = await persistClip(owner, base, ext, clip, still);
+  let persisted: Awaited<ReturnType<typeof persistClip>>;
+  try {
+    persisted = await persistClip(owner, base, ext, clip, still);
+  } catch (err) {
+    // a refused attachment leaves the record saying why, never `sending` until the sweep
+    if (isRefusal(err))
+      await failSession(row, 'SEND_FAILED', err.refusals[0]?.detail ?? err.message);
+    throw err;
+  }
+  const { clipFile, stillFile } = persisted;
   const attached = await db.transaction(async (tx) => {
     const [moved] = await tx
       .update(boxes)
@@ -144,12 +165,16 @@ export async function attachSession(
         sessionFault: null,
         sessionDetail: null,
       })
-      .where(eq(boxes.id, row.id))
+      .where(and(eq(boxes.id, row.id), ne(boxes.sessionState, 'attached')))
       .returning();
-    await tellChanged(tx, moved ?? row);
+    if (moved) await tellChanged(tx, moved);
     return moved;
   });
-  return boxRecord(attached ?? row);
+  if (attached) return boxRecord(attached);
+  // a concurrent send attached it first: this one's pair is surplus, and the record stands
+  await discardIssueAttachments([clipFile.id, stillFile.id]);
+  const now = await boxById(row.id);
+  return boxRecord(now ?? row);
 }
 
 /**
