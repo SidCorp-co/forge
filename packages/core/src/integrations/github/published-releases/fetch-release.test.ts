@@ -1,3 +1,4 @@
+// @direct-test-of packages/core/src/integrations/github/published-releases/channel.ts
 // @direct-test-of packages/core/src/integrations/github/published-releases/main-runner-head.ts
 // @direct-test-of packages/core/src/devices/install-routes.ts
 //
