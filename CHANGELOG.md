@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.764] - 2026-11-20
+
+Change requests address ecosystem projects by short name
+
+### Fixed
+
+- **A master can address a change request to another project by its slug.** A channel draft takes each recipient by slug or id, the channel lists who it may address, and a name outside them is refused with that list.
+
 ## [0.4.0-dev.763] - 2026-11-20
 
 A runner build that failed to publish can be released again
