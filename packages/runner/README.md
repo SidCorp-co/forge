@@ -540,9 +540,12 @@ reports such a box as unknown rather than current rather than guessing.
 The stamped commit is the newest commit that **touched `packages/runner`**, not the
 head of the push that carried it: one push can hold a runner commit followed by an
 unrelated one, and core reads the branch the same way, so stamping the push head
-would leave a freshly updated box reading as behind for ever. A commit some release
-already carries is refused rather than released again — a rerun of an older release
-job would otherwise publish that code under a version higher than what followed it.
+would leave a freshly updated box reading as behind for ever. A commit that a
+**published** GitHub Release on its own line already carries is refused rather than
+released again — a rerun of an older release job would otherwise publish that code
+under a version higher than what followed it. A tag with no published release (its
+build failed or was skipped) is no release: the next run rebuilds under that same
+tag, and cuts no new one beside it (ISS-1373, `scripts/cut-runner-tag.mjs`).
 
 Withdrawing a release takes two acts, not one: core's
 `packages/core/src/integrations/github/published-releases/fetch-release.ts` never moves `RUNNER_RELEASE_DIR` backwards
