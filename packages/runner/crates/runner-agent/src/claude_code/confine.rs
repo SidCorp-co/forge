@@ -287,14 +287,17 @@ fn claude_mounts(view: &BoxView, handed: &Handed<'_>) -> Vec<Mount> {
 /// A room's own directories in place of the box's Claude Code config (ISS-1268 BR): its root
 /// writable, its `tmp` as `/tmp`, and the box's Claude login alone bound into its config dir. The
 /// box's config dir, where every master's session records, keys and transcripts are, is not in
-/// view, and neither is the box's runtime dir, where their peer sockets are.
+/// view, and neither is the box's runtime dir, where their peer sockets are. `/tmp` is bound before
+/// the root, so a root under `/tmp` (a runner directory there, or a CI runner's temp dir) stays in
+/// view: bound after it, the room's `/tmp` covered its own root, and a GitHub runner release check
+/// failed on it (ISS-1358's first dev build).
 fn room_mounts(view: &BoxView, room: &runner_workspace::bg_session::room::RoomDirs) -> Vec<Mount> {
     let mut mounts = vec![
-        Mount::Write(room.root.clone()),
         Mount::Bind {
             source: room.tmp.clone(),
             target: PathBuf::from("/tmp"),
         },
+        Mount::Write(room.root.clone()),
     ];
     if room.settings.is_file() {
         mounts.push(Mount::Read(room.settings.clone()));
