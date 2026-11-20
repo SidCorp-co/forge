@@ -7,22 +7,25 @@
 // after its writer said a key is coming, is a secret; the same token in a thread about anything else
 // is an id, and stays as it was written.
 //
-// ISS-1328: the note the session is handed asks for the deletion once, says why nothing was kept and
-// names the credential door (`support.secret_link`) in the same line; a later secret in the same
-// thread is told as already said, so no second deletion ask and no rotation ask ever follow. Core
-// posts nothing (ISS-845). ISS-1348: where the thread asked for a slot, the note carries that slot's
-// link and a fresh one-time write command, for the reply to give at once.
+// ISS-1372 (owner 2026-11-20): what a member hands over is kept in the bound project's vault before
+// the message is recorded (`secret-keep.ts`), and the note the session is handed names each entry,
+// its project, who can use it and the page where it is revoked or replaced, to say once in the same
+// reply. Nobody is asked to delete the message or rotate what it held: they chose to send it, and the
+// message is theirs. Core posts nothing (ISS-845). Where nothing could be kept, the note says why,
+// and, where the thread asked for a slot (ISS-1348), carries that slot's link and write command.
 
+import { SUPPORT_KEPT_SECRET_SCOPE } from '@forge/contracts/support';
 import { and, desc, eq, gte, inArray, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { projects } from '../db/schema-projects.js';
 import { supportActions } from '../db/schema-support.js';
 import type { RocketChatIncomingMessage } from '../integrations/rocketchat/index.js';
 import { webBaseUrl } from '../lib/web-base-url.js';
-import { channelOfRoom, shownNames } from './channel.js';
-import { membersOf } from './channel-store.js';
+import { type KeptEntry, slotKeyOf } from '../project-config/index.js';
 import { threadOf } from './rules.js';
 import { againOf, openAskIn, recordAsk } from './secret-asks.js';
 import { secretWriteOf } from './secret-link.js';
+import { anchorOf } from './secret-page-slots.js';
 import { slotLabelOf } from './secret-receipts.js';
 import { insertAction, type RoomRow } from './store.js';
 
@@ -164,41 +167,66 @@ async function doorLine(room: RoomRow, thread: string): Promise<string | null> {
   return null;
 }
 
-/** The act that makes a slot's door, where the thread asked for none yet. */
+/** The act that makes a slot's door, where the thread asked for none yet and nothing was kept. */
 const ASK_THE_DOOR =
-  'In that same reply, give the person the link and the one-time write command support.secret_link { thread, kind, …, presign: true } answers for the slot they meant (a variable, a testing profile’s credential or an integration’s), so the right door is the first one next time; never name a settings screen yourself.';
+  'Where they want it used, give in that same reply the link and the one-time write command support.secret_link { thread, kind, …, presign: true } answers for the slot they meant (a variable, a testing profile’s credential or an integration’s); never name a settings screen yourself.';
 
-/** The note on a thread's first secret: once, why, the door, one deletion ask, no rotation. */
-function firstSecretNote(
-  messageId: string,
-  who: string,
-  asked: string | null,
-  door: string | null,
-): string {
-  return [
-    `Message ${messageId} from ${who} in this thread held a secret; Forge kept nothing of it, and the bot cannot delete it.`,
-    'Say so once in this thread, in your own words: that it was not kept, and why (a secret is never kept in chat or in Forge).',
-    door ?? ASK_THE_DOOR,
-    `You may ask ${asked ? `@${asked}` : 'a Technical member'} once to delete that message from the chat server; if its author or a Technical member declines, that is settled for this thread and is never asked again.`,
-    'Never ask anyone to rotate, change or revoke it, never repeat what it held, and never keep it anywhere.',
-  ].join(' ');
+/** Never asked of the person who sent it (ISS-1372, owner 2026-11-20): the message is theirs. */
+const NOTHING_ASKED =
+  'Ask nobody to delete the message, or to rotate, change or revoke what it held: they chose to send it, the chat message is theirs, and Forge deletes nothing of it. Never repeat what it held.';
+
+/** Where a kept entry is revoked or replaced: its row on the project's Secrets page. */
+function entryPage(slug: string, projectId: string, ref: string): string | null {
+  const web = webBaseUrl();
+  if (!web) return null;
+  const anchor = anchorOf(slotKeyOf({ projectId, key: ref, environment: null }));
+  return `${web}/projects/${slug}/settings?tab=secrets#${anchor}`;
 }
 
-/** The note on a later secret in a thread already told: nothing is said of it again. */
-function againSecretNote(messageId: string, who: string, door: string | null): string {
+/** One kept entry as the note says it: its name, project, who can use it and where it is revoked. */
+function keptLine(e: KeptEntry, project: { id: string; slug: string }, who: string): string {
+  const page = entryPage(project.slug, project.id, e.ref);
+  const use =
+    e.state === 'usable'
+      ? `usable now by ${project.slug}'s master and its runs, read at GET /api/projects/${project.id}/acting-secrets/${SUPPORT_KEPT_SECRET_SCOPE}/${e.name} and audited on every read; acts done with it are recorded as ${e.actsAs}`
+      : `${who} holds no project admin on ${project.slug}, so nobody reads it until a project admin approves it (POST /api/projects/${project.id}/kept-secrets/${e.name}/approval), and it is destroyed unused at ${e.expiresAt}`;
+  return `"${e.label}" (${e.kind}) kept in ${project.slug}'s vault as ${e.ref}: ${use}; it is revoked or replaced on its page${page ? ` ${page}` : ` (the Secrets page of ${project.slug})`}.`;
+}
+
+/** The note on a thread's secret: what was kept, said once in this reply; or, kept nothing, why. */
+function secretNote(input: {
+  messageId: string;
+  who: string;
+  kept: KeptEntry[];
+  project: { id: string; slug: string };
+  again: boolean;
+  door: string | null;
+}): string {
+  const { messageId, who, kept, project, again, door } = input;
+  if (kept.length > 0) {
+    return [
+      `Message ${messageId} from ${who} in this thread held ${kept.length === 1 ? 'a credential' : `${kept.length} credentials`}, and Forge kept ${kept.length === 1 ? 'it' : 'them'} before the message was recorded; the room's record and transcript read [Secret kept: <name>] where each stood.`,
+      ...kept.map((e) => keptLine(e, project, who)),
+      'Tell the room once, in this same reply and in your own words: what was kept, under which name, for which project, who can use it, and the page where it is revoked or replaced. Then go on with what they sent it for.',
+      `The project's master reads it the same way; where the person wants the master to act with it, ask the master with support.ask_master naming its secret:// name, never the value.`,
+      NOTHING_ASKED,
+    ].join(' ');
+  }
   return [
-    `Message ${messageId} from ${who} in this thread also held a secret; Forge kept nothing of it.`,
-    'This thread was already told once: say nothing more of it, ask no deletion and no rotation, and answer what the person asked.',
-    door
-      ? `Where they want it used: ${door}. Never repeat what it held.`
-      : 'Where they want it used, the link support.secret_link answers is still the way; never repeat what it held.',
+    `Message ${messageId} from ${who} in this thread held a secret, and this core could not keep it (no vault key is set), so the room's record reads [Filtered] and nothing of it was kept.`,
+    again
+      ? 'This thread was already told once: say nothing more of it, and answer what the person asked.'
+      : 'Say so once in this thread, in your own words.',
+    door ?? ASK_THE_DOOR,
+    NOTHING_ASKED,
   ].join(' ');
 }
 
 /**
- * A member posted a secret (BC-40): what was kept of the message is scrubbed already, and the session
- * is handed the fact (which message, whose, the Technical member who can delete it and the credential
- * door) to say in its own words, once per thread (ISS-1328). Core posts nothing (ISS-845).
+ * A member posted a secret (BC-40): it was kept in the bound project's vault before the message was
+ * recorded (ISS-1372, `secret-keep.ts`), and the session is handed the fact, which entry, under which
+ * name, who can use it and where it is revoked, to say once in its own words in the same reply. Nobody
+ * is asked to delete anything. Core posts nothing (ISS-845).
  */
 export async function flagSecret(
   room: RoomRow,
@@ -206,18 +234,24 @@ export async function flagSecret(
   thread: string,
   messageId: string,
   author: { key: string; label: string | null },
+  kept: KeptEntry[] = [],
 ): Promise<void> {
-  const channel = await channelOfRoom(room);
-  const technical = (await membersOf(channel.id))
-    .filter((m) => m.roles.includes('technical'))
-    .sort((a, b) => (a.state === b.state ? 0 : a.state === 'confirmed' ? -1 : 1))[0];
   const who = author.label ? `@${author.label}` : `account ${author.key}`;
-  const asked = technical ? (await shownNames(room, [technical]))(technical.username) : null;
   const again = await toldBefore(room.id, thread, messageId, author.key);
-  const door = await doorLine(room, thread);
-  const note = again
-    ? againSecretNote(messageId, who, door)
-    : firstSecretNote(messageId, who, asked, door);
+  const door = kept.length > 0 ? null : await doorLine(room, thread);
+  const [project] = await db
+    .select({ id: projects.id, slug: projects.slug })
+    .from(projects)
+    .where(eq(projects.id, room.projectId))
+    .limit(1);
+  const note = secretNote({
+    messageId,
+    who,
+    kept,
+    project: project ?? { id: room.projectId, slug: room.projectId },
+    again,
+    door,
+  });
   // the fact goes to the session as a note of the thread, handed on with the message itself
   await insertAction({
     roomId: room.id,
@@ -237,6 +271,10 @@ export async function flagSecret(
     kind: 'secret_flagged',
     actorKind: 'core',
     input: { message: messageId },
-    output: { technical: asked, posted: false, told: again ? 'again' : 'first' },
+    output: {
+      posted: false,
+      told: again ? 'again' : 'first',
+      kept: kept.map((e) => ({ ref: e.ref, state: e.state })),
+    },
   });
 }

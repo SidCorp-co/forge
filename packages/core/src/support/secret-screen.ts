@@ -140,7 +140,8 @@ export function filteredValues(original: string, kept: string): string[] {
   const re = new RegExp(`^${parts.map(escapeRe).join('([\\s\\S]+?)')}$`);
   const found = re.exec(original);
   if (!found) return [];
-  return found.slice(1).map((v) => v.trim());
+  // a sentence's closing marks the screen took with the value are the sentence's (`passwordShaped`)
+  return found.slice(1).map((v) => v.trim().replace(/[.)\]]+$/, ''));
 }
 
 /** A message read without its thread: the scrubber's labels, and a chat credential its own words show. */

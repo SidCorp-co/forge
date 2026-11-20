@@ -107,19 +107,15 @@ export const SUPPORT_SCENARIOS: readonly CardScenario[] = [
     teaches: [/support\.propose_fix/, /support\.agree/],
   },
   {
-    name: 'a test key sent, then a declined deletion: one mention and the link',
+    name: 'a credential handed over in chat: kept, named once, nothing asked of its sender',
     card: 'support.secret_link',
     source:
-      'ISS-1328, Catalog-AdminHub thread of 18/11: the owner’s grant of a test key refused four times, then a delete-and-rotate ask after he declined',
+      'ISS-1372, Forge-Communicate AdminHub thread of 20/11: the owner’s production token was dropped as [Filtered], then he was asked to delete his message; ISS-1328, 18/11: a delete-and-rotate ask after he declined',
     situation:
-      'The owner sends a test account’s key for the master to use and says it needs no deletion',
-    bad: 'the bot refused the grant four times and asked him to delete the message and rotate the key',
-    good: 'say once it was not kept and why, give the secret link in the same line, ask no deletion again and never a rotation',
-    teaches: [
-      /say once that it was not kept/i,
-      /support\.secret_link/,
-      /never ask anyone to rotate/i,
-    ],
+      'The owner sends a production token in the thread for the master to set a supplier up with',
+    bad: 'the token was dropped, the bot said it was not kept and asked him to delete the message he chose to send',
+    good: 'say once what was kept, under which name, for which project, who can use it and where it is revoked; ask no deletion and no rotation',
+    teaches: [/kept it in the project’s vault/i, /ask nobody to delete the message/i],
   },
   {
     name: 'a production variable asked for: the link to that field and a one-time write command',

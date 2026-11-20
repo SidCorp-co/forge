@@ -8,8 +8,8 @@ import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requiresOnParam } from '../permissions/index.js';
-import { actingSecretDoor } from './secret-value-door.js';
 import { decideKept, type KeptEntry, keptEntries } from './kept-secrets.js';
+import { actingSecretDoor } from './secret-value-door.js';
 
 export const keptSecretRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -81,7 +81,11 @@ for (const [method, path, decision] of [
         actor: { id: actor.id, tokenId: actor.tokenId },
       });
       if (!decided.ok) {
-        return refused(c, [{ code: decided.code, path: '/name', detail: decided.detail }], 'CONFIG_REFUSED');
+        return refused(
+          c,
+          [{ code: decided.code, path: '/name', detail: decided.detail }],
+          'CONFIG_REFUSED',
+        );
       }
       return c.json(viewOf(id, decided.entry));
     },

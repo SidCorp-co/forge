@@ -2,9 +2,12 @@
 // here is an obvious fake planted for the test.
 import { FILTERED } from '@forge/observability';
 import { describe, expect, it } from 'vitest';
-import { screenAlone, scrubChatCredentials } from './secret-screen.js';
+import { proposalOf } from './secret-keep.js';
+import { filteredValues, screenAlone, scrubChatCredentials } from './secret-screen.js';
 
 const PASS = 'Fake-Pass-0042';
+// an obvious fake in a production token's shape, built here so no literal token sits in the tree
+const TOKEN = ['fake', 'session', 'Zq8vN3pL5tR2wX7y'].join('-');
 
 describe('a password under a short chat label', () => {
   it.each([
@@ -61,17 +64,51 @@ describe('an email or user name paired with a password', () => {
   });
 
   it('reads a message that asks for the login itself, and leaves a labelled pair scrubbed once', () => {
-    expect(screenAlone(`Login cho test: tester@example.test / ${PASS}`)).toEqual({
+    expect(screenAlone(`Login cho test: tester@example.test / ${PASS}`)).toMatchObject({
       text: `Login cho test: tester@example.test / ${FILTERED}`,
       secret: true,
     });
-    expect(screenAlone(`email: tester@example.test, password: ${PASS}`)).toEqual({
+    expect(screenAlone(`email: tester@example.test, password: ${PASS}`)).toMatchObject({
       text: `email: tester@example.test, password: ${FILTERED}`,
       secret: true,
     });
     expect(screenAlone('my email is tester@example.test')).toEqual({
       text: 'my email is tester@example.test',
       secret: false,
+      values: [],
     });
+  });
+});
+
+describe('ISS-1372: each filtered value, read back for the vault, and the name it is proposed under', () => {
+  it('reads every value a screened message filtered, in order, and nothing else', () => {
+    const text = `token: ${TOKEN}\npassword: ${PASS}. thanks`;
+    const kept = screenAlone(text);
+    expect(kept.secret).toBe(true);
+    expect(kept.values).toEqual([TOKEN, PASS]);
+    expect(kept.text).not.toContain(TOKEN);
+    expect(screenAlone('my email is tester@example.test').values).toEqual([]);
+  });
+
+  it('reads nothing where the kept text does not line up with the original', () => {
+    expect(filteredValues('something else entirely', `token: ${FILTERED}`)).toEqual([]);
+    expect(filteredValues('no secret here', 'no secret here')).toEqual([]);
+  });
+
+  it.each([
+    [
+      `AdminHub production token: ${FILTERED}`,
+      'AdminHub production token',
+      'token',
+      /^adminhub-production-token$/,
+    ],
+    [`mk: ${FILTERED}`, 'password', 'password', /^password$/],
+    [`mật khẩu là ${FILTERED}`, 'mật khẩu', 'password', /^mat-khau$/], // i18n-allow: the label under test
+    [`${FILTERED}`, 'credential', 'credential', /^credential$/],
+    [`PGPrints api key = ${FILTERED}`, 'PGPrints api key', 'key', /^pgprints-api-key$/],
+  ])('proposes a name and kind from the words before the value: %s', (text, label, kind, slug) => {
+    const p = proposalOf(text, 0);
+    expect([p.label, p.kind]).toEqual([label, kind]);
+    expect(p.slug).toMatch(slug);
   });
 });

@@ -16,11 +16,20 @@
  * thread that asked for a login, are each kept scrubbed and flagged; an email alone is kept as written.
  * A secret the screen did not catch is redacted on the record through a door naming its action.
  *
+ * ISS-1372 (AdminHub thread of 20/11): the owner's production token was dropped as [Filtered] and he
+ * was asked to delete his message. Held here: what a project admin hands over is kept in the bound
+ * project's vault and read by its master at the acting door, audited; a non-admin's waits pending for
+ * a day, until a project admin approves or discards it; the record and transcript read
+ * [Secret kept: <name>]; the value is in no row, log line or prompt; nobody is asked to delete.
+ *
  * @direct-test-of packages/core/src/support/secret-flag.ts
  * @direct-test-of packages/core/src/support/secret-screen.ts
  * @direct-test-of packages/core/src/support/secret-redact.ts
  * @direct-test-of packages/core/src/support/secret-link.ts
  * @direct-test-of packages/core/src/support/inbound.ts
+ * @direct-test-of packages/core/src/support/secret-keep.ts
+ * @direct-test-of packages/core/src/project-config/kept-secrets.ts
+ * @direct-test-of packages/core/src/project-config/kept-secret-routes.ts
  */
 
 import { sql } from 'drizzle-orm';
@@ -30,12 +39,17 @@ vi.hoisted(() => {
   process.env.INTEGRATION_MASTER_KEY ??= Buffer.alloc(32, 5).toString('base64');
 });
 
+import { db } from '../../src/db/client.js';
+import { ensureMasterSession } from '../../src/devices/index.js';
+import { logger } from '../../src/lib/logger.js';
 import { api } from '../helpers/api.js';
 import { rows } from '../helpers/factories.js';
 import { type Act, ChannelWorld, code } from '../helpers/support-channel.js';
 import type { Member, TurnMessage } from '../helpers/support-world.js';
 
 const w = new ChannelWorld();
+/** Every line the process logged, as the logger was handed it (ISS-1372). */
+const logged: string[] = [];
 // obvious fakes, built here so no literal key sits in the tree
 const KEY = 'a1b2c3d4e5f60718'.repeat(2);
 const KEY_TWO = '0f1e2d3c4b5a6978'.repeat(2);
@@ -44,6 +58,15 @@ const DECLINED = 'không cần xóa'; // i18n-allow: the owner's words on 18/11,
 
 beforeAll(async () => {
   await w.open();
+  // every line logged is recorded, so a planted value can be looked for in all of them (ISS-1372);
+  // the world's own spy on errors keeps doing what it did
+  for (const level of ['trace', 'debug', 'info', 'warn', 'error', 'fatal'] as const) {
+    const before = logger[level].bind(logger) as (...a: unknown[]) => void;
+    vi.spyOn(logger, level).mockImplementation(((...args: unknown[]) => {
+      logged.push(JSON.stringify(args, (_k, v) => (v instanceof Error ? v.message : v)));
+      return before(...args);
+    }) as never);
+  }
   const carol = await w.confirm('carol', {
     roles: ['technical'],
     askFor: 'deleting chat messages',
@@ -111,23 +134,20 @@ describe('ISS-1326: a key sent alone is a secret where its thread says so', () =
     // planted on today's code: the bare key is kept as written and no note follows
     expect(await kept(bare)).not.toContain(KEY);
     await expect.poll(() => notesIn(first).length, { timeout: 15_000 }).toBe(2);
-    expect(await flagsOf(first)).toEqual([{ technical: 'carol', posted: false, told: 'first' }]);
-    expect(await flagsOf(bare)).toEqual([{ technical: 'carol', posted: false, told: 'again' }]);
+    expect(await flagsOf(first)).toMatchObject([{ posted: false, told: 'first' }]);
+    expect(await flagsOf(bare)).toMatchObject([{ posted: false, told: 'again' }]);
 
     const [once, again] = notesIn(first).map((n) => n.text);
-    // the first note: said once, why, the credential door in the same line, one deletion ask
-    expect(once).toContain('Say so once in this thread');
-    expect(once).toContain('support.secret_link');
-    expect(once).toContain('@carol once to delete');
-    expect(once).toContain('settled for this thread');
-    expect(once).toContain('Never ask anyone to rotate');
-    // the second: already told, no deletion ask, no rotation ask
-    expect(again).toContain('already told once');
-    expect(again).toContain('ask no deletion and no rotation');
-    expect(again).not.toMatch(/to delete that message|@carol/);
-    for (const n of [once, again]) expect(n).not.toContain(KEY);
-    // the session asked for the link on the first note alone; the profile is not declared here
-    expect(said).toEqual(['SUPPORT_SECRET_PROFILE_UNKNOWN']);
+    // each note names what was kept, said once in the reply; nobody is asked to delete (ISS-1372)
+    for (const n of [once, again]) {
+      expect(n).toContain('secret://kept/');
+      expect(n).toContain('Tell the room once, in this same reply');
+      expect(n).toContain('Ask nobody to delete the message');
+      expect(n).not.toMatch(/@carol|once to delete|settled for this thread/);
+      expect(n).not.toContain(KEY);
+    }
+    // the value was kept, so no slot link is asked for
+    expect(said).toEqual([]);
     expect(await w.linesIn(first)).toEqual([]);
   });
 
@@ -140,12 +160,12 @@ describe('ISS-1326: a key sent alone is a secret where its thread says so', () =
     await expect.poll(() => notesIn(labelled).length, { timeout: 15_000 }).toBe(1);
     const bare = await say(dave, KEY_THREE);
     expect(await kept(bare)).not.toContain(KEY_THREE);
-    expect(await flagsOf(labelled)).toEqual([{ technical: 'carol', posted: false, told: 'first' }]);
-    // planted on toldBefore matching the bare key's own id alone: it read 'first', and asked again
-    expect(await flagsOf(bare)).toEqual([{ technical: 'carol', posted: false, told: 'again' }]);
+    expect(await flagsOf(labelled)).toMatchObject([{ posted: false, told: 'first' }]);
+    // planted on toldBefore matching the bare key's own id alone: it read 'first'
+    expect(await flagsOf(bare)).toMatchObject([{ posted: false, told: 'again' }]);
     await expect.poll(() => notesIn(bare).length, { timeout: 15_000 }).toBe(1);
     const [note] = notesIn(bare).map((n) => n.text);
-    expect(note).toContain('already told once');
+    expect(note).toContain('secret://kept/');
     expect(note).not.toMatch(/to delete that message|@carol/);
   });
 
@@ -154,7 +174,7 @@ describe('ISS-1326: a key sent alone is a secret where its thread says so', () =
     const opened = await say(w.chat.alice, 'Gửi anh secret key của tài khoản test nhé');
     const bare = await say(w.chat.alice, KEY_TWO, opened);
     expect(await kept(bare)).not.toContain(KEY_TWO);
-    expect(await flagsOf(bare)).toEqual([{ technical: 'carol', posted: false, told: 'first' }]);
+    expect(await flagsOf(bare)).toMatchObject([{ posted: false, told: 'first' }]);
   });
 
   it('keeps a sha sent alone in a thread about a commit as written (ISS-614 holds)', async () => {
@@ -176,7 +196,7 @@ describe('ISS-1353: account credentials written in chat are kept scrubbed and fl
     w.box.model = async () => undefined;
     const said = await say(w.chat.alice, `Mật khẩu: ${PASS}`); // i18n-allow: the label under test
     expect(await kept(said)).not.toContain(PASS);
-    expect(await kept(said)).toContain('[Filtered]');
+    expect(await kept(said)).toMatch(/\[Secret kept: mat-khau-[0-9a-f]{6}\]/);
     expect(await flagsOf(said)).toHaveLength(1);
   });
 
@@ -184,7 +204,9 @@ describe('ISS-1353: account credentials written in chat are kept scrubbed and fl
     w.box.model = async () => undefined;
     const asked = await say(w.chat.bob, 'Cho mình xin tài khoản test để đăng nhập nhé'); // i18n-allow: "give me a test account to sign in"
     const pair = await say(w.chat.alice, `${EMAIL} / ${PASS}`, asked);
-    expect(await kept(pair)).toBe(`${EMAIL} / [Filtered]`);
+    expect(await kept(pair)).toMatch(
+      new RegExp(`^${EMAIL} / \\[Secret kept: credential-[0-9a-f]{6}\\]$`),
+    );
     expect(await flagsOf(pair)).toHaveLength(1);
   });
 
@@ -237,6 +259,199 @@ describe('ISS-1353: account credentials written in chat are kept scrubbed and fl
     const email = await say(w.chat.alice, `use ${EMAIL}`, asked);
     expect(await kept(email)).toBe(`use ${EMAIL}`);
     expect(await flagsOf(email)).toEqual([]);
+  });
+});
+
+describe('ISS-1372: a credential handed over in a bound room is kept, not dropped', () => {
+  // obvious fakes in a production token's shape, built here so no literal token sits in the tree
+  const ADMIN_TOKEN = ['fake', 'prod', 'Zq8vN3pL5tR2wX7yK4mB'].join('-');
+  const MEMBER_TOKEN = ['fake', 'prod', 'Hd5sQ9wE2rT7yU4iO1pA'].join('-');
+  const OTHER_TOKEN = ['fake', 'prod', 'Lm3nB8vC1xZ6aS9dF2gH'].join('-');
+  const erin: Member = { userId: 'u-erin', username: 'erin' };
+  const frank: Member = { userId: 'u-frank', username: 'frank' };
+  const kept = (id: string) =>
+    rows<{ t: string }>(sql`
+      SELECT input->>'text' AS t FROM support_actions
+       WHERE room_id = ${w.roomId}::uuid AND external_id = ${id} AND kind = 'message_in'`).then(
+      (r) => String(r[0]?.t),
+    );
+  type Entry = {
+    name: string;
+    ref: string;
+    state: string;
+    message: string;
+    label: string;
+    kind: string;
+    expiresAt: string | null;
+    valueAt: string | null;
+    from: { admin: boolean; userId: string | null };
+  };
+  const entryOf = async (message: string): Promise<Entry> => {
+    const list = await api(w.owner, 'GET', `/api/projects/${w.projectId}/kept-secrets`);
+    expect(list.status, JSON.stringify(list.body)).toBe(200);
+    const found = (list.body.kept as Entry[]).find((e) => e.message === message);
+    expect(found, JSON.stringify(list.body)).toBeDefined();
+    return found as Entry;
+  };
+  let master = '';
+
+  beforeAll(async () => {
+    // erin is the owner's own chat account; frank is a member with no Forge account
+    const namespace = new URL(w.chat.serverUrl).host;
+    await db.execute(sql`
+      INSERT INTO assistant_speaker_links (source, external_namespace, external_id, external_label, user_id, confirmed_via)
+      VALUES ('rocketchat', ${namespace}, ${erin.userId}, ${erin.username}, ${w.ownerId}, 'channel_email_match')`);
+    await ensureMasterSession({ deviceId: w.box.deviceId, projectId: w.projectId, name: 'master' });
+    // the box's own credential, which a master on that box calls under
+    master = w.box.token;
+  });
+
+  const read = (name: string) =>
+    api(master, 'GET', `/api/projects/${w.projectId}/acting-secrets/kept/${name}`);
+
+  it("keeps a project admin's token in the vault, names it in the record and the note, and the master reads it audited (c1, c3, c4)", async () => {
+    w.box.model = async () => undefined;
+    const id = await say(erin, `AdminHub production token: ${ADMIN_TOKEN}`);
+    const entry = await entryOf(id);
+    expect(entry).toMatchObject({
+      label: 'AdminHub production token',
+      kind: 'token',
+      state: 'usable',
+      expiresAt: null,
+      ref: `secret://kept/${entry.name}`,
+      from: { admin: true, userId: w.ownerId },
+    });
+    expect(entry.name).toMatch(/^adminhub-production-token-[0-9a-f]{6}$/);
+    // the record and the transcript name what it became
+    expect(await kept(id)).toBe(`AdminHub production token: [Secret kept: ${entry.name}]`);
+    const [message] = await rows<{ content: string }>(sql`
+      SELECT content FROM conversation_messages WHERE external_id = ${id}`);
+    expect(message?.content).toBe(`AdminHub production token: [Secret kept: ${entry.name}]`);
+    // the note, handed with the message in the same turn, names it, its project and who uses it
+    await expect.poll(() => notesIn(id).length, { timeout: 15_000 }).toBe(1);
+    const [note] = notesIn(id).map((n) => n.text);
+    expect(note).toContain(`"AdminHub production token" (token) kept in`);
+    expect(note).toContain(entry.ref);
+    expect(note).toContain('master and its runs');
+    expect(note).toContain('revoked or replaced on its page');
+    expect(note).toContain('Tell the room once, in this same reply');
+    expect(note).not.toMatch(/delete (that|the) message from|You may ask|cannot delete it/);
+    // the master reads it at the acting door, and the read is audited
+    const got = await read(entry.name);
+    expect(got.status, JSON.stringify(got.body)).toBe(200);
+    expect(got.body).toMatchObject({
+      secret: entry.ref,
+      value: ADMIN_TOKEN,
+      reader: { kind: 'master' },
+    });
+    const [audit] = await rows<{ n: number }>(sql`
+      SELECT count(*)::int AS n FROM project_variable_events
+       WHERE project_id = ${w.projectId}::uuid AND act = 'delivered' AND key = ${entry.ref}`);
+    expect(audit?.n).toBe(1);
+    expect(await w.linesIn(id)).toEqual([]);
+  });
+
+  it("holds a non-admin's token pending for a day, unreadable until an admin approves it (c2)", async () => {
+    w.box.model = async () => undefined;
+    const id = await say(frank, `AdminHub production token: ${MEMBER_TOKEN}`);
+    const entry = await entryOf(id);
+    expect(entry).toMatchObject({
+      state: 'pending',
+      valueAt: null,
+      from: { admin: false, userId: null },
+    });
+    const hours = (Date.parse(String(entry.expiresAt)) - Date.now()) / 3_600_000;
+    expect(hours).toBeGreaterThan(23.9);
+    expect(hours).toBeLessThanOrEqual(24);
+    await expect.poll(() => notesIn(id).length, { timeout: 15_000 }).toBe(1);
+    expect(notesIn(id)[0]?.text).toContain('holds no project admin');
+    const refusedRead = await read(entry.name);
+    expect([refusedRead.status, code(refusedRead.body as Record<string, unknown>)]).toEqual([
+      409,
+      'ACTING_SECRET_KEPT_PENDING',
+    ]);
+    // a stranger and an agent's token are refused; the owner approves it
+    const approve = (token: string) =>
+      api(token, 'POST', `/api/projects/${w.projectId}/kept-secrets/${entry.name}/approval`);
+    expect((await approve(w.stranger)).status).toBe(403);
+    expect(code((await approve(master)).body as Record<string, unknown>)).toBe(
+      'KEPT_SECRET_PERSON_ONLY',
+    );
+    const approved = await approve(w.owner);
+    expect(approved.status, JSON.stringify(approved.body)).toBe(200);
+    expect(approved.body).toMatchObject({ state: 'usable', decidedBy: w.ownerId });
+    expect(((await read(entry.name)).body as { value?: string }).value).toBe(MEMBER_TOKEN);
+    const again = await approve(w.owner);
+    expect([again.status, code(again.body as Record<string, unknown>)]).toEqual([
+      409,
+      'KEPT_SECRET_NOT_PENDING',
+    ]);
+  });
+
+  it("discards a pending token at an admin's word, and destroys one left past its day (c2)", async () => {
+    w.box.model = async () => undefined;
+    const discarded = await entryOf(await say(frank, `AdminHub production token: ${OTHER_TOKEN}`));
+    const gone = await api(
+      w.owner,
+      'DELETE',
+      `/api/projects/${w.projectId}/kept-secrets/${discarded.name}`,
+    );
+    expect(gone.status, JSON.stringify(gone.body)).toBe(200);
+    expect(gone.body).toMatchObject({ state: 'discarded' });
+    const after = await read(discarded.name);
+    expect([after.status, code(after.body as Record<string, unknown>)]).toEqual([
+      404,
+      'ACTING_SECRET_KEPT_GONE',
+    ]);
+
+    const late = await entryOf(await say(frank, `staging api key = ${OTHER_TOKEN}x`));
+    // a day passes: the record's expiry is moved into the past
+    await db.execute(sql`
+      UPDATE project_variable_events
+         SET detail = jsonb_set(detail, '{kept,expiresAt}', to_jsonb((now() - interval '1 minute')::text))
+       WHERE project_id = ${w.projectId}::uuid AND key = ${late.ref} AND act = 'created'`);
+    const expired = await read(late.name);
+    expect([expired.status, code(expired.body as Record<string, unknown>)]).toEqual([
+      404,
+      'ACTING_SECRET_KEPT_GONE',
+    ]);
+    const values = await rows<{ n: number }>(sql`
+      SELECT count(*)::int AS n FROM project_secrets
+       WHERE project_id = ${w.projectId}::uuid AND scope = 'kept' AND name IN (${late.name}, ${discarded.name})`);
+    expect(values[0]?.n).toBe(0);
+    expect(await entryOf(late.message)).toMatchObject({ state: 'expired' });
+  });
+
+  it('holds the planted values in no row of any table, no log line and no prompt (c5)', async () => {
+    const planted = [ADMIN_TOKEN, MEMBER_TOKEN, OTHER_TOKEN];
+    const tables = await rows<{ t: string }>(sql`
+      SELECT quote_ident(table_name) AS t FROM information_schema.tables
+       WHERE table_schema = 'public' AND table_type = 'BASE TABLE'`);
+    const hits: string[] = [];
+    for (const { t } of tables) {
+      for (const v of planted) {
+        const [row] = await rows<{ n: number }>(
+          sql.raw(
+            `SELECT count(*)::int AS n FROM public.${t} x WHERE to_jsonb(x)::text LIKE '%${v}%'`,
+          ),
+        );
+        if ((row?.n ?? 0) > 0) hits.push(t);
+      }
+    }
+    expect(hits).toEqual([]);
+    const prompts = JSON.stringify(w.box.turns);
+    expect(logged.length).toBeGreaterThan(0);
+    for (const v of planted) {
+      expect(logged.filter((l) => l.includes(v))).toEqual([]);
+      expect(prompts.includes(v)).toBe(false);
+    }
+  });
+
+  it('asks nobody to delete in any note core handed the room (c4)', () => {
+    const notes = w.box.turns.flatMap((t) => t.messages).filter((m) => m.from === 'forge');
+    expect(notes.length).toBeGreaterThan(0);
+    for (const n of notes)
+      expect(n.text).not.toMatch(/You may ask .* to delete|delete that message from/);
   });
 });
 

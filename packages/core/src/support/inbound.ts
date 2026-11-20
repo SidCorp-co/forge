@@ -27,7 +27,8 @@ import { noteRoomMessage } from './room-replies.js';
 import { ensureSupportRoom } from './rooms.js';
 import { clipMessage, limitsOf, threadOf } from './rules.js';
 import { flagSecret } from './secret-flag.js';
-import { screenAlone, screenMessage } from './secret-screen.js';
+import { type KeptHere, keepScreened } from './secret-keep.js';
+import { type Screened, screenAlone, screenMessage } from './secret-screen.js';
 import { addressedInGroup, groupSharers, threadHeldByAnother } from './shared-group.js';
 import {
   insertAction,
@@ -128,16 +129,40 @@ export async function handleSupportMessage(input: {
         ? { kind: 'agent', agent: route.agent }
         : { kind: 'support', support: config },
   });
-  // a posted secret is never kept: the message is recorded and handed on without it (REQ-75 r6
-  // BC-40), by its label in English or Vietnamese, as account credentials written in chat
-  // (ISS-1353), or as a key sent alone where its thread says so (ISS-1326; `secret-screen.ts`)
+  // a posted secret never reaches a record: the message is recorded and handed on without it (REQ-75
+  // r6 BC-40), read by its label in English or Vietnamese, as account credentials written in chat
+  // (ISS-1353), or as a key sent alone where its thread says so (ISS-1326; `secret-screen.ts`); what
+  // was caught is kept in the bound project's vault first, and the text names it (ISS-1372)
   const screened = await screenMessage(room, input.m);
   const secret = screened.secret;
-  const m = secret ? { ...input.m, text: screened.text } : input.m;
+  const held = secret ? await keepHandedOver(room, input.m, screened) : null;
+  const m = held ? { ...input.m, text: held.text } : input.m;
   try {
-    await takeIntoRoom(room, { ...input, m }, config, secret);
+    await takeIntoRoom(room, { ...input, m }, config, held);
   } catch (err) {
     await recordUnhandled(room, m, err);
+  }
+}
+
+/**
+ * What the screen caught, kept in the vault before anything is recorded (`secret-keep.ts`). A keep
+ * that fails leaves the value filtered and kept nowhere, logged by the failure's kind alone, so no
+ * line can carry what it held; the session is told it was not kept.
+ */
+async function keepHandedOver(
+  room: RoomRow,
+  m: RocketChatIncomingMessage,
+  screened: Screened,
+): Promise<KeptHere> {
+  try {
+    const { namespace } = await roomAuth(room);
+    return await keepScreened(room, m, screened, namespace);
+  } catch (err) {
+    logger.error(
+      { roomId: room.id, msgId: m.id, failure: err instanceof Error ? err.name : typeof err },
+      'support: a credential handed over in a room was not kept; it stays filtered',
+    );
+    return { text: screened.text, kept: [] };
   }
 }
 
@@ -193,7 +218,7 @@ async function takeIntoRoom(
     m: RocketChatIncomingMessage;
   },
   config: SupportRoomConfig,
-  secret: boolean,
+  held: KeptHere | null,
 ): Promise<void> {
   const { m } = input;
   const { auth, namespace } = await roomAuth(room);
@@ -211,7 +236,7 @@ async function takeIntoRoom(
     opts: { deliver: boolean; maxChars?: number; addressed?: Addressed },
   ): Promise<boolean> => {
     const fresh = await recordInbound(room, conversation.id, thread, message, by, opts);
-    if (fresh && secret) await flagSecret(room, conversation.id, thread, m.id, by);
+    if (fresh && held) await flagSecret(room, conversation.id, thread, m.id, by, held.kept);
     return fresh;
   };
 

@@ -20,9 +20,9 @@ export const SECRET_ACT_CARDS = {
       },
       {
         when: 'a person sends a key, a password or a token in chat, or offers one for you or the master to use',
-        do: 'say once that it was not kept and why, and in the same reply give the slot’s link and command, as the note names them; never repeat, use or keep what they sent',
+        do: 'Forge kept it in the project’s vault before recording the message; say once, in the same reply, what the note names: the entry’s name, its project, who can use it and the page where it is revoked or replaced',
         watch:
-          'a deletion its author or a Technical member declines is settled for the thread: never ask it again, and never ask anyone to rotate, change or revoke the key',
+          'ask nobody to delete the message or to rotate, change or revoke the key: they chose to send it, and the message is theirs; never repeat what it held',
       },
     ],
     practice: [
@@ -46,7 +46,7 @@ export const SECRET_ACT_CARDS = {
     family: 'room.message',
     audience: ['bot'],
     scenarios: [
-      'a test key sent, then a declined deletion: one mention and the link',
+      'a credential handed over in chat: kept, named once, nothing asked of its sender',
       'a production variable asked for: the link to that field and a one-time write command',
     ],
   },

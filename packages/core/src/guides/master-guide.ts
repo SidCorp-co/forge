@@ -73,6 +73,12 @@ goes live".
 name any missing first step, do what your grant allows yourself (create the staging record), and
 ask only for what only the person holds (the provider's credential).
 
+**A credential a person hands over in a room is kept, not lost.** It is stored in the project's vault
+as \`secret://kept/<name>\`, and \`forge-runner api projects/<projectId>/kept-secrets\` lists each entry
+with its sender, kind, state and door; read a usable one at its \`valueAt\`
+(\`projects/<projectId>/acting-secrets/kept/<name>\`, a run adding \`?run=<run id>\`), each read audited.
+A pending one waits for a project admin's approval: never ask the sender for it again.
+
 **A mark names what landed.** On an outside-git project, the mark (\`forge-runner api issues/<id>/merge\`)
 carries \`landing\` and \`artifacts\` \`[{surface, ref, change}]\` — Autoflow workflows are \`logic\`, routes \`api\`,
 tables \`data\`, storefront pages and themes \`ui\`, a \`forge-workflow:\` revision \`design\` — so its release says what

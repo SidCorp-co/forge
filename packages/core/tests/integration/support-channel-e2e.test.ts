@@ -198,7 +198,7 @@ describe('REQ-75 r6: nothing private kept, and one person mentioned', () => {
     await w.confirm('carol', { roles: ['technical'], askFor: 'DNS and the mail hosts' });
   });
 
-  it('keeps a member’s posted secret out of every record and hands the session one Technical member to ask to delete it (BC-40)', async () => {
+  it('keeps a member’s posted secret out of every record, kept in the vault, and asks nobody to delete it (BC-40, ISS-1372)', async () => {
     const said = `my api token is ${TOKEN}, please check it`;
     const { id, turn } = await w.ask(w.chat.bob, said, async () => undefined);
     expect(turn.text).not.toContain(TOKEN);
@@ -217,16 +217,17 @@ describe('REQ-75 r6: nothing private kept, and one person mentioned', () => {
     await expect.poll(() => flags().length, { timeout: 15_000 }).toBe(1);
     const [flag] = flags();
     expect(flag?.thread).toBe(id);
-    expect(flag?.text).toContain('held a secret');
-    // once per thread, naming the credential door, one deletion ask and no rotation (ISS-1328)
-    expect(flag?.text).toContain('ask @carol once to delete that message');
-    expect(flag?.text).toContain('support.secret_link');
+    expect(flag?.text).toContain('held a credential');
+    // once per thread, naming what was kept; no deletion ask and no rotation (ISS-1372)
+    expect(flag?.text).toContain('secret://kept/');
+    expect(flag?.text).toContain('Ask nobody to delete the message');
+    expect(flag?.text).not.toContain('@carol');
     expect(flag?.text).not.toContain(TOKEN);
     // core posts nothing in the thread
     expect(await w.linesIn(id)).toEqual([]);
     const [action] = await rows<{ output: { technical: string; posted: boolean } }>(sql`
       SELECT output FROM support_actions WHERE room_id = ${w.roomId}::uuid AND kind = 'secret_flagged'`);
-    expect(action?.output).toEqual({ technical: 'carol', posted: false, told: 'first' });
+    expect(action?.output).toMatchObject({ posted: false, told: 'first' });
   });
 
   it('lets a reply mention one person the channel lists or the asker, and refuses any other (BC-34)', async () => {

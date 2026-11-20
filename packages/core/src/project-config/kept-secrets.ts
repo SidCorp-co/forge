@@ -100,7 +100,14 @@ export async function keepChatSecret(input: {
       },
     ]);
   });
-  return { ...kept, ref: refOf(record.name), state: kept.expiresAt ? 'pending' : 'usable', fingerprint, decidedBy: null, decidedAt: null };
+  return {
+    ...kept,
+    ref: refOf(record.name),
+    state: kept.expiresAt ? 'pending' : 'usable',
+    fingerprint,
+    decidedBy: null,
+    decidedAt: null,
+  };
 }
 
 type EventRow = {
@@ -116,7 +123,7 @@ type EventRow = {
 function entryOf(rows: readonly EventRow[], now: Date): KeptEntry | null {
   const [first, ...later] = rows;
   const kept = first?.detail.kept as KeptRecord | undefined;
-  if (!first || first.act !== 'created' || !kept) return null;
+  if (first?.act !== 'created' || !kept) return null;
   let state: KeptState = kept.expiresAt ? 'pending' : 'usable';
   let decidedBy: string | null = null;
   let decidedAt: string | null = null;
@@ -174,7 +181,9 @@ function entriesOf(rows: readonly EventRow[]): KeptEntry[] {
 async function destroyExpired(projectId: string, entries: KeptEntry[]): Promise<void> {
   for (const e of entries.filter((x) => x.state === 'expired')) {
     await db.transaction(async (tx) => {
-      if (!(await drizzleConfigStore.deleteSecret(tx, projectId, SUPPORT_KEPT_SECRET_SCOPE, e.name))) {
+      if (
+        !(await drizzleConfigStore.deleteSecret(tx, projectId, SUPPORT_KEPT_SECRET_SCOPE, e.name))
+      ) {
         return;
       }
       await insertEvents(tx, [
@@ -231,7 +240,8 @@ export async function decideKept(input: {
       detail: `this project kept no credential from a room under ${refOf(input.name)}; GET /api/projects/${input.projectId}/kept-secrets lists the ones it kept. Nothing was changed.`,
     };
   }
-  const discardable = entry.state === 'pending' || (input.decision === 'discard' && entry.state === 'usable');
+  const discardable =
+    entry.state === 'pending' || (input.decision === 'discard' && entry.state === 'usable');
   if (!discardable) {
     return {
       ok: false,
@@ -241,7 +251,12 @@ export async function decideKept(input: {
   }
   await db.transaction(async (tx) => {
     if (input.decision === 'discard') {
-      await drizzleConfigStore.deleteSecret(tx, input.projectId, SUPPORT_KEPT_SECRET_SCOPE, entry.name);
+      await drizzleConfigStore.deleteSecret(
+        tx,
+        input.projectId,
+        SUPPORT_KEPT_SECRET_SCOPE,
+        entry.name,
+      );
     }
     await insertEvents(tx, [
       {
