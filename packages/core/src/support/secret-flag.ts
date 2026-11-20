@@ -209,6 +209,7 @@ function secretNote(input: {
       ...kept.map((e) => keptLine(e, project, who)),
       'Tell the room once, in this same reply and in your own words: what was kept, under which name, for which project, who can use it, and the page where it is revoked or replaced. Then go on with what they sent it for.',
       `The project's master reads it the same way; where the person wants the master to act with it, ask the master with support.ask_master naming its secret:// name, never the value.`,
+      ...(door ? [door] : []),
       NOTHING_ASKED,
     ].join(' ');
   }
@@ -238,7 +239,8 @@ export async function flagSecret(
 ): Promise<void> {
   const who = author.label ? `@${author.label}` : `account ${author.key}`;
   const again = await toldBefore(room.id, thread, messageId, author.key);
-  const door = kept.length > 0 ? null : await doorLine(room, thread);
+  // a slot this thread asked for keeps its door in the note, kept value or not (ISS-1348 c4)
+  const door = await doorLine(room, thread);
   const [project] = await db
     .select({ id: projects.id, slug: projects.slug })
     .from(projects)

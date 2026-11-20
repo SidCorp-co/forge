@@ -424,11 +424,11 @@ describe('ISS-1348: a pasted secret is answered with its slot’s door', () => {
     );
     const pasted = await chat.say(chat.alice, `Secret: ${PASTED}`, opened);
     await expect
-      .poll(async () => (await notesIn(opened)).filter((n) => n.includes('held a secret')).length, {
+      .poll(async () => (await notesIn(opened)).filter((n) => n.includes('held a ')).length, {
         timeout: 15_000,
       })
       .toBe(1);
-    const [note] = (await notesIn(opened)).filter((n) => n.includes('held a secret'));
+    const [note] = (await notesIn(opened)).filter((n) => n.includes('held a '));
     expect(note).toContain(stripe.link);
     expect(note).toMatch(
       /curl -X PUT --data-binary @<file holding the value> '[^']+\/api\/secret-writes\/[A-Za-z0-9_-]{43}'/,
