@@ -19,6 +19,7 @@
  * @direct-test-of packages/core/src/issues/create-service.ts
  * @direct-test-of packages/core/src/issues/criteria/criteria-text.ts
  * @direct-test-of packages/core/src/issues/project-issue-routes.ts
+ * @direct-test-of packages/core/src/issues/criteria/served-text.ts
  */
 
 import { randomUUID } from 'node:crypto';
