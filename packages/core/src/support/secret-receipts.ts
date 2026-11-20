@@ -5,9 +5,11 @@
 // per fill, however many asks it made for that slot.
 
 import type { OutboxEventPayload } from '@forge/contracts/outbox-events';
+import { db } from '../db/client.js';
+import { logger } from '../lib/logger.js';
 import { deliverWaiting } from './dispatch.js';
 import { knownThread } from './outcome.js';
-import { type AskRow, fillAsks } from './secret-asks.js';
+import { type AskRow, fillAsks, openAsksOfSlot } from './secret-asks.js';
 import { insertAction, roomById } from './store.js';
 
 /** The slot an ask names, in the words the note says it with. */
@@ -32,31 +34,51 @@ function filledNote(ask: AskRow, fingerprint: string, via: 'page' | 'presigned')
   ].join(' ');
 }
 
-/** The `secret.slotFilled` consumer: each open ask for the slot is filled and its thread told. */
+/**
+ * The `secret.slotFilled` consumer: each thread with open asks for the slot is told once, its asks
+ * filled in the transaction that writes its note, so a fault leaves them open for the event's retry.
+ */
 export async function tellSlotFilled(p: OutboxEventPayload<'secret.slotFilled'>): Promise<void> {
-  const asks = await fillAsks(p.slot, {
-    fingerprint: p.fingerprint,
-    via: p.via,
-    by: p.by,
-    at: new Date(p.at),
-  });
-  const told = new Set<string>();
-  for (const ask of asks) {
+  const fill = { fingerprint: p.fingerprint, via: p.via, by: p.by, at: new Date(p.at) };
+  const threads = new Map<string, AskRow[]>();
+  for (const ask of await openAsksOfSlot(p.slot)) {
     const where = `${ask.roomId}\u0000${ask.thread}`;
-    if (told.has(where)) continue;
-    told.add(where);
-    const room = await roomById(ask.roomId);
-    if (!room) continue;
-    await insertAction({
-      roomId: room.id,
-      projectId: room.projectId,
-      conversationId: await knownThread(room, ask.thread),
-      thread: ask.thread,
-      kind: 'message_in',
-      actorKind: 'core',
-      input: { note: filledNote(ask, p.fingerprint, p.via) },
-      externalId: `secret-filled:${ask.id}`,
+    threads.set(where, [...(threads.get(where) ?? []), ask]);
+  }
+  for (const [first, ...rest] of threads.values()) {
+    if (!first) continue;
+    const room = await roomById(first.roomId);
+    if (!room) {
+      logger.warn(
+        { asks: [first, ...rest].map((a) => a.id), roomId: first.roomId, slot: p.slot },
+        'support: a filled secret was asked for in a room that is gone; no thread is told',
+      );
+    }
+    const conversationId = room ? await knownThread(room, first.thread) : null;
+    const filled = await db.transaction(async (tx) => {
+      const rows = await fillAsks(
+        tx,
+        [first, ...rest].map((a) => a.id),
+        fill,
+      );
+      const ask = rows[0];
+      if (ask && room) {
+        await insertAction(
+          {
+            roomId: room.id,
+            projectId: room.projectId,
+            conversationId,
+            thread: ask.thread,
+            kind: 'message_in',
+            actorKind: 'core',
+            input: { note: filledNote(ask, p.fingerprint, p.via) },
+            externalId: `secret-filled:${ask.id}`,
+          },
+          tx,
+        );
+      }
+      return rows;
     });
-    await deliverWaiting(room.id);
+    if (room && filled.length > 0) await deliverWaiting(room.id);
   }
 }

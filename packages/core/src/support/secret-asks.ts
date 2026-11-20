@@ -7,8 +7,8 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { OutboxEventPayload } from '@forge/contracts/outbox-events';
 import type { SecretShape } from '@forge/contracts/secret-slots';
 import type { SecretSlotKind } from '@forge/contracts/support';
-import { and, desc, eq, gt, gte, isNull, sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { and, asc, desc, eq, gt, gte, inArray, isNull, sql } from 'drizzle-orm';
+import { db, type Tx } from '../db/client.js';
 import { supportSecretAsks } from '../db/schema-support-secrets.js';
 import { emitEvent } from '../outbox/index.js';
 
@@ -106,19 +106,11 @@ export async function askOfToken(token: string): Promise<AskRow | null> {
   return row ?? null;
 }
 
-/** Every unfilled ask for `slotKey`, marked filled by `fingerprint`; each ask is told once. */
-export async function fillAsks(
-  slotKey: string,
-  fill: { fingerprint: string; via: 'page' | 'presigned'; by: string | null; at: Date },
-): Promise<AskRow[]> {
+/** The asks of `slotKey` still open to hear that it was filled. */
+export async function openAsksOfSlot(slotKey: string): Promise<AskRow[]> {
   return db
-    .update(supportSecretAsks)
-    .set({
-      filledAt: fill.at,
-      filledFingerprint: fill.fingerprint,
-      filledVia: fill.via,
-      filledBy: fill.by,
-    })
+    .select()
+    .from(supportSecretAsks)
     .where(
       and(
         eq(supportSecretAsks.slotKey, slotKey),
@@ -126,6 +118,28 @@ export async function fillAsks(
         gte(supportSecretAsks.createdAt, new Date(Date.now() - ASK_OPEN_MS)),
       ),
     )
+    .orderBy(asc(supportSecretAsks.createdAt));
+}
+
+/**
+ * The asks `ids` marked filled by `fingerprint`, in `tx` with the note that tells their thread: those
+ * still unfilled, so a pass that fills one first leaves this one nothing to tell again.
+ */
+export async function fillAsks(
+  tx: Tx,
+  ids: readonly string[],
+  fill: { fingerprint: string; via: 'page' | 'presigned'; by: string | null; at: Date },
+): Promise<AskRow[]> {
+  if (ids.length === 0) return [];
+  return tx
+    .update(supportSecretAsks)
+    .set({
+      filledAt: fill.at,
+      filledFingerprint: fill.fingerprint,
+      filledVia: fill.via,
+      filledBy: fill.by,
+    })
+    .where(and(inArray(supportSecretAsks.id, [...ids]), isNull(supportSecretAsks.filledAt)))
     .returning();
 }
 
@@ -174,6 +188,7 @@ export async function openAskIn(roomId: string, thread: string): Promise<AskRow 
 /** A slot's fill fact a write built and did not emit itself (an integration's credential), told to its asks. */
 export async function emitSlotFilled(
   filled: OutboxEventPayload<'secret.slotFilled'>,
+  tx: Tx = db,
 ): Promise<void> {
-  await emitEvent(db, 'secret.slotFilled', filled);
+  await emitEvent(tx, 'secret.slotFilled', filled);
 }

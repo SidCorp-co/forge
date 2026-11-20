@@ -301,6 +301,7 @@ interface UpdateConnectionPatch {
 export async function updateConnection(
   id: string,
   patch: UpdateConnectionPatch,
+  exec: Tx = db,
 ): Promise<IntegrationConnectionRow | null> {
   const set: Record<string, unknown> = { updatedAt: new Date() };
   if (patch.config !== undefined) set.config = patch.config;
@@ -318,7 +319,7 @@ export async function updateConnection(
   if (patch.inboundEndpointObserved !== undefined)
     set.inboundEndpointObserved = patch.inboundEndpointObserved;
   if (patch.breakerOpenedAt !== undefined) set.breakerOpenedAt = patch.breakerOpenedAt;
-  const [row] = await db
+  const [row] = await exec
     .update(integrationConnections)
     .set(set)
     .where(eq(integrationConnections.id, id))

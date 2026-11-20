@@ -124,9 +124,11 @@ async function writeSlot(ask: AskRow, value: string, from: string): Promise<stri
     }
     return fingerprintSecret(ask.projectId, value);
   }
-  const filled = await writeConnectionCredential(s.connection ?? '', value);
-  // the adapter builds the fact and emits none: the asking threads hear of it from here
-  await emitSlotFilled(filled);
+  // the adapter builds the fact and emits none: the asking threads hear of it from here, in the
+  // credential's own write, so a failed emit leaves no value set behind a URL given back
+  const filled = await writeConnectionCredential(s.connection ?? '', value, (tx, fact) =>
+    emitSlotFilled(fact, tx),
+  );
   return filled.fingerprint;
 }
 

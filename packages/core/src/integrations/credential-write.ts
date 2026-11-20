@@ -5,6 +5,7 @@
 // or domain that wrote the value emits it, as an adapter emits no event of its own.
 
 import type { OutboxEventPayload } from '@forge/contracts/outbox-events';
+import { db, type TxOnly } from '../db/client.js';
 import { RefusalError } from '../lib/refusal.js';
 import { applySecretsPatch } from './provider-schemas.js';
 import { getAdapter, getIntegration } from './registry.js';
@@ -43,12 +44,13 @@ export function connectionCredentialFilled(
 /**
  * The connection's credential replaced by `value`, judged as its edit page's replace-key box is: the
  * provider's own field, its rotation, and its fitness check. Refused by name where the provider takes
- * no credential typed by hand or the connection is gone; nothing is written then. Answers the fact the
- * caller emits.
+ * no credential typed by hand or the connection is gone; nothing is written then. The caller emits the
+ * fill fact through `told`, in the write's own transaction, so a value is never set untold.
  */
 export async function writeConnectionCredential(
   connectionId: string,
   value: string,
+  told: (tx: TxOnly, filled: OutboxEventPayload<'secret.slotFilled'>) => Promise<void>,
 ): Promise<OutboxEventPayload<'secret.slotFilled'>> {
   const connection = await findConnectionById(connectionId);
   const field = connection ? credentialFieldOf(connection.provider) : null;
@@ -78,9 +80,12 @@ export async function writeConnectionCredential(
     secrets,
   });
   if (unfit?.length) throw new RefusalError(unfit, 'CONFIG_REFUSED');
-  await updateConnection(connection.id, { secrets });
-  notifyConnectionChanged(connection.provider, connection.id);
   const filled = connectionCredentialFilled(connection, { [field]: value }, 'presigned', null);
   if (!filled) throw new Error(`integrations: ${connection.provider} took an empty ${field}`);
+  await db.transaction(async (tx) => {
+    await updateConnection(connection.id, { secrets }, tx);
+    await told(tx, filled);
+  });
+  notifyConnectionChanged(connection.provider, connection.id);
   return filled;
 }
