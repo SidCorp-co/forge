@@ -5,8 +5,8 @@
 
 import {
   askerLanguageOf,
-  confidentLanguageOf,
   type ReplyLanguage,
+  roomTextsLanguageOf,
 } from '../../conversations/index.js';
 
 /** Where the answering language was read: the message answered, the persona, or the room's texts. */
@@ -44,6 +44,5 @@ export function answeringLanguageOf(input: {
   if (asker) return { language: asker, from: 'asker' };
   const persona = personaLanguageOf(input.persona);
   if (persona) return { language: persona, from: 'persona' };
-  const vi = input.texts.some((t) => confidentLanguageOf(t) === 'vi');
-  return { language: vi ? 'vi' : 'en', from: 'room' };
+  return { language: roomTextsLanguageOf(input.texts), from: 'room' };
 }

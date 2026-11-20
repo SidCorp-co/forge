@@ -95,6 +95,11 @@ export function confidentLanguageOf(text: string | null | undefined): ReplyLangu
   return en / words.length >= 0.15 ? 'en' : null;
 }
 
+/** Vietnamese where any of a room's texts reads Vietnamese with confidence, else English. */
+export function roomTextsLanguageOf(texts: readonly string[]): ReplyLanguage {
+  return texts.some((t) => confidentLanguageOf(t) === 'vi') ? 'vi' : 'en';
+}
+
 /**
  * The language the person asked in, where it can be told: a confident reading, or a short message
  * that spells a word only Vietnamese spells, such as "run ISS-365" typed in Vietnamese. A short message without one is not

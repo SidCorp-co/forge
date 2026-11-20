@@ -136,6 +136,7 @@ export {
   confidentLanguageOf,
   type ReplyLanguage,
   replyLanguageOf,
+  roomTextsLanguageOf,
 } from './text-language.js';
 export { askerOfReply, toolContentFor } from './tool-content.js';
 export { recordDeliveredReply, recordDeliveredReplyToVenue, recordSilence } from './transcript.js';

@@ -6,7 +6,7 @@
 // with one short anchor line at the top level, and keeps. Where no thread can be had, nothing is posted: the caller refuses or records it by name.
 
 import { eq } from 'drizzle-orm';
-import { confidentLanguageOf } from '../conversations/index.js';
+import { roomTextsLanguageOf } from '../conversations/index.js';
 import { db } from '../db/client.js';
 import { supportRooms } from '../db/schema-support.js';
 import { FIXED_REPLY_CONSTANT } from '../integrations/rocketchat/index.js';
@@ -36,7 +36,7 @@ export async function roomLanguage(room: RoomRow, texts: readonly string[]): Pro
   if (setting.source === 'document') {
     return setting.contentLanguage.toLowerCase().startsWith('vi') ? 'vi' : 'en';
   }
-  return texts.some((t) => confidentLanguageOf(t) === 'vi') ? 'vi' : 'en';
+  return roomTextsLanguageOf(texts);
 }
 
 /** The room's report thread as its row holds it now, and who set it; null with none. */
