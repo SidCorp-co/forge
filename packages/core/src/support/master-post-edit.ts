@@ -33,6 +33,8 @@ const EDIT_TOOL = 'master_post_edit';
 const DELETE_TOOL = 'master_post_delete';
 const WINDOW_MINUTES = SUPPORT_MASTER_POST_EDIT_WINDOW_MS / 60_000;
 const NOTHING = 'Nothing was changed in the room.';
+/** What a deleted post's stored line reads: a replay is told it went, never handed its words. */
+const DELETED_POST_LINE = '(this post was deleted from the room)';
 
 type Actor = { userId: string; projectId: string };
 
@@ -242,6 +244,14 @@ export async function deleteMasterPost(actor: Actor, messageId: string): Promise
   const { auth } = await roomAuth(room);
   const first = await deleteRoomMessage(auth, room.rid, messageId);
   if (!first.ok) return unchanged(messageId, room, 'delete', first.why);
+  // the thread's stored line reads as the room does, as an edit's does
+  if (post.conversationId) {
+    await replaceSentContent({
+      conversationId: post.conversationId,
+      externalId: messageId,
+      content: DELETED_POST_LINE,
+    });
+  }
   const deleted = [messageId];
   const left: string[] = [];
   for (const file of own.value.files) {

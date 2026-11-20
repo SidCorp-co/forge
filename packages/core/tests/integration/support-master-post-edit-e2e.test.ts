@@ -148,6 +148,10 @@ describe('ISS-1238: a master edits or deletes its own post within the window', (
     expect(gone.body).toMatchObject({ messageId: id, deleted: [id, image] });
     expect([lineOf(id), lineOf(image)]).toEqual([undefined, undefined]);
     expect(chat.deletedLines.map((l) => l.id).slice(-2)).toEqual([id, image]);
+    // [DELETED_LINE_KEPT] before the fix: a replay still read the words the room no longer shows
+    const stored = await rows<{ content: string }>(sql`
+      SELECT content FROM conversation_messages WHERE external_id = ${id} AND role = 'assistant'`);
+    expect(stored.map((r) => r.content)).toEqual(['(this post was deleted from the room)']);
     const [act] = await rows<{ kind: string; input: Record<string, unknown> }>(sql`
       SELECT kind, input FROM support_actions
        WHERE external_id = ${id} AND tool = 'master_post_delete'`);
