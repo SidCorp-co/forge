@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.765] - 2026-11-20
+
+Judging runs stop clean in shared checkouts and regenerated files stop blocking judges
+
+### Fixed
+
+- **A judge run sharing its master's checkout is no longer held to the master's processes.** There, the stop gate counts only a process carrying the run's FORGE_RUN; in a run's own worktree, what it left still holds it.
+- **A later landing that only regenerates core's contracts no longer stops an earlier issue's judging.** A root .gitattributes marks the contracts, card ledger and other script-written files linguist-generated, which the judge brief passes over.
+
 ## [0.4.0-dev.764] - 2026-11-20
 
 Change requests address ecosystem projects by short name
