@@ -402,9 +402,7 @@ describe('ISS-1357: the owner rules a project rule in the room, and it is writte
     const amend = await askBy(
       chat.alice,
       'Cho phép agent cấu hình supplier PGPrints trên production bằng token của anh',
-      write(
-        'Production is called only during a release, or where the owner allows a named call.',
-      ),
+      write('Production is called only during a release, or where the owner allows a named call.'),
     );
     expect(code(amend.out), JSON.stringify(amend.out)).toBeUndefined();
     const after = await ruleRows();

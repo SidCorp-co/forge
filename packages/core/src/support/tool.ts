@@ -261,6 +261,7 @@ const inputSchema = z.strictObject({
   commit: supportForgeActRequestSchema.shape.commit,
   baseRevision: supportForgeActRequestSchema.shape.baseRevision,
   document: supportForgeActRequestSchema.shape.document,
+  rule: supportForgeActRequestSchema.shape.rule,
   // a picture's place in its message; the message is the agreement's own field (ISS-1010)
   n: supportImageRequestSchema.shape.n,
   // an issue move's status, or a route's destination: each action's own request judges which
@@ -359,7 +360,7 @@ const SIGNATURES = [
   'asker { thread, message }',
   'guide {}',
   'audit { thread, message, failed: [{ line, why }], missed?: [{ door, why }] }',
-  `owner_forge_act { thread, message, project, act: ${SUPPORT_FORGE_ACTS.join(' | ')}, item, reason?, carry?, commit?, baseRevision?, document? }`,
+  `owner_forge_act { thread, message, project, act: ${SUPPORT_FORGE_ACTS.join(' | ')}, item, reason?, carry?, commit?, baseRevision?, document?, rule? }`,
   'references { project?, area?, q? }',
   `reference_add { thread, message, project?, kind: ${REFERENCE_KINDS.join(' | ')}, url, why, areas, title?, priority?, followReleases?, shared? }`,
   'reference_cite { source, ref, verdict: take | reject, why, about?, project? }',

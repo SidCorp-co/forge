@@ -745,9 +745,9 @@
     "by": "ISS-1251"
   },
   "POST /api/questions": {
-    "hash": "7ebd2f8948ccee9f",
-    "on": "2026-11-16",
-    "by": "ISS-1251"
+    "hash": "98a637623f5299d2",
+    "on": "2026-11-20",
+    "by": "ISS-1357"
   },
   "POST /api/questions/:id/void": {
     "hash": "fa5e2776d03dac18",
@@ -1635,9 +1635,9 @@
     "by": "ISS-1251"
   },
   "support.owner_forge_act": {
-    "hash": "92be94a79f389166",
-    "on": "2026-11-18",
-    "by": "ISS-1299"
+    "hash": "7d404f41a35858ea",
+    "on": "2026-11-20",
+    "by": "ISS-1357"
   },
   "support.owner_sign_in": {
     "hash": "b5127efc72a53204",

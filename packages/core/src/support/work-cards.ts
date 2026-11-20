@@ -300,7 +300,7 @@ export const WORK_ACT_CARDS = {
   },
   owner_forge_act: {
     purpose:
-      'Makes the Forge act the owner asks for in chat (accept, approve, cut, mark merged, change config, link a project into an ecosystem) as him, citing his message.',
+      'Makes the Forge act the owner asks for in chat (accept, approve, cut, mark merged, change config or a rule, link into an ecosystem) as him, citing his message.',
     situations: [
       {
         when: 'the owner asks you, in any words, for a Forge act, or settles one you put to him',
@@ -308,7 +308,7 @@ export const WORK_ACT_CARDS = {
       },
     ],
     practice: [
-      'config.write and binding.write take the whole document: read it, make his change, pass it with the revision you read as baseRevision.',
+      'config.write and binding.write take the whole document, read and changed, with the revision you read as baseRevision; rule.write takes item the rule’s slug and rule { title, body, scope, recheckWhen }, an amend keeping each field you leave out.',
       'Linking a project into an ecosystem is membership.invite then membership.accept, item the ecosystem’s slug, project the member; in an operations room the writer acts as himself.',
       'An act no door makes is refused naming where it is made: tell him that act is missing, in one line, and do the rest; never say it is being done.',
     ],

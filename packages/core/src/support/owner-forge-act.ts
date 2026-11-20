@@ -12,7 +12,8 @@
 // himself under his own grants, as its other writes do (ISS-1299). The act then goes through its
 // item's own door (`assistant/tools/item-act-doors.ts`, the one the item page and the web chat call)
 // as him, so his own grants decide and the door's refusal is passed on by its own name. The reason
-// it records quotes his message by id and thread, and the room's record keeps the act beside it.
+// it records quotes his message by id and thread, and the room's record keeps the act beside it. A
+// project rule he rules there is written in his name the same way (`owner-rule-act.ts`, ISS-1357).
 
 import { ITEM_ACT_NAMES, type ItemAct } from '@forge/contracts/item-acts';
 import { SUPPORT_FORGE_ACTS, type SupportForgeActRequest } from '@forge/contracts/support-channel';
@@ -32,6 +33,7 @@ import { no } from './outcome.js';
 import { doorOfDecision } from './owner-acts-reach.js';
 import { decisionForgeAct, isDecisionForgeAct } from './owner-decision-acts.js';
 import { isMembershipAct, membershipAct } from './owner-membership-act.js';
+import { writeOwnerRule } from './owner-rule-act.js';
 import { insertAction, type RoomRow } from './store.js';
 
 /** How much of his message the act's reason quotes. */
@@ -111,15 +113,27 @@ function reasonOf(
   return input.reason ? `${input.reason.trim()}. ${cite}` : cite;
 }
 
+/** Who ruled a rule he writes from the room: his accounts and the message it rests on. */
+const ruledBy = (asker: Asker, input: SupportForgeActRequest) => ({
+  userId: asker.userId,
+  account: asker.label ?? asker.key,
+  message: input.message,
+  thread: input.thread,
+});
+
 /** The acts an item's page offers, made through `item-act-doors.ts`. */
 const ITEM_ACT = new Set<string>(ITEM_ACT_NAMES);
 
 /** Which act each field belongs to: a field on any other act is the request's shape, refused. */
-const FIELD_OF: Record<'carry' | 'commit' | 'document' | 'baseRevision', readonly string[]> = {
+const FIELD_OF: Record<
+  'carry' | 'commit' | 'document' | 'baseRevision' | 'rule',
+  readonly string[]
+> = {
   carry: ['release.approve'],
   commit: ['issue.merge'],
   document: ['config.write', 'binding.write'],
   baseRevision: ['config.write', 'binding.write'],
+  rule: ['rule.write'],
 };
 
 const FORGE_ACT = new Set<string>(SUPPORT_FORGE_ACTS);
@@ -154,6 +168,13 @@ function shapeRefusal(input: SupportForgeActRequest): OpsOutcome<never> | null {
       'SUPPORT_FORGE_ACT_SHAPE',
       '/document',
       `${input.act} writes the whole document as it is to stand: read it, make his change, and pass it as document with the revision you read as baseRevision. Nothing was done`,
+    );
+  }
+  if (input.act === 'rule.write' && input.rule === undefined) {
+    return no(
+      'SUPPORT_FORGE_ACT_SHAPE',
+      '/rule',
+      'rule.write writes the rule as he ruled it: pass rule { title, body, module?, injection?, scope?, recheckWhen? }, item its slug; read the rule first where it stands, and an amend keeps each field you leave out. Nothing was done',
     );
   }
   return null;
@@ -294,7 +315,9 @@ async function act(room: RoomRow, input: SupportForgeActRequest): Promise<OpsOut
           ? membershipAct(input, reason, { ...at, projectSlug: project.value.slug })
           : isDecisionForgeAct(input.act)
             ? decisionForgeAct(input.act, input.item, reason, at)
-            : writeDocument(input, at),
+            : input.act === 'rule.write'
+              ? writeOwnerRule(input, { source: reason ?? '', ruledBy: ruledBy(asker, input) }, at)
+              : writeDocument(input, at),
   );
   if (!made.ok) return made;
   return {

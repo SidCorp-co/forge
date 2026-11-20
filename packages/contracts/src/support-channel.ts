@@ -257,8 +257,8 @@ export type SupportReleaseDecisionRequest = z.infer<
 /**
  * The Forge acts the owner asks for in chat that his room's agent makes as him (ISS-1243 item 24):
  * each the act an item's page offers (`item-acts.ts`), the merge mark, a document write, an
- * ecosystem membership act, or a decision his Needs you owes that no item page offers (ISS-1299),
- * made through its own door.
+ * ecosystem membership act, a decision his Needs you owes that no item page offers (ISS-1299), or
+ * a project rule he rules (ISS-1357), made through its own door.
  */
 export const SUPPORT_FORGE_ACTS = [
 	"requirement.propose",
@@ -278,6 +278,8 @@ export const SUPPORT_FORGE_ACTS = [
 	"issue.merge",
 	"config.write",
 	"binding.write",
+	// a project rule he rules in the room, written or amended in his name (ISS-1357)
+	"rule.write",
 	// the steward's invite into an ecosystem and the member project's answer or leave (ISS-1299)
 	"membership.invite",
 	"membership.accept",
@@ -320,7 +322,7 @@ export const supportForgeActRequestSchema = z.strictObject({
 		.min(1)
 		.max(200)
 		.describe(
-			"the item: REQ-n, FB-n, a workflow's flow such as chat-turn, a release version such as 0.19.0, an issue ISS-n, a suggestion's id, a mockup's key, a binding's id, the project's slug for config.write, or the ecosystem's slug for membership.* (project is then the member project)",
+			"the item: REQ-n, FB-n, a workflow's flow such as chat-turn, a release version such as 0.19.0, an issue ISS-n, a suggestion's id, a mockup's key, a binding's id, the project's slug for config.write, the rule's slug for rule.write, or the ecosystem's slug for membership.* (project is then the member project)",
 		),
 	reason: z
 		.string()
@@ -367,6 +369,19 @@ export const supportForgeActRequestSchema = z.strictObject({
 		.optional()
 		.describe(
 			"config.write and binding.write: the whole document as it is to stand, the one you read with his change made",
+		),
+	rule: z
+		.strictObject({
+			title: z.string().trim().min(1).max(500).optional(),
+			body: z.string().trim().min(1).max(100_000),
+			module: z.string().trim().min(1).max(128).optional(),
+			injection: z.enum(["always", "on_demand", "none"]).optional(),
+			scope: z.string().trim().min(1).max(500).optional(),
+			recheckWhen: z.string().trim().min(1).max(1000).optional(),
+		})
+		.optional()
+		.describe(
+			"rule.write only: the rule as he ruled it, { title, body, module?, injection?, scope?, recheckWhen? }; an amend keeps each field you leave out, a new rule needs title, scope and recheckWhen",
 		),
 });
 export type SupportForgeActRequest = z.infer<

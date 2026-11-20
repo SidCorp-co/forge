@@ -17,6 +17,10 @@ export const QUESTION_REST_CARDS = {
         watch: `\`plain\` is what the person decides from: ${PLAIN_DECISION_RULE}`,
       },
       {
+        when: 'the owner already ruled on it in his room: an act the room recorded as his linked account’s, or his message quoted',
+        do: 'that is his word: act on it and record a decision citing his message; ask him again only for an irreversible step, real money or a credential',
+      },
+      {
         when: 'a choice is yours or your master’s to take under the project’s gate profile',
         do: 'decide it and record the decision on the item, or ask the master with blockerKind master_or_peer',
         watch: 'a routine question to a person is refused QUESTION_AGENT_DECIDES',

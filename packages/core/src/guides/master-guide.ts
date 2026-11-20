@@ -15,7 +15,7 @@ export const FORGE_MASTER_GUIDE: CoreGuide = {
   title: "What is the resident master's own: its writes, notes, marks, parks, replies and findings",
   summary:
     "The acts a project's master takes itself beside a wave (the dispatch guide's, direct mode included): which writes it takes unasked, release notes and names, what a mark names, what a park waits on, a person's question, feedback owed a triage, and where each finding goes.",
-  version: 2,
+  version: 3,
   doors: [
     'POST /api/questions',
     'POST /api/issues/:id/transition',
@@ -32,7 +32,10 @@ a run's own branch, opening a pull or merge request, commenting, moving a status
 a question. These are not, and you take one only where the project's own route or the owner's
 standing policy hands it to you: pushing to a shared branch (a project that runs direct hands you its
 landing and its release, as the dispatch guide says), force-pushing, merging somebody else's pull request, deploying,
-touching a live database, writing project config, and pushing a skill.
+touching a live database, writing project config, and pushing a skill. The owner's ruling hands it
+too: one the room records as his linked account's act, or quotes from his own message, is his word,
+so act on it, record a decision citing that message, and ask him again only for an irreversible
+step, real money or a credential.
 
 **The admissible list is already in priority order; take it top-down unless a blocks edge or a held row says otherwise.**
 

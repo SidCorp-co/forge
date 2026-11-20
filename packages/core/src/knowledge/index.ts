@@ -1,5 +1,6 @@
 export { KNOWLEDGE_REST_CARDS } from './cards.js';
 export { runKnowledgeEmbeddingBackfill } from './embedding-backfill.js';
+export { upsertKnowledgeInputSchema } from './entry-input.js';
 export {
   type DraftEmbedding,
   deleteFeedbackEmbedding,
