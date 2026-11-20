@@ -2,7 +2,7 @@
 // sender and state for a project member, never by value; a pending one approved or discarded by a
 // person holding project admin. A usable one is read at the acting door alone.
 
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import { z } from 'zod';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
@@ -49,45 +49,56 @@ keptSecretRoutes.get(
   },
 );
 
-for (const [method, path, decision] of [
-  ['post', '/:id/kept-secrets/:name/approval', 'approve'],
-  ['delete', '/:id/kept-secrets/:name', 'discard'],
-] as const) {
-  keptSecretRoutes[method](
-    path,
-    nameParam,
-    requiresOnParam('project.admin', 'id'),
-    noQuery,
-    async (c) => {
-      const { id, name } = c.req.valid('param');
-      const actor = restActor(c);
-      if (actor.agency === 'agent') {
-        return refused(
-          c,
-          [
-            {
-              code: 'KEPT_SECRET_PERSON_ONLY',
-              path: '/name',
-              detail: `a kept credential is ${decision === 'approve' ? 'approved' : 'discarded'} by a person holding project admin, never by an agent's token: an agent would be granting itself the value. Nothing was changed.`,
-            },
-          ],
-          'CONFIG_REFUSED',
-        );
-      }
-      const decided = await decideKept({
-        projectId: id,
-        name,
-        decision,
-        actor: { id: actor.id, tokenId: actor.tokenId },
-      });
-      if (!decided.ok) {
-        return refused(
-          c,
-          [{ code: decided.code, path: '/name', detail: decided.detail }],
-          'CONFIG_REFUSED',
-        );
-      }
-      return c.json(viewOf(id, decided.entry));
-    },
-  );
+/** A person's decision on a kept credential, approve or discard; each route is spelled literally so
+ * the PAT-surface proof reads it as fenced (ISS-1372). */
+async function decide(
+  c: Context<{ Variables: AuthVars }>,
+  at: { id: string; name: string },
+  decision: 'approve' | 'discard',
+) {
+  const { id, name } = at;
+  const actor = restActor(c);
+  if (actor.agency === 'agent') {
+    return refused(
+      c,
+      [
+        {
+          code: 'KEPT_SECRET_PERSON_ONLY',
+          path: '/name',
+          detail: `a kept credential is ${decision === 'approve' ? 'approved' : 'discarded'} by a person holding project admin, never by an agent's token: an agent would be granting itself the value. Nothing was changed.`,
+        },
+      ],
+      'CONFIG_REFUSED',
+    );
+  }
+  const decided = await decideKept({
+    projectId: id,
+    name,
+    decision,
+    actor: { id: actor.id, tokenId: actor.tokenId },
+  });
+  if (!decided.ok) {
+    return refused(
+      c,
+      [{ code: decided.code, path: '/name', detail: decided.detail }],
+      'CONFIG_REFUSED',
+    );
+  }
+  return c.json(viewOf(id, decided.entry));
 }
+
+keptSecretRoutes.post(
+  '/:id/kept-secrets/:name/approval',
+  nameParam,
+  requiresOnParam('project.admin', 'id'),
+  noQuery,
+  (c) => decide(c, c.req.valid('param'), 'approve'),
+);
+
+keptSecretRoutes.delete(
+  '/:id/kept-secrets/:name',
+  nameParam,
+  requiresOnParam('project.admin', 'id'),
+  noQuery,
+  (c) => decide(c, c.req.valid('param'), 'discard'),
+);
