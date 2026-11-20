@@ -23,7 +23,15 @@ import TURNS from './live-turns-1711.json' with { type: 'json' };
 const BABO: ChatRole = { name: 'babo', persona: '', grants: ['read', 'deliver'] };
 
 const judged = (reply: string) =>
-  judgeReply({ text: reply, language: 'vi', roomKind: 'operations', apiHosts: [] }, []);
+  judgeReply(
+    {
+      text: reply,
+      language: { language: 'vi', from: 'asker' },
+      roomKind: 'operations',
+      apiHosts: [],
+    },
+    [],
+  );
 
 /** What an agent following a turn's input must be told, each the opposite of what Babo did. */
 const NEEDS: readonly [string, RegExp][] = [

@@ -1,12 +1,14 @@
 import { REPLY_RUBRIC_LINES, type ReplyRubricLine } from '@forge/contracts/support-reply-audit';
 import { describe, expect, it } from 'vitest';
 import { mapLine } from '../act-cards.js';
+import { answeringLanguageOf, personaLanguageOf } from './answering-language.js';
 import { AUDIT_RUBRIC_TEXT } from './index.js';
 import { type AuditedReply, judgeReply } from './judge.js';
 
 // @direct-test-of packages/core/src/support/reply-audit/judge.ts
 // @direct-test-of packages/core/src/support/reply-audit/teach.ts
 // @direct-test-of packages/core/src/support/reply-audit/index.ts
+// @direct-test-of packages/core/src/support/reply-audit/answering-language.ts
 //
 // ISS-1250 (owner 2026-11-16): the five quoted epod turns of the shared operations room, replayed
 // through the verdict support.audit keeps. Even where the agent's own reading claims a pass, each
@@ -60,9 +62,13 @@ const SELF: Record<string, ReplyRubricLine[]> = {
   '15/11 15:36': ['accurate', 'answered'],
 };
 
-const reply = (text: string, language: 'vi' | 'en' = 'vi'): AuditedReply => ({
+const reply = (
+  text: string,
+  language: 'vi' | 'en' = 'vi',
+  from: 'asker' | 'persona' | 'room' = 'asker',
+): AuditedReply => ({
   text,
-  language,
+  language: { language, from },
   roomKind: 'operations',
   apiHosts: API,
 });
@@ -116,10 +122,56 @@ describe('support.audit keeps the verdict on a reply the agent posted (ISS-1250)
     ]);
   });
 
-  it('fails a reply in another language than the project’s, and passes it in the project’s own', () => {
+  it('fails a reply in another language than the room answers in, naming both, and passes it in that one', () => {
     const text = 'The release is live on production now, and the import is fixed.';
-    expect(judgeReply(reply(text, 'vi'), []).failed).toEqual(['language']);
+    const j = judgeReply(reply(text, 'vi'), []);
+    expect(j.failed).toEqual(['language']);
+    expect(j.findings[0]?.why).toBe(
+      'it is in English, and the person it answers wrote in Vietnamese',
+    );
+    expect(judgeReply(reply(text, 'vi', 'persona'), []).findings[0]?.why).toBe(
+      "it is in English, and the room's persona names Vietnamese",
+    );
     expect(judgeReply(reply(text, 'en'), []).verdict).toBe('pass');
+  });
+
+  // ISS-1377 (FB-789): the room answers in the person's language, then the persona's, then what its
+  // people wrote; the project's content language, for Forge's records, never enters it
+  it('reads the answering language from the person, then the persona, then the room', () => {
+    const vi = 'Đơn hàng của em đã giao chưa ạ?'; // i18n-allow: a member writing Vietnamese
+    const en = 'Has my order been delivered yet?';
+    const persona = 'You are the shop desk assistant. Reply in plain Vietnamese, short and warm.';
+    expect(answeringLanguageOf({ asked: vi, persona: null, texts: [] })).toEqual({
+      language: 'vi',
+      from: 'asker',
+    });
+    expect(answeringLanguageOf({ asked: en, persona, texts: [vi] })).toEqual({
+      language: 'en',
+      from: 'asker',
+    });
+    expect(answeringLanguageOf({ asked: 'ok', persona, texts: [] })).toEqual({
+      language: 'vi',
+      from: 'persona',
+    });
+    expect(answeringLanguageOf({ asked: null, persona: null, texts: [en, vi] })).toEqual({
+      language: 'vi',
+      from: 'room',
+    });
+    expect(answeringLanguageOf({ asked: null, persona: null, texts: [] })).toEqual({
+      language: 'en',
+      from: 'room',
+    });
+  });
+
+  it('takes the one language a persona names, in either language, and none where it names both', () => {
+    expect(personaLanguageOf('Trả lời bằng tiếng Việt, ngắn gọn.')).toBe('vi'); // i18n-allow: a Vietnamese persona
+    expect(personaLanguageOf('Always answer in English, briefly.')).toBe('en');
+    expect(personaLanguageOf('Answer in Vietnamese, or in English where they write English.')).toBe(
+      null,
+    );
+    expect(personaLanguageOf('You are Babo. You coordinate Forge and delivery for the team.')).toBe(
+      null,
+    );
   });
 
   it('tells no API-host link where the web app is served on that host too', () => {

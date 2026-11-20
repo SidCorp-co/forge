@@ -12,13 +12,17 @@ import type {
   SupportAuditRequest,
 } from '@forge/contracts/support-reply-audit';
 import { confidentLanguageOf } from '../../conversations/index.js';
+import type { AnsweringFrom, AnsweringLanguage } from './answering-language.js';
 import { apiHostLinkIn, grantTalkIn, uiDirectionIn } from './code-lines.js';
 
 export interface AuditedReply {
   /** The reply as posted. */
   text: string;
-  /** The language the project's lines are held to, as a room reads it (`roomLanguage`). */
-  language: 'vi' | 'en';
+  /**
+   * The language the room is answered in, and where it was read (`answering-language.ts`): never the
+   * project's content language, which is for Forge's records (ISS-1377).
+   */
+  language: AnsweringLanguage;
   roomKind: SupportRoomKind;
   /** The API's public hosts no person-facing link may point at (`code-lines.ts:apiHosts`). */
   apiHosts: readonly string[];
@@ -32,6 +36,13 @@ export interface Judgement {
 
 const LANGUAGE_NAME = { vi: 'Vietnamese', en: 'English' } as const;
 
+/** What the reply was held to, said with where that language was read. */
+const HELD_TO: Readonly<Record<AnsweringFrom, (language: string) => string>> = {
+  asker: (l) => `the person it answers wrote in ${l}`,
+  persona: (l) => `the room's persona names ${l}`,
+  room: (l) => `the room's people write in ${l}`,
+};
+
 /** The rubric lines code tells on its own, each with the words that failed it. */
 export function codeFindings(reply: AuditedReply): ReplyFinding[] {
   const found: ReplyFinding[] = [];
@@ -44,10 +55,11 @@ export function codeFindings(reply: AuditedReply): ReplyFinding[] {
   const link = apiHostLinkIn(reply.text, reply.apiHosts);
   if (link) found.push({ line: 'web_links', why: `${link} is on the API host`, by: 'code' });
   const written = confidentLanguageOf(reply.text);
-  if (written && written !== reply.language) {
+  const held = reply.language;
+  if (written && written !== held.language) {
     found.push({
       line: 'language',
-      why: `it is in ${LANGUAGE_NAME[written]}, the project's lines in ${LANGUAGE_NAME[reply.language]}`,
+      why: `it is in ${LANGUAGE_NAME[written]}, and ${HELD_TO[held.from](LANGUAGE_NAME[held.language])}`,
       by: 'code',
     });
   }

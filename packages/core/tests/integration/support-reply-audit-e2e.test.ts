@@ -213,7 +213,12 @@ describe('a room agent audits its own reply with support.audit (ISS-1250)', () =
     );
     expect(audit?.status, JSON.stringify(audit?.body)).toBe(200);
     expect(audit?.body).toMatchObject({ verdict: 'fail', failed: ['language'] });
-    const [finding] = audit?.body.findings as Array<{ line: string; why: string; by: string }>;
+    const findings = (audit?.body.findings ?? []) as Array<{
+      line: string;
+      why: string;
+      by: string;
+    }>;
+    const [finding] = findings;
     expect(finding).toMatchObject({ line: 'language', by: 'code' });
     expect(finding?.why).toContain('English');
     expect(finding?.why).toContain('Vietnamese');

@@ -11,7 +11,7 @@ import type {
   SupportAuditRequest,
   SupportAuditView,
 } from '@forge/contracts/support-reply-audit';
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq, lte } from 'drizzle-orm';
 import { readMessages } from '../../conversations/index.js';
 import { db } from '../../db/client.js';
 import { conversations } from '../../db/schema-conversations.js';
@@ -19,20 +19,29 @@ import { supportActions } from '../../db/schema-support.js';
 import { supportReplyVerdicts } from '../../db/schema-support-verdicts.js';
 import { auditCorrectionRef, recordCorrection } from '../../lessons/index.js';
 import { doorCatalog } from '../../lib/door-catalog.js';
+import { supportConfigOf } from '../grants.js';
+import { roleOfRoom } from '../ops-role.js';
 import { knownThread, no, type Outcome, threadUnknown } from '../outcome.js';
-import { roomLanguage } from '../report-thread.js';
 import type { RoomRow } from '../store.js';
+import { type AnsweringLanguage, answeringLanguageOf } from './answering-language.js';
 import { apiHosts } from './code-lines.js';
 import { type Judgement, judgeReply } from './judge.js';
 
-/** The thread's last messages the room's language is read from where the project declares none. */
+/** The thread's last messages the room's language is read from where neither the asker nor the persona tells it. */
 const CONTEXT_MESSAGES = 12;
 const REASON_CHARS = 900;
 
+interface Posted {
+  text: string;
+  /** The request it named, asked in another thread of the room (ISS-1314). */
+  request: string | null;
+  at: Date;
+}
+
 /** The reply the session posted in this room's thread under that chat message id, as it posted it. */
-async function replyPosted(room: RoomRow, thread: string, message: string) {
+async function replyPosted(room: RoomRow, thread: string, message: string): Promise<Posted | null> {
   const [row] = await db
-    .select({ input: supportActions.input })
+    .select({ input: supportActions.input, at: supportActions.createdAt })
     .from(supportActions)
     .where(
       and(
@@ -43,8 +52,68 @@ async function replyPosted(room: RoomRow, thread: string, message: string) {
       ),
     )
     .limit(1);
-  const text = (row?.input as { text?: unknown } | null | undefined)?.text;
+  const input = row?.input as
+    | { text?: unknown; request?: { message?: unknown } }
+    | null
+    | undefined;
+  if (!row || typeof input?.text !== 'string') return null;
+  const request = input.request?.message;
+  return { text: input.text, request: typeof request === 'string' ? request : null, at: row.at };
+}
+
+const textOf = (input: unknown) => {
+  const text = (input as { text?: unknown } | null | undefined)?.text;
   return typeof text === 'string' ? text : null;
+};
+
+/**
+ * What the person the reply answers wrote: the request it named, else the thread's latest message a
+ * member wrote before it. Null where no member wrote one.
+ */
+async function askedOf(room: RoomRow, thread: string, reply: Posted): Promise<string | null> {
+  const [row] = await db
+    .select({ input: supportActions.input })
+    .from(supportActions)
+    .where(
+      and(
+        eq(supportActions.roomId, room.id),
+        eq(supportActions.kind, 'message_in'),
+        eq(supportActions.actorKind, 'member'),
+        ...(reply.request
+          ? [eq(supportActions.externalId, reply.request)]
+          : [eq(supportActions.thread, thread), lte(supportActions.createdAt, reply.at)]),
+      ),
+    )
+    .orderBy(desc(supportActions.createdAt))
+    .limit(1);
+  return textOf(row?.input);
+}
+
+/** The persona the room's agent is briefed with: an operations room's role's, else its binding's. */
+async function personaOf(room: RoomRow): Promise<string | null> {
+  if (room.kind === 'operations') {
+    const role = await roleOfRoom(room);
+    return role.ok ? role.value.persona : null;
+  }
+  return (await supportConfigOf(room))?.persona ?? null;
+}
+
+/**
+ * The language the reply is held to (ISS-1377): the room's answering language, read from the person
+ * it answers, the persona, then the room's people, never the project's content language.
+ */
+async function answeringOf(
+  room: RoomRow,
+  thread: string,
+  conversationId: string,
+  reply: Posted,
+): Promise<AnsweringLanguage> {
+  const recent = await readMessages(conversationId, CONTEXT_MESSAGES);
+  return answeringLanguageOf({
+    asked: await askedOf(room, thread, reply),
+    persona: await personaOf(room),
+    texts: recent.filter((m) => m.role === 'user').map((m) => m.content),
+  });
 }
 
 async function verdictOf(roomId: string, message: string): Promise<SupportAuditView | null> {
@@ -127,22 +196,18 @@ export async function auditReply(
   if (!missed.ok) return missed;
   const before = await verdictOf(room.id, input.message);
   if (before) return { ok: true, value: before };
-  const text = await replyPosted(room, input.thread, input.message);
-  if (text === null) {
+  const posted = await replyPosted(room, input.thread, input.message);
+  if (posted === null) {
     return no(
       'SUPPORT_MESSAGE_UNKNOWN',
       '/message',
       `${input.message} is no reply you posted in thread ${input.thread}: audit a reply by the messageId reply answered you. Nothing was kept.`,
     );
   }
-  const recent = await readMessages(conversationId, CONTEXT_MESSAGES);
   const judgement = judgeReply(
     {
-      text,
-      language: await roomLanguage(
-        room,
-        recent.map((m) => m.content),
-      ),
+      text: posted.text,
+      language: await answeringOf(room, input.thread, conversationId, posted),
       roomKind: room.kind,
       apiHosts: apiHosts(),
     },

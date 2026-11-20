@@ -30,7 +30,8 @@ export const REPLY_RUBRIC = {
 	accurate: "Every claim it makes is true, and none is beside the point.",
 	web_links:
 		"Every link for a person points at the web host, never the API host.",
-	language: "It is written in the project's content language.",
+	language:
+		"It is written in the language the person wrote in, else the one the persona names; never the records' language.",
 	silence: "Speaking was right here: the message asked for a reply.",
 } as const;
 export type ReplyRubricLine = keyof typeof REPLY_RUBRIC;
