@@ -1,4 +1,4 @@
-import { containsSecret } from '@forge/observability';
+import { containsSecret, escapeRegExp } from '@forge/observability';
 import type { EcosystemRefusal } from './refusals.js';
 import type { InterfaceDocument } from './schema.js';
 
@@ -52,8 +52,6 @@ export function internalNamesOf(iface: InterfaceDocument): string[] {
   return [...names].sort();
 }
 
-const escapeRe = (s: string) => s.replace(/[/.\\^$*+?()[\]{}|-]/g, '\\$&');
-
 interface ContentContext {
   channelCode: string;
   internalNames: readonly string[] | null;
@@ -86,7 +84,7 @@ function scan(p: ProseAt, ctx: ContentContext): EcosystemRefusal[] {
         'this tells the other side how to change its code; say what the contract now requires, and leave how to the side that owns the code.',
     });
   }
-  const own = new RegExp(`\\b${escapeRe(ctx.channelCode)}-(CN|ACK|RFI|CR|DEC)-\\d+\\b`, 'g');
+  const own = new RegExp(`\\b${escapeRegExp(ctx.channelCode)}-(CN|ACK|RFI|CR|DEC)-\\d+\\b`, 'g');
   const key = s.replace(own, '').match(ISSUE_KEY)?.[0];
   if (key) {
     out.push({
@@ -104,7 +102,7 @@ function scan(p: ProseAt, ctx: ContentContext): EcosystemRefusal[] {
     });
   }
   for (const n of ctx.internalNames ?? []) {
-    if (new RegExp(`(^|[\\s'"(])${escapeRe(n)}(?=$|[\\s'").,/])`).test(s)) {
+    if (new RegExp(`(^|[\\s'"(])${escapeRegExp(n)}(?=$|[\\s'").,/])`).test(s)) {
       out.push({
         code: 'CONTENT_INTERNAL_REF',
         path: p.path,

@@ -9,7 +9,7 @@
 // - a key sent alone where its thread says so (ISS-1326, `secret-flag.ts:bareKeyInContext`).
 // What is filtered is the value alone: the email or the user name stays, so the thread still reads.
 
-import { containsSecret, FILTERED, scrubLogText } from '@forge/observability';
+import { containsSecret, escapeRegExp, FILTERED, scrubLogText } from '@forge/observability';
 import { and, desc, eq, gte, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { supportActions } from '../db/schema-support.js';
@@ -127,8 +127,6 @@ export interface Screened {
   values: string[];
 }
 
-const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
 /**
  * The runs of `original` that each `[Filtered]` of `kept` stands for, in order (ISS-1372): the text
  * the screen kept is the original with those runs replaced, so its literal parts anchor each one. An
@@ -137,7 +135,7 @@ const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 export function filteredValues(original: string, kept: string): string[] {
   const parts = kept.split(FILTERED);
   if (parts.length < 2) return [];
-  const re = new RegExp(`^${parts.map(escapeRe).join('([\\s\\S]+?)')}$`);
+  const re = new RegExp(`^${parts.map(escapeRegExp).join('([\\s\\S]+?)')}$`);
   const found = re.exec(original);
   if (!found) return [];
   // a sentence's closing marks the screen took with the value are the sentence's (`passwordShaped`)

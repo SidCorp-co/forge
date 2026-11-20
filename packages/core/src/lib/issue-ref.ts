@@ -1,3 +1,5 @@
+import { escapeRegExp } from '@forge/observability';
+
 /** The prefix every project answered to before ISS-992, and the one a project with no prefix of
  *  its own still renders. It is never stored: a NULL `projects.issue_prefix` means this. */
 export const LEGACY_ISSUE_PREFIX = 'ISS';
@@ -12,8 +14,7 @@ export const ISS_SEQ_MAX = 2_147_483_647;
  * ISS-120 or XISS-12. The one reading of "a commit subject, a note or a first line names this issue".
  */
 export function textNamesIssueKey(text: string, key: string): boolean {
-  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`(?<![A-Za-z0-9-])${escaped}(?![0-9])`, 'i').test(text);
+  return new RegExp(`(?<![A-Za-z0-9-])${escapeRegExp(key)}(?![0-9])`, 'i').test(text);
 }
 
 export function formatIssueRef(prefix: string | null | undefined, issSeq: number): string {

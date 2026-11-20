@@ -18,6 +18,7 @@
 
 import type { CommitLandingRefusalCode } from '@forge/contracts/issues';
 import type { OutboxActor } from '@forge/contracts/outbox-events';
+import { escapeRegExp } from '@forge/observability';
 import { and, eq, inArray, notInArray } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
@@ -125,8 +126,6 @@ async function linkedThrough(
   return hit !== undefined;
 }
 
-const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
 /**
  * Whether a commit's subject declares, by the rule a landing is read with (`declaredIssueSeqs`), the
  * forge-beta key the issue was ported from: its twin's pair or the pair of the Feedback item it was
@@ -138,7 +137,7 @@ async function declaresBetaKey(issueId: string, message: string, base: string): 
     const parts = /^([A-Za-z][A-Za-z0-9]*)-(\d{1,10})$/.exec(key);
     if (!parts) continue;
     const exact = new RegExp(
-      `(?<![A-Za-z0-9])${escapeRe(parts[1] as string)}-(\\d{1,10})(?![A-Za-z0-9])`,
+      `(?<![A-Za-z0-9])${escapeRegExp(parts[1] as string)}-(\\d{1,10})(?![A-Za-z0-9])`,
       'gi',
     );
     if (declaredIssueSeqs(message, exact, base).includes(Number(parts[2]))) return true;

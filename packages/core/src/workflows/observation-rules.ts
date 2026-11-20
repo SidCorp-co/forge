@@ -6,6 +6,7 @@
 
 import { withArticle } from '@forge/contracts/articles';
 import type { ObservationRefusalCode } from '@forge/contracts/workflow-health';
+import { escapeRegExp } from '@forge/observability';
 import type { Citation, WriteObservation } from './observation-schema.js';
 import type { EvidenceSource } from './rules.js';
 
@@ -137,15 +138,15 @@ export function citedFiles(write: WriteObservation): string[] {
   return [...files];
 }
 
-const escaped = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
 /** Whether `symbol` is named in `text`: every dotted part of it, as a whole word. */
 export function namesSymbol(text: string, symbol: string): boolean {
   return symbol
     .trim()
     .split('.')
     .filter((part) => part.length > 0)
-    .every((part) => new RegExp(`(?<![A-Za-z0-9_$])${escaped(part)}(?![A-Za-z0-9_$])`).test(text));
+    .every((part) =>
+      new RegExp(`(?<![A-Za-z0-9_$])${escapeRegExp(part)}(?![A-Za-z0-9_$])`).test(text),
+    );
 }
 
 /**

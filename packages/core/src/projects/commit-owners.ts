@@ -1,17 +1,14 @@
 // Which issues a commit's subject declares, by the project's issue keys: read by the merge identity
 // (`issues/merge-identity.ts`) and the commit-landing check (`issues/commit-landing.ts`).
 
+import { escapeRegExp } from '@forge/observability';
 import { LEGACY_ISSUE_PREFIX } from '../lib/issue-ref.js';
-
-function escapeRe(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
 
 /** The pattern matching a reference under any of `prefixes` or the shared legacy one. */
 export function issueRefPattern(prefixes: readonly string[]): RegExp {
   const all = [...new Set([...prefixes, LEGACY_ISSUE_PREFIX].map((p) => p.toUpperCase()))];
   return new RegExp(
-    `(?<![A-Za-z0-9])(?:${all.map(escapeRe).join('|')})-(\\d{1,10})(?![A-Za-z0-9])`,
+    `(?<![A-Za-z0-9])(?:${all.map(escapeRegExp).join('|')})-(\\d{1,10})(?![A-Za-z0-9])`,
     'gi',
   );
 }

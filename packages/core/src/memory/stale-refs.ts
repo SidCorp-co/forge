@@ -10,6 +10,7 @@
 // cannot drift, and nothing here archives or deletes a row.
 
 import type { MemoryCite, MemoryStaleRef } from '@forge/contracts/memory';
+import { escapeRegExp } from '@forge/observability';
 import type { ProjectReader } from '../lib/authz.js';
 import { LEGACY_ISSUE_PREFIX } from '../lib/issue-ref.js';
 import { actorFor, can, projectResource } from '../permissions/index.js';
@@ -47,8 +48,7 @@ export interface CiteContext {
 
 /** A flow named as a whole word, any case: not inside a longer flow, key or path segment. */
 function flowPattern(flow: string): RegExp {
-  const escaped = flow.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`(?<![A-Za-z0-9_-])${escaped}(?![A-Za-z0-9_-])`, 'gi');
+  return new RegExp(`(?<![A-Za-z0-9_-])${escapeRegExp(flow)}(?![A-Za-z0-9_-])`, 'gi');
 }
 
 /** One key or source as the text names it, before anything is resolved. */

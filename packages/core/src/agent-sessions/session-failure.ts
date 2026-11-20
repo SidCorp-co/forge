@@ -1,4 +1,5 @@
 import type { FailureCause } from '@forge/contracts/failure-causes';
+import { escapeRegExp } from '@forge/observability';
 import type { agentSessions } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
 import { classifyFailure, type FailureAction, type FailureKind } from '../pipeline/index.js';
@@ -43,8 +44,7 @@ export function detectUnexpandedSkillFailure(
   priorMessageCount: number,
 ): boolean {
   if (!Array.isArray(messages)) return false;
-  const escapedSkillName = skillName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const pattern = new RegExp(`unknown command:\\s*/${escapedSkillName}\\b`, 'i');
+  const pattern = new RegExp(`unknown command:\\s*/${escapeRegExp(skillName)}\\b`, 'i');
   for (const m of messages.slice(priorMessageCount)) {
     if (m && typeof m === 'object') {
       const shape = m as { role?: unknown; type?: unknown; content?: unknown };

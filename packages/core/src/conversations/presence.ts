@@ -6,6 +6,7 @@
 // `decideProactivity` reads. The bounds a written value must sit in are its
 // owner's, `orgs/agent-presence.ts`.
 
+import { escapeRegExp } from '@forge/observability';
 import { z } from 'zod';
 import {
   type AnswerInGroupMode,
@@ -151,8 +152,7 @@ export function namesHandle(content: string, handle: string | null): boolean {
  * `forge-dev` then threw on every group-room window it was read for.
  */
 function handleWord(handle: string, flags: string): RegExp {
-  const escaped = handle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`(^|[^\\w-])@?${escaped}(?![\\w-])`, flags);
+  return new RegExp(`(^|[^\\w-])@?${escapeRegExp(handle)}(?![\\w-])`, flags);
 }
 
 /** Whether any message in the window names any of the room's handles. */

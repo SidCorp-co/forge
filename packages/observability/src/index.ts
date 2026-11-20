@@ -235,8 +235,8 @@ function scrubUrl(url: string): string {
 	return url.replace(URL_TOKEN_PATTERN, `$1${FILTERED}`);
 }
 
-/** Escape a string for safe interpolation into a `RegExp` source. */
-function escapeRegExp(s: string): string {
+/** Escape a string for safe interpolation into a `RegExp` source, outside a character class. */
+export function escapeRegExp(s: string): string {
 	return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
