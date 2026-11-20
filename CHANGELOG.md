@@ -9,6 +9,19 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.761] - 2026-11-20
+
+Verdicts no release counts are refused, and the owner's room can write a project rule
+
+### Added
+
+- **The owner's ruling in his room can now become a project rule.** The room writes or amends the rule in his name, citing his message, under his own grant. Masters are taught to act on his word without asking again.
+
+### Fixed
+
+- **A verdict no shipped release counts is refused by name.** A verdict at a release's build with an identity that release never counts, or a skip over a pass at its build, is refused naming what counts.
+- **A room agent keeps its own directory under /tmp.** Its sandbox no longer hides a room kept under /tmp, so the runner release check passes on a CI runner.
+
 ## [0.4.0-dev.760] - 2026-11-20
 
 Dev runner builds that dev boxes can auto-update to
