@@ -1,0 +1,1 @@
+**An agent can no longer approve a kept credential.** Writing or removing one at the secret's own door now needs a person, like its approve and discard doors; a chat-server outage no longer parks an owner's release go.
