@@ -3,6 +3,9 @@
  * Create a `runner-v*` tag and push it, WITHOUT forcing: a tag that already exists
  * fails the run, because a moved release tag leaves two binaries claiming one
  * version. <tag> <commit> [--remote <name>] [--cwd <dir>]
+ *
+ * The dev line's prereleases (`runner-vX.Y.Z-dev.N`, ISS-1358) and `main`'s releases are two
+ * lines over shared commits: a commit is refused only where its own line already released it.
  */
 import { execFileSync } from 'node:child_process';
 
@@ -19,13 +22,19 @@ export function tagTarget(cwd, tag) {
   }
 }
 
-/** The `runner-v*` tags pointing at `commit`, if any. */
-export function releasesAt(cwd, commit) {
+/** Whether `tag` is on the dev line rather than `main`'s. */
+function isDevTag(tag) {
+  return /-dev\.\d+$/.test(tag);
+}
+
+/** The `runner-v*` tags on `tag`'s line pointing at `commit`, if any. */
+export function releasesAt(cwd, commit, tag) {
   try {
     return git(cwd, ['tag', '--points-at', commit, '--list', 'runner-v*'])
       .split('\n')
       .map((s) => s.trim())
-      .filter(Boolean);
+      .filter(Boolean)
+      .filter((t) => isDevTag(t) === isDevTag(tag));
   } catch {
     return [];
   }
@@ -35,7 +44,7 @@ export function releasesAt(cwd, commit) {
 export function cutRunnerTag({ cwd, tag, commit, remote = 'origin' }) {
   // A rerun of an older run allocates a HIGHER version from today's tags and would
   // publish yesterday's code under it: numerically forward, functionally back.
-  const already = releasesAt(cwd, commit);
+  const already = releasesAt(cwd, commit, tag);
   if (already.length > 0) {
     throw new Error(
       `${commit} is already released as ${already.join(', ')} — nothing to release, and ` +

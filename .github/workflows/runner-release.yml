@@ -10,6 +10,11 @@ name: runner-release
 #     pushed a tag would publish nothing and say nothing.
 #   * a `runner-vX.Y.Z` tag push — a release cut by hand.
 #
+# A version with a pre-release suffix (`X.Y.Z-dev.N`, the dev line ISS-1358 cuts
+# from runner-autorelease.yml) is published as a GitHub prerelease: the same
+# check, targets and assets, and `main`'s line, which reads no prerelease, never
+# takes it.
+#
 # Assets are named `forge-runner-<target>` so core can serve them from
 # RUNNER_RELEASE_DIR; core's `fetch-release.js` populates that dir from the
 # newest `runner-v*` release on boot and every 30 minutes.
@@ -49,6 +54,7 @@ jobs:
       version: ${{ steps.r.outputs.version }}
       tag: ${{ steps.r.outputs.tag }}
       sha: ${{ steps.r.outputs.sha }}
+      prerelease: ${{ steps.r.outputs.prerelease }}
     steps:
       - id: r
         env:
@@ -63,10 +69,15 @@ jobs:
             [0-9]*.[0-9]*.[0-9]*) ;;
             *) echo "::error::cannot resolve a release version from inputs.version='$IN_VERSION' / ref '$REF_NAME'" >&2; exit 1;;
           esac
+          case "$version" in
+            *-*) prerelease=true;;
+            *) prerelease=false;;
+          esac
           {
             echo "version=$version"
             echo "tag=runner-v$version"
             echo "sha=$sha"
+            echo "prerelease=$prerelease"
           } >> "$GITHUB_OUTPUT"
 
   # Release gate — a tag is immutable, so artifacts must never ship from a
@@ -137,6 +148,8 @@ jobs:
           # What the binary answers with, and what core compares a box against.
           FORGE_RUNNER_VERSION: ${{ needs.resolve.outputs.version }}
           FORGE_RUNNER_COMMIT: ${{ needs.resolve.outputs.sha }}
+          # The release the binary came from, which `forge-runner status` names.
+          FORGE_RUNNER_RELEASE: ${{ needs.resolve.outputs.tag }}
         run: cargo build --release --locked --target ${{ matrix.target }} --manifest-path packages/runner/Cargo.toml
       - name: Stage asset
         run: |
@@ -166,6 +179,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.resolve.outputs.tag }}
+          prerelease: ${{ needs.resolve.outputs.prerelease == 'true' }}
           files: |
             dist/forge-runner-*
             dist/VERSION

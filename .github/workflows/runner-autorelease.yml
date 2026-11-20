@@ -14,9 +14,15 @@ name: runner-autorelease
 # a GitHub Release carrying the two `forge-runner-<target>` binaries, `VERSION`
 # and `COMMIT`. Core's `fetch-release.js` picks that up within 30 minutes and
 # boxes with `update.auto` apply it on their next check.
+#
+# A push to `dev` touching the runner cuts the dev line instead (ISS-1358): the tag
+# `runner-v<newest main release on the line>-dev.<n>`, published as a GitHub
+# prerelease through the same runner-release.yml, so `main`'s line, which reads
+# no prerelease, is unchanged. A core whose RUNNER_RELEASE_CHANNEL is `dev` serves
+# it; every other core never sees it.
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
     paths:
       - "packages/runner/**"
 
@@ -25,9 +31,10 @@ permissions:
 
 # Two merges landing together must not compute the same next version in
 # parallel. They are serialised here; the tag push itself is the second defence,
-# and refuses rather than moving a tag somebody else cut.
+# and refuses rather than moving a tag somebody else cut. Each line queues apart,
+# so a dev push never cancels a release of `main` waiting in the group.
 concurrency:
-  group: runner-autorelease
+  group: ${{ github.ref_name == 'dev' && 'runner-autorelease-dev' || 'runner-autorelease' }}
   cancel-in-progress: false
 
 jobs:
@@ -54,7 +61,9 @@ jobs:
         run: echo "sha=$(git log -1 --format=%H -- packages/runner)" >> "$GITHUB_OUTPUT"
       - name: The version this release carries
         id: next
-        run: node scripts/next-runner-version.mjs >> "$GITHUB_OUTPUT"
+        env:
+          CHANNEL: ${{ github.ref_name }}
+        run: node scripts/next-runner-version.mjs --channel "$CHANNEL" >> "$GITHUB_OUTPUT"
       - name: Cut the tag
         env:
           TAG: ${{ steps.next.outputs.tag }}
