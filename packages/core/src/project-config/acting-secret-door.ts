@@ -18,6 +18,7 @@ import {
   type ActingSecretsView,
 } from '@forge/contracts/acting-secrets';
 import { secretRefOf } from '@forge/contracts/project-config';
+import { SUPPORT_KEPT_SECRET_SCOPE } from '@forge/contracts/support';
 import { SCRUB_MIN_SECRET_LENGTH } from '@forge/observability';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -26,6 +27,7 @@ import { isVaultConfigured } from '../integrations/index.js';
 import { refuser } from '../lib/refusal.js';
 import type { PatPrincipal } from '../middleware/require-pat.js';
 import type { ActingSecretDeclaration } from './acting-secrets-schema.js';
+import { keptEntries, keptEntry } from './kept-secrets.js';
 import { type DeclaredRunRead, projectConfigPorts } from './ports.js';
 import { readProjectSecrets } from './secret-read.js';
 import { actingSecretDoor } from './secret-value-door.js';
@@ -131,12 +133,48 @@ export async function actingDeclarations(projectId: string): Promise<ActingSecre
   return (await readProjectConfig(projectId))?.document.actingSecrets ?? [];
 }
 
+/** Every reader a credential kept from a room is read by, once usable (ISS-1372). */
+const KEPT_READERS: ActingSecretDeclaration['readers'] = ['master', 'runs'];
+
+/**
+ * A credential a person handed over in a room (ISS-1372, `kept-secrets.ts`) is declared by its
+ * keeping: read by the master and its runs once usable, refused by name while it waits for a project
+ * admin, and once it expired or was discarded.
+ */
+async function keptDeclaration(projectId: string, name: string): Promise<ActingSecretDeclaration> {
+  const entry = await keptEntry(projectId, name);
+  const ref = secretRefOf(SUPPORT_KEPT_SECRET_SCOPE, name);
+  if (!entry) {
+    throw refuse(
+      'ACTING_SECRET_NOT_DECLARED',
+      `project ${projectId} kept no credential from a room under ${ref}; GET /api/projects/${projectId}/kept-secrets lists the ones it kept. Nothing was read.`,
+    );
+  }
+  if (entry.state === 'pending') {
+    throw refuse(
+      'ACTING_SECRET_KEPT_PENDING',
+      `${ref} was handed over in a room by ${entry.from.label ?? entry.from.chatKey}, who holds no project admin, so it waits for a project admin's approval until ${entry.expiresAt} (POST /api/projects/${projectId}/kept-secrets/${name}/approval). Nothing was read.`,
+    );
+  }
+  if (entry.state !== 'usable') {
+    throw refuse(
+      'ACTING_SECRET_KEPT_GONE',
+      `${ref} ${entry.state === 'expired' ? `expired unapproved at ${entry.expiresAt}` : `was discarded by a project admin at ${entry.decidedAt}`}, and its value is destroyed; the person sends it again to keep it. Nothing was read.`,
+    );
+  }
+  return { secret: ref, readers: KEPT_READERS };
+}
+
 /** The declaration of `ref` the reader may read, refused by name where there is none. */
 async function declarationFor(
   projectId: string,
   ref: string,
   reader: Reader,
 ): Promise<ActingSecretDeclaration> {
+  const keptPrefix = secretRefOf(SUPPORT_KEPT_SECRET_SCOPE, '');
+  if (ref.startsWith(keptPrefix)) {
+    return keptDeclaration(projectId, ref.slice(keptPrefix.length));
+  }
   const naming = (await listTestingProfiles(projectId)).filter((p) =>
     credentialRefs(p.document).some((r) => r.ref === ref),
   );
@@ -285,8 +323,12 @@ export async function readActingSecretRecord(projectId: string): Promise<ActingS
       .limit(200),
   ]);
   const reads = rows.flatMap((r) => recordOf(r) ?? []);
+  // a credential kept from a room is declared by its keeping, once usable (ISS-1372)
+  const kept = (await keptEntries(projectId))
+    .filter((e) => e.state === 'usable')
+    .map((e) => ({ secret: e.ref, readers: KEPT_READERS }));
   return {
-    declared: declared.map((d) => ({
+    declared: [...declared, ...kept].map((d) => ({
       secret: d.secret,
       readers: d.readers,
       valueAt: actingSecretDoor(projectId, d.secret),

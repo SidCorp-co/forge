@@ -164,6 +164,12 @@ export const PROJECT_CONFIG_REFUSAL_CODES = [
 	"SECRET_MERGE_TOO_LONG",
 	/** A merge into a stored secret this core cannot decrypt (ISS-1140). */
 	"SECRET_MERGE_UNREADABLE",
+	/** No credential kept from a room under that name (ISS-1372). */
+	"KEPT_SECRET_UNKNOWN",
+	/** A kept credential already decided, usable or expired: nothing to approve (ISS-1372). */
+	"KEPT_SECRET_NOT_PENDING",
+	/** A kept credential is approved or discarded by a person, never an agent's token (ISS-1372). */
+	"KEPT_SECRET_PERSON_ONLY",
 	"BINDING_ID_MISMATCH",
 	"BINDING_TARGET_UNSUPPORTED",
 	"BINDING_NOT_REPRESENTABLE",
@@ -188,6 +194,9 @@ export const PROJECT_CONFIG_REFUSAL_STATUSES = {
 	GATES_NO_PROJECT_DOCUMENT: 409,
 	REVIEW_RUN_NOT_A_PERSON: 403,
 	MONITORING_RULES_REFUSED: 503,
+	KEPT_SECRET_UNKNOWN: 404,
+	KEPT_SECRET_NOT_PENDING: 409,
+	KEPT_SECRET_PERSON_ONLY: 403,
 } as const satisfies RefusalStatuses<ProjectConfigRefusalCode>;
 
 /** Reading an environment's deployed state through its binding. */

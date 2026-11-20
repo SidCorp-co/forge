@@ -636,6 +636,16 @@ export const SUPPORT_OWNER_CREDENTIAL_SCOPE = "owner-acts";
 export const supportOwnerCredentialName = (bindingId: string) =>
 	`binding-${bindingId.toLowerCase()}`;
 
+/**
+ * Where core keeps a credential a person hands over in a bound room (ISS-1372): a project secret
+ * under this scope, `secret://kept/<name>`, stored before the message is redacted and read by the
+ * project's master and its runs at the acting door once usable. Written only by the room's intake.
+ */
+export const SUPPORT_KEPT_SECRET_SCOPE = "kept";
+
+/** How long a kept credential a non-admin sent waits for a project admin's approval (ISS-1372). */
+export const SUPPORT_KEPT_PENDING_HOURS = 24;
+
 const ownerTokenSchema = z.string().min(1).max(4000);
 
 /**

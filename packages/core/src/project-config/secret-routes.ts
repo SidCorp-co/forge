@@ -14,6 +14,7 @@ import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requiresOnParam } from '../permissions/index.js';
 import { actingDeclarations } from './acting-secret-door.js';
 import { actingSecretRoutes } from './acting-secret-routes.js';
+import { keptSecretRoutes } from './kept-secret-routes.js';
 import {
   actingSecretDoor,
   actingSecretElsewhere,
@@ -34,6 +35,8 @@ export const projectSecretRoutes = new Hono<{ Variables: AuthVars }>();
 
 // the one door a secret declared for acting is read at, and the record of its reads (REQ-88)
 projectSecretRoutes.route('/', actingSecretRoutes);
+// the credentials kept from the project's rooms, and a project admin's word on a pending one (ISS-1372)
+projectSecretRoutes.route('/', keptSecretRoutes);
 
 for (const path of ['/:id/secrets', '/:id/secrets/*', '/:id/test-credentials']) {
   projectSecretRoutes.use(path, requireAuth(), assertEmailVerified());

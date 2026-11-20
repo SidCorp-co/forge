@@ -42,6 +42,10 @@ export const ACTING_SECRET_REFUSAL_CODES = [
 	"ACTING_SECRET_READ_ELSEWHERE",
 	/** The path is not a project id, a scope and a name, or the query not one run id. */
 	"ACTING_SECRET_READ_SHAPE",
+	/** A credential kept from a room waits for a project admin's approval (ISS-1372). */
+	"ACTING_SECRET_KEPT_PENDING",
+	/** A credential kept from a room expired unapproved, or an admin discarded it (ISS-1372). */
+	"ACTING_SECRET_KEPT_GONE",
 ] as const;
 export type ActingSecretRefusalCode =
 	(typeof ACTING_SECRET_REFUSAL_CODES)[number];
@@ -58,6 +62,8 @@ export const ACTING_SECRET_REFUSAL_STATUSES = {
 	ACTING_SECRET_VAULT_NOT_CONFIGURED: 503,
 	ACTING_SECRET_READ_ELSEWHERE: 404,
 	ACTING_SECRET_READ_SHAPE: 400,
+	ACTING_SECRET_KEPT_PENDING: 409,
+	ACTING_SECRET_KEPT_GONE: 404,
 } as const satisfies RefusalStatuses<ActingSecretRefusalCode>;
 
 /** Who read: the master by its session, or a declared run by core's run and session ids. */

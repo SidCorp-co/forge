@@ -120,13 +120,34 @@ export interface Screened {
   text: string;
   /** Whether it held a secret, which the session is told of once (`secret-flag.ts:flagSecret`). */
   secret: boolean;
+  /**
+   * Each value the screen filtered, in the order its `[Filtered]` stands in `text`: what the room's
+   * intake keeps in the project's vault before the message is recorded (ISS-1372), and nothing else.
+   */
+  values: string[];
+}
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * The runs of `original` that each `[Filtered]` of `kept` stands for, in order (ISS-1372): the text
+ * the screen kept is the original with those runs replaced, so its literal parts anchor each one. An
+ * empty list where they do not line up, so nothing is kept that is not the value.
+ */
+export function filteredValues(original: string, kept: string): string[] {
+  const parts = kept.split(FILTERED);
+  if (parts.length < 2) return [];
+  const re = new RegExp(`^${parts.map(escapeRe).join('([\\s\\S]+?)')}$`);
+  const found = re.exec(original);
+  if (!found) return [];
+  return found.slice(1).map((v) => v.trim());
 }
 
 /** A message read without its thread: the scrubber's labels, and a chat credential its own words show. */
 export function screenAlone(text: string): Screened {
   const labelled = containsSecret(text) ? scrubLogText(text) : text;
   const out = scrubChatCredentials(labelled, LOGIN_ASK.test(text));
-  return { text: out, secret: out !== text };
+  return { text: out, secret: out !== text, values: filteredValues(text, out) };
 }
 
 /** A member's message in a room, read with its thread (see the module's doc). */
@@ -137,7 +158,9 @@ export async function screenMessage(
   const labelled = containsSecret(m.text) ? scrubLogText(m.text) : m.text;
   const asksLogin = holdsAccount(labelled) && (await threadAsksLogin(room, m));
   const text = scrubChatCredentials(labelled, asksLogin);
-  if (text !== m.text) return { text, secret: true };
-  if (await bareKeyInContext(room, m)) return { text: FILTERED, secret: true };
-  return { text: m.text, secret: false };
+  if (text !== m.text) return { text, secret: true, values: filteredValues(m.text, text) };
+  if (await bareKeyInContext(room, m)) {
+    return { text: FILTERED, secret: true, values: [m.text.trim()] };
+  }
+  return { text: m.text, secret: false, values: [] };
 }
