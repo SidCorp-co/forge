@@ -17,6 +17,8 @@
  * @direct-test-of packages/core/src/issues/criteria/routes.ts
  * @direct-test-of packages/core/src/issues/update-service.ts
  * @direct-test-of packages/core/src/issues/create-service.ts
+ * @direct-test-of packages/core/src/issues/criteria/criteria-text.ts
+ * @direct-test-of packages/core/src/issues/project-issue-routes.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -265,5 +267,82 @@ describe('the run holding a landed issue with no criteria adds them once (ISS-10
     ok(await call('holder', 'PATCH', `/api/issues/${id}`, leaseBody('holder')));
     const r = await put(id, ['The order list loads in under 2 s.']);
     expect(codesOf(r)).toEqual(['CRITERIA_LOCKED']);
+  });
+});
+
+// ISS-1378 (forge-plugin ISS-117): a `Scope:` line above `1.` was dropped without a word, the rows
+// were written and the raw text kept, and once the issue locked every verdict the plugin wrote was
+// refused reading that text ("Every criterion is a numbered line"), its fix refused CRITERIA_LOCKED.
+describe('a criteria text with a line before its first numbered criterion (ISS-1378)', () => {
+  const LEAD = 'Scope: the order list only';
+  const NUMBERED = '1. The order list loads in under 2 s.\n2. A clerk sees the new column.';
+  const refusalOf = (r: Reply): Doc | undefined => ((r.json as Doc).error?.refusals ?? [])[0];
+
+  it('refuses a filing naming the line, and files nothing', async () => {
+    const title = 'Filed with a scope line above its criteria';
+    const r = await call('holder', 'POST', `/api/projects/${projectId}/issues`, {
+      title,
+      acceptanceCriteria: `${LEAD}\n${NUMBERED}`,
+    });
+    expect(r.status, JSON.stringify(r.json)).toBe(422);
+    expect(codesOf(r)).toEqual(['CRITERIA_TEXT_UNPARSEABLE']);
+    const detail = String(refusalOf(r)?.detail);
+    expect(detail).toContain(`"${LEAD}"`);
+    expect(detail).toContain('number it');
+    expect(detail).toContain('description');
+    expect(await rows(sql`SELECT id FROM issues WHERE title = ${title}`)).toEqual([]);
+  });
+
+  it('refuses an update naming the line, and writes neither the text nor a row', async () => {
+    const filed = ok(
+      await call('owner', 'POST', `/api/projects/${projectId}/issues`, {
+        title: 'Updated with a scope line above its criteria',
+        acceptanceCriteria: NUMBERED,
+      }),
+      201,
+    );
+    const id = String(filed.id);
+    const r = await call('owner', 'PATCH', `/api/issues/${id}`, {
+      acceptanceCriteria: `${LEAD}\n1. Something else entirely holds.`,
+    });
+    expect(r.status, JSON.stringify(r.json)).toBe(422);
+    expect(codesOf(r)).toEqual(['CRITERIA_TEXT_UNPARSEABLE']);
+    expect(String(refusalOf(r)?.detail)).toContain(`"${LEAD}"`);
+    const [held] = await rows<{ acceptance_criteria: string }>(
+      sql`SELECT acceptance_criteria FROM issues WHERE id = ${id}`,
+    );
+    expect(held?.acceptance_criteria).toBe(NUMBERED);
+    expect(await liveStatements(id)).toEqual([
+      'The order list loads in under 2 s.',
+      'A clerk sees the new column.',
+    ]);
+  });
+
+  it('takes a well-numbered text whose criterion runs on an indented line', async () => {
+    const r = await call('holder', 'POST', `/api/projects/${projectId}/issues`, {
+      title: 'Filed with a criterion over two lines',
+      acceptanceCriteria: '1. The order list loads\n    in under 2 s.\n2. A clerk sees the new column.',
+    });
+    const filed = ok(r, 201);
+    expect(await liveStatements(String(filed.id))).toEqual([
+      'The order list loads\nin under 2 s.',
+      'A clerk sees the new column.',
+    ]);
+  });
+
+  it('reads a locked issue whose stored text carries the line back clean, its rows untouched', async () => {
+    const id = await landed(['The order list loads in under 2 s.', 'A clerk sees the new column.']);
+    // the text as the dropped-line write left it, before this refusal stood
+    await rows(sql`UPDATE issues SET acceptance_criteria = ${`${LEAD}\n${NUMBERED}`} WHERE id = ${id}`);
+    const before = await rows(
+      sql`SELECT id, n, statement, retired_at FROM issue_criteria WHERE issue_id = ${id} ORDER BY n`,
+    );
+    const read = ok(await call('holder', 'GET', `/api/issues/${id}`));
+    expect(read.acceptanceCriteria).toBe(NUMBERED);
+    expect(
+      await rows(
+        sql`SELECT id, n, statement, retired_at FROM issue_criteria WHERE issue_id = ${id} ORDER BY n`,
+      ),
+    ).toEqual(before);
   });
 });
