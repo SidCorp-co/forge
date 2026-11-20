@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.766] - 2026-11-20
+
+Requirements guide teaches sourcing money golden figures and marking own-rule backends disputed
+
+### Changed
+
+- **A money figure in a suite names its source.** The requirement guide says each money figure names a confirmed business case or recorded owner decision, and a backend following its own recorded rule makes a scenario disputed, not failed.
+
 ## [0.4.0-dev.765] - 2026-11-20
 
 Judging runs stop clean in shared checkouts and regenerated files stop blocking judges
