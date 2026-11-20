@@ -37,8 +37,11 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-const box = (agentVersion: string | null, agentCommit: string | null) =>
-  annotateDeviceBuilds([{ agentVersion, agentCommit }]).then((rows) => rows[0]);
+async function box(agentVersion: string | null, agentCommit: string | null) {
+  const [row] = await annotateDeviceBuilds([{ agentVersion, agentCommit }]);
+  if (!row) throw new Error('annotateDeviceBuilds answered no row for the one it was given');
+  return row;
+}
 
 describe('a box judged against the dev channel release', () => {
   it('a box running the dev release, which carries dev’s runner head, is current on both', async () => {
