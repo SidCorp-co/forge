@@ -18,6 +18,10 @@ pub async fn run(ctx: Ctx, _args: Args) -> anyhow::Result<()> {
         runner_update::VERSION_LINE,
         runner_update::BUILD_TARGET
     );
+    println!(
+        "release    {}",
+        runner_update::version::release_line(runner_update::release())
+    );
     for line in daemon_lines() {
         println!("{line}");
     }

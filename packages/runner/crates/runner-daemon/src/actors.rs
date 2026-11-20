@@ -64,21 +64,68 @@ pub(crate) struct Updates {
     pub(crate) bound: Config,
     pub(crate) assignments: Arc<CoreClient>,
     pub(crate) carry: HandOver,
+    /// The build core serves, as the heartbeat last named it (ISS-1358).
+    pub(crate) served: served::Served,
 }
 
 /// Warn when a newer release exists; with `update.auto`, apply it and restart
-/// once idle. First check ~30s after start, then every six hours.
-pub(crate) async fn updates(u: Updates, cancel: watch::Receiver<bool>) {
+/// once idle. First check ~30s after start, then every six hours, and again
+/// whenever the heartbeat names a build core serves that the last check did
+/// not read (ISS-1358).
+pub(crate) async fn updates(mut u: Updates, cancel: watch::Receiver<bool>) {
     tokio::time::sleep(std::time::Duration::from_secs(30)).await;
     let mut ticks = Ticks::new(UPDATE_CHECK_INTERVAL, cancel);
-    while let Some(checked_at) = ticks.next().await {
-        check_update(&u, checked_at).await;
+    let mut checked: Option<heartbeat::ServedRelease> = None;
+    loop {
+        // The timer first, so the first tick, which completes at once, is the
+        // first check and the build it reads is not checked again straight after.
+        let checked_at = tokio::select! {
+            biased;
+            tick = ticks.next() => match tick {
+                Some(at) => at,
+                None => return,
+            },
+            now = served::next(&mut u.served) => {
+                if !served::moved(checked.as_ref(), now.as_ref()) {
+                    continue;
+                }
+                tracing::info!(
+                    "[update] core serves {} now — checking without waiting for the timer",
+                    now.as_ref().map_or("another build", |s| s.version.as_str())
+                );
+                tokio::time::Instant::now()
+            }
+        };
+        if let Some(read) = check_update(&u, checked_at).await {
+            checked = Some(read);
+        }
     }
 }
 
-async fn check_update(u: &Updates, checked_at: tokio::time::Instant) {
+/// One check: the build the manifest names, where it could be read, so the
+/// loop knows which build it has already acted on.
+async fn check_update(
+    u: &Updates,
+    checked_at: tokio::time::Instant,
+) -> Option<heartbeat::ServedRelease> {
+    match runner_update::fetch_manifest(&u.url).await {
+        Ok(m) => {
+            let read = heartbeat::ServedRelease {
+                version: m.version.clone(),
+                commit: m.commit.clone(),
+            };
+            act_on(u, &m, checked_at).await;
+            Some(read)
+        }
+        Err(e) => {
+            tracing::debug!("[update] check failed: {e}");
+            None
+        }
+    }
+}
+
+async fn act_on(u: &Updates, m: &runner_update::Manifest, checked_at: tokio::time::Instant) {
     let Updates {
-        url,
         auto,
         inflight,
         drain,
@@ -86,10 +133,11 @@ async fn check_update(u: &Updates, checked_at: tokio::time::Instant) {
         bound,
         assignments,
         carry,
+        ..
     } = u;
     let auto = *auto;
-    match runner_update::fetch_manifest(url).await {
-        Ok(m) if runner_update::is_newer(&m.version, runner_update::CURRENT_VERSION) => {
+    match m {
+        m if runner_update::is_newer(&m.version, runner_update::CURRENT_VERSION) => {
             tracing::warn!(
                 "[update] available: {} → {}",
                 runner_update::CURRENT_VERSION,
@@ -106,7 +154,7 @@ async fn check_update(u: &Updates, checked_at: tokio::time::Instant) {
                     m.version
                 );
             } else if auto {
-                match runner_update::apply(&m, Some(&carry.served)).await {
+                match runner_update::apply(m, Some(&carry.served)).await {
                     Ok(runner_update::Applied::HeldBack { rejected, exe }) => tracing::warn!(
                         "[update] {} is not installed: {}",
                         rejected.version,
@@ -164,8 +212,7 @@ async fn check_update(u: &Updates, checked_at: tokio::time::Instant) {
                 }
             }
         }
-        Ok(_) => tracing::debug!("[update] up to date"),
-        Err(e) => tracing::debug!("[update] check failed: {e}"),
+        _ => tracing::debug!("[update] up to date"),
     }
 }
 
@@ -251,17 +298,24 @@ pub(crate) async fn cred_watch(
     }
 }
 
-/// The disk reading and the heartbeat that carries it, which publishes the
-/// orientation revisions core names to `revisions`.
+/// What a beat's answer is published to: the orientation revisions core names,
+/// and the runner build it serves (ISS-1358).
+pub(crate) struct Heard {
+    pub(crate) revisions: watch::Sender<Option<heartbeat::Revisions>>,
+    pub(crate) release: watch::Sender<Option<heartbeat::ServedRelease>>,
+}
+
+/// The disk reading and the heartbeat that carries it, which publishes what
+/// core names on each answer to `heard`.
 pub(crate) fn spawn_heartbeat(
     client: &Arc<CoreClient>,
-    revisions: watch::Sender<Option<heartbeat::Revisions>>,
+    heard: Heard,
     boxes: runner_box::Boxes,
     cancel: &watch::Receiver<bool>,
 ) {
     let disk = spawn_headroom(cancel.clone());
     let cancel = cancel.clone();
-    tokio::spawn(heartbeat(client.clone(), disk, revisions, boxes, cancel));
+    tokio::spawn(heartbeat(client.clone(), disk, heard, boxes, cancel));
 }
 
 /// The heartbeat, carrying the gate, pool-read and binary conditions and the
@@ -271,7 +325,7 @@ pub(crate) fn spawn_heartbeat(
 async fn heartbeat(
     client: Arc<CoreClient>,
     disk: watch::Receiver<Option<Vec<runner_proto::disk::Root>>>,
-    revisions: watch::Sender<Option<heartbeat::Revisions>>,
+    heard: Heard,
     boxes: runner_box::Boxes,
     cancel: watch::Receiver<bool>,
 ) {
@@ -297,24 +351,32 @@ async fn heartbeat(
         if let Some(g) = conditions.gate.as_ref() {
             let _ = announce_gate(g, &mut shouted);
         }
-        beat_once(&client, &conditions, &revisions).await;
+        beat_once(&client, &conditions, &heard).await;
     }
 }
 
 /// One beat: what core refused is said, and the revisions it named are
 /// published on every answer, moved or not, so a refresh whose read of
-/// `me/runners` failed is asked again on the next beat. A beat core did not
-/// answer publishes nothing.
+/// `me/runners` failed is asked again on the next beat. The build core serves
+/// is published only when it changed, so the update loop wakes for a move and
+/// not for every beat. A beat core did not answer publishes nothing.
 pub(crate) async fn beat_once(
     client: &CoreClient,
     conditions: &heartbeat::Conditions,
-    revisions: &watch::Sender<Option<heartbeat::Revisions>>,
+    heard: &Heard,
 ) {
     match heartbeat::beat(client, conditions).await {
         Err(e) => tracing::warn!("[heartbeat] {e}"),
         Ok(answer) => {
             warn_refused(&answer.refused);
-            revisions.send_replace(answer.orientations);
+            heard.revisions.send_replace(answer.orientations);
+            heard.release.send_if_modified(|was| {
+                let changed = *was != answer.release;
+                if changed {
+                    was.clone_from(&answer.release);
+                }
+                changed
+            });
         }
     }
 }
@@ -667,5 +729,7 @@ mod cancel_tests;
 
 mod frames;
 pub(crate) use frames::{on_frame, FrameCtx};
+
+pub(crate) mod served;
 
 mod scratch;

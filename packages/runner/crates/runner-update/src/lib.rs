@@ -14,7 +14,9 @@ use runner_platform::error::{Error, Result};
 
 pub mod probation;
 pub mod stamp;
+pub mod version;
 pub use stamp::UNKNOWN_COMMIT;
+pub use version::{is_newer, release};
 
 /// This build's identity, all three fixed by build.rs.
 ///
@@ -26,6 +28,9 @@ pub use stamp::UNKNOWN_COMMIT;
 pub const CURRENT_VERSION: &str = env!("FORGE_RUNNER_VERSION");
 pub const BUILD_COMMIT: &str = env!("FORGE_RUNNER_COMMIT");
 pub const BUILD_TARGET: &str = env!("FORGE_RUNNER_TARGET");
+/// The release tag the build came from (`runner-v0.18.0-dev.3`), stamped by
+/// runner-release.yml; empty for a build no release made. Read it through [`release`].
+pub const BUILD_RELEASE: &str = env!("FORGE_RUNNER_RELEASE");
 
 /// What `--version` prints, and what a person reads back off a box.
 pub const VERSION_LINE: &str = concat!(
@@ -125,51 +130,6 @@ pub async fn fetch_manifest(url: &str) -> Result<Manifest> {
             "parse manifest {url}: {e} — a manifest is refused whole where any asset lacks its sha256, so no build is installed unverified"
         ))
     })
-}
-
-/// `latest` sorts above `current` by semver precedence: X.Y.Z compared as
-/// numbers, then a version with a pre-release (`-rc.1`, `-dev.3`) below the
-/// same X.Y.Z without one, pre-release identifiers compared one by one, numeric
-/// ones as numbers and below any alphanumeric one. Build metadata (`+…`) is
-/// ignored. So a box on `0.9.10-rc.1` takes `0.9.10`, and `-dev.10` is newer
-/// than `-dev.9`.
-pub fn is_newer(latest: &str, current: &str) -> bool {
-    precedence(latest) > precedence(current)
-}
-
-/// One pre-release identifier: numeric sorts below alphanumeric.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-enum Ident {
-    Num(u64),
-    Alpha(String),
-}
-
-/// The ordering key of a version. The trailing flag puts a release (`true`)
-/// above any pre-release of the same X.Y.Z (`false`), which then compares by
-/// its identifiers.
-fn precedence(v: &str) -> ((u64, u64, u64), bool, Vec<Ident>) {
-    let v = v.trim().trim_start_matches('v');
-    let v = v.split('+').next().unwrap_or("");
-    let (core, pre) = match v.split_once('-') {
-        Some((core, pre)) => (core, Some(pre)),
-        None => (v, None),
-    };
-    let mut it = core.split('.').map(|p| p.parse::<u64>().unwrap_or(0));
-    let xyz = (
-        it.next().unwrap_or(0),
-        it.next().unwrap_or(0),
-        it.next().unwrap_or(0),
-    );
-    let idents = pre
-        .unwrap_or("")
-        .split('.')
-        .filter(|p| !p.is_empty())
-        .map(|p| match p.parse::<u64>() {
-            Ok(n) => Ident::Num(n),
-            Err(_) => Ident::Alpha(p.to_string()),
-        })
-        .collect();
-    (xyz, pre.is_none(), idents)
 }
 
 /// How long the asset download may take, body included. A connection that

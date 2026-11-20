@@ -699,9 +699,14 @@ pub async fn run(
     let served = Arc::new(runner_update::ServedBuild::new());
     let masters = Arc::new(master::Masters::new());
     take_handed_masters(&masters);
+    let carry = || HandOver {
+        served: served.clone(),
+        masters: masters.clone(),
+    };
 
     // Update check loop: warn when a newer release exists; auto-apply +
     // restart when `update.auto` is set.
+    let (release, served_release) = watch::channel(None);
     if let Some(url) =
         runner_update::manifest_url(cfg.update.manifest_url.as_deref(), Some(&core_url))
     {
@@ -713,10 +718,8 @@ pub async fn run(
             runner: runner.clone(),
             bound: cfg.clone(),
             assignments: client.clone(),
-            carry: HandOver {
-                served: served.clone(),
-                masters: masters.clone(),
-            },
+            carry: carry(),
+            served: served_release,
         };
         tokio::spawn(actors::updates(u, cancel_rx.clone()));
     }
@@ -726,14 +729,12 @@ pub async fn run(
         inflight.clone(),
         drain.clone(),
         runner.clone(),
-        HandOver {
-            served: served.clone(),
-            masters: masters.clone(),
-        },
+        carry(),
         cancel_rx.clone(),
     ));
     let boxes = previews::boxes(&client, &cfg);
-    actors::spawn_heartbeat(&client, revisions, boxes.clone(), &cancel_rx);
+    let heard = actors::Heard { revisions, release };
+    actors::spawn_heartbeat(&client, heard, boxes.clone(), &cancel_rx);
 
     spawn_ctrl_c(cancel_tx.clone());
 

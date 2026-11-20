@@ -30,6 +30,18 @@ struct HeartbeatResponse {
     disk: Option<GateAck>,
     #[serde(default)]
     orientations: Option<Revisions>,
+    #[serde(default)]
+    runner_release: Option<ServedRelease>,
+}
+
+/// The runner build core's `install/latest.json` serves now, as the heartbeat
+/// names it (ISS-1358): the update loop checks again when it moves, rather than
+/// only on its six-hour timer.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct ServedRelease {
+    pub version: String,
+    #[serde(default)]
+    pub commit: Option<String>,
 }
 
 /// Each assigned project's orientation revision, by project id: the sha256 of
@@ -97,6 +109,8 @@ pub struct Answer {
     /// `None` where core named no revisions: one older than this runner, or one
     /// that could not compose them for this beat.
     pub orientations: Option<Revisions>,
+    /// `None` where core serves no runner build, or is older than ISS-1358.
+    pub release: Option<ServedRelease>,
 }
 
 /// Core's reasons for refusing either condition while taking the heartbeat.
@@ -149,6 +163,7 @@ fn answer_of(parsed: HeartbeatResponse) -> (String, Answer) {
                 disk: gate_refusal(parsed.disk),
             },
             orientations: parsed.orientations,
+            release: parsed.runner_release,
         },
     )
 }
@@ -460,5 +475,37 @@ mod tests {
             answer_of(none_assigned).1.orientations,
             Some(Revisions::new())
         );
+    }
+
+    /// ISS-1358: the build core serves rides back on every beat, so the update
+    /// loop checks again when it moves; a core older than that names none.
+    #[test]
+    fn the_runner_build_core_serves_is_carried_back() {
+        let parsed: HeartbeatResponse = serde_json::from_value(serde_json::json!({
+            "ok": true,
+            "runnerRelease": { "version": "0.18.0-dev.10", "commit": "dd" }
+        }))
+        .unwrap();
+        assert_eq!(
+            answer_of(parsed).1.release,
+            Some(ServedRelease {
+                version: "0.18.0-dev.10".into(),
+                commit: Some("dd".into()),
+            })
+        );
+        let no_commit: HeartbeatResponse = serde_json::from_value(serde_json::json!({
+            "runnerRelease": { "version": "0.17.143" }
+        }))
+        .unwrap();
+        assert_eq!(
+            answer_of(no_commit).1.release,
+            Some(ServedRelease {
+                version: "0.17.143".into(),
+                commit: None,
+            })
+        );
+        let older: HeartbeatResponse =
+            serde_json::from_value(serde_json::json!({ "ok": true })).unwrap();
+        assert_eq!(answer_of(older).1.release, None);
     }
 }

@@ -25,6 +25,12 @@ fn main() {
         .unwrap_or_else(|| std::env::var("CARGO_PKG_VERSION").unwrap_or_default());
     println!("cargo:rustc-env=FORGE_RUNNER_VERSION={version}");
 
+    // The release tag the build came from, which `forge-runner status` names (ISS-1358); empty
+    // for every build no release made.
+    println!("cargo:rerun-if-env-changed=FORGE_RUNNER_RELEASE");
+    let release = stamped("FORGE_RUNNER_RELEASE").unwrap_or_default();
+    println!("cargo:rustc-env=FORGE_RUNNER_RELEASE={release}");
+
     println!("cargo:rerun-if-env-changed=FORGE_RUNNER_COMMIT");
     let (head, dirty) = checkout_head();
     let env = stamped("FORGE_RUNNER_COMMIT");

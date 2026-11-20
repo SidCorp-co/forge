@@ -498,6 +498,10 @@ mod tests {
         assert!(local_of(&co).0.contains("- onboarding-code-map-jobs"));
 
         let (beats, revisions) = watch::channel(None);
+        let beats = crate::actors::Heard {
+            revisions: beats,
+            release: watch::channel(None).0,
+        };
         let (stop, cancel) = watch::channel(false);
         let refreshing = {
             let client = client.clone();
@@ -586,6 +590,10 @@ mod tests {
         let before = local_of(&co).0;
 
         let (beats, revisions) = watch::channel(None);
+        let beats = crate::actors::Heard {
+            revisions: beats,
+            release: watch::channel(None).0,
+        };
         let (stop, cancel) = watch::channel(false);
         let refreshing = {
             let client = client.clone();
@@ -648,6 +656,10 @@ mod tests {
         std::fs::write(co.join("CLAUDE.local.md"), "mine\n").unwrap();
         let (client, _seen) = crate::test_core::fake_core(names_no_revisions).await;
         let (beats, revisions) = watch::channel(None);
+        let beats = crate::actors::Heard {
+            revisions: beats,
+            release: watch::channel(None).0,
+        };
         let (stop, cancel) = watch::channel(false);
         let refreshing = {
             let client = client.clone();
