@@ -256,6 +256,19 @@ describe('ISS-1353: account credentials written in chat are kept scrubbed and fl
   });
 });
 
+/** A kept credential as the kept-secrets list answers it. */
+type Entry = {
+  name: string;
+  ref: string;
+  state: string;
+  message: string;
+  label: string;
+  kind: string;
+  expiresAt: string | null;
+  valueAt: string | null;
+  from: { admin: boolean; userId: string | null };
+};
+
 describe('ISS-1372: a credential handed over in a bound room is kept, not dropped', () => {
   // obvious fakes in a production token's shape, built here so no literal token sits in the tree
   const ADMIN_TOKEN = ['fake', 'prod', 'Zq8vN3pL5tR2wX7yK4mB'].join('-');
@@ -269,17 +282,6 @@ describe('ISS-1372: a credential handed over in a bound room is kept, not droppe
        WHERE room_id = ${w.roomId}::uuid AND external_id = ${id} AND kind = 'message_in'`).then(
       (r) => String(r[0]?.t),
     );
-  type Entry = {
-    name: string;
-    ref: string;
-    state: string;
-    message: string;
-    label: string;
-    kind: string;
-    expiresAt: string | null;
-    valueAt: string | null;
-    from: { admin: boolean; userId: string | null };
-  };
   const entryOf = async (message: string): Promise<Entry> => {
     const list = await api(w.owner, 'GET', `/api/projects/${w.projectId}/kept-secrets`);
     expect(list.status, JSON.stringify(list.body)).toBe(200);
