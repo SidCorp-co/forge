@@ -14,7 +14,7 @@ export const REQUIREMENT_LIFECYCLE_GUIDE: CoreGuide = {
   title: 'Requirements: revisions, agreement, baselines and delivery',
   summary:
     "How a requirement (REQ-n) is written in immutable revisions with stable business criteria (BC-n), proposed, accepted and agreed under a baseline pinning its designs — by its checklist and the project's master outside a strict profile, by a holder of requirements.approve where the project's gates keep a person —, re-pinned, deferred, moved into delivery and to delivered by an act, accepted (by its checklist or by decision) or dropped; and why an issue planned against it reads changed-since-plan.",
-  version: 13,
+  version: 14,
   doors: ['POST /api/projects/:id/requirements/:req/issues'],
   body: `## Requirements: revisions, agreement, baselines and delivery
 
@@ -138,6 +138,16 @@ none: its standing asks for an issue of its own under the requirement, or a revi
    revision when the picture's rough sketch will not settle a screen. Once a person has tried and
    decided it, the next agree or re-pin pins each accepted one beside the designs. A re-pin is taken once a mockup is accepted after the agree. Kinds, review and revisions:
    ${guideRef('mockups')}.
+
+### A money figure, and a suite more than one backend runs
+A criterion, acceptance test or shared scenario suite that fixes a money figure (deal money, payroll,
+fees, balances) names its source: a case from the business's own data that its owner or accountant
+confirmed, or an owner decision recorded in Forge. A figure taken only from spec text never fails a backend.
+Where a backend's result differs from a scenario and that backend follows a recorded business rule of
+its own, the scenario is marked disputed, not failed, and a feedback item asks the owner to decide
+(\`POST /api/projects/:id/feedback\`): neither side’s rule wins by default, and once decided, the losing
+side changes its rule. An exception the owner accepted, such as a period carried as it stands, is listed
+as an accepted exception, neither failed nor disputed.
 
 ### Issues against a requirement
 - Linking and unlinking an issue is the agents' act, never a product page's (REQ-68 BC-6): a call

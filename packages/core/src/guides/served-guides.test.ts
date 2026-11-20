@@ -253,3 +253,35 @@ describe('a door is taught on its card, and every page that names it renders tha
     expect(await res.text()).toContain('POST /api/nowhere is no door Forge serves');
   });
 });
+
+// ISS-1376 (FB-788, gwork L-89): a money figure in a criterion or a suite names its source, and a
+// backend following a recorded rule of its own makes the scenario disputed, never failed.
+describe('a money golden figure and a suite more than one backend runs (ISS-1376)', () => {
+  it('names each money figure’s source and never fails a backend on spec text alone', async () => {
+    const section = between(
+      await served('requirement-lifecycle'),
+      '### A money figure, and a suite more than one backend runs',
+      '###',
+    );
+    expect(section).toContain('names its source');
+    expect(section).toContain(
+      "a case from the business's own data that its owner or accountant confirmed, or an owner decision recorded in Forge",
+    );
+    expect(section).toContain('A figure taken only from spec text never fails a backend.');
+  });
+
+  it('marks a scenario disputed where a backend follows a recorded rule of its own, asking the owner', async () => {
+    const section = between(
+      await served('requirement-lifecycle'),
+      '### A money figure, and a suite more than one backend runs',
+      '###',
+    );
+    expect(section).toContain(
+      'that backend follows a recorded business rule of its own, the scenario is marked disputed, not failed',
+    );
+    expect(section).toContain('a feedback item asks the owner to decide');
+    expect(section).toContain('neither side’s rule wins by default');
+    expect(section).toContain('the losing side changes its rule');
+    expect(section).toContain('is listed as an accepted exception, neither failed nor disputed');
+  });
+});
