@@ -16,6 +16,7 @@
  * @direct-test-of packages/core/src/project-config/secret-value-door.ts
  * @direct-test-of packages/core/src/project-config/testing-secret-values.ts
  * @direct-test-of packages/core/src/project-config/testing-secrets-routes.ts
+ * @direct-test-of packages/core/src/project-config/judged-environment.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -44,6 +45,7 @@ import {
   world,
 } from '../helpers/declared-run-secrets-world.js';
 import { createTestDevice, createTestIssue, createTestUser, rows } from '../helpers/factories.js';
+import { seedProjectDocument } from '../helpers/release-world.js';
 
 beforeEach(seedDeclaredRunWorld);
 
@@ -189,6 +191,12 @@ describe('everything else stays refused by name', () => {
     const res = await secrets(world.boxToken, run.boxRunId);
     expect(res.status, JSON.stringify(res.body)).toBe(422);
     expect(codeOf(res.body)).toBe('TESTING_SECRETS_NOT_LANDED');
+    // ISS-1379: this project names no `delivery.judgedOn` and no production, so the route a docs
+    // issue takes is named with the refusal
+    const said = JSON.stringify(res.body);
+    expect(said).toContain('delivery.judgedOn');
+    expect(said).toContain('nothing to land');
+    expect(said).not.toContain(VALUE);
   });
 
   // debt 752242e6: a second mark is refused MARK_ALREADY_STANDS, so the way out names the clear first
@@ -427,5 +435,99 @@ describe('a run receives only the one secret it names', () => {
     const res = await secrets(world.boxToken, randomUUID(), '');
     expect(res.status).toBe(409);
     expect(JSON.stringify(res.body)).not.toContain('viewer');
+  });
+});
+
+// ISS-1379: a run declared over a docs or screenshot issue, whose work lands nowhere, was refused
+// TESTING_SECRETS_NOT_LANDED and could only sign in by marking a merge that never happened. It now
+// reads the environment the project's work is judged on, as a run declared at a requirement does,
+// and no merge mark is written.
+describe('a run over an issue with nothing to land reads the environment the project is judged on', () => {
+  /** `stg` deploys `release/stg`; `live` deploys `main`; both name profile `stg`, and `judgedOn` picks. */
+  async function judgedOn(judged: string | null) {
+    await seedProjectDocument(world.projectId, world.ownerId, {
+      defaultBranch: 'main',
+      promotions: [{ from: 'release/stg', to: 'main', via: 'merge' }],
+      environments: {
+        stg: {
+          tier: 'staging',
+          deploysFrom: 'release/stg',
+          deployment: { mode: 'external' },
+          testing: 'stg',
+          url: 'https://stg.adminhub.example.test',
+        },
+        live: {
+          tier: 'production',
+          deploysFrom: 'main',
+          deployment: { mode: 'external' },
+          testing: 'stg',
+          url: 'https://adminhub.example.test',
+        },
+      } as never,
+      ...(judged ? { extra: { delivery: { judgedOn: judged } } as never } : {}),
+    });
+  }
+
+  async function unmarked(seq: number): Promise<string> {
+    const { id } = await createTestIssue(world.projectId, world.ownerId, seq, {
+      status: 'in_progress',
+      createdAt: new Date(),
+    });
+    return id;
+  }
+
+  it('reads the profile of the environment `delivery.judgedOn` names, and marks nothing', async () => {
+    await judgedOn('stg');
+    const issueId = await unmarked(80);
+    const run = await declaredRun(world.projectId, 80, { openedAt: 'in_progress' });
+    const res = await secrets(world.boxToken, run.boxRunId);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body).toMatchObject({
+      run: { session: run.session, id: run.runId },
+      environment: 'stg',
+      profileId: 'stg',
+      secrets: [{ ref: REF, value: VALUE }],
+    });
+    const [issue] = await rows<{ merged_at: Date | null; merged_target: string | null }>(
+      sql`SELECT merged_at, merged_target FROM issues WHERE id = ${issueId}`,
+    );
+    expect(issue).toEqual({ merged_at: null, merged_target: null });
+    const audit = await rows<{ payload: Record<string, unknown> }>(sql`
+      SELECT payload FROM activity_log WHERE issue_id = ${issueId} AND action = 'testing_secrets.resolved'`);
+    expect(audit).toHaveLength(1);
+    expect(audit[0]?.payload).toMatchObject({ environment: 'stg', profile: 'stg' });
+    expect(JSON.stringify(audit)).not.toContain(VALUE);
+  });
+
+  it('reads production where the project names no `delivery.judgedOn`', async () => {
+    await judgedOn(null);
+    await unmarked(81);
+    const run = await declaredRun(world.projectId, 81, { openedAt: 'in_progress' });
+    const res = await secrets(world.boxToken, run.boxRunId);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body).toMatchObject({ environment: 'live', secrets: [{ ref: REF, value: VALUE }] });
+  });
+
+  it('still reads the environment its merge target names for a marked issue', async () => {
+    await judgedOn('live');
+    await landedIssue(world.projectId, 82);
+    const run = await declaredRun(world.projectId, 82);
+    const res = await secrets(world.boxToken, run.boxRunId);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body).toMatchObject({ environment: 'stg' });
+  });
+
+  it('keeps the clear-then-mark refusal for an issue marked with no target', async () => {
+    await judgedOn('stg');
+    await createTestIssue(world.projectId, world.ownerId, 83, {
+      status: 'awaiting_release',
+      createdAt: new Date(),
+      mergedAt: new Date(),
+    });
+    const run = await declaredRun(world.projectId, 83);
+    const res = await secrets(world.boxToken, run.boxRunId);
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    expect(codeOf(res.body)).toBe('TESTING_SECRETS_NOT_LANDED');
+    expect(JSON.stringify(res.body)).toContain('Clear the standing mark (DELETE /api/issues/');
   });
 });
