@@ -73,20 +73,24 @@ describe('the criteria text a read serves', () => {
     { n: 1, statement: 'The list loads in 2 s.' },
     { n: 2, statement: 'A clerk sees it.' },
   ];
+  const read = async () => rows;
 
-  it('is the rows rendered where the stored text has a prose lead line', () => {
+  it('is the rows rendered where the stored text has a prose lead line', async () => {
     expect(
-      cleanCriteriaText('Scope: x\n1. The list loads in 2 s.\n2. A clerk sees it.', rows),
+      await cleanCriteriaText('Scope: x\n1. The list loads in 2 s.\n2. A clerk sees it.', read),
     ).toBe('1. The list loads in 2 s.\n2. A clerk sees it.');
   });
 
-  it('is the stored text where it parses cleanly', () => {
+  it('is the stored text where it parses cleanly, the rows never read', async () => {
     const stored = '1. The list loads in 2 s.\n2.  A clerk sees it.';
-    expect(cleanCriteriaText(stored, rows)).toBe(stored);
+    const unread = async () => {
+      throw new Error('the rows were read for a clean text');
+    };
+    expect(await cleanCriteriaText(stored, unread)).toBe(stored);
+    expect(await cleanCriteriaText(null, unread)).toBeNull();
   });
 
-  it('is the stored text where no row stands to render', () => {
-    expect(cleanCriteriaText('Scope: x\n1. y', [])).toBe('Scope: x\n1. y');
-    expect(cleanCriteriaText(null, rows)).toBeNull();
+  it('is the stored text where no row stands to render', async () => {
+    expect(await cleanCriteriaText('Scope: x\n1. y', async () => [])).toBe('Scope: x\n1. y');
   });
 });

@@ -1,7 +1,7 @@
 // The `acceptanceCriteria` an issue read serves (ISS-1378).
 
 import { db } from '../../db/client.js';
-import { cleanCriteriaText, parseCriteriaText } from './criteria-text.js';
+import { cleanCriteriaText } from './criteria-text.js';
 import { liveRows } from './store.js';
 
 /**
@@ -13,9 +13,7 @@ export async function servedCriteriaText(
   issueId: string,
   stored: string | null,
 ): Promise<string | null> {
-  if (stored === null || parseCriteriaText(stored).faults.length === 0) return stored;
-  const rows = [...(await liveRows(db, issueId))].sort(
-    (a, b) => a.position - b.position || a.n - b.n,
+  return cleanCriteriaText(stored, async () =>
+    [...(await liveRows(db, issueId))].sort((a, b) => a.position - b.position || a.n - b.n),
   );
-  return cleanCriteriaText(stored, rows);
 }

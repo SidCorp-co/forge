@@ -92,14 +92,15 @@ export function renderCriteriaText(criteria: readonly ParsedCriterion[]): string
  * criteria, else the live rows rendered, which are what the text was read into and what verdicts
  * name. A text written before a prose lead line was refused keeps that line, and a locked issue can
  * no longer rewrite it; its rows never change here. The stored text where no row stands to render.
+ * The rows are read (`rowsOf`) only for a text that does not read cleanly.
  */
-export function cleanCriteriaText(
+export async function cleanCriteriaText(
   stored: string | null,
-  rows: readonly ParsedCriterion[],
-): string | null {
-  if (stored === null || rows.length === 0) return stored;
-  if (parseCriteriaText(stored).faults.length === 0) return stored;
-  return renderCriteriaText(rows);
+  rowsOf: () => Promise<readonly ParsedCriterion[]>,
+): Promise<string | null> {
+  if (stored === null || parseCriteriaText(stored).faults.length === 0) return stored;
+  const rows = await rowsOf();
+  return rows.length === 0 ? stored : renderCriteriaText(rows);
 }
 
 /**
