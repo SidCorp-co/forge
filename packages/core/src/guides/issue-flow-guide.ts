@@ -104,8 +104,9 @@ A plan is optional: write one where a reader should see the approach before the 
 where the change explains itself. The criteria are what the release judges the work by.
 \`PATCH /api/issues/:id\` writes \`acceptanceCriteria\` (and \`plan\`, where you write one). Criteria
 are numbered lines (\`1. …\`), one outcome a reader can check without opening the diff. A repeated
-number or a number with no statement is refused \`CRITERIA_TEXT_UNPARSEABLE\`; text with no numbered
-line writes no criteria at all, so read the field back.
+number, a number with no statement, or a line above criterion 1 (a \`Scope:\` lead: number it or
+move it to the description) is refused \`CRITERIA_TEXT_UNPARSEABLE\`; text with no numbered line
+writes no criteria at all, so read the field back.
 
 The criteria are on the record before the issue lands: a list only in the description is no
 criterion. Taking an issue that has none while its description lists some answers a

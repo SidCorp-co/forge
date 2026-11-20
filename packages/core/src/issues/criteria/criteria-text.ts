@@ -30,15 +30,27 @@ export function normalizeStatement(statement: string): string {
 export function parseCriteriaText(text: string | null | undefined): ParsedCriteriaText {
   const body = String(text ?? '');
   const open: Array<{ n: number; lines: string[] }> = [];
+  // words above the first number belong to no criterion; read as nothing, the stored text keeps
+  // them and every reader refusing an unnumbered line refuses the issue for good once it locks (ISS-1378)
+  const lead: string[] = [];
   for (const line of body.split(/\r?\n/u)) {
     const match = NUMBERED.exec(line);
     if (match) {
       open.push({ n: Number.parseInt(match[1] as string, 10), lines: [match[2] as string] });
       continue;
     }
-    open.at(-1)?.lines.push(line.trim());
+    if (open.length > 0) open.at(-1)?.lines.push(line.trim());
+    else if (line.trim() !== '') lead.push(line.trim());
   }
   const faults: CriteriaTextFault[] = [];
+  const [first] = lead;
+  if (first !== undefined && open.length > 0) {
+    const more = lead.length > 1 ? ` (and ${lead.length - 1} more line${lead.length > 2 ? 's' : ''})` : '';
+    faults.push({
+      n: null,
+      why: `the line "${clip(first)}"${more} stands before criterion ${open[0]?.n}: number it as a criterion of its own, or move it to the description`,
+    });
+  }
   const seen = new Set<number>();
   const criteria: ParsedCriterion[] = [];
   for (const { n, lines } of open) {
@@ -56,6 +68,9 @@ export function parseCriteriaText(text: string | null | undefined): ParsedCriter
   };
 }
 
+const QUOTE_MAX = 160;
+const clip = (line: string) => (line.length > QUOTE_MAX ? `${line.slice(0, QUOTE_MAX)}…` : line);
+
 /** The text a set of criteria renders to; continuation lines are indented so they never number. */
 export function renderCriteriaText(criteria: readonly ParsedCriterion[]): string {
   return criteria
@@ -64,6 +79,21 @@ export function renderCriteriaText(criteria: readonly ParsedCriterion[]): string
       return [`${n}. ${first ?? ''}`, ...rest.map((line) => `    ${line}`)].join('\n');
     })
     .join('\n');
+}
+
+/**
+ * The criteria text a read serves (ISS-1378): the stored text where it reads cleanly as numbered
+ * criteria, else the live rows rendered, which are what the text was read into and what verdicts
+ * name. A text written before a prose lead line was refused keeps that line, and a locked issue can
+ * no longer rewrite it; its rows never change here. The stored text where no row stands to render.
+ */
+export function cleanCriteriaText(
+  stored: string | null,
+  rows: readonly ParsedCriterion[],
+): string | null {
+  if (stored === null || rows.length === 0) return stored;
+  if (parseCriteriaText(stored).faults.length === 0) return stored;
+  return renderCriteriaText(rows);
 }
 
 /**

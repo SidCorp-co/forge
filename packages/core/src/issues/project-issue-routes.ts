@@ -12,6 +12,7 @@ import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { carriageOfIssue } from './carriage.js';
 import { contractWaitHoldOf } from './contract-waits.js';
 import { createIssue } from './create-service.js';
+import { servedCriteriaText } from './criteria/store.js';
 import { hydrateCreatorsForIssues } from './creator.js';
 import { deliveryHeads, withDeliveryHead } from './delivery-head.js';
 import { loadIssueRelations } from './dependency-read.js';
@@ -53,6 +54,8 @@ export async function issueDetailOf(issue: IssueRow) {
   const heads = await deliveryHeads(issue.projectId, [issue.id]);
   return {
     ...serialized,
+    // the rows rendered where the stored text cannot be read as them (ISS-1378)
+    acceptanceCriteria: await servedCriteriaText(issue.id, issue.acceptanceCriteria),
     workState: withDeliveryHead(issue.id, serialized.workState, heads),
     ...creatorMap.get(issue.id),
     pipelineHealth: healthMap.get(issue.id) ?? pipelineHealthUnderived(issue.status),
