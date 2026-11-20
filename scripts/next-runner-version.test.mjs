@@ -5,7 +5,12 @@
 // cuts, and `main`'s own numbering reads past every dev tag as before.
 
 import { describe, expect, it } from 'vitest';
-import { nextRunnerVersion, parseChannel } from './next-runner-version.mjs';
+import {
+  nextRunnerVersion,
+  parseChannel,
+  parseStanding,
+  tagsAtCommit,
+} from './next-runner-version.mjs';
 
 const cargo = (version) =>
   `[workspace]\nmembers = []\n\n[workspace.package]\nversion = "${version}"\n`;
@@ -17,6 +22,7 @@ describe("main's line is numbered as before, whatever dev tags stand beside it",
       version: '0.17.144',
       tag: 'runner-v0.17.144',
       prerelease: false,
+      reused: false,
     });
   });
 
@@ -33,6 +39,7 @@ describe('the dev line', () => {
       version: '0.18.0-dev.1',
       tag: 'runner-v0.18.0-dev.1',
       prerelease: true,
+      reused: false,
     });
   });
 
@@ -60,6 +67,81 @@ describe('the dev line', () => {
     expect(() => nextRunnerVersion(cargo('0.17.0'), ['runner-v0.18.0'], 'dev')).toThrow(
       /runner-v0\.18\.0 is already released/,
     );
+  });
+});
+
+// ISS-1373: a tag is cut before its build, so a tag whose build failed or was skipped stands with no
+// GitHub Release. It is not a release: the next run for that commit builds under the same tag rather
+// than computing a new version, and a tag on the other line is never read as this line's.
+describe('a tag at the commit with no published release', () => {
+  const tags = ['runner-v0.17.143', 'runner-v0.18.0-dev.1', 'runner-v0.18.0-dev.2'];
+
+  it('is reused: no new version is computed for a commit whose own tag never published', () => {
+    const standing = { atCommit: ['runner-v0.18.0-dev.2'], published: ['runner-v0.17.143'] };
+    expect(nextRunnerVersion(cargo('0.18.0'), tags, 'dev', standing)).toEqual({
+      version: '0.18.0-dev.2',
+      tag: 'runner-v0.18.0-dev.2',
+      prerelease: true,
+      reused: true,
+    });
+  });
+
+  it('is not reused once published: a fresh version is computed, and cut-runner-tag refuses it', () => {
+    const standing = { atCommit: ['runner-v0.18.0-dev.2'], published: ['runner-v0.18.0-dev.2'] };
+    expect(nextRunnerVersion(cargo('0.18.0'), tags, 'dev', standing)).toMatchObject({
+      version: '0.18.0-dev.3',
+      reused: false,
+    });
+  });
+
+  it("a dev tag is invisible to main's line, and main's own unpublished tag is reused", () => {
+    const devOnly = { atCommit: ['runner-v0.18.0-dev.2'], published: [] };
+    expect(nextRunnerVersion(cargo('0.18.0'), tags, 'main', devOnly)).toMatchObject({
+      version: '0.18.0',
+      reused: false,
+    });
+    const both = {
+      atCommit: ['runner-v0.18.0-dev.2', 'runner-v0.18.0'],
+      published: ['runner-v0.18.0-dev.2'],
+    };
+    expect(
+      nextRunnerVersion(cargo('0.18.0'), [...tags, 'runner-v0.18.0'], 'main', both),
+    ).toEqual({ version: '0.18.0', tag: 'runner-v0.18.0', prerelease: false, reused: true });
+  });
+
+  it("a main tag is invisible to dev's line", () => {
+    const standing = { atCommit: ['runner-v0.18.0'], published: [] };
+    expect(
+      nextRunnerVersion(cargo('0.18.0'), [...tags, 'runner-v0.18.0'], 'dev', standing),
+    ).toMatchObject({ version: '0.18.0-dev.3', reused: false });
+  });
+
+  it('splits the tags at a commit by line and by whether a release is published', () => {
+    const atCommit = ['runner-v0.18.0', 'runner-v0.18.0-dev.2', 'runner-v0.18.0-dev.3', 'v1.2.0'];
+    expect(tagsAtCommit(atCommit, ['runner-v0.18.0-dev.2'], 'dev')).toEqual({
+      released: ['runner-v0.18.0-dev.2'],
+      unpublished: ['runner-v0.18.0-dev.3'],
+    });
+    expect(tagsAtCommit(atCommit, ['runner-v0.18.0-dev.2'], 'main')).toEqual({
+      released: [],
+      unpublished: ['runner-v0.18.0'],
+    });
+  });
+});
+
+describe('the standing arguments', () => {
+  it('reads the commit and the published-releases file', () => {
+    expect(parseStanding(['--channel', 'dev', '--sha', 'abc', '--published', '/tmp/p'])).toEqual({
+      sha: 'abc',
+      publishedFile: '/tmp/p',
+    });
+  });
+
+  it('refuses a run that cannot tell a published tag from an unpublished one', () => {
+    expect(() => parseStanding(['--channel', 'dev', '--sha', 'abc'])).toThrow(
+      /--published <file> is required/,
+    );
+    expect(() => parseStanding(['--published', '/tmp/p'])).toThrow(/--sha <commit> is required/);
   });
 });
 
