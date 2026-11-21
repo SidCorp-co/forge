@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.781] - 2026-11-21
+
+Every beta mirror pair reported, and a self-audit names any served route
+
+### Fixed
+
+- **Every beta mirror pair is reported on each run.** Each beta mirror run now reports every ported pair, mirrored, refused, held or owing nothing, and a close on beta names the dev release that shipped it.
+- **A self-audit can name any served route.** A self-audit may now name a route Forge serves as a missed door, even one with no card, and it is kept instead of being refused as unknown.
+
 ## [0.4.0-dev.780] - 2026-11-21
 
 A self-audit can name any served route as a missed door
