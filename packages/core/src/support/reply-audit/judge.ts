@@ -110,7 +110,7 @@ function staleStateClaim(reply: AuditedReply): string | null {
   if (!claim) return null;
   return reply.reads.earlierAt
     ? `it states "${claim}" from a read made in an earlier turn (${reply.reads.earlierAt.toISOString()}), not one made in this turn`
-    : `it states "${claim}" with no read of it made in this turn`;
+    : `it states "${claim}" with no read of it made in this turn (a Forge issue's or release's status needs support.issues or support.releases read now)`;
 }
 
 /**

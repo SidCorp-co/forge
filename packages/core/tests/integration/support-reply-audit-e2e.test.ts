@@ -279,6 +279,25 @@ describe('a room agent audits its own reply with support.audit (ISS-1250)', () =
     expect(finding?.why).toContain('"There is no PGPrints API account"');
     expect(finding?.why).toContain('from a read made in an earlier turn');
   }, 120_000);
+
+  // ISS-1389 (FB-801): a release's issues said closed from the plan; an issue read of the turn holds the claim
+  it('fails accurate on a release’s issues said closed with no issue read of its turn, and passes it after one', async () => {
+    const issuesReadInTurnOf = async (message: string) => {
+      await rows(sql`INSERT INTO support_actions (room_id, project_id, thread, kind, actor_kind, tool, input, session_id, turn_id)
+               SELECT room_id, project_id, thread, 'operation', 'session', 'issues', '{"action":"issues"}'::jsonb, session_id, turn_id
+                 FROM support_actions WHERE kind = 'reply' AND external_id = ${message}`);
+    };
+    const claim = 'The 16 issues of release 0.29.0 are already closed.';
+    const read = await replyAndAudit('Are release 0.29.0 issues closed?', claim, [], issuesReadInTurnOf);
+    expect(read.audit?.body, JSON.stringify(read.audit?.body)).toMatchObject({
+      verdict: 'pass',
+      failed: [],
+    });
+    const unread = await replyAndAudit('And now, are they closed?', claim, []);
+    expect(unread.audit?.body).toMatchObject({ verdict: 'fail', failed: ['accurate'] });
+    const [finding] = (unread.audit?.body.findings ?? []) as Array<{ why: string }>;
+    expect(finding?.why).toContain('support.issues or support.releases');
+  }, 120_000);
 });
 
 // ISS-1356 (owner 2026-11-19: "it confirms UI that is not there"): a reply's row shows which claim

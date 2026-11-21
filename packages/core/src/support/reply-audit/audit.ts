@@ -78,9 +78,9 @@ async function replyPosted(room: RoomRow, thread: string, message: string): Prom
 
 /**
  * The acts that read what an environment holds now (ISS-1354): a declared read or a run (recorded
- * `diagnose`), a release or deployment read, and a look at a screen.
+ * `diagnose`), a release, issue or deployment read, and a look at a screen.
  */
-const STATE_READ_TOOLS = ['releases', 'deployment', 'look'] as const;
+const STATE_READ_TOOLS = ['releases', 'issues', 'deployment', 'look'] as const;
 const stateRead = or(
   eq(supportActions.kind, 'diagnose'),
   and(eq(supportActions.kind, 'operation'), inArray(supportActions.tool, [...STATE_READ_TOOLS])),

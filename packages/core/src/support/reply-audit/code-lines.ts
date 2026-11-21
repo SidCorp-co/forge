@@ -108,9 +108,11 @@ export function apiHostLinkIn(text: string, hosts: readonly string[]): string | 
 
 /**
  * A statement of how a live setting, account or field stands (ISS-1354, FB-763): "there is no
- * PGPrints API account", "the store_id field is there", "it is enabled". Words of a state, never a
- * plan: what the agent will do is no claim about what stands.
+ * PGPrints API account", "the store_id field is there", "it is enabled"; or of where a Forge record
+ * stands (ISS-1389, FB-801): "the release's issues are closed", "ISS-21 is deployed". Words of a
+ * state, never a plan: what the agent will do is no claim about what stands.
  */
+const RECORD_NOUN_VI = '(?:issue|release|bản\\s+phát\\s+hành|phiên\\s+bản|ticket)'; // i18n-allow: the Vietnamese nouns of a Forge record a claim names
 const STATE_NOUN_VI =
   '(?:tài\\s+khoản|account|ô|trường|field|cấu\\s+hình|thiết\\s+lập|key|khóa|dịch\\s+vụ|service|nhà\\s+cung\\s+cấp|supplier|store|cửa\\s+hàng|API)'; // i18n-allow: the Vietnamese nouns of a setting a claim names
 const STATE_CLAIMS: readonly RegExp[] = [
@@ -126,9 +128,14 @@ const STATE_CLAIMS: readonly RegExp[] = [
   /\b(?:has|have|had)\s+no\s+(?:[\w-]+\s+){0,3}?(?:account|field|setting|key|credential|service|supplier)s?\b/i,
   /\bthere\s+(?:is|are)\s+(?:no|already\s+an?|an?)\s+(?:[\w-]+\s+){0,3}?(?:account|field|setting|key|service|supplier)s?\b/i,
   /\b(?:is|are)\s+(?:now\s+|already\s+|still\s+)?(?:not\s+)?(?:enabled|disabled|turned\s+on|turned\s+off|configured|set\s+up)\b/i,
+  /\b(?:issues?|tickets?|release|ISS-\d+|v?\d+\.\d+\.\d+)\b[^.!?\n]{0,60}?\b(?:is|are|was|were|has\s+been|have\s+been)\s+(?:all\s+|now\s+|already\s+|still\s+)?(?:not\s+)?(?:closed|open|shipped|deployed|released|live|merged)\b/i,
+  new RegExp(
+    `${RECORD_NOUN_VI}\\b(?:[^.!?\\n]|\\d\\.\\d){0,60}?(?:đã|đang|chưa|vẫn)\\s+(?:được\\s+)?(?:đóng|mở|deploy|release|merge|phát\\s+hành)(?![\\p{L}\\p{N}_])`, // i18n-allow: the Vietnamese phrasing being recorded
+    'iu',
+  ),
 ];
 
-/** The words of the first statement of a live setting's or account's state a reply makes, or null. */
+/** The words of the first statement of a live setting's, account's or Forge record's state a reply makes, or null. */
 export function liveStateClaimIn(text: string): string | null {
   for (const form of STATE_CLAIMS) {
     const found = form.exec(text);

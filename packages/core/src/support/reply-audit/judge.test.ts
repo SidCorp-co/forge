@@ -221,6 +221,28 @@ describe('support.audit keeps the verdict on a reply the agent posted (ISS-1250)
       ).toContain('with no read of it made in this turn');
     });
 
+    // ISS-1389 (FB-801, sidpeak): a room told its BA release 0.29.0's 16 issues were closed; the tracker showed them open
+    it('holds a claim of an issue’s or release’s status to a read of its own turn, naming the read', () => {
+      const FB801 = [
+        'The 16 issues of release 0.29.0 are already closed.',
+        'Release 0.29.0 has been deployed.',
+        'ISS-21 is shipped.',
+        'Các issue của release 0.29.0 đã đóng rồi ạ.', // i18n-allow: a quoted reply
+      ];
+      for (const text of FB801) {
+        expect(liveStateClaimIn(text), text).not.toBeNull();
+        const j = judged(text, { thisTurn: false, earlierAt: null });
+        expect(j.failed, text).toContain('accurate');
+        expect(j.findings.find((f) => f.line === 'accurate')?.why).toContain(
+          'support.issues or support.releases',
+        );
+        expect(judged(text, { thisTurn: true, earlierAt: null }).failed, text).not.toContain(
+          'accurate',
+        );
+      }
+      expect(liveStateClaimIn('I will read the status of the issues after the deploy.')).toBeNull();
+    });
+
     it('passes the same claim on a read of its own turn, and judges none where the turn is not on the record', () => {
       for (const text of FB763) {
         expect(judged(text, { thisTurn: true, earlierAt: null }).verdict, text).toBe('pass');
