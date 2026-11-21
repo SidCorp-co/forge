@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.784] - 2026-11-21
+
+Read-only tokens can search memory and knowledge
+
+### Fixed
+
+- **A search sent as a POST is a read at the token gate.** Memory and knowledge search want the read grant and scope; one list names them for both the token gate and the chat write rule.
+
 ## [0.4.0-dev.783] - 2026-11-21
 
 Hand fixes write the release record before any close by hand
