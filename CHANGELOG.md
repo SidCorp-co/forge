@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.773] - 2026-11-21
+
+Room agents look at the screen and read live settings before answering
+
+### Fixed
+
+- **A room reply stating a live setting from an earlier read now fails its audit.** The `accurate` line names the earlier read; the guide and reply card teach reading this turn and naming who does each step.
+- **A room agent now looks at a screen before saying what it shows.** support.look opens a Forge Box on its project's environment; the audit fails unseen screen claims; the room's daily line counts corrections, re-asks and unanswered owner messages.
+
 ## [0.4.0-dev.772] - 2026-11-21
 
 Owner and named release decider answers in chat are recorded and applied
