@@ -50,7 +50,7 @@ import {
   requirementIssuesOf,
   routedRequirementOf,
 } from './list-requirement.js';
-import { carriersOf, type StandingFacts, standingFactsOf } from './list-standing.js';
+import { askedOf, carriersOf, type StandingFacts, standingFactsOf } from './list-standing.js';
 import type { FeedbackActor, Row } from './read.js';
 import { routeIssuesOf } from './relations.js';
 import { NONE_UNTOLD, notToldOf, type UntoldAmong, untoldAmong } from './ship-notice.js';
@@ -427,6 +427,7 @@ function ownStandingIn(r: Row, l: Linked, viewer: StandingViewer, now: Date) {
     {
       masterTriages: l.masterTriages,
       runnerBound: l.runnerBound,
+      clarification: askedOf(r.id, phase, carried.draft, l) ?? null,
       masterVerifies: l.masterVerifies,
       snoozedUntil: snoozed?.until ?? null,
       recordCheckAt: recordCheckOf(r, phase, l.verifyWindowDays)?.toISOString() ?? null,

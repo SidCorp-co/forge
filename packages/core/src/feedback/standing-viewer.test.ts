@@ -398,3 +398,30 @@ describe('a resolved item is never Running', () => {
     expect(s.chip).toBe('running');
   });
 });
+
+// ISS-1382 (adminhub-fe FB-34): a clarification asked of a channel agent read "The project's master"
+describe('an item with a clarification open waits on the reporter it is asked of', () => {
+  const MASTER_TRIAGES = { ...NO_STANDING_FACTS, masterTriages: true };
+  const OPEN = { round: 1, askedAt: AT.since };
+
+  it('names an agent reporter as an agent, never the master, and is that reporter’s own turn', () => {
+    const asked = { ...MASTER_TRIAGES, reporterIsAgent: true, clarification: OPEN };
+    const other = feedbackStandingOf('new', null, [], 'catalog-fe', viewer(), null, asked, AT);
+    expect(other.waitingOn).toMatchObject({
+      kind: 'agent',
+      who: 'catalog-fe',
+      act: 'answer the clarification',
+      says: { rule: { key: 'feedback.rule.clarificationOpen', vars: { phase: 'new', round: 1 } } },
+    });
+    const own = viewer({ isReporter: true });
+    const mine = feedbackStandingOf('reopened', null, [], 'catalog-fe', own, null, asked, AT);
+    expect(mine.waitingOn).toMatchObject({ kind: 'you', act: 'answer the clarification' });
+    expect(mine.attentionGroup).toBe('needs_you');
+  });
+
+  it('reads whoever triages where none is open', () => {
+    const s = feedbackStandingOf('new', null, [], 'catalog-fe', viewer(), null, MASTER_TRIAGES, AT);
+    expect(s.waitingOn).toMatchObject({ kind: 'agent', act: 'triage it' });
+    expect(s.waitingOn.says.who.key).toBe('standing.who.projectMaster');
+  });
+});

@@ -4,7 +4,8 @@
  * Severity orders the list and admits nothing: a low item left out of it is one nobody is woken for
  * (ISS-253). The box carrying the master reads it on every sweep, so a filed item is master work
  * whether or not its feedback.filed wake was heard. An item with a clarification open waits
- * on the reporter, not the master, and the reporter's answer wakes the master and owes it again.
+ * on the reporter, not the master, and its standing says so by the same predicate
+ * (`clarification-open.ts`, ISS-1382); the reporter's answer wakes the master and owes it again.
  * One carrying a proposed feedback_triage suggestion waits on whoever accepts or rejects it, by the
  * one rule (`@forge/contracts/who-owes:whoOwes`, `feedback.triage`, ISS-1132): where the project's
  * policy gives triage to the master, the suggestion is the master's own work item and stays on this
@@ -24,6 +25,7 @@ import { feedback } from '../db/schema-feedback.js';
 import { agentQuestions } from '../db/schema-questions.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { readOwedPolicy } from '../project-config/index.js';
+import { clarificationOpenOn } from './clarification-open.js';
 
 export interface OwedTriage {
   feedbackId: string;
@@ -71,9 +73,7 @@ export async function owedTriages(projectId: string, exec: Tx = db): Promise<Owe
           exec
             .select({ id: agentQuestions.id })
             .from(agentQuestions)
-            .where(
-              and(eq(agentQuestions.feedbackId, feedback.id), eq(agentQuestions.status, 'open')),
-            ),
+            .where(clarificationOpenOn(eq(agentQuestions.feedbackId, feedback.id))),
         ),
         masterTriages
           ? undefined

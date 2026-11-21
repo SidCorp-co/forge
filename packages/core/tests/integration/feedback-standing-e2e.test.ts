@@ -4,12 +4,14 @@
  * holding feedback.approve puts nothing on a person's Needs you; a strict project keeps it a holder's.
  * The master's sweep lists every item it owes, so one filed while no master was live is recovered
  * when one is. A carrier filed at draft holds the item triaged and stuck until it is taken on (BC-9,
- * draft_carrier).
+ * draft_carrier). One with a clarification open waits on its reporter's answer (ISS-1382).
  *
  * @direct-test-of packages/core/src/feedback/standing.ts
  * @direct-test-of packages/core/src/feedback/standing-carrier.ts
  * @direct-test-of packages/core/src/lib/standing-times.ts
  * @direct-test-of packages/core/src/feedback/owed-triage.ts
+ * @direct-test-of packages/core/src/feedback/clarification-open.ts
+ * @direct-test-of packages/core/src/feedback/list-standing.ts
  * @direct-test-of packages/core/src/masters/owed-triages.ts
  */
 
@@ -258,6 +260,59 @@ describe('with a live master, every untriaged item is owed to it, most severe fi
         reason: 'Routed by hand instead.',
       }),
     );
+    expect(await owedTriages()).toEqual([ids.high, ids.medium, ids.low]);
+  });
+});
+
+// ISS-1382 (FB-792, adminhub-fe FB-34): a clarification asked of the reporter took the item off the
+// master's pass, yet its standing still read "The project's master: triage it"
+describe('an item with a clarification open waits on its reporter, not the master', () => {
+  /** The item's wait as the item read, the feedback list and the project standings each read it. */
+  async function everyRead(who: Who, key: string): Promise<Doc[]> {
+    const item = ok(await say(who, 'GET', at(`/${key}`))).feedback;
+    const standings = ok(await say(who, 'GET', `/api/projects/${projectId}/standings`)).standings;
+    const row = standings.find((s: Doc) => s.subject.key === key);
+    expect(row, `${key} is on the project standings`).toBeDefined();
+    return [item.waitingOn, (await standingAs(who, key)).waitingOn, row.waitingOn];
+  }
+
+  it('names the reporter answering it on every read, the reporter’s own turn, and leaves the master’s pass', async () => {
+    const asked = ok(
+      await say('owner', 'POST', at(`/${ids.low}/clarification`), {
+        prompt: 'Which column drops?',
+        needed: 'The column',
+        recommended: 'The last one',
+      }),
+    ).feedback;
+    const reporter = asked.reporter.name as string;
+    expect(reporter, 'the read names its reporter').toBeTruthy();
+    for (const wait of await everyRead('owner', ids.low)) {
+      expect(wait).toMatchObject({
+        kind: 'person',
+        who: reporter,
+        act: 'answer the clarification',
+      });
+      expect(wait.rule).toContain('clarification is open');
+    }
+    expect(await standingAs('member', ids.low)).toEqual({
+      attentionGroup: 'needs_you',
+      waitingOn: expect.objectContaining({ kind: 'you', act: 'answer the clarification' }),
+    });
+    expect(await owedTriages()).toEqual([ids.high, ids.medium]);
+    expect(await standingAs('owner', ids.high), 'one with none open is unchanged').toEqual(
+      MASTER_TRIAGES,
+    );
+  });
+
+  it('reads the master’s triage again once the reporter answers, and is back on its pass', async () => {
+    const c = ok(await say('member', 'GET', at(`/${ids.low}`))).feedback.clarification;
+    ok(
+      await say('member', 'POST', `/api/questions/${c.id}/answer`, {
+        text: 'The last one',
+        round: c.round,
+      }),
+    );
+    for (const wait of await everyRead('owner', ids.low)) expect(wait).toEqual(MASTER_WAIT);
     expect(await owedTriages()).toEqual([ids.high, ids.medium, ids.low]);
   });
 });

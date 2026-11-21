@@ -5,7 +5,7 @@
  * holder's Needs you, and with no master serving it reads stuck until the box's sweep, which counts it
  * as owed work (`owed-triage.ts:owedTriages`, `masters/verdict.ts`), places one. With no runner bound
  * no master ever comes, so a holder of the triage permission takes it, named (FB-77, FB-434). Strict
- * keeps it that holder's.
+ * keeps it that holder's. One with a clarification open waits on its reporter instead (ISS-1382).
  */
 
 import type { FeedbackPhase, FeedbackWaitingKind } from '@forge/contracts/feedback';
@@ -26,6 +26,30 @@ export const MASTER = say('standing.who.projectMaster');
 /** Whether the project's master takes its triage now: the one rule gives it, and a runner is bound to serve it. */
 export const masterTakesTriage = (facts: Pick<StandingFacts, 'masterTriages' | 'runnerBound'>) =>
   facts.masterTriages && facts.runnerBound !== false;
+
+/**
+ * A clarification open on an item owed a triage waits on the reporter it is asked of, by name, agent
+ * or person, never on whoever triages: the master's owed list leaves it off by the same predicate
+ * (`clarification-open.ts`), and the answer owes the triage again (ISS-1382).
+ */
+export function clarificationWait(
+  phase: FeedbackPhase,
+  reporter: string,
+  viewer: StandingViewer,
+  facts: StandingFacts,
+): Owed | null {
+  if (!facts.clarification) return null;
+  const rule = say('feedback.rule.clarificationOpen', { phase, round: facts.clarification.round });
+  return {
+    wait: wait(
+      facts.reporterIsAgent ? 'agent' : 'person',
+      say('standing.who.named', { name: reporter }),
+      rule,
+      say('standing.act.answerClarification'),
+    ),
+    yours: viewer.isReporter,
+  };
+}
 
 export function triageWait(
   phase: FeedbackPhase,

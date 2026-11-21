@@ -1,9 +1,10 @@
 /**
  * What a feedback item's standing reads beyond its own row (REQ-48 BC-9): the own standing of each
- * issue still carrying it, read with no viewer, its newest triage decision, and whether a master
- * serves the project; then, per item, the carrier it rolls up and the draft that holds it triaged.
+ * issue still carrying it, read with no viewer, its newest triage decision, its open clarification,
+ * and whether a master serves the project; then, per item, the carrier it rolls up and the draft that holds it triaged.
  */
 
+import type { FeedbackPhase } from '@forge/contracts/feedback';
 import type { IssueStanding } from '@forge/contracts/issue-standing';
 import type { MasterServing } from '@forge/contracts/steward';
 import { max, sql } from 'drizzle-orm';
@@ -13,6 +14,7 @@ import { memoizedPerId } from '../db/read-memo.js';
 import { feedbackDecisions } from '../db/schema-feedback.js';
 import { issueWaitsOf } from '../issues/index.js';
 import { masterServingOf } from '../masters/index.js';
+import { type OpenClarification, openClarificationsOf } from './clarification-open.js';
 import type { Row } from './read.js';
 import type { CarrierStanding } from './standing.js';
 
@@ -23,6 +25,8 @@ export interface StandingFacts {
   decidedAt: Map<string, Date>;
   /** Whether a live master serves the project (`masters/read.ts:masterServingOf`). */
   master: MasterServing;
+  /** Each row's open clarification, where one is: it waits on its reporter (ISS-1382). */
+  clarifications: Map<string, OpenClarification>;
 }
 
 /** What `linkedOf` reads for every row's standing, in one statement each. */
@@ -35,16 +39,33 @@ export async function standingFactsOf(
   const owed = issueRows
     .filter((i) => carrying.has(i.id) && i.status !== 'closed' && i.status !== 'dropped')
     .map((i) => i.id);
-  const [waits, decidedAt, master] = await Promise.all([
+  const [waits, decidedAt, master, clarifications] = await Promise.all([
     issueWaitsOf(projectId, owed),
     decidedAtOf(rows.map((r) => r.id)),
     masterServingOf(projectId),
+    openClarificationsOf(rows.map((r) => r.id)),
   ]);
   return {
     carrierStandings: new Map([...waits].map(([id, c]) => [id, c.standing])),
     decidedAt,
     master,
+    clarifications,
   };
+}
+
+const OWES_TRIAGE: readonly FeedbackPhase[] = ['new', 'reopened', 'triaged'];
+
+/**
+ * The clarification an item waits on its reporter for: one open where a triage is owed, and no draft
+ * carrier holds it, as the master's owed list leaves such an item off (ISS-1382); else undefined.
+ */
+export function askedOf(
+  id: string,
+  phase: FeedbackPhase,
+  draft: string | null,
+  l: Pick<StandingFacts, 'clarifications'>,
+): OpenClarification | undefined {
+  return OWES_TRIAGE.includes(phase) && !draft ? l.clarifications.get(id) : undefined;
 }
 
 /** Each item's newest triage decision, by item id. */

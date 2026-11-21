@@ -21,6 +21,7 @@ import type { SuggestionStatus } from '@forge/contracts/suggestions';
 import type { OwedBy } from '@forge/contracts/who-owes';
 import { attentionGroupOf, type TurnGroup } from '../lib/attention-group.js';
 import { withTimes } from '../lib/standing-times.js';
+import type { OpenClarification } from './clarification-open.js';
 import type { CarryingRelease } from './dependents.js';
 import {
   type CarrierStanding,
@@ -40,7 +41,7 @@ import {
   requirementPhaseOf,
 } from './standing-requirement.js';
 import { revisionAct } from './standing-revision.js';
-import { MASTER, masterTakesTriage, triageWait } from './standing-triage.js';
+import { clarificationWait, MASTER, masterTakesTriage, triageWait } from './standing-triage.js';
 
 export { type CarrierStanding, carriersPhrase } from './standing-carrier.js';
 
@@ -200,6 +201,8 @@ export interface StandingFacts {
    * page reads its draft's cut (ISS-1232, ISS-1244). Read wherever `carrierRelease` is `manual`.
    */
   releaseCut?: OwedBy | null;
+  /** The clarification open on it: its reporter owes the answer since it was asked (ISS-1382). */
+  clarification?: OpenClarification | null;
   /** Set while a snooze has not run out: the item is parked out of New until then. */
   snoozedUntil?: string | null;
   /** While it reads resolved, names a criterion and a sweep has dated it: when the record is read if nobody has answered. */
@@ -263,9 +266,11 @@ function waitingOf(
   switch (phase) {
     case 'new':
     case 'reopened':
-      return triageWait(phase, viewer, facts);
+      return clarificationWait(phase, reporter, viewer, facts) ?? triageWait(phase, viewer, facts);
     case 'triaged': {
       if (facts.draftCarrier) return draftCarrierWait(facts.draftCarrier);
+      const asked = clarificationWait(phase, reporter, viewer, facts);
+      if (asked) return asked;
       const act = route === null ? say('feedback.act.route') : say('standing.act.triageAgain');
       const rule =
         route === null
@@ -467,7 +472,7 @@ export function feedbackStandingOf(
   chip: FeedbackRowChip;
 } {
   const carrier = phase === 'planned' && route === 'issue' ? (facts.carrier ?? null) : null;
-  const since = carrier?.since ?? at.since;
+  const since = facts.clarification?.askedAt ?? carrier?.since ?? at.since;
   const owed = waitingOf(phase, route, carriers, reporter, revision, viewer, facts, {
     since,
     now: at.now,

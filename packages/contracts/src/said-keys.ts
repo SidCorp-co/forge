@@ -1164,6 +1164,7 @@ export const SAID = {
 	"standing.act.triage": { en: "triage {what}", vars: { what: "name" } },
 	"standing.act.triageAgain": { en: "triage it again" },
 	"standing.act.triageIt": { en: "triage it" },
+	"standing.act.answerClarification": { en: "answer the clarification" },
 	"standing.act.triageMany": {
 		en: "triage {n} feedback items",
 		vars: { n: "count" },
@@ -1596,6 +1597,10 @@ export const SAID = {
 	"feedback.rule.noRunner": {
 		en: "{phase}: no runner is bound, so a triager triages it",
 		vars: { phase: "code" },
+	},
+	"feedback.rule.clarificationOpen": {
+		en: "{phase}: a clarification is open (round {round}); the reporter's answer owes the triage again",
+		vars: { phase: "code", round: "count" },
 	},
 	"feedback.rule.triagerTriages": {
 		en: "{phase}: a holder of feedback.approve triages it",
