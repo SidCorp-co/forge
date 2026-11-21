@@ -25,6 +25,7 @@ import { CHAT_DECIDE_TOOL, CHAT_DECISION_SET_TOOL } from '@forge/contracts/chat-
 import type { ChatProposalKind } from '@forge/contracts/chat-proposals';
 import { IDEA_CHANGE_TOOL, IDEA_OFFER_TOOL } from '@forge/contracts/idea-offer';
 import { UI_ACTION_NAMES, UI_ACTIONS } from '@forge/contracts/ui-actions';
+import { READS_SENT_AS_POST } from '../../lib/reads-sent-as-post.js';
 import type { ToolGrantEntry } from '../../lib/tool.js';
 import { HISTORY_TOOL_NAME, QUOTE_CONTEXT_TOOL_NAME } from '../chat-room/context.js';
 import { TRANSCRIPT_SEARCH_TOOL_NAME } from '../tools/transcript-search-tool.js';
@@ -67,7 +68,7 @@ interface NotABusinessWrite {
 export const NOT_A_BUSINESS_WRITE: readonly NotABusinessWrite[] = [
   {
     why: 'a search: a read sent as a POST, which writes nothing',
-    rest: ['POST /api/memory/search', 'POST /api/projects/:id/knowledge/search'],
+    rest: READS_SENT_AS_POST,
     tools: [],
   },
   {

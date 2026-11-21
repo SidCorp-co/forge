@@ -118,8 +118,8 @@ function maybeEmitPatUsed(tokenId: string, userId: string): void {
  * per surface.
  *
  * `requestClass` is which of the two budgets this request spends, decided by
- * the caller because only it knows: REST reads it off the HTTP method
- * (`pat-rest-surface.ts:scopeForMethod`), `/mcp` off the JSON-RPC envelope
+ * the caller because only it knows: REST reads it off the HTTP method and the reads list
+ * (`pat-rest-surface.ts:patLevelFor`), `/mcp` off the JSON-RPC envelope
  * (`mcp/request-class.ts`).
  */
 export async function authenticatePat(

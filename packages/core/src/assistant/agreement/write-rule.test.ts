@@ -4,6 +4,7 @@
 // suite (`tests/integration/chat-agreement-default-e2e.test.ts`) runs it against the real routes.
 
 import { describe, expect, it } from 'vitest';
+import { READS_SENT_AS_POST } from '../../lib/reads-sent-as-post.js';
 import {
   DELEGATES_TO_REST,
   decideRestWrite,
@@ -144,6 +145,12 @@ describe('the list is one list, each entry with its reason, and a REST route and
         expect(REFUSED_FROM_CHAT.some((f) => f.tools.includes(name))).toBe(false);
       }
     }
+  });
+
+  // ISS-1400: the token gate levels these same calls a read, so the searches are named once
+  it('names the searches by the one reads list the token gate reads', () => {
+    const searches = NOT_A_BUSINESS_WRITE.find((e) => e.why.startsWith('a search'));
+    expect(searches?.rest).toBe(READS_SENT_AS_POST);
   });
 
   it('a tool and its REST twin on one entry meet the same verdict', () => {

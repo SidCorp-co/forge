@@ -18,6 +18,7 @@ import {
 } from '../credentials/pat-permissions.js';
 import { askAPersonDoor } from '../credentials/pat-remedy.js';
 import type { PatScope } from '../credentials/pat-scope.js';
+import { isReadSentAsPost } from '../lib/reads-sent-as-post.js';
 import { patEffectiveProjectIds } from '../lib/tool.js';
 import { unservedRefusal } from './nearest-routes.js';
 import { projectNamedBy, refuseOutsideFence } from './pat-fence.js';
@@ -58,8 +59,12 @@ export function scopeForMethod(method: string): 'read' | 'write' {
   return READ_METHODS.has(method.toUpperCase()) ? 'read' : 'write';
 }
 
-function patHasScopeForMethod(principal: PatPrincipal, method: string): boolean {
-  return principal.scopes.includes(scopeForMethod(method));
+/**
+ * The level a token request is gated at, for the grant it wants and the scope it needs: its method's,
+ * except a POST the reads list names (`lib/reads-sent-as-post.ts`), which is a read (ISS-1400).
+ */
+export function patLevelFor(method: string, path: string): PatPermissionLevel {
+  return isReadSentAsPost(method, path) ? 'read' : scopeForMethod(method);
 }
 
 export async function beginPatRequest(
@@ -69,7 +74,7 @@ export async function beginPatRequest(
   const cached = c.get(PAT_REQUEST_VAR) as PatRequestResolution | undefined;
   if (cached && cached.token === token) return { principal: cached.principal, scope: cached.scope };
 
-  const level = scopeForMethod(c.req.method);
+  const level = patLevelFor(c.req.method, c.req.path);
   const excluded = patUngrantableFor(c.req.path, c.req.method);
   const wanted = excluded ? null : patPermissionWanted(c.req.path, level);
   const tellWhatTheRouteWanted = () => {
@@ -106,7 +111,7 @@ export async function beginPatRequest(
       cause: { code: 'PAT_NOT_PERMITTED' },
     });
   }
-  if (!patHasScopeForMethod(principal, c.req.method)) {
+  if (!principal.scopes.includes(level)) {
     throw new HTTPException(403, {
       message: `this token lacks the '${level}' scope`,
       cause: { code: 'INSUFFICIENT_SCOPE' },
