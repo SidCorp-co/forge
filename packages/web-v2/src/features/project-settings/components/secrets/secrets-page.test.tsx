@@ -134,6 +134,37 @@ describe("a value is given in one step, in a form fit for its shape", () => {
 		});
 	});
 
+	it("saves with an optional box left empty, writing no key for it, and not with a needed one empty (ISS-1393)", async () => {
+		const calls = fakeCore((c) => (c.method === "PUT" ? { body: { ref: "x", scope: "stg", name: "proxy", updatedAt: "2026-11-21T07:00:00.000Z" } } : { hang: true }));
+		const PROXY = slot({
+			...MAILBOX,
+			label: "Proxy pool",
+			door: { kind: "secret", scope: "stg", name: "proxy" },
+			form: {
+				kind: "fields",
+				fields: [
+					{ key: "apiKey", label: "API key", secret: true },
+					{ key: "endpoint", label: "Endpoint", example: "https://proxy.example.com", optional: true },
+				],
+			},
+		});
+		renderPage(readOf([request({ slot: PROXY })]));
+		const box = requestNamed("Proxy pool");
+		const save = within(box).getByRole("button", { name: "Save" });
+		// the optional box says so in one word, the needed one says nothing
+		expect(within(box).getByLabelText("Endpoint")).toHaveAccessibleDescription("Optional");
+		expect(within(box).getByLabelText("API key")).not.toHaveAccessibleDescription("Optional");
+		fireEvent.change(within(box).getByLabelText("Endpoint"), { target: { value: "https://proxy.example.test" } });
+		expect(save, "a needed box left empty").toBeDisabled();
+		fireEvent.change(within(box).getByLabelText("Endpoint"), { target: { value: " " } });
+		fireEvent.change(within(box).getByLabelText("API key"), { target: { value: "fake-proxy-key-1393" } });
+		expect(save).toBeEnabled();
+		fireEvent.click(save);
+		await waitFor(() => expect(calls.filter((c) => c.method === "PUT")).toHaveLength(1));
+		const put = calls.find((c) => c.method === "PUT");
+		expect(JSON.parse((put?.body as { value: string }).value)).toEqual({ apiKey: "fake-proxy-key-1393" });
+	});
+
 	it("adds a production variable not held yet as a protected secret", async () => {
 		const calls = fakeCore((c) => (c.method === "POST" ? { status: 201, body: {} } : { hang: true }));
 		renderPage(readOf([request({})]));

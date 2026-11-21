@@ -27,7 +27,7 @@ export const SECRET_ACT_CARDS = {
     ],
     practice: [
       'Name the slot by kind: variable { environment, key } (null environment: every one), testing { profile, actor | service }, integration { provider }; project where it is another project’s.',
-      'Say why in plain words and the shape: value, file, mailbox, signin or { fields }; the person fills labelled boxes, never JSON, and reads why above them.',
+      'Say why in plain words and the shape: value, file, mailbox, signin or { fields }, asking only what the value needs (a field with a default in code is optional: true); the person fills labelled boxes, never JSON.',
       'A variable the project lacks is asked as a new one; a testing slot or connection it lacks is the master’s to declare (support.ask_master). Once told it was filled, say so and go on.',
     ],
     example: {

@@ -1,16 +1,29 @@
 // A secret's value given in one step, in a form fit for its shape (ISS-1348): one masked box for a
 // single value, labelled boxes for a structured one (written as one JSON object, so nobody types
-// JSON), and a file picker for a file, read as text in the browser. The value leaves only on Save,
-// to the slot's own door, and the boxes empty once it is kept.
+// JSON; a box the asker marked optional says so and may stay empty), and a file picker for a file,
+// read as text in the browser. The value leaves only on Save, to the slot's own door, and the boxes
+// empty once it is kept.
 import type { SecretForm, SecretShapeField } from "@forge/contracts/secret-slots";
 import { useState } from "react";
 import { Banner, Button, Field, focusOnMount, Input } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 
-/** The fields' values as the one JSON object the slot holds, in the fields' order. */
+/**
+ * The fields' values as the one JSON object the slot holds, in the fields' order. An optional field
+ * left empty writes no key, so the code's own default stands (ISS-1393).
+ */
 export function fieldsValue(fields: readonly SecretShapeField[], values: Record<string, string>): string {
-	return JSON.stringify(Object.fromEntries(fields.map((f) => [f.key, values[f.key]?.trim() ?? ""])));
+	const given = fields.flatMap((f) => {
+		const v = values[f.key]?.trim() ?? "";
+		return v === "" && f.optional ? [] : [[f.key, v] as const];
+	});
+	return JSON.stringify(Object.fromEntries(given));
+}
+
+/** Every field the value needs is filled: an optional one may stay empty. */
+export function fieldsReady(fields: readonly SecretShapeField[], values: Record<string, string>): boolean {
+	return fields.every((f) => f.optional === true || (values[f.key] ?? "").trim() !== "");
 }
 
 const PORT = /port$/i;
@@ -43,7 +56,7 @@ export function ValueForm({
 			? value !== ""
 			: form.kind === "file"
 				? file !== null && file.text !== ""
-				: form.fields.every((f) => (fields[f.key] ?? "").trim() !== "");
+				: fieldsReady(form.fields, fields);
 	const save = () => {
 		const given = form.kind === "value" ? value : form.kind === "file" ? (file?.text ?? "") : fieldsValue(form.fields, fields);
 		onSave(given);
@@ -74,7 +87,7 @@ export function ValueForm({
 			) : (
 				<div className="grid max-w-2xl grid-cols-1 gap-3 sm:grid-cols-2">
 					{form.fields.map((f, i) => (
-						<Field key={f.key} label={f.label}>
+						<Field key={f.key} label={f.label} hint={f.optional ? t("settings.project.secrets.optional") : undefined}>
 							<Input
 								ref={i === 0 ? first : undefined}
 								type={f.secret ? "password" : "text"}

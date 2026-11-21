@@ -15,6 +15,7 @@ export const secretShapeFieldSchema = z.strictObject({
 	label: z.string().trim().min(1).max(40).describe("what a person reads above the box, in plain words"),
 	secret: z.boolean().optional().describe("masked as a password is"),
 	example: z.string().trim().min(1).max(80).optional().describe("a made-up example, never the value"),
+	optional: z.boolean().optional().describe("the value works without it (a default in code): saved empty, it writes no key"),
 });
 export type SecretShapeField = z.infer<typeof secretShapeFieldSchema>;
 

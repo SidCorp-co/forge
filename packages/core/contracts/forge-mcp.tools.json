@@ -3791,6 +3791,10 @@
                           "minLength": 1,
                           "type": "string"
                         },
+                        "optional": {
+                          "description": "the value works without it (a default in code): saved empty, it writes no key",
+                          "type": "boolean"
+                        },
                         "secret": {
                           "description": "masked as a password is",
                           "type": "boolean"
@@ -4496,5 +4500,5 @@
       }
     }
   ],
-  "version": "9.3.0"
+  "version": "10.0.0"
 }

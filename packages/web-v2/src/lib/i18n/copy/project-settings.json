@@ -459,6 +459,7 @@
     "settings.project.secrets.value": "Value",
     "settings.project.secrets.file": "File",
     "settings.project.secrets.save": "Save",
+    "settings.project.secrets.optional": "Optional",
     "settings.project.secrets.terminal": "Use a terminal",
     "settings.project.secrets.copy": "Copy",
     "settings.project.secrets.copied": "Copied",

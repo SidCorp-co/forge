@@ -1,7 +1,8 @@
 // The Secrets section a room agent's link opens (ISS-1348), used at desktop and phone width, light and
 // dark: a link to an unfilled request lands on it (in view, focused, highlighted); a person fills a
-// mailbox in labelled boxes and saves; the request then reads that it has a value; and a link to a
-// slot already filled opens on that state with nothing to do.
+// mailbox in labelled boxes and saves; the request then reads that it has a value; a link to a slot
+// already filled opens on that state with nothing to do; and a box the asker marked optional says so
+// in one word and saves empty, writing no key for it (ISS-1393).
 //
 //   pnpm --filter web-v2 witness witness/secret-door.witness.tsx --out <dir>
 
@@ -46,6 +47,20 @@ const testing = (anchor: string, name: string, held: SecretSlotView["held"]) =>
 let support = testing("slot-s", "mail-support", null);
 const customer = testing("slot-c", "mail-customer", { at: ago(130), by: "Chuong", via: "page" });
 const play = slot({ anchor: "slot-p", ref: { kind: "variable", environment: "production", key: "PLAY_SERVICE_ACCOUNT" }, label: "Play service account", detail: "PLAY_SERVICE_ACCOUNT", door: { kind: "variable", key: "PLAY_SERVICE_ACCOUNT", environment: "production", variable: null }, form: { kind: "file" } });
+const proxy = slot({
+  anchor: "slot-x",
+  ref: { kind: "variable", environment: "production", key: "PROXY_POOL" },
+  label: "Proxy pool",
+  detail: "PROXY_POOL",
+  door: { kind: "variable", key: "PROXY_POOL", environment: "production", variable: null },
+  form: {
+    kind: "fields",
+    fields: [
+      { key: "apiKey", label: "API key", secret: true },
+      { key: "endpoint", label: "Endpoint", example: "https://proxy.example.com", optional: true },
+    ],
+  },
+});
 const ask = (n: number, s: SecretSlotView, why: string, minutes: number, example: string | null): SecretRequestView => ({
   id: id(n),
   askIds: [id(n)],
@@ -63,6 +78,7 @@ function read(): SecretSlotsRead {
     ask(2, slot({}), "Driver sign-in with Google needs it before the release.", 4, "GOCSPX-…"),
     ask(3, support, "Tests read and answer support mail as this mailbox.", 60, null),
     ask(4, customer, "Tests send mail to customers from this mailbox.", 120, null),
+    ask(5, proxy, "Scraping runs through the proxy pool; its endpoint defaults in code.", 2, null),
   ];
   const waiting = (r: SecretRequestView) => r.slot.held === null;
   return {
@@ -173,6 +189,27 @@ async function fillMailbox(): Promise<string[]> {
   return [...wrong, ...sideways()];
 }
 
+/** Only the needed box filled: Save opens, and the empty optional one is written as no key. */
+async function fillOptional(): Promise<string[]> {
+  const a = article("Proxy pool");
+  if (!a) return ["no Proxy pool request"];
+  const wrong: string[] = [];
+  const inputs = [...a.querySelectorAll<HTMLInputElement>("input")];
+  const save = [...a.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Save");
+  if (!save?.disabled) wrong.push("Save is open with the needed box empty");
+  const marked = [...a.querySelectorAll(".fg-caption")].filter((p) => p.textContent === "Optional");
+  if (marked.length !== 1) wrong.push(`${marked.length} boxes read Optional, not the one`);
+  type(inputs[0] as HTMLInputElement, "fake-proxy-key-1393");
+  await settle(100);
+  if (save?.disabled) wrong.push("Save stays shut with only the optional box empty");
+  save?.click();
+  await settle(400);
+  const sent = writes.find((w) => w.url.includes("/variables") && w.body.includes("PROXY_POOL"));
+  if (!sent) wrong.push("Save sent nothing");
+  else if (sent.body.includes("endpoint") || !sent.body.includes("apiKey")) wrong.push(`the value is not the needed key alone: ${sent.body.replace(/fake-[a-z0-9-]+/g, "<planted>")}`);
+  return [...wrong, ...sideways()];
+}
+
 function filledLink(): string[] {
   const wrong = landed("Mail customer", "article");
   const a = article("Mail customer");
@@ -193,6 +230,7 @@ window.__witness = {
     { name: "light-landed", run: async () => (theme("light"), await settle(), landed("Mail support", "input")) },
     { name: "light-filled", run: fillMailbox },
     { name: "light-filled-link", run: async () => (open(id(4)), await settle(600), filledLink()) },
+    { name: "light-optional", run: async () => (open(id(5)), await settle(600), fillOptional()) },
     { name: "dark-landed", run: async () => (theme("dark"), (support = { ...support, held: null }), open(id(3)), await settle(600), landed("Mail support", "input")) },
     { name: "dark-filled-link", run: async () => (open(id(4)), await settle(600), filledLink()) },
   ],
