@@ -127,7 +127,9 @@ export function catalogOf(
       if (!asked) return null;
       const method = asked.method.toUpperCase();
       const exact = served.find((r) => r.id === `${method} ${asked.path}`);
-      return (exact ?? served.find((r) => r.method === method && r.re.test(asked.path)))?.id ?? null;
+      return (
+        (exact ?? served.find((r) => r.method === method && r.re.test(asked.path)))?.id ?? null
+      );
     },
   };
 }

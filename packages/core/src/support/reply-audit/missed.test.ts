@@ -11,14 +11,14 @@ import { missesOf } from './audit.js';
 
 const catalog = catalogOf(
   [
-  {
-    id: 'support.member',
-    surface: 'mcp',
-    summary: null,
-    feature: 'forge_support',
-    twins: ['POST /api/projects/:id/support/session/members'],
-  },
-  { id: 'POST /api/projects/:id/feedback', surface: 'rest', summary: null, feature: 'x' },
+    {
+      id: 'support.member',
+      surface: 'mcp',
+      summary: null,
+      feature: 'forge_support',
+      twins: ['POST /api/projects/:id/support/session/members'],
+    },
+    { id: 'POST /api/projects/:id/feedback', surface: 'rest', summary: null, feature: 'x' },
   ],
   ['GET /api/projects/:id/boxes', 'POST /api/projects/:id/feedback'],
 );

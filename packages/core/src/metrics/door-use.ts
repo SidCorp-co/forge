@@ -230,7 +230,9 @@ function missedLine(missed: Missed, what: string): string[] {
   if (missed.length === 0) return [];
   const n = missed.reduce((sum, u) => sum + u.misses, 0);
   const named = missed.map((u) => `${u.door} (${u.misses})`).join(', ');
-  return [`${n} miss${n === 1 ? '' : 'es'} named ${what}, counted in no row and no total: ${named}.`];
+  return [
+    `${n} miss${n === 1 ? '' : 'es'} named ${what}, counted in no row and no total: ${named}.`,
+  ];
 }
 
 /**

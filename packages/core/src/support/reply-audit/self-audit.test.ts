@@ -23,27 +23,27 @@ const card = (id: string, redFlag?: string, owner = 'x') => ({
 
 const catalog = catalogOf(
   [
-  {
-    id: 'issues.transition',
-    surface: 'mcp',
-    summary: null,
-    feature: 'forge_issues',
-    card: card('issues.transition', 'Closing with a criterion unmet.'),
-  },
-  {
-    id: 'issues.get',
-    surface: 'mcp',
-    summary: null,
-    feature: 'forge_issues',
-    card: card('issues.get'),
-  },
-  {
-    id: 'POST /api/issues/:id/merge',
-    surface: 'rest',
-    summary: null,
-    feature: 'issues',
-    card: card('POST /api/issues/:id/merge', 'Marking merged before the gate ran.', 'issues'),
-  },
+    {
+      id: 'issues.transition',
+      surface: 'mcp',
+      summary: null,
+      feature: 'forge_issues',
+      card: card('issues.transition', 'Closing with a criterion unmet.'),
+    },
+    {
+      id: 'issues.get',
+      surface: 'mcp',
+      summary: null,
+      feature: 'forge_issues',
+      card: card('issues.get'),
+    },
+    {
+      id: 'POST /api/issues/:id/merge',
+      surface: 'rest',
+      summary: null,
+      feature: 'issues',
+      card: card('POST /api/issues/:id/merge', 'Marking merged before the gate ran.', 'issues'),
+    },
   ],
   // every route the app serves, a REST read with no door among them (ISS-1395)
   ['GET /api/projects/:id/automation/fires/:fireId', 'POST /api/issues/:id/merge'],
@@ -132,7 +132,10 @@ describe("an agent's audit of its own output", () => {
   it.each([
     ['its template', 'GET /api/projects/:id/automation/fires/:fireId'],
     ['its contract template', 'GET /api/projects/{id}/automation/fires/{fireId}'],
-    ['a path filled in', 'GET /api/projects/0b6f1f5e-7a7e-4c43-9d56-0c5e9a3b2f11/automation/fires/f-9'],
+    [
+      'a path filled in',
+      'GET /api/projects/0b6f1f5e-7a7e-4c43-9d56-0c5e9a3b2f11/automation/fires/f-9',
+    ],
   ])('keeps a missed route the app serves with no door, named by %s, as its route', (_, door) => {
     // [SERVED_ROUTE_REFUSED] before the fix: it was refused SELF_AUDIT_DOOR_UNKNOWN, "no door Forge serves"
     expect(judgeSelfAudit('master', [], [{ door, why: 'read the fire first' }], catalog)).toEqual({

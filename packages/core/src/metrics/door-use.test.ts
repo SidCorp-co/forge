@@ -10,20 +10,20 @@ import { DOOR_USE_LIMITS, doorUseLimits, tallyDoors } from './door-use.js';
 
 const catalog = catalogOf(
   [
-  {
-    id: 'support.member',
-    surface: 'mcp',
-    summary: 'records who a member is',
-    feature: 'forge_support',
-    twins: ['POST /api/projects/:id/support/session/members'],
-  },
-  { id: 'support.rule', surface: 'mcp', summary: 'keeps a rule', feature: 'forge_support' },
-  {
-    id: 'POST /api/projects/:id/feedback',
-    surface: 'rest',
-    summary: null,
-    feature: '/api/projects/:id/feedback',
-  },
+    {
+      id: 'support.member',
+      surface: 'mcp',
+      summary: 'records who a member is',
+      feature: 'forge_support',
+      twins: ['POST /api/projects/:id/support/session/members'],
+    },
+    { id: 'support.rule', surface: 'mcp', summary: 'keeps a rule', feature: 'forge_support' },
+    {
+      id: 'POST /api/projects/:id/feedback',
+      surface: 'rest',
+      summary: null,
+      feature: '/api/projects/:id/feedback',
+    },
   ],
   ['GET /api/projects/:id/boxes', 'POST /api/projects/:id/feedback'],
 );
