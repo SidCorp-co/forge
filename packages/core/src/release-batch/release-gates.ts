@@ -96,6 +96,7 @@ const withSubject = (
     | 'standing.gate.heldByEndedRun',
   d: Details,
   verb: [string, string],
+  versions = '?',
 ): Said => {
   const s = subjectOf(d);
   const agree = agrees(s.n, ...verb);
@@ -103,7 +104,9 @@ const withSubject = (
     ? say(key, { subject: s.said, verb: agree, obj: theirs(d, 'it', 'them') })
     : key === 'standing.gate.unmerged'
       ? say(key, { subject: s.said, verb: agree, their: theirs(d, 'its', 'their') })
-      : say(key, { subject: s.said, verb: agree });
+      : key === 'standing.gate.shippedInOwed'
+        ? say(key, { subject: s.said, verb: agree, versions })
+        : say(key, { subject: s.said, verb: agree });
 };
 
 const plain =
@@ -123,6 +126,12 @@ const gateCheck = (state: keyof typeof GATE_CHECK): Reading => ({
   title: GATE_CHECK[state][0],
   plain: (d) => say(GATE_CHECK[state][1], { check: typeof d?.check === 'string' ? d.check : '?' }),
 });
+
+/** The shipped releases a `RELEASE_SHIPPED_IN_OWED` names as maybe holding the landings, the first first. */
+const versionsOf = (d: Details): string => {
+  const versions = strings(d?.versions);
+  return versions.length === 0 ? '?' : versions.join(', ');
+};
 
 const versionOf = (d: Details): string => (typeof d?.version === 'string' ? d.version : '?');
 
@@ -210,7 +219,7 @@ const READINGS: Record<ReleaseReasonCode, Reading> = {
   },
   RELEASE_SHIPPED_IN_OWED: {
     title: 'standing.gate.title.shippedInOwed',
-    plain: (d) => withSubject('standing.gate.shippedInOwed', d, ['was', 'were']),
+    plain: (d) => withSubject('standing.gate.shippedInOwed', d, ['was', 'were'], versionsOf(d)),
   },
   RELEASE_HELD_BY_ENDED_RUN: {
     title: 'standing.gate.title.heldByEndedRun',
@@ -292,13 +301,20 @@ const onThem =
     key:
       | 'standing.act.writeReleaseNote'
       | 'standing.act.markMerge'
-      | 'standing.act.recordShippedIn'
       | 'standing.act.openChangeRequest',
   ) =>
   (d: Details): Said => {
     const s = subjectOf(d);
     return say(key, { on: s.n === 0 ? null : say('standing.gate.on', { subject: s.said }) });
   };
+
+const shippedInAct = (d: Details): Said => {
+  const s = subjectOf(d);
+  return say('standing.act.recordShippedIn', {
+    on: s.n === 0 ? null : say('standing.gate.on', { subject: s.said }),
+    versions: versionsOf(d),
+  });
+};
 
 const act =
   (key: SaidPlainKey): Owed['act'] =>
@@ -343,7 +359,7 @@ const OWED: Record<ReleaseReasonCode, Owed> = {
   RELEASE_THROUGH_CHANGE_REQUESTS: { by: 'admin', act: act('standing.act.cutAndApprove') },
   RELEASE_DEPLOYED_OUTSIDE: { by: 'master', act: act('standing.act.recordExternalDeploy') },
   RELEASE_PROMOTION_MISSING: { by: 'master', act: act('standing.act.openPromotion') },
-  RELEASE_SHIPPED_IN_OWED: { by: 'master', act: onThem('standing.act.recordShippedIn') },
+  RELEASE_SHIPPED_IN_OWED: { by: 'master', act: shippedInAct },
   RELEASE_HELD_BY_ENDED_RUN: {
     by: 'master',
     act: (d) => say('standing.act.abortEndedRun', { v: endedVersionOf(d) }),

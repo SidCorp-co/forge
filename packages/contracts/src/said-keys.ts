@@ -77,8 +77,8 @@ export const SAID = {
 	},
 	"standing.gate.title.promotionMissing": { en: "Promotion missing" },
 	"standing.gate.shippedInOwed": {
-		en: "{subject} {verb} marked after a shipped release was cut.",
-		vars: { subject: "said", verb: "agreement" },
+		en: "{subject} {verb} marked after a shipped release was cut. shipped-in-records closes each into the release that shipped it (reads {versions}).",
+		vars: { subject: "said", verb: "agreement", versions: "text" },
 	},
 	"standing.gate.title.shippedInOwed": { en: "Shipped-in owed" },
 	"standing.gate.heldByEndedRun": {
@@ -91,8 +91,8 @@ export const SAID = {
 		vars: { v: "version" },
 	},
 	"standing.act.recordShippedIn": {
-		en: "record which release shipped it{on}",
-		vars: { on: "said?" },
+		en: "record which release shipped it{on}, with shipped-in-records (reads {versions})",
+		vars: { on: "said?", versions: "text" },
 	},
 	"standing.act.openPromotion": {
 		en: "open the promotion change request at a judged head",

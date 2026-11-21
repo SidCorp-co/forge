@@ -105,8 +105,8 @@ export const RELEASE_REST_CARDS = {
     purpose: 'Closes an awaiting_release issue on a shipped release that already holds its commit.',
     situations: [
       {
-        when: 'an issue was marked merged after the cut that shipped its commit, so no release claimed it',
-        do: 'record it shipped in that release, with evidence the release contains its commit',
+        when: 'an issue shipped by an earlier release, marked merged after that cut so no release claimed it, or a draft holds only such issues',
+        do: 'record each shipped in that release (the version the draft’s page names), with evidence the release contains its commit; the draft clears once none is left',
       },
       {
         when: 'an issue’s shipped-in record named the wrong release',

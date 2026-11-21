@@ -53,3 +53,37 @@ describe('a project with no production environment, said by its gate', () => {
     }
   });
 });
+
+// ISS-1388 (FB-798, FB-800): a sidpeak master with a 0.30.0 draft holding only ISS-21, shipped in
+// v0.28.0, searched the release for a way to clear it and filed the door that exists as missing.
+describe('a draft whose issues an earlier release already shipped, said by its gate', () => {
+  const [gate] = gateViews(
+    [
+      blocker('RELEASE_SHIPPED_IN_OWED', {
+        issueIds: ['i21'],
+        displayIds: ['ISS-21'],
+        versions: ['0.28.0'],
+      }),
+    ],
+    [],
+    ['orchestrator'],
+    releaseOwesOf(POLICY(false), []),
+  );
+
+  it('names shipped-in-records and the version it reads, on its sentence and in the act the standing carries', () => {
+    expect(gate?.sentence).toContain('shipped-in-records');
+    expect(gate?.sentence).toContain('0.28.0');
+    expect(gate?.owner.act).toContain('shipped-in-records');
+    expect(gate?.owner.act).toContain('0.28.0');
+  });
+});
+
+describe('the shipped-in-records card says when to use the door (ISS-1388)', () => {
+  it('names an issue an earlier release shipped, and a draft holding only such issues', async () => {
+    const { RELEASE_REST_CARDS } = await import('./cards.js');
+    const card = RELEASE_REST_CARDS['POST /api/projects/:projectId/shipped-in-records'];
+    const when = card.situations.map((s) => s.when).join(' ');
+    expect(when).toContain('shipped by an earlier release');
+    expect(when).toContain('a draft holds only such issues');
+  });
+});
