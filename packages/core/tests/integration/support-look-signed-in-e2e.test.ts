@@ -9,12 +9,16 @@ vi.hoisted(() => {
 });
 
 /**
- * The box a look opens, standing in for a browser on a device this world lacks: it holds the cookies
- * and storage it is told, and the app behind it shows its sign-in page to a browser holding no
- * session. Every act is kept as core sent it (`run`) and as the feed records it (`shown`).
+ * The box a look opens, standing in for a browser on a device this world lacks: a real box row core
+ * acts on, whose device is a socket in this process. It holds the cookies and storage it is told,
+ * and the app behind it shows its sign-in page to a browser holding no session. Every act is kept as
+ * the device was sent it (`run`) and as the feed records it (`shown`).
  */
 const fake = vi.hoisted(() => ({
   session: '',
+  deviceId: '',
+  /** A member the box acts run as: the box's access check is not what this file proves. */
+  writerId: '',
   boxes: new Map<
     string,
     {
@@ -30,13 +34,26 @@ const fake = vi.hoisted(() => ({
 
 vi.mock('../../src/boxes/index.js', async (importOriginal) => {
   const real = await importOriginal<typeof import('../../src/boxes/index.js')>();
+  const { db } = await import('../../src/db/client.js');
+  const { boxes } = await import('../../src/db/schema-boxes.js');
   const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');
-  const signedIn = (b: { cookies: Map<string, string> }) =>
-    fake.session !== '' && b.cookies.get('sid') === fake.session;
   return {
     ...real,
     openBox: async (actor: { userId: string }, projectId: string, req: { url: string }) => {
-      const id = randomUUID();
+      const [row] = await db
+        .insert(boxes)
+        .values({
+          deviceId: fake.deviceId,
+          projectId,
+          mode: 'browser',
+          state: 'agent',
+          url: req.url,
+          createdBy: actor.userId,
+          openedAt: new Date(),
+          readyAt: new Date(),
+        })
+        .returning({ id: boxes.id });
+      const id = row?.id as string;
       fake.boxes.set(id, {
         projectId,
         createdBy: actor.userId,
@@ -52,42 +69,25 @@ vi.mock('../../src/boxes/index.js', async (importOriginal) => {
     },
     closeBox: async () => ({}),
     boxShot: async () => ({ ok: true, bytes: PNG, mime: 'image/png' }),
-    agentAct: async (
+    agentAct: (
       _actor: unknown,
-      boxId: string,
-      command: string[],
-      _run?: string,
-      shown?: string[],
-    ) => {
-      fake.acts.push({ run: command, shown: shown ?? command });
-      const b = fake.boxes.get(boxId);
-      if (!b) throw new Error(`no box ${boxId}`);
-      const [verb, a = '', c = '', d = '', e = ''] = command;
-      let stdout = '';
-      if (verb === 'cookies' && a === 'set') b.cookies.set(c, d);
-      if (verb === 'storage' && c === 'set') b.storage.set(d, e);
-      if (verb === 'open') b.url = a;
-      if (verb === 'get' && a === 'url')
-        b.url = signedIn(b) ? b.url : `${new URL(b.url).origin}/login`;
-      if (verb === 'get' && a === 'url') stdout = b.url;
-      if (verb === 'snapshot') {
-        stdout = signedIn(b)
-          ? '- heading "Suppliers" [ref=e1]\n- link "Product Type Mapping" [ref=e2]'
-          : '- heading "Sign in" [ref=e1]\n- textbox "Email" [ref=e2]';
-      }
-      if (verb === 'screenshot') stdout = '/tmp/agent-browser/shot.png';
-      return { act: { state: 'done', exitCode: 0, stdout } };
-    },
+      ...rest: Parameters<typeof real.agentAct> extends [unknown, ...infer R] ? R : never
+    ) => real.agentAct({ userId: fake.writerId, agency: 'agent' }, ...rest),
   };
 });
 
+import { completeAct } from '../../src/boxes/acts.js';
+import type { BoxRow } from '../../src/db/schema-boxes.js';
+import { deviceRoom, roomManager } from '../../src/lib/rooms.js';
 import { api } from '../helpers/api.js';
-import { rows } from '../helpers/factories.js';
+import { createTestDevice, rows } from '../helpers/factories.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
 import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 import { SupportWorld } from '../helpers/support-world.js';
 
 // @direct-test-of packages/core/src/support/look-act.ts
+// @direct-test-of packages/core/src/boxes/acts.ts
+// @direct-test-of packages/core/src/boxes/ports.ts
 // @direct-test-of packages/core/src/support/look-session.ts
 // @direct-test-of packages/core/src/support/reply-shots.ts
 // @direct-test-of packages/core/src/support/service.ts
@@ -99,7 +99,7 @@ import { SupportWorld } from '../helpers/support-world.js';
 // person never saw. A first look on an environment naming a testing profile now signs in as one of
 // its actors, through the path judges read the secret by, and the reply posts the look's picture in
 // the look's own thread. The planted password reaches no answer, row or box act; the session reaches
-// the box alone, shown in its feed as `[session]`.
+// the box alone, shown in its feed as `[session]` and handed to its socket, never an outbox event.
 
 vi.setConfig({ testTimeout: 90_000, hookTimeout: 120_000 });
 
@@ -217,6 +217,70 @@ const roomRows = async () =>
     ),
   );
 
+/** What the box's browser does with one act core sent it, and what it prints. */
+function runOnBox(boxId: string, command: string[]): string {
+  const b = fake.boxes.get(boxId);
+  if (!b) throw new Error(`no box ${boxId}`);
+  const signedIn = fake.session !== '' && b.cookies.get('sid') === fake.session;
+  const [verb, a = '', c = '', d = '', e = ''] = command;
+  if (verb === 'cookies' && a === 'set') b.cookies.set(c, d);
+  if (verb === 'storage' && c === 'set') b.storage.set(d, e);
+  if (verb === 'open') b.url = a;
+  if (verb === 'get' && a === 'url') {
+    b.url = signedIn ? b.url : `${new URL(b.url).origin}/login`;
+    return b.url;
+  }
+  if (verb === 'snapshot') {
+    return signedIn
+      ? '- heading "Suppliers" [ref=e1]\n- link "Product Type Mapping" [ref=e2]'
+      : '- heading "Sign in" [ref=e1]\n- textbox "Email" [ref=e2]';
+  }
+  if (verb === 'screenshot') return '/tmp/agent-browser/shot.png';
+  return '';
+}
+
+/** The box's device: a socket on its room that runs each `box.act` it is sent and reports it. */
+const device = {
+  readyState: 1,
+  send(payload: string) {
+    const { event, data } = JSON.parse(payload) as {
+      event: string;
+      data: { boxId: string; actId: string; command: string[] };
+    };
+    if (event !== 'box.act') return;
+    setImmediate(async () => {
+      const stdout = runOnBox(data.boxId, data.command);
+      const [shown] = await rows<{ command: string[] }>(
+        sql`SELECT command FROM box_acts WHERE id = ${data.actId}::uuid`,
+      );
+      fake.acts.push({ run: data.command, shown: shown?.command ?? [] });
+      await completeAct({ id: data.boxId } as BoxRow, {
+        actId: data.actId,
+        exitCode: 0,
+        stdout,
+        stderr: '',
+        durationMs: 3,
+      });
+    });
+  },
+};
+
+/** Every stored row, in every table core and its queue keep, that holds `value` anywhere. */
+async function rowsHolding(value: string): Promise<string[]> {
+  const tables = await rows<{ s: string; t: string }>(sql`
+    SELECT table_schema AS s, table_name AS t FROM information_schema.tables
+     WHERE table_type = 'BASE TABLE' AND table_schema IN ('public', 'pgboss')`);
+  const held: string[] = [];
+  for (const { s, t } of tables) {
+    const [hit] = await rows<{ n: number }>(
+      sql`SELECT count(*)::int AS n FROM ${sql.identifier(s)}.${sql.identifier(t)} r
+           WHERE r::text LIKE ${`%${value}%`}`,
+    );
+    if ((hit?.n ?? 0) > 0) held.push(`${s}.${t}`);
+  }
+  return held;
+}
+
 beforeAll(async () => {
   await startApp();
   await w.start();
@@ -224,9 +288,13 @@ beforeAll(async () => {
   await w.bind();
   chat = w.chat as StandInRocketChat;
   fake.session = SESSION;
+  fake.deviceId = await createTestDevice(w.ownerId);
+  fake.writerId = w.ownerId;
+  roomManager.subscribe(device as never, deviceRoom(fake.deviceId));
 }, 120_000);
 
 afterAll(async () => {
+  roomManager.removeAll(device as never);
   await w.stop();
   await new Promise((r) => app.close(r));
 });
@@ -247,6 +315,10 @@ describe('a look signs in as a testing-profile actor, and its reply carries the 
         return { look, thread, replied };
       },
     );
+    // the session reached the box and rests in no stored row: no feed, outbox event or queue job
+    await w.settleWarm();
+    expect(await rowsHolding(SESSION)).toEqual([]);
+    expect(await rowsHolding(PASSWORD)).toEqual([]);
     // the least privileged actor, signed in before the screen was read
     expect(look).toMatchObject({
       url: `${ENV_URL}/settings/suppliers`,
@@ -280,6 +352,8 @@ describe('a look signs in as a testing-profile actor, and its reply carries the 
       await act({ action: 'silent', thread, reason: 'test' });
       return seen;
     });
+    await w.settleWarm();
+    expect(await rowsHolding(TOKEN)).toEqual([]);
     expect(look).toMatchObject({ signIn: { actor: 'admin', signedIn: true } });
     expect(fake.acts.map((a) => a.shown)).toContainEqual([
       'storage',

@@ -5,13 +5,14 @@
 // sent to the device as `box.act`; the device's `act` report completes it. A person's input is
 // recorded in the same feed, so the agent reads what the person did when the box is handed back.
 
-import type { BoxInput } from '@forge/contracts/box-wire';
+import type { BoxControlFrames, BoxInput } from '@forge/contracts/box-wire';
 import { actKindOf, BOX_LIMITS, type BoxActRecord } from '@forge/contracts/boxes';
 import { and, desc, eq, gt, lt, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type BoxRow, boxActs, boxes } from '../db/schema-boxes.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { accessFor, type BoxActor, pushBox, refuse, tellChanged } from './access.js';
+import { boxesPorts } from './ports.js';
 import { actById, actRecord, personName } from './read.js';
 import { actFault } from './rules.js';
 import { rowOf } from './service.js';
@@ -72,7 +73,9 @@ export const SESSION_SHOWN = '[session]';
  * box. A sent one is answered with its result once the device reports it, or `pending` after
  * `actWaitSeconds`, readable later in the feed. `shown` is the command as the feed records it, where
  * it differs from what the device runs: core's own act placing a session, with each value
- * `SESSION_SHOWN`.
+ * `SESSION_SHOWN`. Such an act is handed to the box's open socket once its row commits, never as an
+ * outbox event (ISS-1386): an event row and its queue jobs keep the frame's data until pruned, and a
+ * session value rests in no stored row. No socket open to take it fails the act at once, naming why.
  */
 export async function agentAct(
   actor: BoxActor,
@@ -87,6 +90,7 @@ export async function agentAct(
   const kind = actKindOf(first.mode, command);
   const holder = first.heldBy ? ((await personName(first.heldBy)) ?? first.heldBy) : null;
   const actorKey = `agent:${runId ?? first.runId ?? 'unnamed'}`;
+  const unwritten = shown !== undefined && JSON.stringify(shown) !== JSON.stringify(command);
 
   const written = await db.transaction(async (tx) => {
     const row = await lockedRow(tx, boxId);
@@ -116,18 +120,36 @@ export async function agentAct(
       })
       .returning();
     if (!act) throw new Error('box_acts: insert returned no row');
-    if (!fault)
-      await pushBox(tx, row.deviceId, 'box.act', { boxId: row.id, actId: act.id, command, kind });
+    const frame: BoxControlFrames['box.act'] = { boxId: row.id, actId: act.id, command, kind };
+    if (!fault && !unwritten) await pushBox(tx, row.deviceId, 'box.act', frame);
     await tellChanged(tx, { ...row, actSeq: seq });
-    return { act, fault };
+    return { act, fault, deviceId: row.deviceId, frame };
   });
   if (written.fault) throw refuse(written.fault.code, written.fault.detail);
+  if (unwritten) await handOverNow(written.deviceId, written.frame);
 
   const done = await settled(written.act.id);
   return {
     act: actRecord(done ?? written.act),
     ...(await personSince(boxId, written.act.seq).then((p) => (p ? { personActed: p } : {}))),
   };
+}
+
+/**
+ * A frame that may not be written down goes to the box's open sockets now. Where none takes it, the
+ * act fails at once: it is never queued for a reconnect, since a queue is a stored row.
+ */
+async function handOverNow(deviceId: string, frame: BoxControlFrames['box.act']): Promise<void> {
+  if (boxesPorts().sendToBoxNow(deviceId, { event: 'box.act', data: frame }) > 0) return;
+  await db
+    .update(boxActs)
+    .set({
+      state: 'failed',
+      stderr:
+        "no socket of the box's device was open to take it; an act carrying a session is handed over live, never queued",
+      doneAt: new Date(),
+    })
+    .where(and(eq(boxActs.id, frame.actId), eq(boxActs.state, 'pending')));
 }
 
 /** The act once the device reported it, or null when it did not within `actWaitSeconds`. */

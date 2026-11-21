@@ -1,5 +1,6 @@
 export { agentAct, SESSION_SHOWN } from './acts.js';
 export { boxDemand, boxHealthBeat, sweepBoxes } from './allocate.js';
+export { provideBoxesPorts } from './ports.js';
 export { boxById } from './read.js';
 export { closeBox, openBox } from './service.js';
 export { type BoxShot, boxShot } from './shot.js';
