@@ -266,3 +266,88 @@ describe("ISS-1313: an unmapped member's refusal names the admin step, never a l
     expect((await keptGoes()).length).toBe(before);
   });
 });
+
+// ISS-1383 (FB-795, sidpeak 0.28.0 held since 2026-11-20): the project names its release decider in
+// a ruling, and her chat account carries no address, so her go was refused OPS_ASKER_UNMAPPED where
+// an unlinked owner's is kept. Hers is now kept the same way and decided as hers once named.
+describe("ISS-1383: the named release decider's unmapped go is kept, and decided as hers once named", () => {
+  let decider = '';
+  let held = '';
+
+  beforeAll(async () => {
+    // bob is the project's named release decider, by the username the chat server signs
+    const ruled = await api(admin, 'PUT', `/api/projects/${w.projectId}/knowledge/release-go-by-bob`, {
+      title: 'Releases go on bob’s word',
+      body: 'Owner ruling: bob decides whether a release goes to production.',
+      kind: 'rule',
+      confidence: 'verified',
+      source: 'owner ruling, ISS-1383',
+      scope: 'releases of this project',
+      recheckWhen: 'the owner names another release decider',
+      metadata: { deciders: [{ member: 'bob', acts: ['release'] }] },
+    });
+    expect(ruled.status, JSON.stringify(ruled.body)).toBe(200);
+    const d = await createTestUser({ verified: true });
+    decider = d.id;
+    await addProjectMember(w.projectId, decider, 'admin');
+    ({ approvalId: held } = await cutAndAsk(w.projectId, w.ownerId, '0.28.0'));
+  });
+
+  /** `who` writes `text`, and the agent cites it as their go on 0.28.0. */
+  async function goOn028(who: typeof chat.bob, text: string) {
+    let out: Record<string, unknown> = {};
+    const heard = await w.hear(
+      () => chat.say(who, text),
+      async (_t, act, message) => {
+        out = await act({
+          action: 'release_decision',
+          thread: String(message().thread),
+          message: String(message().message),
+          project: slug,
+          version: '0.28.0',
+          decision: 'approve',
+        });
+      },
+    );
+    return { id: heard.id, out };
+  }
+
+  it('keeps her go where her chat account maps to no Forge user, telling the room in plain words', async () => {
+    const go = await goOn028(chat.bob, 'Ok cho lên 0.28.0 nhé');
+    // [DECIDER_REFUSED] before the fix: OPS_ASKER_UNMAPPED, nothing kept, the release held on the owner
+    expect(code(go.out), JSON.stringify(go.out)).toBeUndefined();
+    expect(go.out).toMatchObject({ kept: true, version: '0.28.0', project: slug });
+    const said = JSON.stringify(go.out);
+    expect(said).toContain('@bob');
+    expect(said).toContain('noted');
+    expect(said).toContain('speaker-links/named');
+    expect(said).not.toMatch(/ask (him|them) to link it|Confirm a speaker link/);
+    const kept = (await keptGoes()).at(-1);
+    expect(kept?.input).toMatchObject({ message: go.id, version: '0.28.0', ownerKey: chat.bob.userId });
+    expect(await approvalOf(held)).toMatchObject({ decision: null });
+  });
+
+  it('refuses a stranger’s go by name, keeping nothing', async () => {
+    const before = (await keptGoes()).length;
+    const stranger = await goOn028(chat.carol, 'cho lên luôn');
+    expect(code(stranger.out), JSON.stringify(stranger.out)).toBe('OPS_ASKER_UNMAPPED');
+    expect((await keptGoes()).length).toBe(before);
+    expect(await approvalOf(held)).toMatchObject({ decision: null });
+  });
+
+  it('decides it as hers once an admin names her account', async () => {
+    await w.settleWarm();
+    const named = await api(admin, 'POST', NAMED(), {
+      source: 'rocketchat',
+      externalId: chat.bob.userId,
+      userId: decider,
+      reason: 'FB-795: the chat server reports no address for the release decider',
+    });
+    expect(named.status, JSON.stringify(named.body)).toBe(201);
+    await expect
+      .poll(async () => (await approvalOf(held))?.decision, { timeout: 10_000 })
+      .toBe('approved');
+    expect((await approvalOf(held))?.decided_by_user).toBe(decider);
+    expect((await keptGoes()).at(-1)?.output).toMatchObject({ recorded: true, by: decider });
+  });
+});
