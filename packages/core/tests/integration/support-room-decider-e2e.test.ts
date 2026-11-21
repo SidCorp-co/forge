@@ -252,12 +252,15 @@ describe('ISS-1042: the member the project’s rulings name as decider agrees in
 
   it('refuses a ruling naming its deciders wrongly, by name, with the shape that is valid', async () => {
     const act = await putRuling('bad-act', {
-      metadata: { deciders: [{ member: 'tuyen', acts: ['release'] }] },
+      // a release's go is an act a ruling names since ISS-1383; a merge is none
+      metadata: { deciders: [{ member: 'tuyen', acts: ['merge'] }] },
     });
     expect(act.status, JSON.stringify(act.body)).toBe(422);
     expect(JSON.stringify(act.body)).toContain('KNOWLEDGE_DECIDERS_SHAPE');
     expect(JSON.stringify(act.body)).toContain('/metadata/deciders/0/acts/0');
-    expect(JSON.stringify(act.body)).toContain('acts: (fix | filing | deploy | command | build)[]');
+    expect(JSON.stringify(act.body)).toContain(
+      'acts: (fix | filing | deploy | command | build | release)[]',
+    );
     const guide = await putRuling('not-a-rule', {
       kind: 'guide',
       metadata: { deciders: [{ member: 'tuyen', acts: ['filing'] }] },
