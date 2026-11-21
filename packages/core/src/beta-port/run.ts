@@ -217,6 +217,7 @@ function scrubReport(report: BetaPortReport, scrub: (t: string) => string): Beta
     mirrored: report.mirrored.map(scrub),
     held: report.held.map(scrub),
     told: report.told.map(scrub),
+    inStep: report.inStep.map(scrub),
     leftOnBeta: report.leftOnBeta.map(scrub),
     refused: report.refused.map(scrub),
     skipped: report.skipped.map(scrub),

@@ -8,7 +8,7 @@
 // project's own promotion and deployment, and the port deploys nothing. Once that dev release ships
 // or fails, the beta release is ended on beta with a reason naming it, and each beta issue is told
 // its outcome by one comment; the close of a shipped issue is the mirror's, by that dev release
-// (`mirror.ts:closeByRelease`), forward only as every mirror move. Nothing here moves a beta status.
+// (`mirror-close.ts:closeByRelease`), forward only as every mirror move. Nothing here moves a beta status.
 
 import type { ReleaseNaming } from '@forge/contracts/release-notes';
 import {

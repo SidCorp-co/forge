@@ -13,6 +13,7 @@
  * closes carry a mark it takes. Against real Postgres.
  *
  * @direct-test-of packages/core/src/beta-port/mirror.ts
+ * @direct-test-of packages/core/src/beta-port/mirror-close.ts
  * @direct-test-of packages/core/src/beta-port/markers.ts
  * @direct-test-of packages/core/src/beta-port/store.ts
  * @direct-test-of packages/core/src/integrations/peer-forge/client.ts

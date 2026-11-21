@@ -1,11 +1,11 @@
 /**
- * ISS-1387: sidpeak's dev issues ISS-21..39 closed and live while their beta twins stood at
- * Awaiting release or Open, and the fire named none of them. The twin is a dev issue whose first line
- * names the beta issue, but the pair was recorded only after the in-flight and before-the-ruling
- * gates, which pass such a beta issue over silently, so the mirror never saw it. Here: a beta issue
- * filed before the ruling and standing at `awaiting_release` or `open`, named by a closed dev twin,
- * is adopted and then mirrored closed or refused by name; one whose twin is still building is
- * adopted, and beta is not moved. forge-beta is the stub HTTP server of `beta-port-world.ts`.
+ * ISS-1387: a beta issue whose dev twin's first line names it, ported by hand with no pair recorded,
+ * was adopted only after the in-flight and before-the-ruling gates, which pass such a beta issue over
+ * silently. Here: a beta issue filed before the ruling and standing at `awaiting_release` or `open`,
+ * named by a closed dev twin, is adopted and then mirrored closed or refused by name; one whose twin is
+ * still building is adopted, and beta is not moved. (sidpeak's own pairs were Feedback pairs already
+ * recorded: `beta-port-closed-pair-accounted-e2e.test.ts` holds their shape.) forge-beta is the stub
+ * HTTP server of `beta-port-world.ts`.
  *
  * @direct-test-of packages/core/src/beta-port/run.ts
  */

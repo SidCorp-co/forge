@@ -122,6 +122,10 @@
       "reason": "kernel rule close_in_scope: a beta mirror closes only what carries its merge (CLOSE_REQUIRES_SHIPPED)"
     },
     {
+      "pattern": "packages/core/src/beta-port/mirror-close.ts",
+      "reason": "kernel rule close_in_scope: a beta close is sent with its merge mark and the dev release that shipped it (CLOSE_REQUIRES_SHIPPED)"
+    },
+    {
       "pattern": "packages/core/src/issues/review-rules.ts",
       "reason": "kernel rule review_by_builder: a recorded review is never the builder's own (REVIEW_BY_BUILDER)"
     },

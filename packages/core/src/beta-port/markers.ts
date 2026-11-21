@@ -236,9 +236,31 @@ export function mirrorTarget(devStatus: string): string | null {
   return (DEV_TO_BETA_STATUS as Record<string, string | null>)[devStatus] ?? null;
 }
 
-/** The reason a mirrored move carries on beta. */
-export function mirrorReason(devKey: string, devStatus: string): string {
-  return `Mirrored from forge-dev ${devKey}, which moved to ${devStatus}.`;
+/** The reason a mirrored move carries on beta; a close names the dev release that shipped the twin. */
+export function mirrorReason(devKey: string, devStatus: string, shippedIn?: string | null): string {
+  const release = shippedIn ? `, shipped in forge-dev release ${shippedIn}` : '';
+  return `Mirrored from forge-dev ${devKey}, which moved to ${devStatus}${release}.`;
+}
+
+/**
+ * Why a pair whose dev twin is ahead of its beta row is owed no try (ISS-1387): the last try left beta
+ * elsewhere and it was moved on beta since, which the mirror leaves as moved; null where the dev twin
+ * is not ahead, and the pair is in step.
+ */
+export function passedOverWhy(
+  pair: {
+    lastTriedStatus: string | null;
+    lastMirroredStatus: string | null;
+    betaReached: string | null;
+  },
+  devStatus: string,
+  betaStatus: string,
+): string | null {
+  const target = mirrorTarget(devStatus);
+  if (target === null || progressOf(target) <= progressOf(betaStatus)) return null;
+  const last = pair.lastTriedStatus ?? pair.lastMirroredStatus;
+  const left = pair.betaReached ?? last;
+  return `the last try (${last ?? 'none'}) left beta at ${left ?? 'an unrecorded status'} and it was moved to ${betaStatus} on beta since, so it is not moved again`;
 }
 
 /** The one comment a refused mirror move leaves on beta. */

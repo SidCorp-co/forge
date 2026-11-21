@@ -17,6 +17,12 @@ export interface BetaPortReport {
   held: string[];
   /** A ported item's triage outcome commented on beta with no status move: `twin: FB-n → beta BETA-KEY (outcome)`. */
   told: string[];
+  /**
+   * Per twin, the pairs this fire owed nothing (ISS-1387): beta stands where its dev twin's status
+   * mirrors, or the twin has not landed: `twin: n (beta BETA-KEY at status, …)`. Named every fire, so
+   * no pair passes a fire without a line.
+   */
+  inStep: string[];
   /** Beta issues left on beta, in flight or landed there: `twin: beta BETA-KEY (status)`. Named every fire. */
   leftOnBeta: string[];
   /** What was refused, with its code. */
@@ -55,6 +61,7 @@ export function emptyReport(cutoff: Date): BetaPortReport {
     mirrored: [],
     held: [],
     told: [],
+    inStep: [],
     leftOnBeta: [],
     refused: [],
     skipped: [],
@@ -111,6 +118,7 @@ export function renderReport(report: BetaPortReport, cap = REPORT_LIST_CAP): str
     ...section('mirrored', report.mirrored, cap),
     ...(report.held.length > 0 ? section('held', report.held, cap) : []),
     ...(report.told.length > 0 ? section('told on beta', report.told, cap) : []),
+    ...(report.inStep.length > 0 ? section('pairs owing nothing', report.inStep, cap) : []),
     ...(report.leftOnBeta.length > 0
       ? section('left on beta, in flight or landed there', report.leftOnBeta, cap)
       : []),
@@ -124,9 +132,9 @@ export function renderReport(report: BetaPortReport, cap = REPORT_LIST_CAP): str
 }
 
 /**
- * Whether the fire changed anything or has anything to say beyond "nothing to do". The issues left
- * on beta and the releases waiting on dev are named every fire and change nothing, so they alone do
- * not count.
+ * Whether the fire changed anything or has anything to say beyond "nothing to do". The pairs owing
+ * nothing, the issues left on beta and the releases waiting on dev are named every fire and change
+ * nothing, so they alone do not count.
  */
 export function reportSaysSomething(report: BetaPortReport): boolean {
   return (
