@@ -19,13 +19,13 @@ import {
 import { readProjectDocument } from '../project-config/index.js';
 import { findProjectSlugs, projectName } from '../projects/index.js';
 import { grantsOf, supportConfigOf } from './grants.js';
-import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
+import { no, type Outcome, threadUnknown } from './outcome.js';
 import { ownerUsername } from './owner-consent.js';
 import { projectThreadFor, sharedRoomOf } from './project-thread.js';
 import { screenForThread } from './screen.js';
 import { insertAction, type RoomRow } from './store.js';
 import { heldRaise, readTechnicalTurn, type TechnicalTurn, wordsMisfit } from './technical-turn.js';
-import { postInThread, roomAuth, scrubbedForRoom } from './thread.js';
+import { actingThread, postInThread, roomAuth, scrubbedForRoom } from './thread.js';
 
 /** The tool a raised need is recorded under on the asker's thread. */
 export const TECHNICAL = 'technical';
@@ -220,7 +220,8 @@ export async function raiseTechnical(
   input: { thread: string; need: TechnicalNeed; text: string; answers?: string | undefined },
   written: 'agent' | 'core' = 'agent',
 ): Promise<Raised> {
-  const conversationId = await knownThread(room, input.thread);
+  // a notice thread Forge handed a task in raises from the same door (ISS-1347)
+  const conversationId = await actingThread(room, input.thread);
   if (!conversationId) return threadUnknown(input.thread);
   const to = await destinationOf(room, '/need');
   if (!to.ok) return to;

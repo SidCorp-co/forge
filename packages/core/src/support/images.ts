@@ -16,7 +16,7 @@ import {
 } from '../integrations/rocketchat/index.js';
 import { no, type Outcome } from './outcome.js';
 import type { RoomRow } from './store.js';
-import { technicalThreadOf } from './technical-thread-room.js';
+import { citableRoomOf, technicalThreadOf } from './technical-thread-room.js';
 import { roomAuth } from './thread.js';
 
 /** One picture as a `message_in` row's input records it: the chat server's ref, its name and type. */
@@ -173,33 +173,31 @@ export interface ImageRead {
 }
 
 /**
- * A member's message the session may read pictures of, and the room whose bot fetches them: one of
- * its own room, or one in its project's own thread of the shared operations room, where the owner
- * is asked since ISS-1271 (ISS-1359). Any other message is refused by name, saying where it is.
+ * A member's message the session may read pictures of, and the room whose bot fetches them: where
+ * `citableRoomOf` places it, its own room or its project's own thread of the shared operations room,
+ * where the owner is asked since ISS-1271 (ISS-1359). Any other message is refused by name.
  */
 async function readableMessage(
   room: RoomRow,
   message: string,
 ): Promise<Outcome<{ thread: string; images: RecordedImage[]; from: RoomRow }>> {
-  const own = await messageImages(room.id, message);
-  const technical = await technicalThreadOf(room);
+  const where = await citableRoomOf(room, message);
+  const found = where.ok ? await messageImages(where.at.id, message) : null;
+  if (!where.ok || !found) {
+    return no(
+      'SUPPORT_MESSAGE_UNKNOWN',
+      '/message',
+      !where.ok && where.elsewhere
+        ? `message ${message} is in the shared operations room outside this project's own thread there, so it is not this room's to read; name a message of your room or of your project's technical thread`
+        : `neither this room nor this project's technical thread received a member message ${message}; name a message you were handed (\`message\`)`,
+    );
+  }
   // the owner's reply copied from the technical thread into the ask's thread (ISS-1362): its pictures
   // were posted in the shared operations room, so that room's bot fetches them
-  if (own?.technicalChannel && technical?.shared.rid === own.technicalChannel) {
-    return { ok: true, value: { ...own, from: technical.shared } };
-  }
-  if (own) return { ok: true, value: { ...own, from: room } };
-  const there = technical ? await messageImages(technical.shared.id, message) : null;
-  if (technical && there?.thread === technical.thread) {
-    return { ok: true, value: { ...there, from: technical.shared } };
-  }
-  return no(
-    'SUPPORT_MESSAGE_UNKNOWN',
-    '/message',
-    there
-      ? `message ${message} is in the shared operations room outside this project's own thread there, so it is not this room's to read; name a message of your room or of your project's technical thread`
-      : `neither this room nor this project's technical thread received a member message ${message}; name a message you were handed (\`message\`)`,
-  );
+  const technical = found.technicalChannel ? await technicalThreadOf(room) : null;
+  const from =
+    technical && technical.shared.rid === found.technicalChannel ? technical.shared : where.at;
+  return { ok: true, value: { ...found, from } };
 }
 
 /** The session reads picture `n` of a member's message in its room or its technical thread (ISS-1010, ISS-1359). */

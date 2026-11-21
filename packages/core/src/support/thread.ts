@@ -3,6 +3,7 @@
 // credential the room's tools hold, then recorded as the room's own row (REQ-75 BC-17, BC-18).
 
 import { scrubLogText } from '@forge/observability';
+import { and, eq } from 'drizzle-orm';
 import { noteAppliedLessons } from '../assistant/index.js';
 import {
   appendMessages,
@@ -11,6 +12,8 @@ import {
   findConversation,
   openConversation,
 } from '../conversations/index.js';
+import { db } from '../db/client.js';
+import { supportActions } from '../db/schema-support.js';
 import { findBindingWithConnectionById } from '../integrations/index.js';
 import {
   FIXED_REPLY_CONSTANT,
@@ -28,6 +31,7 @@ import { no, type Outcome } from './outcome.js';
 import { ownerSecretsOf } from './owner-credential.js';
 import { supportVenueId } from './rules.js';
 import type { RoomRow } from './store.js';
+import { threadConversation } from './thread-conversation.js';
 
 /** The bot's credential for a room's connection, and the namespace its venues are keyed under. */
 export async function roomAuth(
@@ -68,6 +72,32 @@ export async function threadConversationOf(
     projectId: room.projectId,
     title: 'Support thread',
   });
+}
+
+/**
+ * The conversation of a thread the session may act in: one a member wrote in, or a notice thread
+ * Forge opened to hand it a task (a question- or owed- thread), opened now where it has none, so the
+ * session can close it with support.silent or raise from it with support.technical (ISS-1347). Null
+ * for any other thread.
+ */
+export async function actingThread(room: RoomRow, thread: string): Promise<string | null> {
+  const known = await threadConversation(room.id, thread);
+  if (known) return known;
+  const [notice] = await db
+    .select({ id: supportActions.id })
+    .from(supportActions)
+    .where(
+      and(
+        eq(supportActions.roomId, room.id),
+        eq(supportActions.kind, 'message_in'),
+        eq(supportActions.actorKind, 'core'),
+        eq(supportActions.externalId, thread),
+      ),
+    )
+    .limit(1);
+  if (!notice) return null;
+  const { namespace } = await roomAuth(room);
+  return (await threadConversationOf(room, namespace, thread)).id;
 }
 
 /** Every value a line posted in this room must never carry: each of its support APIs' credentials. */

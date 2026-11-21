@@ -5,7 +5,7 @@
 // its binding under one account (REQ-77), so its act names the group it acts in: by the thread or
 // the message it answers, or by `rid`.
 
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { boxSessionOfToken } from '../agent-sessions/index.js';
 import { fencedProjectIds } from '../credentials/pat-scope.js';
 import { fenceReaches } from '../credentials/token-fence.js';
@@ -54,7 +54,7 @@ async function roomOf(rooms: readonly RoomRow[], hint: RoomHint): Promise<RoomRo
   if (rooms.length === 1 && only) return only;
   const rids = rooms.map((r) => r.rid).join(', ');
   if (hint.rid !== undefined) {
-    const named = rooms.find((r) => r.rid === hint.rid);
+    const named = rooms.find((r) => r.rid === hint.rid) ?? (await roomOfTechnicalRid(rooms, hint));
     if (named) return named;
     throw refuse(
       'SUPPORT_ROOM_AMBIGUOUS',
@@ -123,4 +123,40 @@ async function roomOfTechnicalThread(
     if (row?.thread === technical.thread) return room;
   }
   return null;
+}
+
+/**
+ * The group whose project's technical channel is the room `rid` names (ISS-1347, FB-794): the shared
+ * operations room it raises in, or a direct message it raised in. The owner answers there, so an act
+ * citing his message there may name that room; the thread or message it names picks the group.
+ */
+async function roomOfTechnicalRid(
+  rooms: readonly RoomRow[],
+  hint: RoomHint,
+): Promise<RoomRow | null> {
+  const raisedIn = await db
+    .select({ roomId: supportActions.roomId })
+    .from(supportActions)
+    .where(
+      and(
+        inArray(
+          supportActions.roomId,
+          rooms.map((r) => r.id),
+        ),
+        sql`${supportActions.output} ->> 'rid' = ${hint.rid ?? ''}`,
+      ),
+    );
+  const raised = new Set(raisedIn.map((r) => r.roomId));
+  const ofChannel: RoomRow[] = [];
+  for (const room of rooms) {
+    if (raised.has(room.id) || (await technicalThreadOf(room))?.shared.rid === hint.rid) {
+      ofChannel.push(room);
+    }
+  }
+  if (ofChannel.length <= 1) return ofChannel[0] ?? null;
+  return (
+    (await roomOfRecord(ofChannel, hint)) ??
+    (await roomOfTechnicalThread(ofChannel, hint)) ??
+    (hint.anyRoom ? (ofChannel[0] ?? null) : null)
+  );
 }

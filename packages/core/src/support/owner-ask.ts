@@ -14,6 +14,7 @@
 // the record does not.
 
 import { granters, grantsOf, supportConfigOf } from './grants.js';
+import { secondRaise } from './one-raise.js';
 import { projectsInScope } from './ops-scope.js';
 import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
 import { issueInReach, questionRefusal } from './owner-ask-targets.js';
@@ -109,6 +110,16 @@ export async function askOwner(
     thread: where.value.thread,
     forgeQuestion: where.value.forgeQuestion ?? request.forgeQuestion,
   };
+  // one Forge question is put to him once, by either act and from any thread (ISS-1347)
+  const again = input.forgeQuestion
+    ? await secondRaise<never>(
+        room,
+        input.forgeQuestion,
+        'SUPPORT_OWNER_ALREADY_ASKED',
+        input.thread,
+      )
+    : null;
+  if (again) return again;
   const conversationId = handed ? null : await knownThread(room, input.thread);
   // the issue and the question may be any project's the agent follows (ISS-874)
   const reach = await projectsInScope(room);

@@ -300,6 +300,8 @@ const SHARED = new Set<SupportActInput['action']>([
   'in_flight',
   // what waits on the owner, raised in the technical channel and reminded each morning (ISS-1343)
   'raise_owed',
+  // and his answer there to a question he owes, recorded as his by the room he wrote it in (ISS-1347)
+  'answer_question',
   'check_result',
   // every room agent raises what it needs in its project's technical channel (ISS-1243)
   'technical',

@@ -20,6 +20,7 @@ import { logger } from '../lib/logger.js';
 import { findProjectSlugs } from '../projects/index.js';
 import { deliverWaiting } from './dispatch.js';
 import { grantsOf, supportConfigOf } from './grants.js';
+import { questionOfOwed, secondRaise } from './one-raise.js';
 import { forgeUserOfWriter } from './ops-asker.js';
 import { knownThread, no, type Outcome } from './outcome.js';
 import { ownerUsername } from './owner-consent.js';
@@ -200,6 +201,13 @@ export async function raiseOwed(
       `this item was already put to the owner in the technical channel; it is raised once. Nothing was raised again.`,
     );
   }
+  // a question he was already asked with ask_owner, from any thread, is not put to him again (ISS-1347)
+  const owed = (task.input as { owed?: unknown } | null)?.owed;
+  const question = questionOfOwed(owed);
+  const again = question
+    ? await secondRaise<never>(room, question, 'SUPPORT_OWED_ALREADY_RAISED', input.thread)
+    : null;
+  if (again) return again;
   if (!raise) {
     throw new Error(
       'support: no technical channel raise was provided; registerSupportRooms wires provideTechnicalRaise(raiseTechnical)',
@@ -212,7 +220,6 @@ export async function raiseOwed(
     answers: input.answers,
   });
   if (!out.ok) return out;
-  const owed = (task.input as { owed?: unknown } | null)?.owed;
   await insertAction({
     roomId: room.id,
     projectId: room.projectId,

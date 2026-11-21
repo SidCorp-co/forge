@@ -24,7 +24,7 @@ import { limitsOf } from './rules.js';
 import { type SessionDoor, screenForThread } from './screen.js';
 import { insertAction, type RoomRow } from './store.js';
 import { roomHoldingThread } from './technical-thread-room.js';
-import { noteInThread, postInThread, scrubbedForRoom } from './thread.js';
+import { actingThread, noteInThread, postInThread, scrubbedForRoom } from './thread.js';
 import { ANSWERED_ELSEWHERE, type NamedRequest, resultOwed } from './thread-requests.js';
 
 export type { Outcome } from './outcome.js';
@@ -288,7 +288,8 @@ export async function staySilent(
   room: RoomRow,
   input: { thread: string; message?: string | undefined; reason: string },
 ): Promise<Outcome<{ silent: true }>> {
-  const conversationId = await knownThread(room, input.thread);
+  // a notice thread Forge handed a task in is closed the same way (ISS-1347)
+  const conversationId = await actingThread(room, input.thread);
   if (!conversationId) return threadUnknown(input.thread);
   const reason = await scrubbedForRoom(room, input.reason);
   await insertAction({

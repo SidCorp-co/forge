@@ -22,6 +22,7 @@ import type { OpsOutcome } from './ops-types.js';
 import { refusalsOf } from './ops-writes.js';
 import { no } from './outcome.js';
 import { insertAction, type RoomRow } from './store.js';
+import { citableRoomOf } from './technical-thread-room.js';
 
 /** How much of his message the decision's reason quotes: the reason is at most 1000 characters. */
 const QUOTE_MAX = 400;
@@ -31,6 +32,8 @@ export interface Said {
   author: string | null;
   authorKey: string;
   text: string | null;
+  /** The room it was written in where that is not the deciding room: its technical channel (ISS-1347). */
+  rid?: string;
 }
 
 /** Runs a check or a write as him: under the turn's token acting for him, or as his own account. */
@@ -59,7 +62,7 @@ const quoted = (text: string | null): string => {
 /** The decision's reason: his why where he gave one, then his message, cited by id and thread. */
 function reasonOf(room: RoomRow, input: SupportReleaseDecisionRequest, said: Said): string {
   const who = said.author ? `@${said.author}` : `account ${said.authorKey}`;
-  const cite = `${who} decided it in the room, message ${input.message} in thread ${input.thread} of group ${room.rid}: "${quoted(said.text)}"`;
+  const cite = `${who} decided it in the room, message ${input.message} in thread ${input.thread} of group ${said.rid ?? room.rid}: "${quoted(said.text)}"`;
   return input.reason ? `${input.reason.trim()}. ${cite}` : cite;
 }
 
@@ -168,7 +171,10 @@ export async function decideKeptGo(
   kept: KeptGo,
   userId: string,
 ): Promise<{ recorded: true; by: string } | { recorded: false; why: string }> {
-  const said = await memberMessage(room.id, kept.message);
+  // his go may have been said in the project's technical channel (ISS-1347)
+  const where = await citableRoomOf(room, kept.message);
+  const found = where.ok ? await memberMessage(where.at.id, kept.message) : null;
+  const said = found && where.ok && where.technical ? { ...found, rid: where.at.rid } : found;
   if (!said)
     return { recorded: false, why: `message ${kept.message} is no longer on the room's record` };
   const input: SupportReleaseDecisionRequest = {

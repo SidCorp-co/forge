@@ -8,7 +8,7 @@
 // as theirs.
 
 import type { SupportAnswerQuestionRequest } from '@forge/contracts/support-channel';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { answerFromRecord, type ChannelAgentRound, resolveSpeaker } from '../assistant/index.js';
 import { db } from '../db/client.js';
 import { agentQuestions, isChoiceStep } from '../db/schema-questions.js';
@@ -16,6 +16,7 @@ import { supportActions } from '../db/schema-support.js';
 import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
 import { answerAs } from '../questions/index.js';
+import { memberMessage } from './channel-store.js';
 import { deliverWaiting } from './dispatch.js';
 import { grantsOf, readersOf, supportConfigOf } from './grants.js';
 import { type KeptAnswer, keepOwnerAnswer, ownerRoleGap, ownerSetupStep } from './kept-answers.js';
@@ -24,12 +25,11 @@ import { ownerOwedQuestion } from './owner-owed.js';
 import type { Refusal } from './refusals.js';
 import { heldRoomsOfProject } from './rooms.js';
 import { questionThreadOf } from './rules.js';
-import { type ActionRow, insertAction, type RoomRow } from './store.js';
+import { insertAction, type RoomRow } from './store.js';
+import { citableRoomOf } from './technical-thread-room.js';
 import { roomAuth } from './thread.js';
 
 const ANSWER = 'answer_question';
-const ASK = 'ask_owner';
-const OWNER_ANSWER = 'owner_answer';
 
 /** The questions door's own refusals (`QUESTION_NOT_OPEN`, …), passed on to the agent by name. */
 const passedOn = <T>(
@@ -113,22 +113,44 @@ export const questionUnknown = <T>(thread: string): Outcome<T> =>
     `${thread} names no parked question handed to this group; answer the question thread you were handed, or name an open question you were shown as \`forgeQuestion\`. Nothing was recorded or posted.`,
   );
 
-/** The owner's message in this room, by the id the chat server signed, or null. */
-async function ownerMessage(room: RoomRow, owner: string, id: string): Promise<ActionRow | null> {
-  const [row] = await db
-    .select()
-    .from(supportActions)
-    .where(
-      and(
-        eq(supportActions.roomId, room.id),
-        eq(supportActions.kind, 'message_in'),
-        eq(supportActions.actorKind, 'member'),
-        eq(supportActions.actorKey, owner),
-        eq(supportActions.externalId, id),
-      ),
-    )
-    .limit(1);
-  return row ?? null;
+/**
+ * The chat account a question of `projectId` is owed by, as `room`'s agent reads it: the owner its
+ * own binding names; in an operations room, which names none, the owner the question's project's
+ * channel agent binding names (ISS-1347). Null where nobody is named.
+ */
+async function owedBy(room: RoomRow, projectId: string): Promise<string | null> {
+  if (room.kind !== 'operations') return grantsOf(await supportConfigOf(room)).owner ?? null;
+  for (const agent of (await heldRoomsOfProject(projectId)).filter((r) => r.kind === 'agent')) {
+    const owner = grantsOf(await supportConfigOf(agent)).owner;
+    if (owner) return owner;
+  }
+  return null;
+}
+
+/**
+ * The owner's message the agent cites, from the rooms it may cite (`citableRoomOf`): its own, or its
+ * project's technical channel, where he is asked (ISS-1347). Refused by name, naming why, where it
+ * is no message there or not his: only the person who owes the question answers it.
+ */
+async function ownersCitedMessage(
+  room: RoomRow,
+  owner: string | null,
+  id: string,
+): Promise<Outcome<{ text: string; owner: string }>> {
+  const where = await citableRoomOf(room, id);
+  const said = where.ok ? await memberMessage(where.at.id, id) : null;
+  if (!owner || !said || said.authorKey !== owner) {
+    return no(
+      'SUPPORT_ANSWER_NOT_THE_OWNER',
+      '/message',
+      !owner
+        ? `nobody is named as owing this question: the binding names no owner. Nothing was recorded.`
+        : said
+          ? `${id} was written by ${said.author ? `@${said.author}` : `account ${said.authorKey}`}, and this question is owed by the owner the binding names; only his own message answers it. Nothing was recorded.`
+          : `${id} is no member's message in this group or in your project's technical channel${!where.ok && where.elsewhere ? " (it is in the shared operations room, outside your project's own thread there)" : ''}; cite the owner's own message that answers it. Nothing was recorded.`,
+    );
+  }
+  return { ok: true, value: { text: said.text ?? '', owner } };
 }
 
 /**
@@ -141,22 +163,18 @@ async function answerAsOwner(
   handed: { questionId: string; round: number },
   input: SupportAnswerQuestionRequest & { message: string },
 ): Promise<Outcome<{ recorded: true }>> {
-  const owner = grantsOf(await supportConfigOf(room)).owner;
-  const said = owner ? await ownerMessage(room, owner, input.message) : null;
-  if (!owner || !said) {
-    return no(
-      'SUPPORT_ANSWER_NOT_THE_OWNER',
-      '/message',
-      `${input.message} is no message the owner this binding names wrote in this group; cite the owner's own message that answers it. Nothing was recorded.`,
-    );
-  }
   const [q] = await db
     .select({ steps: agentQuestions.steps, projectId: agentQuestions.projectId })
     .from(agentQuestions)
     .where(eq(agentQuestions.id, handed.questionId))
     .limit(1);
+  // the account is resolved where the answer is recorded: a naming holds in its own project alone
+  const questionProject = q?.projectId ?? room.projectId;
+  const said = await ownersCitedMessage(room, await owedBy(room, questionProject), input.message);
+  if (!said.ok) return said;
+  const { owner } = said.value;
   const step = q?.steps.at(-1);
-  const words = ((said.input as { text?: unknown } | null)?.text as string | undefined) ?? '';
+  const words = said.value.text;
   const chosen =
     step && isChoiceStep(step) ? step.options.find((o) => o.id === input.option) : null;
   // an option answered in words carries them: the agent's `answer`, else the owner's own message (FB-606)
@@ -176,8 +194,6 @@ async function answerAsOwner(
         : "the owner's message carries no words to record. Nothing was recorded.",
     );
   }
-  // the account is resolved where the answer is recorded: a naming holds in its own project alone
-  const questionProject = q?.projectId ?? room.projectId;
   const { namespace } = await roomAuth(room);
   const speaker = await resolveSpeaker(
     { source: 'rocketchat', namespace, externalId: owner },
@@ -271,8 +287,9 @@ export async function answerHandedQuestion(
 }
 
 /**
- * A handed question is asked from the thread it was handed in, and never twice while an ask of it
- * waits (ISS-873); where it is posted is the project's technical channel's (ISS-1246).
+ * A handed question is asked from the thread it was handed in; that it is never put to him twice is
+ * `one-raise.ts`'s, for every raise (ISS-873, ISS-1347); where it is posted is the project's
+ * technical channel's (ISS-1246).
  */
 export async function handedAsk(
   room: RoomRow,
@@ -280,41 +297,5 @@ export async function handedAsk(
 ): Promise<Outcome<{ thread: string; forgeQuestion: string }>> {
   const handed = await handedQuestion(room, thread);
   if (!handed) return questionUnknown(thread);
-  const waiting = (await asksOfQuestion(room, handed.questionId)).find((a) => !a.answered);
-  if (waiting) {
-    return no(
-      'SUPPORT_OWNER_ALREADY_ASKED',
-      '/thread',
-      `this question was already asked in the technical channel, from thread ${waiting.thread}; the owner's answer there reaches you. Nothing was posted.`,
-    );
-  }
   return { ok: true, value: { thread, forgeQuestion: handed.questionId } };
-}
-
-/** The asks this room put to the owner for one Forge question, and whether each was answered. */
-async function asksOfQuestion(
-  room: RoomRow,
-  questionId: string,
-): Promise<{ thread: string; answered: boolean }[]> {
-  const rows = await db
-    .select()
-    .from(supportActions)
-    .where(
-      and(
-        eq(supportActions.roomId, room.id),
-        eq(supportActions.kind, 'routed'),
-        inArray(supportActions.tool, [ASK, OWNER_ANSWER, ANSWER]),
-      ),
-    );
-  const answeredAsks = new Set(
-    rows.filter((r) => r.tool === OWNER_ANSWER).map((r) => (r.input as { ask?: string }).ask),
-  );
-  const answeredByAgent = rows.some(
-    (r) =>
-      r.tool === 'answer_question' &&
-      (r.input as { forgeQuestion?: string }).forgeQuestion === questionId,
-  );
-  return rows
-    .filter((r) => r.tool === ASK && (r.input as { questionId?: string }).questionId === questionId)
-    .map((r) => ({ thread: r.thread, answered: answeredByAgent || answeredAsks.has(r.id) }));
 }

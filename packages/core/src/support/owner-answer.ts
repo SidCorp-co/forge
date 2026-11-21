@@ -115,7 +115,7 @@ export async function settleOwnerAnswer(input: {
   });
   const answering = named.length > 0 ? named : his.length === 1 ? his : [];
   if (answering.length === 0) {
-    await tellSeveralWait(rooms, his, message.id);
+    await tellSeveralWait(rooms, his, message, author);
     return true;
   }
   for (const ask of answering) {
@@ -128,17 +128,48 @@ export async function settleOwnerAnswer(input: {
   return true;
 }
 
-/** The owner wrote where several of the asks wait, replying to none: recorded on none, said to each. */
+/**
+ * The owner wrote where several of the asks wait, replying to none: settled on none by core, since
+ * one plain "ok" may answer several of them (FB-786). His message is kept on each asking room's
+ * record, in its first waiting ask's thread, so its agent may cite it from there (ISS-1347), and each
+ * asking session is told which questions wait and how to settle the ones his words answer.
+ */
 async function tellSeveralWait(
   rooms: ReadonlyMap<string, RoomRow>,
   asks: readonly ActionRow[],
-  message: string,
+  message: { id: string; text: string; images?: RecordedImage[] },
+  author: { key: string; label: string | null },
 ): Promise<void> {
   const questions = asks
-    .map((a) => `"${(a.input as AskInput).question ?? `the item put to him from ${a.thread}`}"`)
+    .map((a) => {
+      const asked = a.input as AskInput;
+      const what = `"${asked.question ?? `the item put to him from ${a.thread}`}"`;
+      return asked.questionId ? `${what} (forgeQuestion ${asked.questionId})` : what;
+    })
     .join('; ');
+  const kept = new Set<string>();
   for (const ask of asks) {
     const room = rooms.get(ask.roomId) as RoomRow;
+    if (!kept.has(room.id)) {
+      kept.add(room.id);
+      await insertAction({
+        roomId: room.id,
+        projectId: room.projectId,
+        conversationId: ask.conversationId,
+        thread: ask.thread,
+        kind: 'message_in',
+        actorKind: 'member',
+        actorKey: author.key,
+        actorLabel: author.label,
+        input: {
+          text: message.text,
+          technicalChannel: (ask.output as AskedAt).rid,
+          ...(message.images?.length ? { images: message.images } : {}),
+        },
+        externalId: message.id,
+        deliveredAt: new Date(),
+      });
+    }
     await insertAction({
       roomId: room.id,
       projectId: room.projectId,
@@ -147,9 +178,9 @@ async function tellSeveralWait(
       kind: 'message_in',
       actorKind: 'core',
       input: {
-        note: `The owner wrote in the technical channel (message ${message}), where ${asks.length} questions wait for him (${questions}), and it replies to none of them, so it was recorded on none. His reply to a question's own line there answers that question; where he means yours, tell him so in the technical channel with support.technical { need: "ask" }.`,
+        note: `The owner wrote in the technical channel (message ${message.id}): ${JSON.stringify(message.text.slice(0, 400))}. ${asks.length} questions wait for him there (${questions}), and it replies to none of them, so core settled none. Where his words answer one or more of yours, settle each as his citing message ${message.id}: support.answer_question { thread, forgeQuestion, message } for a question, support.release_decision for a release. Where you cannot tell which he means, ask him once in the technical channel with support.technical { need: "ask" }.`,
       },
-      externalId: `owner-answer-several:${message}:${ask.id}`,
+      externalId: `owner-answer-several:${message.id}:${ask.id}`,
     });
     await deliverWaiting(room.id).catch((err) =>
       logger.error({ err, roomId: room.id }, 'support: a note waits for the next turn'),
