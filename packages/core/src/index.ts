@@ -24,7 +24,6 @@ import {
 } from './assistant/index.js';
 import { demoMemberId } from './auth/index.js';
 import { runOnceBackfills, startDeferredBackfills } from './boot-backfills.js';
-import { provideBoxesPorts } from './boxes/index.js';
 import { CHAT_PROVIDED_TOOLS } from './chat-tools.js';
 import { logUnprovenPatPeppers } from './credentials/pat.js';
 import { recordTokenPluginVersion } from './credentials/pat-plugin-version.js';
@@ -193,7 +192,7 @@ import { readServing } from './whats-new/index.js';
 import { registerWidgetConversationAdapter, widgetCors } from './widget/index.js';
 import { provideWorkPorts } from './work-ports.js';
 import { workflowDesign } from './workflows/index.js';
-import { attachWs, closeWs, publishEphemeralFrame, sendToBoxNow } from './ws/index.js';
+import { attachWs, closeWs, publishEphemeralFrame } from './ws/index.js';
 
 provideProjectOrg(findProjectOrgId);
 providePluginVersionRecorders({
@@ -211,8 +210,6 @@ provideRouteRefSources({
 provideFenceWay(fenceChannelWay);
 provideVisibleProjects(findVisibleProjectIds);
 provideEphemeralPublisher(publishEphemeralFrame);
-// an act placing a session goes to the box's socket alone, never an outbox row (ISS-1386)
-provideBoxesPorts({ sendToBoxNow });
 provideCredentialsPorts({
   tokenChanged: (change) => emitEvent(db, 'credential.tokenChanged', change),
   actSessionOf: sessionOfAct,

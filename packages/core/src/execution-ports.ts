@@ -3,7 +3,7 @@
 // before it (ADR 0008), so what they need from above is handed in here, from the owners' faces.
 
 import { provideAgentSessionsPorts } from './agent-sessions/index.js';
-import { boxDemand, boxHealthBeat } from './boxes/index.js';
+import { boxDemand, boxHealthBeat, provideBoxesPorts } from './boxes/index.js';
 import { cleanupFirePlan } from './cleanup/index.js';
 import { latestIssueCommentWith, postIssueNotice, postIssueNoticeOnce } from './comments/index.js';
 import { registerConversationAgentBridge, resolveProjectHandle } from './conversations/index.js';
@@ -310,6 +310,21 @@ const deviceQuestions = {
   raiseSessionPrompt: tellSessionPrompt,
 };
 
+/**
+ * The kernels that hand a frame to a box's open socket, never written down: the runners' asks, and
+ * a box act carrying a session value (ISS-1386), which rests in no outbox row.
+ */
+function provideSocketAskers(): void {
+  provideBoxesPorts({ sendToBoxNow });
+  provideRunnersPorts({
+    countInFlightByRunner,
+    residentMasterSql,
+    readRunnerPoolRead,
+    boxIsListening,
+    sendToBoxNow,
+  });
+}
+
 export function provideExecutionPorts(): void {
   provideReleaseBatchPorts({
     contractProviderGate,
@@ -388,13 +403,7 @@ export function provideExecutionPorts(): void {
     boxHealthBeat,
   });
 
-  provideRunnersPorts({
-    countInFlightByRunner,
-    residentMasterSql,
-    readRunnerPoolRead,
-    boxIsListening,
-    sendToBoxNow,
-  });
+  provideSocketAskers();
 
   provideSchedulesPorts({
     cleanupFire: cleanupFirePlan,
