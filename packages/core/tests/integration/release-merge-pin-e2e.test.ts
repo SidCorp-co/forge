@@ -9,12 +9,18 @@
  *
  * GitLab is planted: the request's head on the host, the commits between, and every merge it makes.
  *
+ * ISS-1349 (FB-759, sidcorp-mail, 2026-11-19): a merge naming release run 08d38871, cancelled two
+ * minutes before, merged release MR !92, and its deploy was then refused RELEASE_RUN_NOT_OPEN. The
+ * caller's `runId` is now read: an ended run, or one that is not the release holding the request,
+ * merges nothing and names the run that holds it.
+ *
  * @direct-test-of packages/core/src/integrations/source-host/merge.ts
  * @direct-test-of packages/core/src/integrations/source-host/merge-landed.ts
  * @direct-test-of packages/core/src/integration-door/issue-merge-routes.ts
  * @direct-test-of packages/core/src/release-batch/change-request-merge.ts
  */
 
+import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
@@ -222,5 +228,68 @@ describe('a release merge is held to the head its approval names (FB-571)', () =
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(planted.merges).toEqual([APPROVED]);
     expect(codeOf(res.body)).toBeNull();
+  });
+});
+
+/** A run of the project standing beside the release: a release-batch run that ended, or any open run. */
+async function sideRun(kind: 'system' | 'interactive', status: string): Promise<string> {
+  const id = randomUUID();
+  await db.execute(sql`
+    INSERT INTO pipeline_runs (id, project_id, kind, status, started_at, metadata)
+    VALUES (${id}, ${world.projectId}, ${kind}, ${status}, now(),
+            ${JSON.stringify(kind === 'system' ? { source: 'release-batch' } : {})}::jsonb)`);
+  return id;
+}
+
+/** 0.16.0 cut on !5193 and approved at its head, which has not moved. */
+async function approvedRelease() {
+  const ids = await landedIssues();
+  await promotionRequest(5193, APPROVED);
+  const cut = await call('POST', '/release-batches', {
+    issueIds: ids,
+    promotion: { request: 5193 },
+  });
+  expect(cut.status, JSON.stringify(cut.body)).toBe(201);
+  const runId = String(cut.body.runId);
+  await approve(runId);
+  return { ids, runId };
+}
+
+describe('a merge naming a run is held to the release that holds the request (ISS-1349, FB-759)', () => {
+  it('refuses a release run that was cancelled, naming the run holding the request, and merges nothing', async () => {
+    const { ids, runId } = await approvedRelease();
+    const cancelled = await sideRun('system', 'cancelled');
+
+    const res = await mergeOf(ids[0] as string, { runId: cancelled });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    const refusal = refusalOf(res.body);
+    expect(refusal?.code).toBe('MERGE_RUN_NOT_OPEN');
+    expect(refusal?.detail).toContain(`${cancelled} names a run that is cancelled`);
+    expect(refusal?.detail).toContain(`Release run ${runId} holds this request`);
+    expect(planted.merges, 'nothing merged for an ended run').toEqual([]);
+  });
+
+  it('refuses an open run that is not the release holding the request', async () => {
+    const { ids, runId } = await approvedRelease();
+    const other = await sideRun('interactive', 'running');
+
+    const res = await mergeOf(ids[0] as string, { runId: other });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    const refusal = refusalOf(res.body);
+    expect(refusal?.code).toBe('MERGE_RUN_NOT_THE_RELEASE');
+    expect(refusal?.detail).toContain(`Release run ${runId} holds this request`);
+    expect(planted.merges).toEqual([]);
+  });
+
+  it('merges naming the release that holds the request, as a merge naming none does', async () => {
+    const { ids, runId } = await approvedRelease();
+
+    const res = await mergeOf(ids[0] as string, { runId });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body).toMatchObject({ merged: true, release: { runId } });
+    expect(planted.merges).toEqual([APPROVED]);
   });
 });

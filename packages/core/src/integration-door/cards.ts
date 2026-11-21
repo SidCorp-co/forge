@@ -50,7 +50,10 @@ export const INTEGRATION_DOOR_REST_CARDS = {
         do: 'read the request again and retry once; the host’s first reading can be stale',
       },
     ],
-    practice: ['Send headSha: a head that moved since you checked it is not merged.'],
+    practice: [
+      'Send headSha: a head that moved since you checked it is not merged.',
+      'Name runId only for the open release run that holds the request, or none: an ended run or another is refused.',
+    ],
     example: {
       pullRequest: 87,
       headSha: 'c82e7d7c3a339c5035efea3bcbb8b6f45c9510ee',

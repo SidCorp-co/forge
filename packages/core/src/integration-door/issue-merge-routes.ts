@@ -30,7 +30,11 @@ import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../m
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireDeclared, requiresOnResolved } from '../permissions/index.js';
-import { admitChangeRequestMerge, settleChangeRequestRelease } from '../release-batch/index.js';
+import {
+  admitChangeRequestMerge,
+  refuseCallerRun,
+  settleChangeRequestRelease,
+} from '../release-batch/index.js';
 import { resolveStoredPullRequest } from './stored-pull-request.js';
 
 const refuse = refuser<MergeRefusalCode>('MERGE_MARK_REFUSED');
@@ -141,6 +145,9 @@ issueMergePullRequestRoutes.post(
       projectId: issue.projectId,
       pullRequestId: stored.id,
     });
+    // the caller's run is read, never carried unread: an ended run, or one that is not the release
+    // holding the request, merges nothing (ISS-1349)
+    await refuseCallerRun({ projectId: issue.projectId, runId: body.runId, admitted });
     const pin =
       admitted.kind === 'release'
         ? { sha: admitted.headSha, runId: admitted.runId, pinnedBy: admitted.pinnedBy }

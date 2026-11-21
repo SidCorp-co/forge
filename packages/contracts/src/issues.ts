@@ -138,6 +138,10 @@ export const MERGE_REFUSAL_CODES = [
 	"MERGE_REQUESTER_MISSING",
 	"MERGE_RUN_NOT_FOUND",
 	"MERGE_RUN_OF_ANOTHER_PROJECT",
+	/** A merge naming a `runId` that has ended: nothing merges for a run that cannot deploy it (ISS-1349). */
+	"MERGE_RUN_NOT_OPEN",
+	/** A merge naming an open run that is not the release run the merge is admitted under (ISS-1349). */
+	"MERGE_RUN_NOT_THE_RELEASE",
 	"NO_BINDING",
 	"MERGE_CHECK_MISSING",
 	"MERGE_REVIEW_MISSING",

@@ -4,6 +4,7 @@
 
 import type { MergeRefusalCode } from '@forge/contracts/issues';
 import { releaseThroughChangeRequests } from '@forge/contracts/releases';
+import { LIVE_PIPELINE_RUN_STATUSES } from '@forge/contracts/run-machine';
 import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, pipelineRuns } from '../db/schema.js';
@@ -51,7 +52,7 @@ async function runPinning(pullRequestId: string) {
   return row ?? null;
 }
 
-type MergeAdmission =
+export type MergeAdmission =
   | { kind: 'free' }
   /**
    * A step of an approved release, merged only at `headSha`: the commit its approval names for the
@@ -152,4 +153,44 @@ export async function admitChangeRequestMerge(args: {
   }
   // whether the head still is that commit is read from the host at the merge, never the projection
   return { kind: 'release', runId: run.runId, ...(await pinOf(run.runId, steps, at)) };
+}
+
+/**
+ * The run a caller names on a merge, held to the release the merge is admitted under (ISS-1349,
+ * FB-759): a run that has ended, or an open run that is not the release run holding the request, is
+ * refused by name before anything is sent, naming the run that holds the request, if any. A merge
+ * naming no run keeps its admission. A run Forge holds no row of, or one of another project, is the
+ * merge's own refusal (`integrations/source-host/merge.ts:assertCaller`).
+ */
+export async function refuseCallerRun(args: {
+  projectId: string;
+  runId: string | undefined;
+  admitted: MergeAdmission;
+}): Promise<void> {
+  const { runId, admitted } = args;
+  if (!runId) return;
+  const [run] = await db
+    .select({ projectId: pipelineRuns.projectId, status: pipelineRuns.status })
+    .from(pipelineRuns)
+    .where(eq(pipelineRuns.id, runId))
+    .limit(1);
+  if (!run || run.projectId !== args.projectId) return;
+  const holding = admitted.kind === 'release' ? admitted.runId : null;
+  const holds = holding
+    ? `Release run ${holding} holds this request: merge naming it, or naming no \`runId\`.`
+    : 'No running release holds this request: merge naming no `runId`, or the open run it is made for.';
+  if (!LIVE_PIPELINE_RUN_STATUSES.includes(run.status)) {
+    throw refuseMerge(
+      'MERGE_RUN_NOT_OPEN',
+      `\`runId\` ${runId} names a run that is ${run.status}, not open, so nothing was merged: a merge made for a run that has ended leaves the branch ahead of production with no run to deploy it. ${holds}`,
+      '/runId',
+    );
+  }
+  if (holding && holding !== runId) {
+    throw refuseMerge(
+      'MERGE_RUN_NOT_THE_RELEASE',
+      `\`runId\` ${runId} is not the release run this merge is admitted under, so nothing was merged. ${holds}`,
+      '/runId',
+    );
+  }
 }

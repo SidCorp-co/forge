@@ -25,6 +25,7 @@ vi.mock('../issues/index.js', () => ({
 }));
 vi.mock('../release-batch/index.js', () => ({
   admitChangeRequestMerge: async () => ({ kind: 'free' }),
+  refuseCallerRun: async () => {},
   settleChangeRequestRelease: async () => ({ settled: false }),
 }));
 vi.mock('../lib/authz.js', async (importOriginal) => ({

@@ -225,9 +225,9 @@
     "by": "ISS-1251"
   },
   "POST /api/issues/:id/merge-pull-request": {
-    "hash": "31c8b8b0ebbd3972",
-    "on": "2026-11-17",
-    "by": "ISS-1251"
+    "hash": "7b266865ac9b5d8e",
+    "on": "2026-11-21",
+    "by": "ISS-1349"
   },
   "POST /api/issues/:id/merge/correction": {
     "hash": "dcf0bc5d761c0e8c",
