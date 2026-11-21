@@ -76,7 +76,9 @@ async function handTwin(b: { id: string; displayId: string; title: string }, sta
   const { withKernelMarker } = await import('../../src/db/kernel-marker.js');
   const { db } = await import('../../src/db/client.js');
   const landed =
-    status === 'closed' ? sql`, merged_at = now(), merged_landing = 'https://dev.example/landed'` : sql``;
+    status === 'closed'
+      ? sql`, merged_at = now(), merged_landing = 'https://dev.example/landed'`
+      : sql``;
   await withKernelMarker(db, (tx) =>
     tx.execute(sql`UPDATE issues SET status = ${status}${landed} WHERE id = ${id}`),
   );
@@ -95,9 +97,7 @@ describe('a beta issue named by its dev twin is mirrored whatever its status or 
     const settled = await fireOnce(say, scheduleId);
     const out = settled.output ?? '';
     for (const b of [landed, open]) {
-      expect(out, out).toMatch(
-        new RegExp(`(beta ${b.displayId}\\)|beta ${b.displayId} closed:)`),
-      );
+      expect(out, out).toMatch(new RegExp(`(beta ${b.displayId}\\)|beta ${b.displayId} closed:)`));
     }
     expect(out).toContain('ISS-628 (named on ');
     expect(out).toContain('ISS-639 (named on ');
