@@ -90,11 +90,19 @@ describe('the upload migration moves only the files a row references (ISS-1365)'
   });
 
   it('refuses a row stored outside UPLOADS_DIR, and an s3:// row outside the bucket prefix', async () => {
-    const outside: StoredReference = { column: 'mockups.storage_path', id: 'm1', path: '/elsewhere/x.png' };
+    const outside: StoredReference = {
+      column: 'mockups.storage_path',
+      id: 'm1',
+      path: '/elsewhere/x.png',
+    };
     await expect(migrateUploads(root, memoryTarget().target, [outside])).rejects.toThrow(
       `upload migration aborted at /elsewhere/x.png: mockups.storage_path of row m1 is neither a file under UPLOADS_DIR ${root} nor a path under mem://`,
     );
-    const foreign: StoredReference = { column: 'mockups.storage_path', id: 'm2', path: 's3://other/x.png' };
+    const foreign: StoredReference = {
+      column: 'mockups.storage_path',
+      id: 'm2',
+      path: 's3://other/x.png',
+    };
     await expect(migrateUploads(root, memoryTarget().target, [foreign])).rejects.toThrow(
       'mockups.storage_path of row m2 is neither a file under UPLOADS_DIR',
     );
@@ -103,12 +111,20 @@ describe('the upload migration moves only the files a row references (ISS-1365)'
   it('counts a row already stored in the bucket as resolving, and refuses one the bucket lacks', async () => {
     const { target, objects } = memoryTarget();
     objects.set('later/new.png', Buffer.from('new'));
-    const inBucket: StoredReference = { column: 'issue_attachments.path', id: 'n1', path: 'mem://later/new.png' };
+    const inBucket: StoredReference = {
+      column: 'issue_attachments.path',
+      id: 'n1',
+      path: 'mem://later/new.png',
+    };
     const report = await migrateUploads(root, target, [row('issues/i1/b.txt'), inBucket]);
     expect(report.migrated).toEqual({ files: 1, bytes: 3 });
     expect(report.resolved).toBe(2);
 
-    const lost: StoredReference = { column: 'issue_attachments.path', id: 'n2', path: 'mem://later/lost.png' };
+    const lost: StoredReference = {
+      column: 'issue_attachments.path',
+      id: 'n2',
+      path: 'mem://later/lost.png',
+    };
     await expect(migrateUploads(root, memoryTarget().target, [lost])).rejects.toThrow(
       "upload migration aborted at mem://later/lost.png: issue_attachments.path of row n2: the bucket's listing does not hold later/lost.png",
     );

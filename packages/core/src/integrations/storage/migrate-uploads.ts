@@ -21,7 +21,9 @@ async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const unknown = args.filter((a) => !FLAGS.includes(a));
   if (unknown.length > 0) {
-    console.error(`migrate-uploads takes only ${FLAGS.join(', ')}; it was given ${unknown.join(' ')}`);
+    console.error(
+      `migrate-uploads takes only ${FLAGS.join(', ')}; it was given ${unknown.join(' ')}`,
+    );
     process.exitCode = 1;
     return;
   }

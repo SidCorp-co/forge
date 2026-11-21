@@ -48,7 +48,7 @@ protocol and nothing else:
 | embedded feedback chat | `widget/` (the binding's config, its site key minted or settled on bind, its signing secret); the public door, sessions and drafts are the `widget` domain's (`../widget/`) | a client site embedding Forge's frame | project |
 | LLM | `llm/`, over the AI SDK (`ai`, `@ai-sdk/openai-compatible`) behind `ChatProvider` | the model gateway: an OpenAI-compatible endpoint (LiteLLM); no provider is reached directly | deployment |
 | embeddings | `llm/embeddings.ts`, over `llm/embeddings-client.ts` and the AI SDK's `embedMany` | OpenAI-compatible endpoints | deployment |
-| object storage | `storage/` (`getStorage()`: `local-fs.ts` under UPLOADS_DIR, or `s3.ts` over `@aws-sdk/client-s3` under S3_PREFIX; `migrate-uploads.ts` copies one into the other) | any S3-compatible server | deployment |
+| object storage | `storage/` (`getStorage()`: `local-fs.ts` under UPLOADS_DIR, or `s3.ts` over `@aws-sdk/client-s3` under S3_PREFIX; `migrate-uploads.ts` copies the files a row references from one into the other) | any S3-compatible server | deployment |
 | mail | `identity/smtp.ts` | SMTP | deployment |
 | identity | `./identity/` | GitHub OAuth, Google, generic OIDC | deployment |
 | paired runner box, pinned downloads | `github/published-releases/` | GitHub releases | deployment |

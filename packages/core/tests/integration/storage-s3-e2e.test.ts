@@ -1,11 +1,13 @@
 /**
- * ISS-1364: uploads in an S3-compatible bucket, every key under S3_PREFIX. A throwaway MinIO, booted
+ * ISS-1364: uploads in an S3-compatible bucket, every key under S3_PREFIX; ISS-1365: the migration
+ * moves only the files a row references. A throwaway MinIO, booted
  * before this file's process loads core, so the whole app here runs with STORAGE_DRIVER=s3.
  *
  * It runs `docker` and the migration command as processes of its own, which the whole-tree guard
  * cannot read, so it declares itself as the install tests do.
  * @gate-input whole-tree
  * @direct-test-of packages/core/src/integrations/storage/migrate-uploads.ts
+ * @direct-test-of packages/core/src/integrations/storage/upload-references.ts
  */
 
 import { spawnSync } from 'node:child_process';
@@ -16,11 +18,15 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { HeadObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import { afterAll, describe, expect, it } from 'vitest';
+import { db } from '../../src/db/client.js';
+import { issueAttachments } from '../../src/db/schema-issues.js';
 import { getStorage } from '../../src/integrations/storage/factory.js';
 import { LocalFsStorage } from '../../src/integrations/storage/local-fs.js';
 import { S3Storage } from '../../src/integrations/storage/s3.js';
 import { migrateUploads } from '../../src/integrations/storage/upload-migration.js';
+import { uploadReferences } from '../../src/integrations/storage/upload-references.js';
 import { env } from '../../src/lib/env.js';
+import { createTestIssue, createTestProject, createTestUser } from '../helpers/factories.js';
 import { startMinio, stopMinio } from '../helpers/minio-container.js';
 
 const BUCKET = 'forge-it-shared';
@@ -74,41 +80,69 @@ describe('STORAGE_DRIVER=s3: getStorage() stores under S3_PREFIX (ISS-1364 crite
   });
 });
 
-describe('the upload migration (ISS-1364 criterion 3)', () => {
-  it('copies a local-driver tree to the same keys, so the rows it wrote keep resolving', async () => {
+let issueId = '';
+let uploaderId = '';
+/** An issue attachment row holding `path`, as the local driver's `put` answered it. */
+async function attachmentRow(path: string): Promise<void> {
+  if (issueId === '') {
+    uploaderId = (await createTestUser()).id;
+    const project = await createTestProject(uploaderId);
+    issueId = (
+      await createTestIssue(project.id, uploaderId, 1, { status: 'open', createdAt: new Date() })
+    ).id;
+  }
+  await db
+    .insert(issueAttachments)
+    .values({ issueId, uploaderId, name: 'f', path, mime: 'application/octet-stream', size: 0 });
+}
+
+describe('the upload migration moves only what a row references (ISS-1364 criterion 3, ISS-1365 criterion 2)', () => {
+  it('copies each referenced file to its key, so its row keeps resolving, and drops the rest', async () => {
     const local = new LocalFsStorage(env.UPLOADS_DIR);
     const rows = [
       await local.put('issues/i1/shot.png', Buffer.alloc(2048, 7), 'image/png'),
       await local.put('feedback/f1/note.txt', Buffer.from('kept'), 'text/plain'),
     ];
+    for (const row of rows) await attachmentRow(row.path);
+    await local.put('issues/i0/orphan.png', Buffer.alloc(100, 1), 'image/png');
     const s3 = getStorage() as S3Storage;
-    const report = await migrateUploads(env.UPLOADS_DIR, s3);
-    expect(report).toEqual({ files: 2, bytes: 2052 });
+    const report = await migrateUploads(env.UPLOADS_DIR, s3, await uploadReferences());
+    expect(report).toEqual({
+      migrated: { files: 2, bytes: 2052 },
+      dropped: { files: 1, bytes: 100, keys: ['issues/i0/orphan.png'] },
+      resolved: 2,
+    });
     expect(await objectSize(`${PREFIX}issues/i1/shot.png`)).toBe(2048);
+    expect(await objectSize(`${PREFIX}issues/i0/orphan.png`)).toBeNull();
     for (const row of rows) {
       expect((await s3.get(row.path)).equals(await local.get(row.path))).toBe(true);
     }
+    await db.delete(issueAttachments);
   });
 
-  it('runs as a command: exit 0 with count and bytes, exit 1 naming the first file that fails', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'iss1364-cli-'));
+  it('runs as a command: exit 0 with both counts, exit 1 naming the first file that fails or a row with no file', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'iss1365-cli-'));
     try {
       mkdirSync(join(dir, 'm/1'), { recursive: true });
       writeFileSync(join(dir, 'm/1/a.bin'), Buffer.alloc(10, 1));
       writeFileSync(join(dir, 'm/1/b.bin'), Buffer.alloc(5, 2));
-      const run = (over: Record<string, string>) =>
-        spawnSync(process.execPath, [TSX, 'src/integrations/storage/migrate-uploads.ts'], {
+      writeFileSync(join(dir, 'm/1/c.bin'), Buffer.alloc(7, 3));
+      await attachmentRow(join(dir, 'm/1/a.bin'));
+      await attachmentRow(join(dir, 'm/1/b.bin'));
+      const run = (over: Record<string, string>, args: string[] = []) =>
+        spawnSync(process.execPath, [TSX, 'src/integrations/storage/migrate-uploads.ts', ...args], {
           cwd: CORE,
           encoding: 'utf8',
           env: { ...process.env, ...S3_ENV, STORAGE_DRIVER: 'local', UPLOADS_DIR: dir, ...over },
         });
 
-      const ok = run({});
+      const ok = run({}, ['--list-dropped']);
       expect(ok.stderr).toBe('');
-      expect(ok.stdout).toContain(
-        `migrated 2 files, 15 bytes, from ${dir} to s3://${BUCKET}/${PREFIX}: count and bytes verified`,
+      expect(ok.stdout).toBe(
+        `dropped m/1/c.bin\nmigrated 2 files, 15 bytes, and dropped 1 files, 7 bytes (unreferenced), from ${dir} to s3://${BUCKET}/${PREFIX}: count and bytes verified, and all 2 stored paths resolve in the bucket\n`,
       );
       expect(ok.status).toBe(0);
+      expect(await objectSize(`${PREFIX}m/1/c.bin`)).toBeNull();
 
       const absent = run({ S3_BUCKET: 'forge-it-absent' });
       expect(absent.status).toBe(1);
@@ -118,6 +152,16 @@ describe('the upload migration (ISS-1364 criterion 3)', () => {
       const unset = run({ S3_PREFIX: '' });
       expect(unset.status).toBe(1);
       expect(unset.stderr).toContain('- S3_PREFIX: required when STORAGE_DRIVER=s3; it is unset');
+
+      await attachmentRow(join(dir, 'm/1/gone.bin'));
+      const gone = run({});
+      expect(gone.status).toBe(1);
+      expect(gone.stderr).toContain(
+        `upload migration aborted at ${join(dir, 'm/1/gone.bin')}: issue_attachments.path of row `,
+      );
+      expect(gone.stderr).toContain(
+        `references m/1/gone.bin, which has no file under UPLOADS_DIR ${dir}`,
+      );
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
