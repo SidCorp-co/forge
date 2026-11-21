@@ -25,7 +25,8 @@ export const LOOK_ACT_CARDS = {
       },
     ],
     practice: [
-      'A screen behind a sign-in shows its sign-in page: say so, and ask the master for the look with support.ask_master.',
+      'A first look signs in as a testing-profile actor, the least privileged unless you name as: <actor>, the one closest to who asked; where its signIn says it could not, say the screen is behind a sign-in, never what it holds.',
+      'Show what you saw: support.reply { thread, text, shots: [<the look’s picture>] } in the thread the look was taken for, and no other.',
       'Close the box with close: true once you have looked; one left open closes itself only after an hour idle.',
     ],
     example: { thread: '86aGqsokzYezYNdvF', environment: 'staging', path: '/settings/suppliers' },

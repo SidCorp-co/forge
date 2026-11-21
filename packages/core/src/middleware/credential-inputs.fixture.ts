@@ -180,7 +180,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:fire field:json:covers field:json:profile field:param:debt
     field:param:n field:param:environment field:param:proposal field:param:variable field:json:environment
     field:param:keyId field:param:messageId field:json:module field:param:relationId
-    field:json:pictures field:json:actor field:json:service field:json:provider field:param:actionId
+    field:json:pictures field:json:shots field:json:actor field:json:as field:json:service field:json:provider field:param:actionId
     field:json:shape field:param:ask`,
   'prose a person or an agent writes: a title, a body, a message, a note': words`
     field:json:about field:json:acceptanceCriteria field:json:alt field:json:answer
@@ -481,8 +481,8 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     integration-door/mcp-relay-routes.ts HonoRequest.arrayBuffer in module code
     integration-door/mcp-relay-routes.ts HonoRequest.header(name) in module code`,
   'a testing profile’s actor secret tried when written (ISS-937): the sign-in URL core builds and checks for its shape, and the cookies the answer sets, read only to say a session came back': lines`
-    integrations/deploy/sign-in-probe.ts Headers.getSetCookie in trySignIn
-    integrations/deploy/sign-in-probe.ts URL handed to @types/node:fetch in trySignIn
+    integrations/deploy/sign-in-probe.ts Headers.getSetCookie in signInAt
+    integrations/deploy/sign-in-probe.ts URL handed to @types/node:fetch in signInAt
     project-config/actor-sign-in.ts URL.password in sendable
     project-config/actor-sign-in.ts URL.username in sendable
     project-config/secret-write.ts URL.href in checksOf`,
