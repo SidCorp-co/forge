@@ -417,7 +417,7 @@ export const ROOM_ACT_CARDS = {
         do: 'answer it from the record with support.answer_question { thread, source, option or answer } and post nothing; only if the owner is truly needed, support.ask_owner from that thread',
       },
       {
-        when: 'the owner answers, in any thread, an open question he owes that you were shown',
+        when: 'the owner answers an open question he owes, in any thread or in the technical channel',
         do: 'record his message with support.answer_question { thread, forgeQuestion, message, option } and file nothing for it',
       },
     ],

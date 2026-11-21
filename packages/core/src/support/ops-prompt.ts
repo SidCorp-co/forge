@@ -26,6 +26,8 @@ const HAND_ON = [
   'ask_master',
   'in_flight',
   'ask_owner',
+  // the owner's answer here to a question he owes is recorded as his (ISS-1347)
+  'answer_question',
   'technical',
   'owner_forge_act',
   'references',
