@@ -103,7 +103,11 @@ export function throwAll(
 export async function declaredEnvironments(projectId: string): Promise<DeclaredEnvironment[]> {
   const held = await readProjectConfig(projectId);
   if (!held) return [];
-  return environmentsOf(held.document).map((e) => ({ name: e.name, tier: e.declaration.tier }));
+  return environmentsOf(held.document).map((e) => ({
+    name: e.name,
+    tier: e.declaration.tier,
+    deploysFrom: e.declaration.deploysFrom,
+  }));
 }
 
 export const eventOf = (

@@ -436,17 +436,17 @@ describe('a declared run receives the effective variables of the environment it 
   it('gives a protected variable only to a run targeting production whose work landed there', async () => {
     await landedIssue(22, 'release/stg');
     const stgRun = await declaredRun(22);
-    const notLanded = await runVariables(stgRun.boxRunId, 'production', ['STRIPE_KEY']);
-    expect(notLanded.status).toBe(403);
-    expect(codeOf(notLanded.body)).toBe('VARIABLE_PROTECTED_WITHHELD');
+    const refused = await runVariables(stgRun.boxRunId, 'production', ['STRIPE_KEY']);
+    expect([refused.status, codeOf(refused.body)]).toEqual([403, 'VARIABLE_PROTECTED_WITHHELD']);
     const listed = await runVariables(stgRun.boxRunId, 'production');
-    expect(listed.body).toMatchObject({ withheld: ['STRIPE_KEY'] });
+    const [w] = listed.body.withheldWhy as Array<{ key: string; why: string }>;
+    expect([w?.key, listed.body.withheld]).toEqual(['STRIPE_KEY', ['STRIPE_KEY']]);
+    expect(JSON.stringify(refused.body)).toContain(`STRIPE_KEY is a protected variable: ${w?.why}`);
     expect(JSON.stringify(listed.body)).not.toContain(STRIPE);
 
     await landedIssue(23, 'main');
     const prodRun = await declaredRun(23);
     const res = await runVariables(prodRun.boxRunId, 'production', ['STRIPE_KEY']);
-    expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(res.body).toMatchObject({ variables: [{ key: 'STRIPE_KEY', value: STRIPE }] });
   });
 

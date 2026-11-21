@@ -26,7 +26,12 @@ import {
   credentialJob,
   DECLARED_RUN_REFUSAL,
 } from './testing-secrets.js';
-import { askRefusals, type DeclaredEnvironment, effectiveVariables } from './variables-rules.js';
+import {
+  askRefusals,
+  type DeclaredEnvironment,
+  effectiveVariables,
+  withheldWhy,
+} from './variables-rules.js';
 import { insertEvents, listVariables, valuesOf } from './variables-store.js';
 
 const refuse = refuser<VariableRefusalCode>('VARIABLE_REFUSED');
@@ -124,7 +129,11 @@ export async function deliverRunVariables(args: {
   const { run } = calling;
   const held = await readProjectConfig(run.projectId);
   const declared: DeclaredEnvironment[] = held
-    ? environmentsOf(held.document).map((e) => ({ name: e.name, tier: e.declaration.tier }))
+    ? environmentsOf(held.document).map((e) => ({
+        name: e.name,
+        tier: e.declaration.tier,
+        deploysFrom: e.declaration.deploysFrom,
+      }))
     : [];
   const environment = declared.find((e) => e.name === args.environment);
   if (!held || !environment) {
@@ -134,8 +143,8 @@ export async function deliverRunVariables(args: {
       '/environment',
     );
   }
-  const deploysFrom = held.document.environments[environment.name]?.deploysFrom;
-  const landed = environment.tier === 'production' && (await landedOn(run, deploysFrom));
+  const landed =
+    environment.tier === 'production' && (await landedOn(run, environment.deploysFrom));
   const read = effectiveVariables(await listVariables(run.projectId), environment, landed);
   if (args.keys !== null) {
     const refusals = askRefusals(args.keys, read, environment);
@@ -196,6 +205,11 @@ export async function deliverRunVariables(args: {
       run: run.view,
       variables,
       withheld: args.keys === null ? read.withheld : [],
+      // each with the words a `?key=` read refuses it with, so no run guesses why (ISS-1392)
+      withheldWhy:
+        args.keys === null
+          ? read.withheld.map((key) => ({ key, why: withheldWhy(environment) }))
+          : [],
     },
   };
 }

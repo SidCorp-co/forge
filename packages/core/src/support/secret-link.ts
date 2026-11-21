@@ -44,6 +44,8 @@ export interface SecretLink {
   write?: SecretWrite;
   /** Who the link opens a value field for. */
   opensFor: string;
+  /** Who reads the value once saved, where the slot is created protected (ISS-1392). */
+  readBy?: string;
   says: string;
 }
 
@@ -65,8 +67,13 @@ const OPENS_FOR: Record<SupportSecretLinkRequest['kind'], (slug: string) => stri
   integration: () => 'a person signed in to Forge who manages that connection',
 };
 
-function says(write: boolean, held: boolean): string {
+function says(write: boolean, held: boolean, readBy: string | undefined): string {
   return [
+    ...(readBy
+      ? [
+          `${readBy}. A master or a run that landed nothing there reads it as withheld: say so to the one it is for, and that a person can turn its protection off, saying why.`,
+        ]
+      : []),
     held
       ? 'This slot already holds a value: its page says so and that nothing is to do. Ask the person only whether it is to be replaced, and give the link for that.'
       : 'Give this link as the place to enter the value: it opens that one request, with your reason and the value’s shape, and the value is kept in Forge’s vault, never in chat.',
@@ -133,7 +140,8 @@ export async function secretLink(
         ? { write: secretWriteOf(web, token, row.writeExpiresAt) }
         : {}),
       opensFor: OPENS_FOR[slot.value.kind](project.value.slug),
-      says: says(token !== null, slot.value.held),
+      ...(slot.value.createdProtected ? { readBy: slot.value.createdProtected } : {}),
+      says: says(token !== null, slot.value.held, slot.value.createdProtected),
     },
   };
 }

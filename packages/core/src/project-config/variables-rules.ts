@@ -11,10 +11,11 @@ import {
 } from '@forge/contracts/variables';
 import { SCRUB_MIN_SECRET_LENGTH } from '@forge/observability';
 
-/** An environment as the project document declares it: its name and its tier. */
+/** An environment as the project document declares it: its name, its tier and its deploy branch. */
 export interface DeclaredEnvironment {
   name: string;
   tier: 'production' | 'staging' | 'preview' | 'dev';
+  deploysFrom?: string | undefined;
 }
 
 /** What the rules read of a stored variable. */
@@ -62,10 +63,20 @@ export function effectiveVariables<V extends HeldVariable>(
   return { effective, withheld };
 }
 
+/**
+ * Which runs read a protected variable on this production-tier environment (BC-8), in the words the
+ * asker of a slot and a run refused one both read (ISS-1392).
+ */
+export function protectedReaders(environment: DeclaredEnvironment): string {
+  return environment.deploysFrom
+    ? `only a run with an issue merged on \`${environment.deploysFrom}\`, the branch \`${environment.name}\` deploys from, reads it`
+    : `\`${environment.name}\` names no branch it deploys from, so no run reads it`;
+}
+
 /** Why a protected key is not given on this environment, in words the run reads. */
 export function withheldWhy(environment: DeclaredEnvironment): string {
   return environment.tier === 'production'
-    ? `environment \`${environment.name}\` is production-tier, and none of this run's issues landed on the branch it deploys from, so its protected variables are not given to it`
+    ? `environment \`${environment.name}\` is production-tier and ${protectedReaders(environment)}; none of this run's issues is, so land one there first, or ask a person to turn its protection off, saying why`
     : `environment \`${environment.name}\` is ${environment.tier}-tier, and a protected variable reaches only a production-tier environment`;
 }
 

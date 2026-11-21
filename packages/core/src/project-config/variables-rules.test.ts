@@ -79,6 +79,10 @@ describe('the variables a run receives on the environment it targets (REQ-80 BC-
     ]);
     expect(refused[0]?.detail).toContain('NOPE');
     expect(refused[1]?.detail).toContain('none of this run');
+    // which run reads it, by the branch the environment deploys from (ISS-1392)
+    const named = askRefusals(['STRIPE_KEY'], read, { ...production, deploysFrom: 'main' });
+    expect(named[0]?.detail).toContain('only a run with an issue merged on `main`, the branch');
+    expect(refused[1]?.detail).toContain('names no branch it deploys from, so no run reads it');
   });
 
   it('refuses nothing when every asked key is effective', () => {

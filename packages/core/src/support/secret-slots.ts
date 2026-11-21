@@ -14,6 +14,7 @@ import {
   declaredEnvironments,
   listSecretNames,
   listTestingProfiles,
+  protectedReaders,
   slotKeyOf,
   variableHeld,
 } from '../project-config/index.js';
@@ -31,6 +32,8 @@ export interface ResolvedSlot {
   slotKey: string;
   /** Whether the slot holds a value now: its request opens on that, with nothing to do. */
   held: boolean;
+  /** A production-tier variable not held yet is created protected (REQ-80 BC-2): who reads it. */
+  createdProtected?: string;
 }
 
 /** The fields each kind takes; any other is refused by name, never ignored. */
@@ -81,13 +84,20 @@ async function variableSlot(
       `${project.slug} declares no environment ${environment}; it declares ${declared.map((e) => e.name).join(', ') || 'none'}, or null scopes the variable to every environment. No link was made.`,
     );
   }
+  const held = await variableHeld(project.id, key, environment);
+  const env = declared.find((e) => e.name === environment);
   return {
     ok: true,
     value: {
       kind: 'variable',
       slot: { environment, key },
       slotKey: slotKeyOf({ projectId: project.id, key, environment }),
-      held: await variableHeld(project.id, key, environment),
+      held,
+      ...(!held && env?.tier === 'production'
+        ? {
+            createdProtected: `${key} is created protected on ${env.name}: ${protectedReaders(env)}`,
+          }
+        : {}),
     },
   };
 }

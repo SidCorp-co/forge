@@ -615,9 +615,9 @@
     "by": "ISS-1251"
   },
   "POST /api/projects/:id/variables/proposals": {
-    "hash": "3d6b2bf0acc42a19",
-    "on": "2026-11-17",
-    "by": "ISS-1251"
+    "hash": "122b7683e63bcbdd",
+    "on": "2026-11-21",
+    "by": "ISS-1392"
   },
   "POST /api/projects/:id/variables/proposals/:proposal/decision": {
     "hash": "f45fac2afa7ccb6d",

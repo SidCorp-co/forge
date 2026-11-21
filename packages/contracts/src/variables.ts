@@ -206,4 +206,9 @@ export interface RunVariablesView {
 	variables: { key: string; type: VariableType; value: string }[];
 	/** Protected keys this run is not given, said rather than silently left out. */
 	withheld: string[];
+	/**
+	 * Why each withheld key is not given and which run reads it, in the words a `?key=` read of it is
+	 * refused with (ISS-1392); empty on a `?key=` read, which refuses instead.
+	 */
+	withheldWhy: { key: string; why: string }[];
 }

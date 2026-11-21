@@ -247,6 +247,9 @@ describe('ISS-1348: one secret act for every kind of slot', () => {
       example: 'GOCSPX-…',
     });
     expect(asked).toMatchObject({ kind: 'variable', held: false, project: own.slug });
+    // ISS-1392: at the ask, the slot is said created protected, naming which runs read it
+    expect(asked.says).toContain(`${asked.readBy}. A master or a run that landed nothing there`);
+    expect(asked.readBy).toContain('only a run with an issue merged on `main`');
     expect(asked.write).toMatchObject({ method: 'PUT', minutes: 15 });
     expect(asked.write?.command).toContain(`curl -X PUT --data-binary @`);
 
@@ -262,6 +265,7 @@ describe('ISS-1348: one secret act for every kind of slot', () => {
     );
     expect(new URL(every.link).searchParams.get('tab')).toBe('secrets');
     expect(every.write).toBeUndefined();
+    expect(every.readBy).toBeUndefined();
     const connection = linkOf(
       await secretLink(room, { thread, why, kind: 'integration', provider: 'rocketchat' }),
     );

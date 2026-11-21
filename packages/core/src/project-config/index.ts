@@ -122,5 +122,6 @@ export {
   forgeConfigTool,
 } from './tool.js';
 export { variableHeld, writeVariableByGrant } from './variables-grant.js';
+export { protectedReaders } from './variables-rules.js';
 export { declaredEnvironments } from './variables-service.js';
 export { slotKeyOf } from './variables-store.js';

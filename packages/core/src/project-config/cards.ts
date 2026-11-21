@@ -67,6 +67,10 @@ export const PROJECT_CONFIG_REST_CARDS = {
         when: 'your work needs a variable set or removed on an environment',
         do: 'propose it on the issue that needs it, with the reason; it takes effect once approved',
       },
+      {
+        when: 'a key you read comes back withheld: it is protected',
+        do: 'read its withheldWhy: land an issue on the branch it names, or propose protected: false with why',
+      },
     ],
     practice: ['An agent never writes a variable itself: this proposal is its one way.'],
     example: {
