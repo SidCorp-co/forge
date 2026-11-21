@@ -49,8 +49,12 @@ export const RELEASE_SCENARIOS: readonly CardScenario[] = [
     source: `ISS-846 (ISS-813 to ISS-879); ${USE}: 21 records, 6 refused`,
     situation: 'An issue was marked merged after the cut that shipped its commit',
     bad: 'a second record on the issue, refused RELEASE_SHIPPED_IN_NOT_WAITING',
-    good: 'record it shipped in that release with evidence, or send corrects naming the version',
-    teaches: [/record it shipped in that release/i, /`corrects`/],
+    good: 'record each shipped in that release with evidence, or send corrects naming the version',
+    teaches: [
+      /record each shipped in that release/i,
+      /with evidence the release contains its commit/i,
+      /`corrects`/,
+    ],
   },
   {
     name: 'issues closed on runtime-identity verdicts through a hand record: ISS-1062',

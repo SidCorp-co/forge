@@ -4,6 +4,11 @@
 // teaching their agent read and on this build's, so the card says it failed then and holds now.
 //
 // @direct-test-of packages/core/src/mcp/card-replay.ts
+// A card restamp writes the ledger, and a card's text moves inside its strings, where no key
+// line is touched: the two cards ISS-1385 and ISS-1388 restamped went red unselected (debt ea761022).
+// @direct-test-of packages/core/src/lib/card-changes.json
+// @direct-test-of packages/core/src/release-batch/cards.ts
+// @direct-test-of packages/core/src/support/reply-card.ts
 
 import type { CapabilityCard } from '@forge/contracts/capability-cards';
 import { describe, expect, it } from 'vitest';

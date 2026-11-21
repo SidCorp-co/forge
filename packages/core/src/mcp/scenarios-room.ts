@@ -47,7 +47,8 @@ export const ROOM_SCENARIOS: readonly CardScenario[] = [
     situation: 'A user reports that a connected site’s token field cannot be saved',
     bad: 'Em đã chuyển lỗi này cho đội kỹ thuật rồi anh, khi sửa xong em sẽ báo lại trong thread này.', // i18n-allow: a recorded room turn
     good: 'post one result: ask the master in the turn and answer from what it hands back',
-    teaches: [/results only/i, /ask the master in the turn/i],
+    // ISS-1385 taught "the answer, or one on-it line" where the card said "results only"
+    teaches: [/post one result/i, /no other acknowledgement/i, /ask the master in the turn/i],
   },
   {
     name: 'a failure line posted on a mail request another binding holds',
