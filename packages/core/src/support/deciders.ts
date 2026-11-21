@@ -5,7 +5,11 @@
 // and the agreement rule read this one source, so the brief never names a decider agree would refuse.
 
 import type { SupportProposalKind } from '@forge/contracts/support';
-import { ANY_ROOM_MEMBER, CHANNEL_DECIDER_ACT_LABEL } from '@forge/contracts/support-channel';
+import {
+  ANY_ROOM_MEMBER,
+  CHANNEL_DECIDER_ACT_LABEL,
+  type ChannelDeciderAct,
+} from '@forge/contracts/support-channel';
 import { deciderWords } from '../agreements/index.js';
 import { type RulingDeciderRead, rulingDecidersOf } from '../knowledge/index.js';
 import { namedProject } from './ops-scope.js';
@@ -15,7 +19,7 @@ export type { RulingDeciderRead };
 
 /** The acts, as the brief and the session's answers name them. */
 export const actsWords = (acts: readonly string[]): string =>
-  acts.map((a) => CHANNEL_DECIDER_ACT_LABEL[a as SupportProposalKind] ?? a).join(', ');
+  acts.map((a) => CHANNEL_DECIDER_ACT_LABEL[a as ChannelDeciderAct] ?? a).join(', ');
 
 /**
  * The ruling of the room's project naming `writer`, by the username the chat server signed, or any
@@ -25,7 +29,7 @@ export const actsWords = (acts: readonly string[]): string =>
  */
 export async function deciderFor(
   room: RoomRow,
-  act: SupportProposalKind,
+  act: ChannelDeciderAct,
   writer: { label: string | null },
   target?: string | null,
 ): Promise<RulingDeciderRead | null> {

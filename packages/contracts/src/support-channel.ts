@@ -10,7 +10,6 @@ import {
 	chatUsernameSchema,
 	ROOM_IMAGE_CAPS,
 	SUPPORT_PROPOSAL_KINDS,
-	type SupportProposalKind,
 	supportProjectSlugSchema,
 	supportRoomConfigSchema,
 	supportThreadIdSchema,
@@ -129,16 +128,25 @@ export const supportMemberRequestSchema = z.strictObject({
 	thread: supportThreadIdSchema.optional(),
 });
 
-/** What a decider may be named for: the acts a proposal waits on an agreement for. */
-export const CHANNEL_DECIDER_ACTS = SUPPORT_PROPOSAL_KINDS;
+/**
+ * What a decider may be named for: the acts a proposal waits on an agreement for, and a release's go
+ * or no (ISS-1383): the member named for `release` is the project's release decider, whose go cited
+ * by the room agent is decided as theirs, or kept until their chat account is named.
+ */
+export const CHANNEL_DECIDER_ACTS = [
+	...SUPPORT_PROPOSAL_KINDS,
+	"release",
+] as const;
+export type ChannelDeciderAct = (typeof CHANNEL_DECIDER_ACTS)[number];
 
 /** Each act as the session's brief names it. */
-export const CHANNEL_DECIDER_ACT_LABEL: Record<SupportProposalKind, string> = {
+export const CHANNEL_DECIDER_ACT_LABEL: Record<ChannelDeciderAct, string> = {
 	filing: "recording work (a filing)",
 	fix: "a fix through the product's tools",
 	deploy: "a deploy",
 	build: "a build",
 	command: "a host command",
+	release: "a release's go or no",
 };
 
 /**

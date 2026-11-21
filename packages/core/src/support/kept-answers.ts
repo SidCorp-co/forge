@@ -44,7 +44,14 @@ interface Kept {
  * What the agent reads where the owner's account is no Forge account yet: who owes the setup step
  * and how, and what it may tell the room of `what` he said. Never that it should ask him.
  */
-export async function ownerSetupStep(projectId: string, what = 'his answer'): Promise<string> {
+export async function ownerSetupStep(
+  projectId: string,
+  what = 'his answer',
+  whose = "the owner's",
+): Promise<string> {
+  if (whose !== "the owner's") {
+    return `${whose} chat account is no Forge account yet, so ${what} cannot be recorded as anyone. It is kept, and it is recorded as theirs, once and with nothing asked again, when ${await namingStep(projectId, 'their')}. That step is the admins', never theirs: do not ask them to link anything or to change their chat profile. You may tell the room ${what} is noted and waits on a setup step its admins own. Nothing was recorded yet.`;
+  }
   return `the owner's chat account is no Forge account yet, so ${what} cannot be recorded as anyone. It is kept, and it is recorded as his, once and with nothing asked again, when ${await namingStep(projectId, 'his')}, or he links it himself from Forge. That step is his admins', never his: do not ask him to link anything or to change his chat profile. You may tell the room ${what} is noted and waits on a setup step its admins own. Nothing was recorded yet.`;
 }
 
