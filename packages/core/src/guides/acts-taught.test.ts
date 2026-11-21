@@ -380,3 +380,48 @@ describe('a room agent states a live setting from a read of its own turn, and na
     );
   });
 });
+
+describe('a room agent says what a screen shows only from a look at it (ISS-1356)', () => {
+  // owner 2026-11-19: "it does not check the UI and reports nonsense: the feature plainly isn't on the
+  // UI, and it confirms it". A PGPrints user was told a menu item appears, did not see it, and was then
+  // sent a guide step typing ?tab=2 into the address bar; owner messages waited hours unanswered.
+  const prose = body('room-agent').split(/\s+/).join(' ');
+  const answering = prose.slice(
+    prose.indexOf('### Answering'),
+    prose.indexOf('### A secret you need'),
+  );
+
+  it('the Answering section makes a screen claim from a look, or says the screen was not seen yet', () => {
+    expect(answering).toContain('What a screen shows is said from a look, or not said.');
+    expect(answering).toContain('look at it with support.look on that environment');
+    expect(answering).toContain("a master's post, a release note or an earlier turn is no look");
+    expect(answering).toContain(
+      'say in plain words that you have not seen the screen yet and what you are doing about it, never the thing anyway',
+    );
+  });
+
+  it('a guide is walked in a box before it is sent, and a workaround step goes to the master as a UI defect', () => {
+    expect(answering).toContain('Walk each step in a box yourself before the guide is sent');
+    expect(answering).toContain('an address edit, a hidden tab, a field the screen hides');
+    expect(answering).toContain('goes to that master as a UI defect with support.record');
+    expect(answering).toContain('the person is told the honest next step');
+  });
+
+  it('every owner message is answered or told when, within 30 minutes, and a re-ask is counted', () => {
+    expect(answering).toContain(
+      'Every message the owner writes in a thread gets its answer, or a line saying you are on it and when you will report, within 30 minutes',
+    );
+    expect(answering).toContain("one left longer shows on the room's daily line");
+    expect(answering).toContain('a question asked again is counted against your turn');
+  });
+
+  it("serves support.look's card beneath the guide, and support.reply's card carries the line", () => {
+    expect(prose).toContain('### `support.look`');
+    expect(prose).toContain(
+      'look first with support.look { thread, environment, path }, and say only what the look showed',
+    );
+    expect(prose).toContain(
+      'What a screen shows (a button, menu item, field, page) is said only from a look this turn with support.look',
+    );
+  });
+});

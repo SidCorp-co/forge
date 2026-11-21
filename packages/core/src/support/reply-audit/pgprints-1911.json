@@ -1,0 +1,55 @@
+{
+  "source": "ISS-1356's evidence: AdminHub-Support, PGPrints thread Q8mjjH, 2026-11-19 UTC, and the owner's messages that day in Forge-Communicate. Only the lines the issue quotes are member text; an agent line the issue paraphrases is rebuilt from its paraphrase and marked so.",
+  "member": [
+    {
+      "at": "2026-11-19T06:37:00Z",
+      "who": "user",
+      "thread": "Q8mjjH",
+      "text": "đã thao tác xong bước 2 và ko thấy mục mapping"
+    }
+  ],
+  "owner": [
+    {
+      "at": "2026-11-19T02:36:00Z",
+      "thread": "orbit",
+      "text": "Sao rồi?"
+    },
+    {
+      "at": "2026-11-19T03:24:00Z",
+      "thread": "gwork",
+      "text": "để đó xử lý đi"
+    },
+    {
+      "at": "2026-11-19T04:30:00Z",
+      "thread": "sid-mail",
+      "text": "Trả lời rồi nhỉ"
+    }
+  ],
+  "agent": [
+    {
+      "at": "2026-11-19T04:25:00Z",
+      "thread": "Q8mjjH",
+      "quoted": false,
+      "text": "Em xin sửa lại tin trước: ô Store ID không phụ thuộc vào Service ạ.",
+      "quote": "Em xin sửa lại tin trước"
+    },
+    {
+      "at": "2026-11-19T04:57:00Z",
+      "thread": "Q8mjjH",
+      "quoted": false,
+      "text": "Bước 3: chị gõ ?tab=2 vào cuối thanh địa chỉ để mở phần đồng bộ, rồi bấm Sync now."
+    },
+    {
+      "at": "2026-11-19T05:53:00Z",
+      "thread": "Q8mjjH",
+      "quoted": true,
+      "text": "mục Product Type Mapping giờ hiện ngay trong menu sau khi bật Using API và chọn PGPrints"
+    },
+    {
+      "at": "2026-11-19T06:38:00Z",
+      "thread": "Q8mjjH",
+      "quoted": false,
+      "text": "Dạ mục Product Type Mapping chỉ hiện trong menu sau khi bấm Sync now lần đầu ạ."
+    }
+  ]
+}

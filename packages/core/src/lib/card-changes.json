@@ -1614,6 +1614,11 @@
     "on": "2026-11-16",
     "by": "ISS-1251"
   },
+  "support.look": {
+    "hash": "3b024534eab1c11d",
+    "on": "2026-11-21",
+    "by": "ISS-1356"
+  },
   "support.member": {
     "hash": "ea1a0787ef520344",
     "on": "2026-11-16",
@@ -1715,9 +1720,9 @@
     "by": "ISS-1251"
   },
   "support.reply": {
-    "hash": "7448e857f5ca71ef",
+    "hash": "d7d29f3b2f068453",
     "on": "2026-11-21",
-    "by": "ISS-1354"
+    "by": "ISS-1356"
   },
   "support.requirements": {
     "hash": "793ed91dbfb6b6d7",

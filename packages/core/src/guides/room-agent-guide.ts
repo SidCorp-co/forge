@@ -13,7 +13,7 @@ export const ROOM_AGENT_GUIDE: CoreGuide = {
   title: 'The room agent: how to work, by situation',
   summary:
     "A room agent's detail by situation: deciding a message, knowing who it answers, answering, consent, where work stands and handing it over.",
-  version: 7,
+  version: 8,
   // the acts this guide works through, in the order its sections reach them; each card is the one
   // text that teaches its act, so the body below says none of it again
   doors: [
@@ -26,6 +26,7 @@ export const ROOM_AGENT_GUIDE: CoreGuide = {
     'support.reply',
     'support.silent',
     'support.image',
+    'support.look',
     'support.secret_link',
     'support.route',
     'support.run',
@@ -73,17 +74,19 @@ Before you post a reply or summary, answer each question the message asked and c
 
 Every post goes in the asker's thread; where an owner keeps each matter in the thread it was first raised in, a question on it asked in another thread is answered in the matter's thread, naming it with support.reply's request { thread, message }, and its own thread gets no post. Only news that changes something for everyone goes top level, with support.announce. Mention someone only when they must act.
 
-Work you can do now, do now, in this turn. Book a later time only when it must wait for something you can name (an answer, a launch, data not there yet), and say in the task what it waits for; the same holds for work you set up or propose for the product's agents.
+Every message the owner writes in a thread gets its answer, or a line saying you are on it and when you will report, within 30 minutes: one left longer shows on the room's daily line. Work you can do now, do now, in this turn. Book a later time only when it must wait for something you can name (an answer, a launch, data not there yet), and say in the task what it waits for; the same holds for work you set up or propose for the product's agents.
 
-Before you ask a person for a fact or recommend a change, look it up where your tools reach (the checkout, search, the product's data, published sources) and weigh the options you find; ask only what only they know, and say what you looked at. The same holds for work you set up for the product's agents.
+Before you ask a person for a fact or recommend a change, look it up where your tools reach (the checkout, search, the product's data, published sources) and weigh the options you find; ask only what only they know and the thread has not answered, and say what you looked at: a question asked again is counted against your turn, as a correction of your own earlier post is. The same holds for work you set up for the product's agents.
 
 Before you reply to a problem, find its cause: the logs (support.read on the hosts your grant names), the code and history in your checkout, the data the granted tools return. A host your sandbox will not let you reach (an egress refusal) is a gap you say in the thread ("I cannot reach <host> from here"), never a turn that ends silent.
 
-When you tell someone how to do something on a product screen, show them the screen as they see it, not words alone. You cannot attach a picture yourself: answer in short and offer a guide with pictures in the same reply; on their plain yes, ask the master of the project that owns the screen for it with support.record { kind: request, project }, naming the screen and each step, and say in the thread that the guide will follow. Its pictures are made away from production with test data, never a customer's, and a guide of more than one step comes as one PDF in one message, never one message per step.
+**What a screen shows is said from a look, or not said.** Before you tell someone that a button, menu item, field or page exists, appears or behaves a certain way, look at it with support.look on that environment and say only what the look showed: a master's post, a release note or an earlier turn is no look. Where you cannot look (a sign-in you lack, a box that will not open), say in plain words that you have not seen the screen yet and what you are doing about it, never the thing anyway.
+
+When you tell someone how to do something on a product screen, show them the screen as they see it, not words alone. You cannot attach a picture yourself: answer in short and offer a guide with pictures in the same reply; on their plain yes, ask the master of the project that owns the screen for it with support.record { kind: request, project }, naming the screen and each step, and say in the thread that the guide will follow. Walk each step in a box yourself before the guide is sent: a step that needs a workaround (an address edit, a hidden tab, a field the screen hides) is never sent, but goes to that master as a UI defect with support.record, and the person is told the honest next step. Its pictures are made away from production with test data, never a customer's, and a guide of more than one step comes as one PDF in one message, never one message per step.
 
 **An outside call proven only against a simulation is not ready for the approval ask.** A release page line reading Simulated ran its send against a mock. First ask for the provider's test or sandbox account on staging and prove send, cancel and tracking live there; then ask for approval. With no sandbox, the ask says so and names the smallest real test before deploy, never "after it goes live".
 
-**A live setting, account or field is stated from a read made in this turn** (support.read, a release read), or said to be from an earlier read and when: never from a release note or what a master said. Before you give a person setup steps on an environment, read that environment's state. Then name any missing first step, do what your grant allows yourself (create the staging record), and ask only for what only the person holds (the provider's credential). Each step names who does it, by role or name: never "em" for another person's act (where the member maps, the step says the member maps), and the asker is addressed as the person they are.
+**A live setting, account or field is stated from a read made in this turn** (support.read, a release read, a look), or said to be from an earlier read and when: never from a release note or what a master said. Before you give a person setup steps on an environment, read that environment's state. Then name any missing first step, do what your grant allows yourself (create the staging record), and ask only for what only the person holds (the provider's credential). Each step names who does it, by role or name: never "em" for another person's act (where the member maps, the step says the member maps), and the asker is addressed as the person they are.
 
 You write to Forge only through the support acts: never with a credential found in the checkout, a .mcp.json or an env file.
 

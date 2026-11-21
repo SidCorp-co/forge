@@ -953,6 +953,8 @@ export const SUPPORT_ACTIONS = [
 	"term",
 	// a Forge link where a person enters a credential for the project's testing profile (ISS-1328)
 	"secret_link",
+	// a look at a screen of the project's environment in a Forge Box, before saying what it shows (ISS-1356)
+	"look",
 ] as const;
 
 /** The kinds of slot the one secret door opens (ISS-1348). */
@@ -1951,6 +1953,12 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_SECRET_SLOT_VARIABLE",
 	/** A secret link asked of a core that knows no web app address to link to (ISS-1328). */
 	"SUPPORT_SECRET_LINK_NO_WEB",
+	/** A look names no environment the project declares with an address, or neither a first look nor a box (ISS-1356). */
+	"SUPPORT_LOOK_ENVIRONMENT_UNKNOWN",
+	/** A look names a box, or an address, outside the room's own project's environments (ISS-1356). */
+	"SUPPORT_LOOK_OUTSIDE_PROJECT",
+	/** The box door refused a look's open or command, its own code and words carried (ISS-1356). */
+	"SUPPORT_LOOK_BOX_REFUSED",
 	/** A morning reminder due on a core that knows no web app address to link its waits to. */
 	"SUPPORT_REMINDER_NO_WEB",
 	/** The chat server could not be read for the picture (ISS-1010). */
@@ -2190,6 +2198,9 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_SECRET_SLOT_UNKNOWN: 404,
 	SUPPORT_SECRET_SLOT_VARIABLE: 409,
 	SUPPORT_SECRET_LINK_NO_WEB: 503,
+	SUPPORT_LOOK_ENVIRONMENT_UNKNOWN: 400,
+	SUPPORT_LOOK_OUTSIDE_PROJECT: 403,
+	SUPPORT_LOOK_BOX_REFUSED: 409,
 	SUPPORT_REMINDER_NO_WEB: 503,
 	SUPPORT_IMAGE_UNREACHABLE: 503,
 	SUPPORT_POST_IMAGE_UNKNOWN: 404,

@@ -87,18 +87,19 @@ const stateRead = or(
 );
 
 /**
- * The reads of live state around a reply its session posted in a turn: whether that turn made one,
- * and when the session last made one in an earlier turn. Undefined where the reply names no turn.
+ * The reads of live state around a reply its session posted in a turn: whether that turn made one or
+ * looked at a screen, and when the session last made one in an earlier turn. Undefined where the reply
+ * names no turn.
  */
 async function readsAround(posted: Posted): Promise<TurnReads | undefined> {
   if (!posted.sessionId || !posted.turnId) return undefined;
   const ofSession = and(eq(supportActions.sessionId, posted.sessionId), stateRead);
-  const [mine] = await db
-    .select({ id: supportActions.id })
+  const mine = await db
+    .select({ tool: supportActions.tool })
     .from(supportActions)
-    .where(and(ofSession, eq(supportActions.turnId, posted.turnId)))
-    .limit(1);
-  if (mine) return { thisTurn: true, earlierAt: null };
+    .where(and(ofSession, eq(supportActions.turnId, posted.turnId)));
+  const looked = mine.some((r) => r.tool === 'look');
+  if (mine.length > 0) return { thisTurn: true, earlierAt: null, looked };
   const [earlier] = await db
     .select({
       at: sql<Date | null>`max(${supportActions.createdAt})`.mapWith((v) =>
@@ -113,7 +114,7 @@ async function readsAround(posted: Posted): Promise<TurnReads | undefined> {
         lte(supportActions.createdAt, posted.at),
       ),
     );
-  return { thisTurn: false, earlierAt: earlier?.at ?? null };
+  return { thisTurn: false, earlierAt: earlier?.at ?? null, looked: false };
 }
 
 const textOf = (input: unknown) => {

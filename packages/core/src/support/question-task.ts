@@ -118,7 +118,7 @@ export const questionUnknown = <T>(thread: string): Outcome<T> =>
  * own binding names; in an operations room, which names none, the owner the question's project's
  * channel agent binding names (ISS-1347). Null where nobody is named.
  */
-async function owedBy(room: RoomRow, projectId: string): Promise<string | null> {
+export async function owedBy(room: RoomRow, projectId: string): Promise<string | null> {
   if (room.kind !== 'operations') return grantsOf(await supportConfigOf(room)).owner ?? null;
   for (const agent of (await heldRoomsOfProject(projectId)).filter((r) => r.kind === 'agent')) {
     const owner = grantsOf(await supportConfigOf(agent)).owner;

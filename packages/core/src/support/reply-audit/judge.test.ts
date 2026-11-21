@@ -198,7 +198,7 @@ describe('support.audit keeps the verdict on a reply the agent posted (ISS-1250)
     ];
     const earlier = new Date('2026-11-19T04:20:00Z');
     const judged = (text: string, reads: { thisTurn: boolean; earlierAt: Date | null }) =>
-      judgeReply({ ...reply(text), roomKind: 'support', reads }, []);
+      judgeReply({ ...reply(text), roomKind: 'support', reads: { ...reads, looked: false } }, []);
 
     it('reads each quoted reply as a claim of a live setting, and no plan or order state as one', () => {
       expect(FB763.map(liveStateClaimIn)).toEqual(['không có tài khoản', 'Có sẵn ô']); // i18n-allow: the quoted words

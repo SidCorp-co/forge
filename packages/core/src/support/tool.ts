@@ -54,6 +54,7 @@ import {
   supportRouteRequestSchema,
   supportRuleRequestSchema,
 } from '@forge/contracts/support-channel';
+import { supportLookRequestSchema } from '@forge/contracts/support-look';
 import {
   supportAskMasterRequestSchema,
   supportInFlightRequestSchema,
@@ -189,6 +190,7 @@ export const SUPPORT_ACT_REQUESTS = {
   reference_propose: supportReferenceProposeRequestSchema,
   term: supportTermRequestSchema,
   secret_link: supportSecretLinkRequestSchema,
+  look: supportLookRequestSchema,
 } as const satisfies Record<(typeof ACTIONS)[number], z.ZodType>;
 
 /** Each action's request as `forge_describe` answers it, its entry below naming exactly these (ISS-1033). */
@@ -284,6 +286,10 @@ const inputSchema = z.strictObject({
   anchor: supportTermRequestSchema.shape.anchor,
   // the one secret door's slot, its environment and key widened to what other acts take too
   ...SECRET_LINK_TOOL_FIELDS,
+  // a look at a screen (ISS-1356): the fields its act takes beside the ones above
+  ...supportLookRequestSchema
+    .pick({ path: true, viewport: true, box: true, step: true, close: true })
+    .partial().shape,
   // a field two acts' requests both take, each judged by its own act's request: a record's or a
   // draft's kind, or a reference source's; a page's or a source's address; a one-line why, or what a
   // source teaches
@@ -366,6 +372,7 @@ const SIGNATURES = [
   'reference_cite { source, ref, verdict: take | reject, why, about?, project? }',
   'reference_propose { kind, url, why, areas, evidence, title?, priority?, followReleases?, project? }',
   'term { thread, message, slug, title, means, module, quote, aliases?, anchor?, project? }',
+  'look { thread, environment?, path?, viewport?: desktop | phone, box?, step?, close? } (a first look names environment; a look again names box)',
   'secret_link { thread, why, project?, kind: variable, environment (null: every environment), key | kind: testing, profile, actor | service | kind: integration, provider; shape?: value | file | mailbox | signin | { fields }, example?, presign? }',
 ];
 

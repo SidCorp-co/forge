@@ -136,3 +136,77 @@ export function liveStateClaimIn(text: string): string | null {
   }
   return null;
 }
+
+/** The things of a screen a claim names, in Vietnamese and English. */
+const SCREEN_THING_VI = '(?:mục|nút|ô|trường|trang|tab|menu|màn\\s+hình|cột|biểu\\s+mẫu|form)'; // i18n-allow: the Vietnamese words for the things of a screen
+const SCREEN_THING_EN =
+  '(?:button|menu(?:\\s+item)?|field|tab|page|screen|column|link|item|option)';
+
+/**
+ * A claim about what a person will see on a screen (ISS-1356): an item that shows, appears, is
+ * hidden or sits somewhere. Not a plan, and not "I have not seen this screen yet", which is the
+ * honest line when no look was taken.
+ */
+const SCREEN_CLAIMS: readonly RegExp[] = [
+  new RegExp(
+    `${START}${SCREEN_THING_VI}\\s+[^.!?\\n]{0,80}?(?:hiện|hiển\\s+thị|xuất\\s+hiện|bị\\s+ẩn|ẩn\\s+đi|đang\\s+ẩn|nằm\\s+(?:ở|trong|dưới|trên))(?![\\p{L}\\p{N}_])`, // i18n-allow: the Vietnamese phrasing being recorded
+    'iu',
+  ),
+  new RegExp(`${START}(?:sẽ\\s+)?thấy\\s+(?:ngay\\s+)?${SCREEN_THING_VI}(?![\\p{L}\\p{N}_])`, 'iu'), // i18n-allow: the Vietnamese phrasing being recorded
+  new RegExp(
+    `\\b${SCREEN_THING_EN}s?\\b[^.!?\\n]{0,80}?\\b(?:appears?|shows?\\s+up|is\\s+(?:now\\s+)?(?:shown|visible|hidden|there)|will\\s+(?:appear|show))\\b`,
+    'i',
+  ),
+  /\byou(?:'ll|\s+will|\s+should)?\s+(?:now\s+)?see\s+(?:the|a|an)\s+[^.!?\n]{1,80}/i,
+];
+
+/** The words of the first claim a reply makes about what a screen shows, or null. */
+export function screenClaimIn(text: string): string | null {
+  for (const form of SCREEN_CLAIMS) {
+    const found = form.exec(text);
+    if (found) return found[0].trim();
+  }
+  return null;
+}
+
+/**
+ * A reply correcting what the room said before (ISS-1356 c4): a Vietnamese "let me correct" or
+ * "correction", or "I was wrong". Counted per turn on the room's day.
+ */
+const CORRECTIONS: readonly RegExp[] = [
+  new RegExp(
+    `${START}(?:xin\\s+)?(?:sửa\\s+lại|đính\\s+chính|nói\\s+lại\\s+cho\\s+đúng)(?![\\p{L}\\p{N}_])|${START}em\\s+(?:đã\\s+)?(?:nhầm|nói\\s+sai|báo\\s+sai)(?![\\p{L}\\p{N}_])`, // i18n-allow: the Vietnamese phrasing being recorded
+    'iu',
+  ),
+  /\b(?:correction:|(?:let me correct|I was wrong|I misspoke|to correct my (?:last|earlier|previous))\b)/i,
+];
+
+/** The words of a correction of an earlier post a reply makes, or null. */
+export function correctionIn(text: string): string | null {
+  for (const form of CORRECTIONS) {
+    const found = form.exec(text);
+    if (found) return found[0].trim();
+  }
+  return null;
+}
+
+/**
+ * A step working around the screen (ISS-1356 c3): an address edited by hand, as the PGPrints guide's
+ * step 3 had the user type `?tab=2` into the address bar. A screen that needs one is a UI defect for
+ * the project's master, never a step a person is sent.
+ */
+const WORKAROUNDS: readonly RegExp[] = [
+  /\?[\w-]+=[\w-]+[^.!?\n]{0,60}?(?:thanh\s+địa\s+chỉ|address\s+bar|URL)/iu, // i18n-allow: the Vietnamese phrasing being recorded
+  /(?:thanh\s+địa\s+chỉ|address\s+bar)[^.!?\n]{0,60}?\?[\w-]+=[\w-]+/iu, // i18n-allow: the Vietnamese phrasing being recorded
+  /\b(?:add|append|type)\s+[`'"“]?\?[\w-]+=[\w-]+/i,
+  new RegExp(`${START}(?:thêm|gõ|nhập)\\s+[\`'"“]?\\?[\\w-]+=[\\w-]+`, 'iu'), // i18n-allow: the Vietnamese phrasing being recorded
+];
+
+/** The words of the first workaround step a reply sends a person, or null. */
+export function workaroundIn(text: string): string | null {
+  for (const form of WORKAROUNDS) {
+    const found = form.exec(text);
+    if (found) return found[0].trim();
+  }
+  return null;
+}

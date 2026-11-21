@@ -22,6 +22,7 @@ import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
 import type { Refusal } from './refusals.js';
 import { limitsOf } from './rules.js';
 import { type SessionDoor, screenForThread } from './screen.js';
+import { replyMarksOf } from './screen-claims.js';
 import { insertAction, type RoomRow } from './store.js';
 import { roomHoldingThread } from './technical-thread-room.js';
 import { actingThread, noteInThread, postInThread, scrubbedForRoom } from './thread.js';
@@ -237,6 +238,8 @@ export async function reply(
       ...(input.why ? { why: await scrubbedForRoom(room, input.why) } : {}),
       ...(elsewhere ? { request: elsewhere } : {}),
     },
+    // what it claims a screen shows and the looks its turn took, and a correction (ISS-1356)
+    output: await replyMarksOf(text, input.turn),
     externalId: posted.messageId,
   });
   if (elsewhere) await answeredElsewhere(room, input.thread, elsewhere, posted.messageId);

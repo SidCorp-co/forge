@@ -43,6 +43,16 @@ describe('the daily review brief', () => {
     expect(brief).toContain("<roomId> the room's id from /support/rooms, never a Rocket.Chat rid");
   });
 
+  // ISS-1356 c4, c5: each room's line counts its corrections and re-asks per turn, and names the
+  // owner's messages left 30 minutes or more unanswered
+  it("names each room's daily line over the same window", () => {
+    expect(brief).toContain(
+      '/support/rooms/<roomId>/day?since=2026-11-01T01:00:00.000Z&until=2026-11-02T01:00:00.000Z',
+    );
+    expect(brief).toContain('its corrections and re-asks per turn');
+    expect(brief).toContain("the owner's messages left 30 minutes or more unanswered");
+  });
+
   it('raises owner decisions only in the Forge-Communicate thread, never in a users’ room', () => {
     expect(brief).toMatch(
       /in this project's Forge-Communicate thread, never in a room its users read/,

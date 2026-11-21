@@ -33,8 +33,9 @@ import {
   readDeployment,
   runCommand,
 } from './ability-acts.js';
-import { type RoomHint, sessionCaller } from './access.js';
+import { sessionCaller } from './access.js';
 import { deniedActRefusal } from './act-deny.js';
+import { hintOf } from './act-hint.js';
 import { askerFacts } from './asker-read.js';
 import { announce, inferMember, noteCommonIssue, routeNeed, ruleFromMessage } from './channel.js';
 import { sessionChannelView } from './channel-read.js';
@@ -45,6 +46,7 @@ import { abilityRefusal, grantsOf, supportConfigOf } from './grants.js';
 import { readImage } from './images.js';
 import { endLastResortWait } from './last-resort.js';
 import { noteReleaseRead, unreadLiveClaim } from './live-claims.js';
+import { type LookActInput, lookAct } from './look-act.js';
 import { askMaster } from './master-ask.js';
 import { recordNotGranted } from './not-granted.js';
 import { type OperationsActInput, type OpsOutcome, operationsAct } from './ops-acts.js';
@@ -182,6 +184,7 @@ export type SupportActInput =
   | ({ action: 'owner_forge_act' } & SupportForgeActRequest)
   | ReferenceActInput
   | TermActInput
+  | LookActInput
   | {
       action: 'read';
       name: string;
@@ -233,49 +236,6 @@ export async function supportAct(
   return out;
 }
 
-/** The acts that read the same from any group of a channel agent: its grant and project are shared. */
-const ANY_ROOM = new Set<SupportActInput['action']>([
-  'search',
-  'tools',
-  'deployment',
-  'project',
-  'read',
-  // the tracker reads the same from any group, over every project the agent follows (ISS-874)
-  'projects',
-  'issues',
-  'releases',
-  'requirements',
-  'feedback',
-  // the room agent's guide is the project's, or its organization's (ISS-1251)
-  'guide',
-  // a project's reference sources, the same from any group (ISS-1252)
-  ...REFERENCE_ACTS,
-]);
-
-/** What an act names that places it in one group of a channel agent's (REQ-77). */
-function hintOf(input: SupportActInput, rid: string | undefined): RoomHint {
-  const named = input as {
-    thread?: unknown;
-    threads?: unknown;
-    message?: unknown;
-    check?: unknown;
-  };
-  const thread =
-    typeof named.thread === 'string'
-      ? named.thread
-      : typeof named.check === 'string'
-        ? named.check
-        : Array.isArray(named.threads) && typeof named.threads[0] === 'string'
-          ? named.threads[0]
-          : undefined;
-  return {
-    rid,
-    thread,
-    message: typeof named.message === 'string' ? named.message : undefined,
-    anyRoom: ANY_ROOM.has(input.action),
-  };
-}
-
 /** The acts that post in the thread they name: each posts the session's own words. */
 const POSTS = new Set<SupportActInput['action']>(['reply', 'route', 'ask_owner']);
 
@@ -318,6 +278,8 @@ const SHARED = new Set<SupportActInput['action']>([
   'term',
   // and gives a person the link where they enter a credential, never in chat (ISS-1328)
   'secret_link',
+  // and looks at a screen of its project's environment before saying what it shows (ISS-1356)
+  'look',
 ]);
 
 const OPERATION_ACTIONS: readonly string[] = OPERATIONS_ACTIONS;
@@ -494,6 +456,8 @@ async function act(
       return referenceAct(room, input);
     case 'term':
       return termAct(room, input);
+    case 'look':
+      return lookAct(room, input);
     case 'owner_sign_in':
       return startOwnerSignIn(room, {
         thread: input.thread,

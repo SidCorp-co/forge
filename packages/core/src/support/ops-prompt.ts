@@ -35,6 +35,8 @@ const HAND_ON = [
   'reference_cite',
   'reference_propose',
   'term',
+  // a look at a screen before saying what it shows (ISS-1356)
+  'look',
 ] as const;
 
 export function operationsBrief(input: {

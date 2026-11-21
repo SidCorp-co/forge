@@ -57,6 +57,7 @@ import { mountTurnRecordRoutes } from './turn-record.js';
 
 export { ownerSignInCallbackRoutes } from './owner-routes.js';
 
+import { mountLookSessionRoutes } from './look-routes.js';
 import { mountMasterAskRoutes } from './master-ask-routes.js';
 import { mountPromiseRoutes } from './promise-routes.js';
 import { supportRoomsOf } from './read.js';
@@ -479,6 +480,7 @@ mountPromiseRoutes(supportRoutes);
 mountMasterAskRoutes(supportRoutes);
 mountReferenceSessionRoutes(supportRoutes);
 mountTermSessionRoutes(supportRoutes);
+mountLookSessionRoutes(supportRoutes);
 mountSecretLinkSessionRoutes(supportRoutes);
 mountSecretPageRoutes(supportRoutes);
 mountRoutingRoutes(supportRoutes);

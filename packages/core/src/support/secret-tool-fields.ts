@@ -17,7 +17,7 @@ export const SECRET_LINK_TOOL_FIELDS = {
     .nullable()
     .optional()
     .describe(
-      "promise: the environment by the project's own name for it; secret_link (kind variable): the environment the variable is scoped to, null for every environment",
+      "promise: the environment by the project's own name for it; secret_link (kind variable): the environment the variable is scoped to, null for every environment; look: the environment whose screen you look at",
     ),
   key: z
     .union([

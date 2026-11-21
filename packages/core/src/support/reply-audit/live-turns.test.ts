@@ -3,13 +3,18 @@ import { describe, expect, it } from 'vitest';
 import { BRIEF_CHANGED_LEAD } from '../brief-told.js';
 import { operationsBrief } from '../ops-prompt.js';
 import { grantRefusal } from '../ops-role.js';
+import { roomDayOf } from '../room-day.js';
+import { correctionIn, screenClaimIn } from './code-lines.js';
 import { judgeReply } from './judge.js';
 import TURNS from './live-turns-1711.json' with { type: 'json' };
+import PGPRINTS from './pgprints-1911.json' with { type: 'json' };
 
 // @direct-test-of packages/core/src/support/reply-audit/code-lines.ts
 // @direct-test-of packages/core/src/support/ops-prompt.ts
 // @direct-test-of packages/core/src/support/ops-role.ts
 // @direct-test-of packages/core/src/support/brief-told.ts
+// @direct-test-of packages/core/src/support/room-day.ts
+// @direct-test-of packages/core/src/support/screen-claims.ts
 //
 // ISS-1251 c11: on dev.709 Babo repeated two of the five ISS-1250 defects live, in Forge-Communicate's
 // thread 86aGq at 17/11 05:55:33 and 05:58:32: grant talk ("my role may only read…") and the owner
@@ -85,5 +90,148 @@ describe('the 17/11 Forge-Communicate turns, replayed from their real input (c11
     expect(now).not.toContain('who can do it instead');
     // the refusal alone teaches the next step, for a session that reads nothing else
     expect(missing(detail)).toEqual(['keep who wrote it in the member record']);
+  });
+});
+
+// ISS-1356 c6 (owner 2026-11-19: "it confirms UI that is not there"): the PGPrints thread of 19/11,
+// replayed from the lines the issue quotes (`pgprints-1911.json`: the one member line, the owner's
+// three, and the agent's posts, a paraphrased one marked so). No turn of it looked at a screen, and
+// its day is counted as the room's daily line counts it; the replies the turns owed, each made after
+// a look or saying it has not seen the screen, pass and leave the day clean.
+describe('the 19/11 PGPrints thread, replayed through the audit and the daily line (ISS-1356)', () => {
+  const noLook = { thisTurn: false, earlierAt: null, looked: false };
+  const looked = { thisTurn: true, earlierAt: null, looked: true };
+  const judgedIn = (text: string, reads: typeof noLook) =>
+    judgeReply(
+      { text, language: { language: 'vi', from: 'asker' }, roomKind: 'agent', apiHosts: [], reads },
+      [],
+    );
+  const at = (s: string) => new Date(s);
+  const posted = (n: number) => PGPRINTS.agent[n]?.text ?? '';
+  const OWED = {
+    // asked that the mapping item is not there, from a look on staging, the hidden item filed
+    mapping:
+      'Em vừa xem màn hình nhà cung cấp trên staging: mục Product Type Mapping chưa hiện trong menu. Em đã báo lỗi này cho đội AdminHub, có kết quả em báo chị ngay ạ.', // i18n-allow: the reply the quoted turn owed
+    // where no look could be taken: said so, and what is being done
+    unseen:
+      'Em chưa xem được màn hình này, em đang nhờ đội AdminHub mở trên staging và sẽ báo chị ạ.', // i18n-allow: the reply the quoted turn owed
+  };
+
+  it('fails the 05:53 and 06:38 posts on accurate, each saying what the menu shows with no look', () => {
+    for (const n of [2, 3]) {
+      const j = judgedIn(posted(n), noLook);
+      expect(j.failed, posted(n)).toEqual(['accurate']);
+      expect(j.findings[0]?.why).toMatch(
+        /^it says what a screen shows \(".+"\) and this turn took no look at it$/,
+      );
+    }
+  });
+
+  it('fails the guide step that types ?tab=2 into the address bar, a hidden item to file, not a step to send', () => {
+    const j = judgedIn(posted(1), noLook);
+    expect(j.failed).toEqual(['no_ui_directions']);
+    expect(j.findings[0]?.why).toContain("goes to the project's master as a UI defect");
+  });
+
+  it('passes the replies the turns owed: what a look showed, or that the screen was not seen yet', () => {
+    expect(judgedIn(OWED.mapping, looked)).toMatchObject({ verdict: 'pass', failed: [] });
+    expect(judgedIn(OWED.unseen, noLook)).toMatchObject({ verdict: 'pass', failed: [] });
+    // a plant: a master said the feature is live, the screen lacks it, and the reply says so from a look
+    const plant =
+      'Em vừa xem trang đơn hàng trên staging: chưa thấy nút Xuất CSV, em báo đội kỹ thuật ạ.'; // i18n-allow: the planted reply
+    expect(judgedIn(plant, looked).verdict).toBe('pass');
+    const confirmed = 'Dạ tính năng đã có rồi ạ, nút Xuất CSV hiện ngay trên trang đơn hàng.'; // i18n-allow: the planted wrong reply
+    expect(judgedIn(confirmed, noLook).failed).toEqual(['accurate']);
+  });
+
+  it("counts the day's corrections, unseen screen claims and waiting owner messages, before and after", () => {
+    const until = at('2026-11-19T07:00:00Z');
+    const day = (
+      texts: readonly string[],
+      looks: boolean,
+      answers: { thread: string; at: Date }[],
+    ) =>
+      roomDayOf({
+        since: at('2026-11-19T00:00:00Z'),
+        until,
+        replies: PGPRINTS.agent.map((a, i) => {
+          const text = texts[i] ?? '';
+          const claim = screenClaimIn(text);
+          const correction = correctionIn(text);
+          return {
+            thread: a.thread,
+            message: `m${i}`,
+            turn: `t${i}`,
+            at: at(a.at),
+            marks: {
+              ...(claim ? { screen: { claim, looks: looks ? ['box-1'] : [] } } : {}),
+              ...(correction ? { correction } : {}),
+            },
+          };
+        }),
+        reAsked: new Set(),
+        owner: PGPRINTS.owner.map((o, i) => ({ thread: o.thread, message: `o${i}`, at: at(o.at) })),
+        answers: answers.map((a) => ({ ...a, message: null })),
+      });
+    const before = day(
+      PGPRINTS.agent.map((a) => a.text),
+      false,
+      [],
+    );
+    expect(before.corrections.count).toBe(1);
+    expect(before.corrections.items[0]?.words).toBe('xin sửa lại'); // i18n-allow: the quoted correction
+    expect(before.screenClaims).toMatchObject({ count: 2, looked: 0 });
+    expect(before.ownerWaiting.map((w) => [w.thread, w.answeredAt])).toEqual([
+      ['orbit', null],
+      ['gwork', null],
+      ['sid-mail', null],
+    ]);
+    expect(before.ownerWaiting[0]?.minutes).toBe(264);
+    const after = day(
+      [OWED.unseen, OWED.unseen, OWED.mapping, OWED.mapping],
+      true,
+      PGPRINTS.owner.map((o) => ({
+        thread: o.thread,
+        at: new Date(at(o.at).getTime() + 10 * 60_000),
+      })),
+    );
+    expect(after.corrections.count).toBe(0);
+    expect(after.screenClaims).toMatchObject({ count: 2, looked: 2, unseen: [] });
+    expect(after.ownerWaiting).toEqual([]);
+  });
+
+  it('reads a correction in either language, and no plain reply as one', () => {
+    expect(correctionIn('Correction: the export runs nightly.')).toBe('Correction:');
+    expect(correctionIn('Em nhầm, ô này không phụ thuộc Service ạ.')).toBe('Em nhầm'); // i18n-allow: a correction being counted
+    expect(correctionIn(OWED.mapping)).toBeNull();
+  });
+
+  it('names an owner message answered 30 minutes or more after it, with when', () => {
+    const line = roomDayOf({
+      since: at('2026-11-19T00:00:00Z'),
+      until: at('2026-11-19T07:00:00Z'),
+      replies: [],
+      reAsked: new Set(),
+      owner: [{ thread: 'orbit', message: 'o1', at: at('2026-11-19T02:36:00Z') }],
+      answers: [{ thread: 'orbit', message: 'r1', at: at('2026-11-19T03:06:00Z') }],
+    });
+    expect(line.ownerWaiting).toEqual([
+      {
+        thread: 'orbit',
+        message: 'o1',
+        at: '2026-11-19T02:36:00.000Z',
+        answeredAt: '2026-11-19T03:06:00.000Z',
+        minutes: 30,
+      },
+    ]);
+    const quick = roomDayOf({
+      since: at('2026-11-19T00:00:00Z'),
+      until: at('2026-11-19T07:00:00Z'),
+      replies: [],
+      reAsked: new Set(['r1']),
+      owner: [{ thread: 'orbit', message: 'o1', at: at('2026-11-19T02:36:00Z') }],
+      answers: [{ thread: 'orbit', message: 'r1', at: at('2026-11-19T03:05:00Z') }],
+    });
+    expect(quick.ownerWaiting).toEqual([]);
   });
 });

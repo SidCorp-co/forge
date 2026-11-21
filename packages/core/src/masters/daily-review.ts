@@ -86,6 +86,7 @@ export function dailyReviewBrief(args: {
     at('/support/rooms'),
     at('/support/turns'),
     `${at(`/support/rooms/<roomId>/actions?since=${args.since.toISOString()}&until=${args.until.toISOString()}`)} (<roomId> the room's id from /support/rooms, never a Rocket.Chat rid)`,
+    `${at(`/support/rooms/<roomId>/day?since=${args.since.toISOString()}&until=${args.until.toISOString()}`)} (each room's line: its corrections and re-asks per turn, what it said a screen shows without a look, and the owner's messages left 30 minutes or more unanswered)`,
   ];
   return [
     `Daily review for ${args.slug}, ${args.since.toISOString()} to ${args.until.toISOString()} (ISS-862).`,

@@ -20,6 +20,10 @@ import { SupportWorld } from '../helpers/support-world.js';
 // @direct-test-of packages/core/src/support/reply-audit/read.ts
 // @direct-test-of packages/core/src/support/reply-audit/route.ts
 // @direct-test-of packages/core/src/support/acts.ts
+// @direct-test-of packages/core/src/support/look-act.ts
+// @direct-test-of packages/core/src/support/screen-claims.ts
+// @direct-test-of packages/core/src/support/room-day.ts
+// @direct-test-of packages/core/src/support/actions-route.ts
 // @direct-test-of packages/core/src/db/schema-support-verdicts.ts
 //
 // ISS-1250 (owner 2026-11-16, "teach the flow, not block it"): right after it posts a reply, a room's
@@ -275,4 +279,123 @@ describe('a room agent audits its own reply with support.audit (ISS-1250)', () =
     expect(finding?.why).toContain('"There is no PGPrints API account"');
     expect(finding?.why).toContain('from a read made in an earlier turn');
   }, 120_000);
+});
+
+// ISS-1356 (owner 2026-11-19: "it confirms UI that is not there"): a reply's row shows which claim
+// about a screen carried a look of its turn, and which reply corrected an earlier post; the room's
+// daily line counts both per turn and names an owner message left 30 minutes without an answer. A
+// look stands in here as the look act records one (the box itself needs a device this world lacks).
+describe("a room's screen claims, corrections and the owner's waits, on its record and its day (ISS-1356)", () => {
+  const replyRow = (message: string) =>
+    rows<{ output: { screen?: { claim: string; looks: string[] }; correction?: string } | null }>(
+      sql`SELECT output FROM support_actions WHERE kind = 'reply' AND external_id = ${message}`,
+    ).then((r) => r[0]?.output ?? null);
+  const box = randomUUID();
+  // a look of the running turn, recorded as support.look records one
+  const lookInTurn = async (thread: string) => {
+    await rows(sql`INSERT INTO support_actions (room_id, project_id, thread, kind, actor_kind, tool, input, session_id, turn_id)
+             SELECT r.id, r.project_id, ${thread}, 'operation', 'session', 'look', jsonb_build_object('box', ${box}::text), r.session_id, t.id
+               FROM support_rooms r JOIN support_session_turns t ON t.session_id = r.session_id AND t.ended_at IS NULL
+              WHERE r.project_id = ${w.projectId}::uuid`);
+  };
+
+  it('marks a screen claim with the look its turn took, and fails accurate on one no look holds', async () => {
+    const claim = 'You will see the Export button on the Orders page.';
+    let seen = '';
+    await w.settleWarm();
+    w.box.model = async (turn, act) => {
+      const m = turn.messages.find((x) => x.from !== 'forge' && x.text === 'Where is the export?');
+      if (!m) return;
+      await lookInTurn(m.thread);
+      seen = String((await act({ action: 'reply', thread: m.thread, text: claim })).messageId);
+    };
+    await chat.say(chat.bob, 'Where is the export?');
+    await expect.poll(() => seen, { timeout: 30_000 }).not.toBe('');
+    await w.settleWarm();
+    w.box.model = async () => {};
+    expect(await replyRow(seen)).toMatchObject({
+      screen: { claim: 'You will see the Export button on the Orders page', looks: [box] },
+    });
+
+    const unseen = await replyAndAudit('And the import button?', claim, []);
+    expect(await replyRow(unseen.message)).toMatchObject({ screen: { looks: [] } });
+    expect(unseen.audit?.body).toMatchObject({ verdict: 'fail', failed: ['accurate'] });
+    expect(JSON.stringify(unseen.audit?.body.findings)).toContain('this turn took no look at it');
+  }, 120_000);
+
+  it('counts a correction against its turn, and names the owner message left 30 minutes unanswered, on the day', async () => {
+    const regranted = await w.regrant({
+      product: 'Catalog, the shop back office',
+      grants: { abilities: ['read_checkout', 'file_items'], owner: chat.alice.userId },
+    });
+    expect(regranted.status, JSON.stringify(regranted.body)).toBe(200);
+    const fixed = await replyAndAudit(
+      'Is the export hourly?',
+      'Correction: the export runs nightly, not hourly.',
+      null,
+    );
+    expect(await replyRow(fixed.message)).toMatchObject({ correction: 'Correction:' });
+
+    await w.settleWarm();
+    let silent = false;
+    w.box.model = async (turn, act) => {
+      const m = turn.messages.find((x) => x.text === 'Sao rồi?'); // i18n-allow: the owner's quoted message (ISS-1356)
+      if (!m) return;
+      await act({
+        action: 'silent',
+        thread: m.thread,
+        message: m.message,
+        reason: 'test: left unanswered',
+      });
+      silent = true;
+    };
+    const waiting = await chat.say(chat.alice, 'Sao rồi?'); // i18n-allow: the owner's quoted message (ISS-1356)
+    await expect.poll(() => silent, { timeout: 30_000 }).toBe(true);
+    await w.settleWarm();
+    w.box.model = async () => {};
+
+    const [room] = await rows<{ id: string }>(
+      sql`SELECT id FROM support_rooms WHERE project_id = ${w.projectId}::uuid`,
+    );
+    const until = new Date(Date.now() + 31 * 60_000).toISOString();
+    const path = `/api/projects/${w.projectId}/support/rooms/${room?.id}/day?until=${encodeURIComponent(until)}`;
+    const got = await api(w.owner, 'GET', path);
+    expect(got.status, JSON.stringify(got.body)).toBe(200);
+    expect(got.body.corrections).toMatchObject({ count: 1 });
+    expect(
+      (got.body.corrections as { items: { message: string; turn: string | null }[] }).items[0],
+    ).toMatchObject({
+      message: fixed.message,
+    });
+    expect(got.body.screenClaims).toMatchObject({ count: 2, looked: 1 });
+    const owed = got.body.ownerWaiting as {
+      thread: string;
+      answeredAt: string | null;
+      minutes: number;
+    }[];
+    expect(owed).toHaveLength(1);
+    expect(owed[0]).toMatchObject({ thread: waiting, answeredAt: null });
+    expect(owed[0]?.minutes).toBeGreaterThanOrEqual(30);
+    const stranger = await api(w.stranger, 'GET', path);
+    expect([403, 404]).toContain(stranger.status);
+  }, 120_000);
+
+  it('refuses a look at an environment the project does not declare, naming those it does', async () => {
+    await w.settleWarm();
+    let refused: unknown = null;
+    w.box.model = async (turn, act) => {
+      const m = turn.messages.find((x) => x.text === 'Can you check the staging screen?');
+      if (!m) return;
+      refused = await act({ action: 'look', thread: m.thread, environment: 'staging' }).catch(
+        (e: unknown) => String(e),
+      );
+      await act({ action: 'silent', thread: m.thread, message: m.message, reason: 'test' });
+    };
+    await chat.say(chat.bob, 'Can you check the staging screen?');
+    await expect.poll(() => refused, { timeout: 30_000 }).not.toBeNull();
+    await w.settleWarm();
+    w.box.model = async () => {};
+    expect(JSON.stringify(refused)).toContain('SUPPORT_LOOK_ENVIRONMENT_UNKNOWN');
+    expect(JSON.stringify(refused)).toContain('its environments with one are none');
+  }, 90_000);
 });

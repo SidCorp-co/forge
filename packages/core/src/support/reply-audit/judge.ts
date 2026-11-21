@@ -14,16 +14,25 @@ import type {
 import { confidentLanguageOf } from '../../conversations/index.js';
 import { liveClaimIn } from '../live-claims.js';
 import type { AnsweringFrom, AnsweringLanguage } from './answering-language.js';
-import { apiHostLinkIn, grantTalkIn, liveStateClaimIn, uiDirectionIn } from './code-lines.js';
+import {
+  apiHostLinkIn,
+  grantTalkIn,
+  liveStateClaimIn,
+  screenClaimIn,
+  uiDirectionIn,
+  workaroundIn,
+} from './code-lines.js';
 
 /**
  * The reads of live state around a reply (ISS-1354): whether its own turn made one, and when the
  * session last made one in an earlier turn (null where none). A declared read, a run, a release or
- * deployment read and a look at a screen each count.
+ * deployment read and a look at a screen each count; `looked` is whether its turn looked at a screen
+ * (ISS-1356).
  */
 export interface TurnReads {
   thisTurn: boolean;
   earlierAt: Date | null;
+  looked: boolean;
 }
 
 export interface AuditedReply {
@@ -69,6 +78,16 @@ export function codeFindings(reply: AuditedReply): ReplyFinding[] {
   if (link) found.push({ line: 'web_links', why: `${link} is on the API host`, by: 'code' });
   const stale = staleStateClaim(reply);
   if (stale) found.push({ line: 'accurate', why: stale, by: 'code' });
+  const unseen = unseenScreenClaim(reply);
+  if (unseen) found.push({ line: 'accurate', why: unseen, by: 'code' });
+  const workaround = workaroundIn(reply.text);
+  if (workaround) {
+    found.push({
+      line: 'no_ui_directions',
+      why: `it sends a workaround step ("${workaround}"): a screen that needs one goes to the project's master as a UI defect`,
+      by: 'code',
+    });
+  }
   const written = confidentLanguageOf(reply.text);
   const held = reply.language;
   if (written && written !== held.language) {
@@ -92,6 +111,16 @@ function staleStateClaim(reply: AuditedReply): string | null {
   return reply.reads.earlierAt
     ? `it states "${claim}" from a read made in an earlier turn (${reply.reads.earlierAt.toISOString()}), not one made in this turn`
     : `it states "${claim}" with no read of it made in this turn`;
+}
+
+/**
+ * Why a reply's claim about what a screen shows was made with no look at it in its turn (ISS-1356):
+ * it has to see it to say it. Null where it makes none, or its turn looked.
+ */
+function unseenScreenClaim(reply: AuditedReply): string | null {
+  if (!reply.reads || reply.reads.looked) return null;
+  const claim = screenClaimIn(reply.text);
+  return claim ? `it says what a screen shows ("${claim}") and this turn took no look at it` : null;
 }
 
 /**

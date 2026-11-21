@@ -42,11 +42,12 @@ export const linksOnWeb = (web: string): string =>
   `- When you give a Forge link: it opens the web app, ${web}/projects/<slug>/… (issues/<id>, requirements/REQ-n), never the API host.`;
 
 /**
- * Telling someone how to do something is answered with the screen they see (ISS-1328 c5, FB-742): the
- * guide's Answering holds how, and the map names the situation once, so the agent reaches for it.
+ * Telling someone how to do something is answered with the screen they see (ISS-1328 c5, FB-742), and
+ * what a screen shows is said from a look at it (ISS-1356): the guide's Answering holds how, and the
+ * map names the situation once, so the agent reaches for it.
  */
 export const SHOW_HOW =
-  '- When you tell someone how to do something or what a feature looks like: show the screen as they see it; several steps, one PDF.';
+  '- When you tell someone how to do something or what a feature looks like: look first (support.look), say only what you saw; several steps, one PDF walked there.';
 
 /** The conduct lines every room agent's brief carries: its acts' map lines, and where a link points. */
 export function roomConductLines(web: string = webBaseUrl() ?? ''): string[] {
