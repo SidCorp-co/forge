@@ -231,11 +231,47 @@ describe('REQ-77 BC-12, ISS-1246: the answer comes back through a retargeted roo
     );
     // his reply in the project's thread reaches the asker's thread, marked the answer
     const answer = await w.hear(async () => {
-      expect(await reply('m-ops-3', PROJECT_THREAD, alice)).toBe(true);
+      expect(await reply('m-ops-3', PROJECT_THREAD, alice)).toBe('answered');
       return 'm-ops-3';
     });
     expect(answer.message.thread).toBe(thread);
     expect(answer.message.answersYourQuestion).toBe(question);
+
+    // ISS-1391: with two asks waiting there, his new message replying to neither answers none, and
+    // says so, so the operations room takes it as a turn its own agent answers, never as context
+    for (const [id, q] of [
+      ['m-ops-ask-2', 'Is the worker-order crash fixed?'],
+      ['m-ops-ask-3', 'May I restart the queue?'],
+    ] as const) {
+      await insertAction({
+        roomId: String(room?.id),
+        projectId: String(room?.project_id),
+        conversationId: null,
+        thread,
+        kind: 'routed',
+        actorKind: 'session',
+        tool: 'ask_owner',
+        input: { question: q, record: null, issueId: null },
+        output: {
+          owner: OWNER_ID,
+          mentioned: true,
+          channel: 'thread',
+          rid: OPS,
+          thread: PROJECT_THREAD,
+          messageId: id,
+        },
+        externalId: id,
+      });
+    }
+    expect(await reply('m-ops-4', PROJECT_THREAD, alice)).toBe('several');
+    // his reply to one of their lines still answers that one alone
+    const named = await settleOwnerAnswer({
+      rid: OPS,
+      thread: PROJECT_THREAD,
+      message: { id: 'm-ops-5', text: 'yes, restart it', replyTo: 'm-ops-ask-3' },
+      author: alice,
+    });
+    expect(named).toBe('answered');
   });
 
   it('refuses by name, posting nothing, a question with no owner, an unknown issue, or a record that is no issue', async () => {

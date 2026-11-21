@@ -79,19 +79,25 @@ async function openAsksAt(rid: string): Promise<ActionRow[]> {
   );
 }
 
+/** How the owner's message was taken: as an answer, as an answer to none of several, or not at all. */
+export type OwnerAnswerTaken = 'answered' | 'several' | false;
+
 /**
  * The owner's message in a room of the project's technical channel, `rid`, in thread `thread` (null
  * at top level): the answer to the ask it replies to, or to the one ask waiting where it was written.
  * Where several wait and it replies to none, it answers none, and each asking session is told so.
- * True when it was taken so, and the room it was written in keeps it as context alone. `author` is
- * the chat server's word: anyone but the owner the asking room's binding names answers nothing.
+ * `answered` when it was taken as an answer, and the room it was written in keeps it as context
+ * alone; `several` when it answered none of the asks waiting, so the room it was written in takes it
+ * as any other message, a turn its own agent answers (ISS-1391: a new question of his there was
+ * never a turn for anyone); false when no ask of his waits there. `author` is the chat server's
+ * word: anyone but the owner the asking room's binding names answers nothing.
  */
 export async function settleOwnerAnswer(input: {
   rid: string;
   thread: string | null;
   message: { id: string; text: string; replyTo: string | null; images?: RecordedImage[] };
   author: { key: string; label: string | null };
-}): Promise<boolean> {
+}): Promise<OwnerAnswerTaken> {
   const { rid, thread, message, author } = input;
   const open = await openAsksAt(rid);
   if (open.length === 0) return false;
@@ -116,7 +122,7 @@ export async function settleOwnerAnswer(input: {
   const answering = named.length > 0 ? named : his.length === 1 ? his : [];
   if (answering.length === 0) {
     await tellSeveralWait(rooms, his, message, author);
-    return true;
+    return 'several';
   }
   for (const ask of answering) {
     const room = rooms.get(ask.roomId) as RoomRow;
@@ -125,7 +131,7 @@ export async function settleOwnerAnswer(input: {
       logger.error({ err, roomId: room.id }, "support: the owner's answer waits for the next turn"),
     );
   }
-  return true;
+  return 'answered';
 }
 
 /**

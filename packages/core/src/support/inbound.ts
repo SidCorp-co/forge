@@ -96,7 +96,10 @@ function ownerReplyOf(m: RocketChatIncomingMessage) {
 export async function handleUnboundMessage(input: {
   m: RocketChatIncomingMessage;
 }): Promise<boolean> {
-  return settleOwnerAnswer(ownerReplyOf({ ...input.m, text: screenAlone(input.m.text).text }));
+  return (
+    (await settleOwnerAnswer(ownerReplyOf({ ...input.m, text: screenAlone(input.m.text).text }))) !==
+    false
+  );
 }
 
 export async function handleSupportMessage(input: {
@@ -242,8 +245,9 @@ async function takeIntoRoom(
 
   // the owner's reply in the project's technical channel, a thread of the shared operations room,
   // answers the ask waiting there: it reaches the asking session in the asker's thread, and is kept
-  // here as context alone (ISS-1246)
-  if (room.kind === 'operations' && (await settleOwnerAnswer(ownerReplyOf(m)))) {
+  // here as context alone (ISS-1246). One that answers none of several waiting asks is still his
+  // message to this room: each asker is told, and it goes on below as a turn (ISS-1391)
+  if (room.kind === 'operations' && (await settleOwnerAnswer(ownerReplyOf(m))) === 'answered') {
     await recordAndFlag(m, author, { deliver: false });
     return;
   }
