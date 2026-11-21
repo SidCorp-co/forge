@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.780] - 2026-11-21
+
+A self-audit can name any served route as a missed door
+
+### Fixed
+
+- **Every beta port pair is accounted for.** Each beta mirror run now names every ported pair: mirrored with the dev release that closed it, refused by name, or listed as owing nothing.
+- **A self-audit keeps a missed read.** An audit naming a route Forge serves with no door, such as a fire or boxes read, keeps it as that route; only a name that is neither capability nor route is refused.
+
 ## [0.4.0-dev.779] - 2026-11-21
 
 Room agents can open a screen; optional secret fields; protected secrets say who reads them
