@@ -9,6 +9,16 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.772] - 2026-11-21
+
+Owner and named release decider answers in chat are recorded and applied
+
+### Fixed
+
+- **The owner's plain "ok" in the technical channel now counts.** Assistants record the owner's answers and release go-aheads given there, keep them until the owner's account is set up, and ask each question only once.
+- **Moving uploads to a bucket copies only the files still in use.** `storage:migrate-uploads` moves each file an attachment, mockup or recording references, drops the rest uncopied, counts both, and refuses a referenced file missing on disk.
+- **A project's named release decider can approve a release from chat.** Where the decider's chat account is not yet tied to Forge, the go-ahead is noted and applied once an admin names that account; anyone else is still refused.
+
 ## [0.4.0-dev.771] - 2026-11-21
 
 A feedback item awaiting a clarification shows its reporter as next, not the master
