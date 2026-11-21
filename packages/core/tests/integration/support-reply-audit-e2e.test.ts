@@ -279,7 +279,9 @@ describe('a room agent audits its own reply with support.audit (ISS-1250)', () =
     expect(finding?.why).toContain('"There is no PGPrints API account"');
     expect(finding?.why).toContain('from a read made in an earlier turn');
   }, 120_000);
+});
 
+describe("a room's claim of a release's issues closed is held to a read of its turn (ISS-1389)", () => {
   // ISS-1389 (FB-801): a release's issues said closed from the plan; an issue read of the turn holds the claim
   it('fails accurate on a release’s issues said closed with no issue read of its turn, and passes it after one', async () => {
     const issuesReadInTurnOf = async (message: string) => {
@@ -288,7 +290,12 @@ describe('a room agent audits its own reply with support.audit (ISS-1250)', () =
                  FROM support_actions WHERE kind = 'reply' AND external_id = ${message}`);
     };
     const claim = 'The 16 issues of release 0.29.0 are already closed.';
-    const read = await replyAndAudit('Are release 0.29.0 issues closed?', claim, [], issuesReadInTurnOf);
+    const read = await replyAndAudit(
+      'Are release 0.29.0 issues closed?',
+      claim,
+      [],
+      issuesReadInTurnOf,
+    );
     expect(read.audit?.body, JSON.stringify(read.audit?.body)).toMatchObject({
       verdict: 'pass',
       failed: [],

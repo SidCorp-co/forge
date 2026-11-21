@@ -100,6 +100,10 @@ export function codeFindings(reply: AuditedReply): ReplyFinding[] {
   return found;
 }
 
+const RECORD_HINT = /\b(?:issues?|tickets?|release|ISS-\d+|v?\d+\.\d+\.\d+)\b|phát\s+hành/iu; // i18n-allow: the Vietnamese noun of a release
+const RECORD_READ =
+  ": a Forge issue's or release's status needs a read of it now (support.issues or support.releases)";
+
 /**
  * Why a reply's statement of a live setting, account or release rests on no read of this turn
  * (ISS-1354): one made in an earlier turn, or none. Null where it states none, or this turn read.
@@ -109,8 +113,8 @@ function staleStateClaim(reply: AuditedReply): string | null {
   const claim = liveStateClaimIn(reply.text) ?? liveClaimIn(reply.text);
   if (!claim) return null;
   return reply.reads.earlierAt
-    ? `it states "${claim}" from a read made in an earlier turn (${reply.reads.earlierAt.toISOString()}), not one made in this turn`
-    : `it states "${claim}" with no read of it made in this turn (a Forge issue's or release's status needs support.issues or support.releases read now)`;
+    ? `it states "${claim}" from a read made in an earlier turn (${reply.reads.earlierAt.toISOString()}), not one made in this turn${RECORD_HINT.test(claim) ? RECORD_READ : ''}`
+    : `it states "${claim}" with no read of it made in this turn${RECORD_HINT.test(claim) ? RECORD_READ : ''}`;
 }
 
 /**

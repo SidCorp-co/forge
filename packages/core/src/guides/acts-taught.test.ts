@@ -369,7 +369,9 @@ describe('a room agent states a live setting from a read of its own turn, and na
   });
 
   it("the Answering section holds an issue's or release's status to a read, and closed to a deployed release (ISS-1389)", () => {
-    expect(answering).toContain("an issue's or release's status is stated from a read made in this turn");
+    expect(answering).toContain(
+      "an issue's or release's status is stated from a read made in this turn",
+    );
     expect(answering).toContain('An issue is said to be closed only once its release has deployed');
   });
 
