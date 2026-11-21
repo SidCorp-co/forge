@@ -40,6 +40,11 @@ export interface DoorCatalog {
   doorOf(call: { tool: string; action: string | null }): CatalogDoor | null;
   /** Whether a logged call reached its door through a REST twin rather than the door itself. */
   viaTwin(call: { tool: string; action: string | null }): boolean;
+  /**
+   * The route the app serves that `ref` names (`GET /api/projects/:id/boxes`, or a path filled in),
+   * any method, door or not, as its `METHOD /template` (ISS-1395); null where none is served.
+   */
+  servedRoute(ref: string): string | null;
 }
 
 interface DoorCatalogPorts {

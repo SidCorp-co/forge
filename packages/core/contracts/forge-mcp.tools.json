@@ -4,7 +4,7 @@
   "generator": "packages/core/src/contracts-generate.ts",
   "tools": [
     {
-      "description": "self { as: master | run, output: { kind: issue, ref: ISS-n }, failed: [{ line | redFlag, why }], missed?: [{ door, why }] }: audit your own finished output once, as the role whose rubric you hold. failed names each rubric line it fails (master: delegated, one_gate, state_true, defects_placed, asked_only_owed, tidy; run: criteria_proven, in_scope, refused_loudly, state_true, defects_placed, docs_true) or the card whose red flag you tripped ({ redFlag: <door>, why }); [] where it fails none. missed names each capability you should have reached for, by the name your map or forge_find gives it. Each door is read against the catalog and an unknown one refused SELF_AUDIT_DOOR_UNKNOWN; nothing is kept on a refusal. A failed verdict becomes a correction on the issue, which the steward draws lessons from; the capabilities page counts your misses. A second audit of one output in one role answers the first, already: true.",
+      "description": "self { as: master | run, output: { kind: issue, ref: ISS-n }, failed: [{ line | redFlag, why }], missed?: [{ door, why }] }: audit your own finished output once, as the role whose rubric you hold. failed names each rubric line it fails (master: delegated, one_gate, state_true, defects_placed, asked_only_owed, tidy; run: criteria_proven, in_scope, refused_loudly, state_true, defects_placed, docs_true) or the card whose red flag you tripped ({ redFlag: <door>, why }); [] where it fails none. missed names each capability you should have reached for, by the name your map or forge_find gives it, or a route the API serves as METHOD /path. One naming neither is refused SELF_AUDIT_DOOR_UNKNOWN; nothing is kept on a refusal. A failed verdict becomes a correction on the issue, which the steward draws lessons from; the capabilities page counts your misses. A second audit of one output in one role answers the first, already: true.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -4500,5 +4500,5 @@
       }
     }
   ],
-  "version": "10.0.0"
+  "version": "10.0.1"
 }

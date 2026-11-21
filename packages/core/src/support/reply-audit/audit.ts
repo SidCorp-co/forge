@@ -4,7 +4,8 @@
 // A failed verdict is a room correction in the lessons store (REQ-50, the store `noteRoomReplies`
 // feeds), from which the steward's pass draws the lessons the room's next turns carry. What the agent
 // says the reply missed (a capability it should have reached for) is kept as it named it, each door
-// read against the catalog Forge serves (ISS-1251): the capabilities page counts misses from here.
+// read against the catalog Forge serves (ISS-1251) and a REST read against the routes the app serves
+// (ISS-1395): the capabilities page counts misses from here.
 
 import type {
   ReplyMiss,
@@ -207,7 +208,10 @@ export function doorNamed(ref: string, catalog = doorCatalog()) {
   );
 }
 
-/** The refusal a door Forge serves none as answers, with the shape a door is named in. */
+/**
+ * The refusal a name that is neither a capability nor a route Forge serves answers, with the shapes a
+ * door is named in.
+ */
 export const doorUnknown = <T>(
   code: 'SUPPORT_AUDIT_DOOR_UNKNOWN' | 'SELF_AUDIT_DOOR_UNKNOWN',
   path: string,
@@ -216,13 +220,14 @@ export const doorUnknown = <T>(
   no(
     code,
     path,
-    `${ref} is no door Forge serves: name a capability as your map or forge_find names it (\`support.member\`, \`issues.merge\`) or as a route (\`POST /api/projects/:id/feedback\`). Nothing was kept.`,
+    `${ref} is no door Forge serves: no capability and no route by that name. Name a capability as your map or forge_find names it (\`support.member\`, \`issues.merge\`) or a route the API serves as METHOD /path (\`GET /api/projects/:id/boxes\`). Nothing was kept.`,
   );
 
 /**
  * Each miss under the door id the catalog serves it as: an action as forge_find lists it, a route, or a
- * route the catalog folds into an action, which is kept as that action. A door Forge serves none as is
- * refused by name, with the shape a door is named in.
+ * route the catalog folds into an action, which is kept as that action. A route the app serves that no
+ * door counts (a REST read, ISS-1395) is kept as its route, since that is what the agent should have
+ * reached for. A name that is neither is refused by name, with the shapes a door is named in.
  */
 export function missesOf(
   missed: SupportAuditRequest['missed'],
@@ -231,9 +236,9 @@ export function missesOf(
 ): Outcome<ReplyMiss[]> {
   const out: ReplyMiss[] = [];
   for (const [i, m] of (missed ?? []).entries()) {
-    const door = doorNamed(m.door, catalog);
-    if (!door) return doorUnknown(code, `/missed/${i}/door`, m.door);
-    if (!out.some((o) => o.door === door.id)) out.push({ door: door.id, why: m.why });
+    const id = doorNamed(m.door, catalog)?.id ?? catalog.servedRoute(m.door);
+    if (!id) return doorUnknown(code, `/missed/${i}/door`, m.door);
+    if (!out.some((o) => o.door === id)) out.push({ door: id, why: m.why });
   }
   return { ok: true, value: out };
 }

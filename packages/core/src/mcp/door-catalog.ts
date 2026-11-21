@@ -16,6 +16,7 @@ import { mcpTools } from './server.js';
 import { REST_TWINS } from './twins.js';
 
 const WRITES = ['post', 'put', 'patch', 'delete'] as const;
+const ROUTE_METHODS = ['get', ...WRITES] as const;
 
 type OpenApi = { paths: Record<string, Record<string, unknown>> };
 
@@ -32,6 +33,15 @@ function matcherOf(template: string): { re: RegExp; literals: number } {
     .map((p) => (p.startsWith(':') ? '[^/]+' : p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
     .join('/');
   return { re: new RegExp(`^${re}/?$`), literals: parts.filter((p) => !p.startsWith(':')).length };
+}
+
+/** Every `/api` route the published contract lists, any method, as `METHOD /template`: what is served. */
+export function servedRoutes(document: OpenApi): string[] {
+  return Object.entries(document.paths)
+    .filter(([path]) => path.startsWith('/api/'))
+    .flatMap(([path, ops]) =>
+      ROUTE_METHODS.filter((m) => m in ops).map((m) => `${m.toUpperCase()} ${templateOf(path)}`),
+    );
 }
 
 /** The REST writes the published contract lists, each as a door. */
@@ -66,11 +76,23 @@ export function mcpDoors(): CatalogDoor[] {
   }));
 }
 
-/** The catalog over `doors`, answering which door a logged call is. */
-export function catalogOf(doors: readonly CatalogDoor[]): DoorCatalog {
+/** A route as it was named, `{param}` written as the routes write it, `:param`. */
+const routeRef = (ref: string) => {
+  const [method, path, ...rest] = ref.trim().split(/\s+/);
+  return method && path && rest.length === 0 ? { method, path: templateOf(path) } : null;
+};
+
+/**
+ * The catalog over `doors`, answering which door a logged call is, and over `routes` (every route
+ * the app serves), which route a name is.
+ */
+export function catalogOf(
+  doors: readonly CatalogDoor[],
+  routes: readonly string[] = [],
+): DoorCatalog {
   const byId = new Map(doors.map((d) => [d.id, d]));
   // a REST door answers for itself, and a REST twin for the action it was folded into
-  const routes = doors
+  const matchers = doors
     .flatMap((d) =>
       [...(d.surface === 'rest' ? [d.id] : []), ...(d.twins ?? [])].map((id) => {
         const [method, template] = id.split(' ') as [string, string];
@@ -81,8 +103,14 @@ export function catalogOf(doors: readonly CatalogDoor[]): DoorCatalog {
   const routeOf = (action: string) => {
     const [method, path] = action.split(' ');
     if (!method || !path) return undefined;
-    return routes.find((r) => r.method === method && r.re.test(path));
+    return matchers.find((r) => r.method === method && r.re.test(path));
   };
+  const served = routes
+    .map((id) => {
+      const [method, template] = id.split(' ') as [string, string];
+      return { id, method, ...matcherOf(template) };
+    })
+    .sort((a, b) => b.literals - a.literals);
   return {
     doors,
     doorOf({ tool, action }) {
@@ -93,6 +121,13 @@ export function catalogOf(doors: readonly CatalogDoor[]): DoorCatalog {
     viaTwin({ tool, action }) {
       const route = tool === 'rest' && action ? routeOf(action) : undefined;
       return route !== undefined && route.id !== route.door.id;
+    },
+    servedRoute(ref) {
+      const asked = routeRef(ref);
+      if (!asked) return null;
+      const method = asked.method.toUpperCase();
+      const exact = served.find((r) => r.id === `${method} ${asked.path}`);
+      return (exact ?? served.find((r) => r.method === method && r.re.test(asked.path)))?.id ?? null;
     },
   };
 }
@@ -178,6 +213,7 @@ export function servedDoorCatalog(): DoorCatalog {
   ) as OpenApi;
   built = catalogOf(
     twinned(carded([...mcpDoors(), ...restDoors(document)], [...AFFORDANCE_CARDS, ...REST_CARDS])),
+    servedRoutes(document),
   );
   return built;
 }

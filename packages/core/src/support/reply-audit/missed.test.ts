@@ -9,7 +9,8 @@ import { describe, expect, it } from 'vitest';
 import { catalogOf } from '../../mcp/door-catalog.js';
 import { missesOf } from './audit.js';
 
-const catalog = catalogOf([
+const catalog = catalogOf(
+  [
   {
     id: 'support.member',
     surface: 'mcp',
@@ -18,7 +19,9 @@ const catalog = catalogOf([
     twins: ['POST /api/projects/:id/support/session/members'],
   },
   { id: 'POST /api/projects/:id/feedback', surface: 'rest', summary: null, feature: 'x' },
-]);
+  ],
+  ['GET /api/projects/:id/boxes', 'POST /api/projects/:id/feedback'],
+);
 
 describe('what an audit says its reply missed', () => {
   it('keeps each miss under its door id, a twin route as its act, once per door', () => {
@@ -28,6 +31,8 @@ describe('what an audit says its reply missed', () => {
           { door: 'support.member', why: 'the asker named their role' },
           { door: 'POST /api/projects/:id/support/session/members', why: 'twice over' },
           { door: 'POST /api/projects/:id/feedback', why: 'a defect was reported' },
+          // a route the app serves with no door (a REST read) is kept as its route (ISS-1395)
+          { door: 'GET /api/projects/{id}/boxes', why: 'should have read the boxes' },
         ],
         catalog,
       ),
@@ -36,6 +41,7 @@ describe('what an audit says its reply missed', () => {
       value: [
         { door: 'support.member', why: 'the asker named their role' },
         { door: 'POST /api/projects/:id/feedback', why: 'a defect was reported' },
+        { door: 'GET /api/projects/:id/boxes', why: 'should have read the boxes' },
       ],
     });
     expect(missesOf(undefined, catalog)).toEqual({ ok: true, value: [] });

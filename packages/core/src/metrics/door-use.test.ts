@@ -1,13 +1,15 @@
 // ISS-1251: the door use tally counts each logged call on its door by agent kind and refusal code,
 // a REST twin's call on the door it folds into, the misses agents' own audits named on each door, and
 // lists a door no call named with 0; a miss naming a door the catalog no longer serves is named in
-// the read's limits, never dropped in silence.
+// the read's limits, never dropped in silence, and one naming a route the app serves that no door
+// counts (a REST read, ISS-1395) is named there as served.
 
 import { describe, expect, it } from 'vitest';
 import { catalogOf } from '../mcp/door-catalog.js';
 import { DOOR_USE_LIMITS, doorUseLimits, tallyDoors } from './door-use.js';
 
-const catalog = catalogOf([
+const catalog = catalogOf(
+  [
   {
     id: 'support.member',
     surface: 'mcp',
@@ -22,12 +24,14 @@ const catalog = catalogOf([
     summary: null,
     feature: '/api/projects/:id/feedback',
   },
-]);
+  ],
+  ['GET /api/projects/:id/boxes', 'POST /api/projects/:id/feedback'],
+);
 const at = '2026-11-16T01:00:00.000Z';
 
 describe('the door use tally', () => {
   it('counts calls by agent kind, refusals by code, a twin’s calls and the misses agents named', () => {
-    const { doors, unmatched, unserved } = tallyDoors(
+    const { doors, unmatched, unserved, routes } = tallyDoors(
       catalog,
       [
         {
@@ -78,6 +82,8 @@ describe('the door use tally', () => {
         { door: 'POST /api/projects/:id/support/session/members', agent: 'room:agent', n: 1 },
         { door: 'support.gone', agent: 'room:support', n: 4 },
         { door: 'support.gone', agent: 'session:master', n: 1 },
+        // a REST read the app serves is no door here, and still served (ISS-1395)
+        { door: 'GET /api/projects/:id/boxes', agent: 'session:master', n: 2 },
       ],
     );
     expect(doors[0]).toMatchObject({
@@ -104,6 +110,11 @@ describe('the door use tally', () => {
     expect(doorUseLimits(unserved).at(-1)).toBe(
       '5 misses named a door the catalog no longer serves, counted in no row and no total: support.gone (5).',
     );
+    expect(routes).toEqual([{ door: 'GET /api/projects/:id/boxes', misses: 2 }]);
+    expect(doorUseLimits(unserved, routes).slice(-2)).toEqual([
+      '5 misses named a door the catalog no longer serves, counted in no row and no total: support.gone (5).',
+      '2 misses named a route Forge serves that is no door here (a REST read), counted in no row and no total: GET /api/projects/:id/boxes (2).',
+    ]);
     expect(doorUseLimits([])).toEqual(DOOR_USE_LIMITS);
   });
 });

@@ -63,6 +63,14 @@ export function judgeSelfAudit(
     }
     const ref = f.redFlag ?? '';
     const door = doorNamed(ref, catalog);
+    const route = door ? null : catalog.servedRoute(ref);
+    if (route) {
+      return no(
+        'SELF_AUDIT_NO_RED_FLAG',
+        `/failed/${i}/redFlag`,
+        `${route} is a route Forge serves with no card, so it names no red flag to trip: name the rubric line the output fails instead, or name the route in missed. Nothing was kept.`,
+      );
+    }
     if (!door) return doorUnknown('SELF_AUDIT_DOOR_UNKNOWN', `/failed/${i}/redFlag`, ref);
     if (!door.card?.redFlag) {
       return no(
