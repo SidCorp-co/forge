@@ -94,7 +94,8 @@ A group member is never a Forge user. The room's session acts as the room's own 
 (`widget/principal.ts`). Its turn token is minted for that account, fenced to the project and named
 `turn:<sessionId>`; every support route and the `forge_support` tool accept a caller only when it is
 that account holding that session's token (`support/access.ts:sessionCaller`). The account holds no
-role, so every other route refuses it.
+role, so every other route refuses it; its one grant, `boxes.drive` on its room's project
+(`support/room-grant.ts`), lets a look drive a box and nothing else (ISS-1394).
 
 Who asked is read from the DDP frame Rocket.Chat signed (`u._id`), never from text. The asker of a
 fix is the account that wrote in that thread; the session names it, and core checks the account

@@ -17,8 +17,6 @@ vi.hoisted(() => {
 const fake = vi.hoisted(() => ({
   session: '',
   deviceId: '',
-  /** A member the box acts run as: the box's access check is not what this file proves. */
-  writerId: '',
   boxes: new Map<
     string,
     {
@@ -69,10 +67,6 @@ vi.mock('../../src/boxes/index.js', async (importOriginal) => {
     },
     closeBox: async () => ({}),
     boxShot: async () => ({ ok: true, bytes: PNG, mime: 'image/png' }),
-    agentAct: (
-      _actor: unknown,
-      ...rest: Parameters<typeof real.agentAct> extends [unknown, ...infer R] ? R : never
-    ) => real.agentAct({ userId: fake.writerId, agency: 'agent' }, ...rest),
   };
 });
 
@@ -289,7 +283,6 @@ beforeAll(async () => {
   chat = w.chat as StandInRocketChat;
   fake.session = SESSION;
   fake.deviceId = await createTestDevice(w.ownerId);
-  fake.writerId = w.ownerId;
   roomManager.subscribe(device as never, deviceRoom(fake.deviceId));
 }, 120_000);
 

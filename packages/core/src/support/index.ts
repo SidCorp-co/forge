@@ -13,6 +13,7 @@ import {
   provideBriefGrantGate,
   provideSupportRoomHandler,
 } from '../integrations/rocketchat/index.js';
+import { provideAccountGrants } from '../lib/authz.js';
 import { logger } from '../lib/logger.js';
 import { onBoxListening } from '../lib/ws-listening.js';
 import { consume } from '../outbox/index.js';
@@ -34,6 +35,7 @@ import {
   registerSupportReleaseNotes,
 } from './release-notes.js';
 import { registerSupportResults, tellAllResults } from './result.js';
+import { roomAccountGrant } from './room-grant.js';
 import { SUPPORT_SESSION_MARKER } from './rooms.js';
 import { tellSlotFilled } from './secret-receipts.js';
 import { tellLinked } from './speaker-link.js';
@@ -116,6 +118,8 @@ export function registerSupportRooms(): void {
   provideSendRefusedListener(INJECT_INTENT, onInjectRefused);
   // a direct message to a room's session runs as its room's turn, as the sender (ISS-950)
   provideRoomDirectTurn(SUPPORT_SESSION_MARKER, sendDirectTurn);
+  // a room's account drives a box on its room's project, and holds nothing else (ISS-1394)
+  provideAccountGrants(roomAccountGrant);
   // a link confirmed on the link page is told to the sessions of the rooms its account wrote in
   provideSpeakerLinkedListener(tellLinked);
   // a project's parked question goes to its channel agent as a task, never into a room (ISS-873)

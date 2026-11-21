@@ -1,10 +1,10 @@
 // A room agent's look at a screen (ISS-1356; owner 2026-11-19: "it confirms UI that is not there").
 // It opens a Forge Box (`boxes/`) in browser mode on one of the room's own project's environments, as
-// the room's principal through the box door's own grant (project.write, the one a master's boxes
-// take), waits for it to answer, and answers what the screen shows: the address, the accessibility
-// snapshot and the screenshot, with the address a person watches the box at. A look again runs one
-// browser command first; any address it names must be one of the same project's environments, and
-// a box of another project is refused by name. Each look is kept on the room under its turn, which is
+// the room's principal, which holds `boxes.drive` on its room's project and nothing else
+// (`room-grant.ts`, ISS-1394), waits for it to answer, and answers what the screen shows: the
+// address, the accessibility snapshot and the screenshot, with the address a person watches the box
+// at. A look again runs one browser command first; any address it names must be one of the same
+// project's environments, and a box of another project is refused by name. Each look is kept on the room under its turn, which is
 // what a reply's claim about a screen is read against (`screen-claims.ts`). Nothing refuses a reply
 // for lacking a look: the act is a tool, taught by its card and the room guide. A first look on an
 // environment naming a testing profile signs in as one of its actors first, and the screen's picture

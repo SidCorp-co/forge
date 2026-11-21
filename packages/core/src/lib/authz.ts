@@ -38,7 +38,7 @@ export type ProjectAccess = {
   role: ProjectMemberRole | null;
   /** Caller's role in the project's org. null = not in the org. */
   orgRole: OrgMemberRole | null;
-  /** Permissions the membership holds beyond its role. */
+  /** Permissions the membership holds beyond its role, or a role-less account by what minted it. */
   grants: readonly string[];
 };
 
@@ -77,6 +77,20 @@ export function projectOrgOf(projectId: string, executor?: Tx): Promise<string |
     );
   }
   return projectOrgSource(projectId, executor);
+}
+
+/**
+ * The permissions an agent account holds on a project by the record that minted it, with no role
+ * there: a support room's account holds `boxes.drive` on its room's project (ISS-1394). Read only for
+ * a caller with no membership and no org role, so a member's check never pays for it.
+ */
+type AccountGrantsSource = (userId: string, projectId: string) => Promise<readonly string[]>;
+
+let accountGrantsSource: AccountGrantsSource | null = null;
+
+/** The domain that mints such an account says what it holds; unprovided, it holds nothing. */
+export function provideAccountGrants(source: AccountGrantsSource): void {
+  accountGrantsSource = source;
 }
 
 /** Every project a user can see, read by the projects domain over `visibleProjectsWhere`. */
@@ -134,13 +148,12 @@ async function readProjectRole(
     onePerId('projectMember', idOfParts(projectId, userId), membersOf),
     loadOrgRole(orgId, userId),
   ]);
-  return {
-    projectId,
-    orgId,
-    role: maxProjectRole(member?.role ?? null, orgDerivedProjectRole(orgRole)),
-    orgRole,
-    grants: member?.grants ?? [],
-  };
+  const role = maxProjectRole(member?.role ?? null, orgDerivedProjectRole(orgRole));
+  // a role-less account's grants come from what minted it; it reads and sees nothing by them
+  const grants =
+    member?.grants ??
+    (role === null && accountGrantsSource ? await accountGrantsSource(userId, projectId) : []);
+  return { projectId, orgId, role, orgRole, grants };
 }
 
 /** Throwing variant for REST routes: 404 on missing project. */

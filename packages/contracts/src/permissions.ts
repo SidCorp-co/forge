@@ -45,6 +45,14 @@ const WRITE = [
 ] as const;
 
 /**
+ * Open, act on and close a Forge Box on the project (ISS-1394): a member's, and the one grant a
+ * support room's agent account holds, on its room's own project alone, so its look can drive a
+ * screen and write nothing else. The box doors still declare `project.write`; only the look reaches
+ * a box with this alone.
+ */
+const BOXES = ["boxes.drive"] as const;
+
+/**
  * Acts that once refused an agent. They are permissions a member holds, and a named token grant
  * holds only where it names them (`TOKEN_EXPLICIT_PERMISSIONS`).
  */
@@ -104,6 +112,7 @@ const GATES = ["gates.lower"] as const;
 export const PROJECT_PERMISSIONS = [
 	...READ,
 	...WRITE,
+	...BOXES,
 	...PERSONAL,
 	...APPROVE,
 	...DEPLOY,
@@ -139,10 +148,11 @@ export const ROLE_PERMISSIONS: Readonly<
 	Record<ProjectRole, readonly ProjectPermission[]>
 > = {
 	viewer: [...READ],
-	member: [...READ, ...WRITE, ...PERSONAL],
+	member: [...READ, ...WRITE, ...BOXES, ...PERSONAL],
 	admin: [
 		...READ,
 		...WRITE,
+		...BOXES,
 		...PERSONAL,
 		...APPROVE,
 		...DEPLOY,
@@ -171,6 +181,7 @@ export const PERMISSION_ROLE_LABELS: Readonly<Record<Permission, string>> = {
 	"contracts.write": "Member",
 	"suggestions.write": "Member",
 	"shares.write": "Member",
+	"boxes.drive": "Member",
 	"questionnaires.answer": "Member",
 	"onboarding.request": "Member",
 	"charter.write": "Member",

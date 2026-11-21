@@ -86,7 +86,7 @@ export async function agentAct(
 ): Promise<AgentActAnswer> {
   const first = await rowOf(boxId);
   if (first.projectId === null) throw refuse('BOX_NOT_FOUND', `no box ${boxId} is any project's`);
-  await accessFor(first.projectId, actor, 'project.write', 'act on a box');
+  await accessFor(first.projectId, actor, 'boxes.drive', 'act on a box');
   const kind = actKindOf(first.mode, command);
   const holder = first.heldBy ? ((await personName(first.heldBy)) ?? first.heldBy) : null;
   const actorKey = `agent:${runId ?? first.runId ?? 'unnamed'}`;

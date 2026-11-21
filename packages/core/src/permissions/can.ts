@@ -87,9 +87,9 @@ function grantNamesOrIsFull(grant: readonly string[] | null | undefined, permiss
 }
 
 export function holds(facts: PermissionFacts, permission: ProjectPermission): boolean {
-  if (facts.role === null) return false;
-  const held =
-    ROLE_PERMISSIONS[facts.role].includes(permission) || facts.grants.includes(permission);
+  // a role-less account holds only what its grant names (`lib/authz.ts:provideAccountGrants`)
+  const byRole = facts.role !== null && ROLE_PERMISSIONS[facts.role].includes(permission);
+  const held = byRole || facts.grants.includes(permission);
   return held && tokenAdmits(permission);
 }
 
@@ -100,8 +100,7 @@ export function holdsOrg(role: OrgMemberRole | null, permission: OrgPermission):
 
 /** Every project permission the facts hold, for a read that reports what its viewer may do. */
 export function heldPermissions(facts: PermissionFacts): ProjectPermission[] {
-  if (facts.role === null) return [];
-  const all = new Set<ProjectPermission>(ROLE_PERMISSIONS[facts.role]);
+  const all = new Set<ProjectPermission>(facts.role ? ROLE_PERMISSIONS[facts.role] : []);
   for (const g of facts.grants) all.add(g as ProjectPermission);
   return [...all].filter((p) => holds(facts, p));
 }
@@ -169,7 +168,7 @@ export function requireHeld(
   permission: ProjectPermission,
   act?: string,
 ): void {
-  if (access.role === null) {
+  if (access.role === null && access.grants.length === 0) {
     // a non-member holds nothing here, so the refusal names what the call needed and on which project
     throw forbidden(
       `not a member of this project: ${act ? `${act} needs` : 'this needs'} ${permission} on project ${access.projectId}, which only a member of it holds`,

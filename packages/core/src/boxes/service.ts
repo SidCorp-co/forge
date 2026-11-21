@@ -38,10 +38,15 @@ export async function rowOf(id: string): Promise<BoxRow> {
 }
 
 /** The box's project, for a caller that must hold `permission` on it; a warm box is no one's yet. */
-export async function ownedRow(id: string, actor: BoxActor, act: string) {
+export async function ownedRow(
+  id: string,
+  actor: BoxActor,
+  act: string,
+  permission: 'project.write' | 'boxes.drive' = 'project.write',
+) {
   const row = await rowOf(id);
   if (row.projectId === null) throw refuse('BOX_NOT_FOUND', `no box ${id} is any project's`);
-  await accessFor(row.projectId, actor, 'project.write', act);
+  await accessFor(row.projectId, actor, permission, act);
   return row as BoxRow & { projectId: string };
 }
 
@@ -102,7 +107,7 @@ export async function openBox(
   const unserved = modeFault(req.mode);
   if (unserved) throw refuse(unserved.code, unserved.detail, '/mode');
   const mode = req.mode as BoxMode;
-  await accessFor(projectId, actor, 'project.write', 'open a box');
+  await accessFor(projectId, actor, 'boxes.drive', 'open a box');
   const asPerson = req.asPerson === true;
   if (asPerson && actor.agency !== 'human') {
     throw refuse(
@@ -208,7 +213,7 @@ export async function readBox(id: string, actor: BoxActor): Promise<BoxRecord> {
  * the same write (`boxes_held_chk`, ISS-1317).
  */
 export async function closeBox(id: string, actor: BoxActor, reason?: string): Promise<BoxRecord> {
-  const row = await ownedRow(id, actor, 'close a box');
+  const row = await ownedRow(id, actor, 'close a box', 'boxes.drive');
   if (row.state === 'closed' || row.state === 'failed') return boxRecord(row);
   const session = sessionAtEnd(row);
   const moved = await transition(db, BOX_MACHINE, {
