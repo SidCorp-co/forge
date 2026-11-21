@@ -77,7 +77,7 @@ export const SAID = {
 	},
 	"standing.gate.title.promotionMissing": { en: "Promotion missing" },
 	"standing.gate.shippedInOwed": {
-		en: "{subject} {verb} marked after a shipped release was cut. shipped-in-records closes each into the release that shipped it (reads {versions}).",
+		en: "{subject} {verb} shipped earlier: record each with shipped-in-records (reads {versions}).",
 		vars: { subject: "said", verb: "agreement", versions: "text" },
 	},
 	"standing.gate.title.shippedInOwed": { en: "Shipped-in owed" },
