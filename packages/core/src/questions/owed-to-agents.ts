@@ -5,6 +5,10 @@ import { db } from '../db/client.js';
 export interface AgentOwedQuestion {
   readonly id: string;
   readonly on: string | null;
+  /** The issue it stands on, whose decision may hold it (`standing/master-owed.ts:questionsNotHeld`). */
+  readonly issueId: string | null;
+  /** When it was asked: the wait a decision on its issue holds only if recorded after it. */
+  readonly since: Date;
 }
 
 /**
@@ -14,7 +18,7 @@ export interface AgentOwedQuestion {
  */
 export async function questionsOwedToAgents(projectId: string): Promise<AgentOwedQuestion[]> {
   const rows = (await db.execute(sql`
-    SELECT q.id, i.iss_seq, p.issue_prefix
+    SELECT q.id, q.issue_id, q.created_at, i.iss_seq, p.issue_prefix
       FROM agent_questions q
       JOIN projects p ON p.id = q.project_id
       LEFT JOIN issues i ON i.id = q.issue_id
@@ -27,5 +31,7 @@ export async function questionsOwedToAgents(projectId: string): Promise<AgentOwe
       r.iss_seq == null
         ? null
         : `${(r.issue_prefix as string | null) ?? 'ISS'}-${Number(r.iss_seq)}`,
+    issueId: r.issue_id == null ? null : String(r.issue_id),
+    since: new Date(r.created_at as string | Date),
   }));
 }

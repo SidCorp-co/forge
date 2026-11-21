@@ -142,7 +142,7 @@ import {
   settleSessionFires,
 } from './schedules/index.js';
 import { recordSkillActivityEvent, resolveRegisteredEffectiveSkills } from './skills/index.js';
-import { masterStandingsOwed } from './standing/index.js';
+import { masterStandingsOwed, questionsNotHeld } from './standing/index.js';
 import { sendStatusReport } from './status-reports/index.js';
 import {
   breakdownsHeldBySteward,
@@ -453,7 +453,8 @@ export function provideExecutionPorts(): void {
       })),
     contentLanguageOf: async (projectId) => (await readContentLanguage(projectId)).contentLanguage,
     stewardAsks: openStewardAsks,
-    questionsOwed: questionsOwedToAgents,
+    // a question whose issue holds a decision of the master's is off its line while it holds (ISS-1401)
+    questionsOwed: async (projectId) => questionsNotHeld(await questionsOwedToAgents(projectId)),
     breakdownsHeldBySteward,
     landedWorkOwed,
     wedgedWorkOwed,

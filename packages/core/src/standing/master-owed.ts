@@ -10,7 +10,8 @@
  * each said in {@link LEFT_OUT}, or where the master already recorded why it waits (ISS-1282): a
  * decision on the item, at its own kind's door (`masters/decision-doors.ts`), holding it by a date
  * to come or a condition, read as a requirement's standing reads one ({@link heldIds}). The same
- * reading holds a claimable issue off the master's admissible line (ISS-1297).
+ * reading holds a claimable issue off the master's admissible line (ISS-1297), and an open question
+ * owed to the master or a peer off its owed-questions line ({@link questionsNotHeld}, ISS-1401).
  */
 
 import type { ItemStanding, StandingSubject } from '@forge/contracts/steward';
@@ -102,6 +103,23 @@ async function heldIds(items: readonly ItemStanding[], now: Date): Promise<Set<s
     }
   }
   return held;
+}
+
+/**
+ * The questions owed to the master or a peer that no decision on their issue holds (ISS-1401, FB-810):
+ * the issue's newest decision is read by the rule {@link heldIds} reads, against when the question was
+ * asked, so one recorded after it with a date to come or a condition takes it off the owed-questions
+ * line until the date passes. A question standing on no issue is never held.
+ */
+export async function questionsNotHeld<Q extends { issueId: string | null; since: Date }>(
+  questions: readonly Q[],
+  now: Date = new Date(),
+): Promise<Q[]> {
+  const issueIds = [...new Set(questions.flatMap((q) => (q.issueId ? [q.issueId] : [])))];
+  const newest = await newestDecisions('issue', issueIds);
+  return questions.filter(
+    (q) => !q.issueId || !heldByDecision(newest.get(q.issueId) ?? null, q.since, now),
+  );
 }
 
 /** What the master's standings owe: the acts this read counts, and the issues a decision holds. */
