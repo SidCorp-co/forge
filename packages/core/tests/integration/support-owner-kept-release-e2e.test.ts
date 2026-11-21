@@ -276,16 +276,21 @@ describe("ISS-1383: the named release decider's unmapped go is kept, and decided
 
   beforeAll(async () => {
     // bob is the project's named release decider, by the username the chat server signs
-    const ruled = await api(admin, 'PUT', `/api/projects/${w.projectId}/knowledge/release-go-by-bob`, {
-      title: 'Releases go on bob’s word',
-      body: 'Owner ruling: bob decides whether a release goes to production.',
-      kind: 'rule',
-      confidence: 'verified',
-      source: 'owner ruling, ISS-1383',
-      scope: 'releases of this project',
-      recheckWhen: 'the owner names another release decider',
-      metadata: { deciders: [{ member: 'bob', acts: ['release'] }] },
-    });
+    const ruled = await api(
+      admin,
+      'PUT',
+      `/api/projects/${w.projectId}/knowledge/release-go-by-bob`,
+      {
+        title: 'Releases go on bob’s word',
+        body: 'Owner ruling: bob decides whether a release goes to production.',
+        kind: 'rule',
+        confidence: 'verified',
+        source: 'owner ruling, ISS-1383',
+        scope: 'releases of this project',
+        recheckWhen: 'the owner names another release decider',
+        metadata: { deciders: [{ member: 'bob', acts: ['release'] }] },
+      },
+    );
     expect(ruled.status, JSON.stringify(ruled.body)).toBe(200);
     const d = await createTestUser({ verified: true });
     decider = d.id;
@@ -323,7 +328,11 @@ describe("ISS-1383: the named release decider's unmapped go is kept, and decided
     expect(said).toContain('speaker-links/named');
     expect(said).not.toMatch(/ask (him|them) to link it|Confirm a speaker link/);
     const kept = (await keptGoes()).at(-1);
-    expect(kept?.input).toMatchObject({ message: go.id, version: '0.28.0', ownerKey: chat.bob.userId });
+    expect(kept?.input).toMatchObject({
+      message: go.id,
+      version: '0.28.0',
+      ownerKey: chat.bob.userId,
+    });
     expect(await approvalOf(held)).toMatchObject({ decision: null });
   });
 
