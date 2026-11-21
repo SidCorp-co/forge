@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.778] - 2026-11-21
+
+Beta mirror reports every ported pair; room agents look at signed-in screens
+
+### Fixed
+
+- **A room agent's look sees signed-in screens.** It signs in as a testing-profile actor through the judges' secret path, never showing a value, and its reply can post the look's screenshot in that thread.
+- **Every beta pair shows on every beta port fire.** A close names the dev release that shipped it, pairs owing nothing are listed, and a row moved back on beta is held by name.
+
 ## [0.4.0-dev.777] - 2026-11-21
 
 The owner's new question in a project thread is answered again
