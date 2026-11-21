@@ -62,6 +62,8 @@ export const GRAPHQL_SET =
 export interface ActorSecret extends SignInBody {
   field: (typeof ACCOUNT_FIELDS)[number];
   route: { path: string } | { url: URL };
+  /** The origin the browser session is written for, where the secret names one (ISS-1146). */
+  storageOrigin?: string;
 }
 
 /** A segment of a pointer as a refusal may say it: a key or an index, never a value. */
@@ -295,6 +297,7 @@ export function parseActorSecret(
       ...(obj.tokenPath !== undefined && { tokenPath: obj.tokenPath as string }),
       ...(obj.storage !== undefined && { storage: obj.storage as Record<string, string> }),
       ...(obj.storageKey !== undefined && { storageKey: obj.storageKey as string }),
+      ...(obj.storageOrigin !== undefined && { storageOrigin: obj.storageOrigin as string }),
     },
   };
 }

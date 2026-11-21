@@ -47,6 +47,13 @@ export const supportLookRequestSchema = z.strictObject({
 		.describe(
 			"a first look: desktop (1440×900, the default) or phone (390×844)",
 		),
+	as: z
+		.string()
+		.regex(/^[a-z][a-zA-Z0-9]{0,31}$/, "an actor the testing profile declares")
+		.optional()
+		.describe(
+			"a first look: the testing-profile actor to sign in as, the one closest to the person who asked; the least privileged where omitted",
+		),
 	box: z
 		.uuid()
 		.optional()
@@ -67,7 +74,7 @@ export const supportLookRequestSchema = z.strictObject({
 export type SupportLookRequest = z.infer<typeof supportLookRequestSchema>;
 
 export const SUPPORT_LOOK_SHAPE =
-	"{ thread, environment, path?, viewport? } for a first look, or { thread, box, step?, close? } to look again";
+	"{ thread, environment, path?, viewport?, as? } for a first look, or { thread, box, step?, close? } to look again";
 
 /** What a look answers: what the screen showed, and where a person watches the box. */
 export interface SupportLookView {
@@ -80,6 +87,17 @@ export interface SupportLookView {
 	snapshot: string | null;
 	/** What the screenshot answered: the file it was written to, on the device the box runs on. */
 	shot: string | null;
+	/**
+	 * The shot as Forge keeps it (ISS-1386): name it in `support.reply { shots }` to post it after
+	 * your text. Null where no picture of the screen could be taken.
+	 */
+	picture: string | null;
+	/**
+	 * Who the browser signed in as (ISS-1386): the testing-profile actor, and why it did not where it
+	 * could not, so the screen is its sign-in page. Null where the environment names no testing
+	 * profile, or on a look again, which keeps the box's session.
+	 */
+	signIn: { actor: string; signedIn: boolean; why: string | null } | null;
 	/** Where a person watches the box, or takes it over, on Forge's web app. */
 	watch: string;
 	closed: boolean;

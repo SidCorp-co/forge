@@ -46,6 +46,12 @@ export {
   keptEntries,
   keptEntry,
 } from './kept-secrets.js';
+export {
+  type BrowserCookie,
+  type BrowserSession,
+  type LookSignIn,
+  lookSignIn,
+} from './look-sign-in.js';
 export { readMasterMode } from './master-mode.js';
 export { readOwedPolicy } from './owed-policy.js';
 export type { TestingProfile } from './policy-schema.js';

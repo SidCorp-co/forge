@@ -7,7 +7,7 @@
 
 import type { BoxInput } from '@forge/contracts/box-wire';
 import { actKindOf, BOX_LIMITS, type BoxActRecord } from '@forge/contracts/boxes';
-import { and, desc, eq, gt, lt } from 'drizzle-orm';
+import { and, desc, eq, gt, lt, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type BoxRow, boxActs, boxes } from '../db/schema-boxes.js';
 import { lockXact } from '../lib/advisory-lock.js';
@@ -61,15 +61,25 @@ async function personSince(boxId: string, seq: number): Promise<AgentActAnswer['
 }
 
 /**
+ * What a recorded command shows in place of a session value (ISS-1386): an act whose recorded
+ * command holds it keeps no output either, so a cookie or token core placed in a box's browser is
+ * in no feed, row or answer.
+ */
+export const SESSION_SHOWN = '[session]';
+
+/**
  * An agent's command on a box. A refused act is recorded in the feed and changes nothing on the
  * box. A sent one is answered with its result once the device reports it, or `pending` after
- * `actWaitSeconds`, readable later in the feed.
+ * `actWaitSeconds`, readable later in the feed. `shown` is the command as the feed records it, where
+ * it differs from what the device runs: core's own act placing a session, with each value
+ * `SESSION_SHOWN`.
  */
 export async function agentAct(
   actor: BoxActor,
   boxId: string,
   command: string[],
   runId?: string,
+  shown?: string[],
 ): Promise<AgentActAnswer> {
   const first = await rowOf(boxId);
   if (first.projectId === null) throw refuse('BOX_NOT_FOUND', `no box ${boxId} is any project's`);
@@ -99,7 +109,7 @@ export async function agentAct(
         actorUserId: actor.userId,
         kind,
         via: 'act',
-        command,
+        command: shown ?? command,
         state: fault ? 'refused' : 'pending',
         refusal: fault?.code ?? null,
         doneAt: fault ? new Date() : null,
@@ -139,18 +149,19 @@ async function settled(actId: string) {
   }
 }
 
-/** The device's `act` report completes the act and wakes its caller. */
+/** The device's `act` report completes the act and wakes its caller; a session act keeps no output. */
 export async function completeAct(
   row: BoxRow,
   report: { actId: string; exitCode: number; stdout: string; stderr: string; durationMs: number },
 ): Promise<void> {
+  const quiet = sql`${boxActs.command} @> ${JSON.stringify([SESSION_SHOWN])}::jsonb`;
   await db
     .update(boxActs)
     .set({
       state: report.exitCode === 0 ? 'done' : 'failed',
       exitCode: report.exitCode,
-      stdout: report.stdout,
-      stderr: report.stderr,
+      stdout: sql`case when ${quiet} then null else ${report.stdout}::text end`,
+      stderr: sql`case when ${quiet} then null else ${report.stderr}::text end`,
       durationMs: report.durationMs,
       doneAt: new Date(),
     })

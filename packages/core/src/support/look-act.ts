@@ -6,7 +6,9 @@
 // browser command first; any address it names must be one of the same project's environments, and
 // a box of another project is refused by name. Each look is kept on the room under its turn, which is
 // what a reply's claim about a screen is read against (`screen-claims.ts`). Nothing refuses a reply
-// for lacking a look: the act is a tool, taught by its card and the room guide.
+// for lacking a look: the act is a tool, taught by its card and the room guide. A first look on an
+// environment naming a testing profile signs in as one of its actors first, and the screen's picture
+// is kept for the reply to post (ISS-1386, `look-session.ts`).
 
 import {
   SUPPORT_LOOK_READY_SECONDS,
@@ -18,7 +20,14 @@ import { sessionRowById } from '../agent-sessions/index.js';
 import { agentAct, boxById, closeBox, openBox } from '../boxes/index.js';
 import { RefusalError } from '../lib/refusal.js';
 import { webBaseUrl } from '../lib/web-base-url.js';
-import { environmentsOf, readProjectDocument, sitesOf } from '../project-config/index.js';
+import {
+  environmentsOf,
+  type LookSignIn,
+  lookSignIn,
+  readProjectDocument,
+  sitesOf,
+} from '../project-config/index.js';
+import { keepShot, signInBox } from './look-session.js';
 import { namedProject } from './ops-scope.js';
 import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
 import { insertAction, type RoomRow } from './store.js';
@@ -129,12 +138,14 @@ export async function lookAct(
 
   let boxId: string;
   let environment: string | null = null;
+  let url: string | null = null;
+  let signIn: LookSignIn = { kind: 'none' };
   if (input.box) {
-    if (input.environment || input.path || input.viewport) {
+    if (input.environment || input.path || input.viewport || input.as) {
       return no(
         'SUPPORT_LOOK_ENVIRONMENT_UNKNOWN',
         '/box',
-        'name a first look ({ thread, environment, path?, viewport? }) or a look again ({ thread, box, step?, close? }), never both. Nothing was looked at.',
+        'name a first look ({ thread, environment, path?, viewport?, as? }) or a look again ({ thread, box, step?, close? }), never both. Nothing was looked at.',
       );
     }
     const row = await boxById(input.box);
@@ -163,12 +174,21 @@ export async function lookAct(
         `${environment ? `${environment} is no environment of ${project.value.slug} with an address` : 'name the environment to look at'}: its environments with one are ${names}. Nothing was looked at.`,
       );
     }
-    const url = new URL(input.path ?? '/', base).toString();
+    const target = new URL(input.path ?? '/', base).toString();
+    url = target;
+    signIn = await lookSignIn(room.projectId, environment ?? '', input.as);
+    if (signIn.kind === 'unknown-actor') {
+      return no(
+        'SUPPORT_LOOK_ACTOR_UNKNOWN',
+        '/as',
+        `${signIn.asked} is no actor of testing profile ${signIn.profile}, which ${environment} names: it declares ${signIn.actors.join(', ') || 'none'}. Nothing was looked at.`,
+      );
+    }
     const device = await sessionDevice(room);
     const open = (deviceId: string | null) =>
       openBox(actor, room.projectId, {
         mode: 'browser',
-        url,
+        url: target,
         viewport: SUPPORT_LOOK_VIEWPORTS[input.viewport ?? 'desktop'],
         ...(deviceId ? { deviceId } : {}),
       });
@@ -184,10 +204,22 @@ export async function lookAct(
 
   const watch = `${webBaseUrl() ?? ''}/projects/${project.value.slug}/boxes/${boxId}`;
   const { state } = await untilReady(boxId);
-  if (state !== 'agent' && state !== 'person') {
+  const ready = state === 'agent' || state === 'person';
+  const signedIn = url ? await signInBox(actor, boxId, signIn, url, ready) : null;
+  if (!ready) {
     return {
       ok: true,
-      value: { box: boxId, state, url: null, snapshot: null, shot: null, watch, closed: false },
+      value: {
+        box: boxId,
+        state,
+        url: null,
+        snapshot: null,
+        shot: null,
+        picture: null,
+        signIn: signedIn,
+        watch,
+        closed: false,
+      },
     };
   }
   const read = async (command: string[]) => {
@@ -197,6 +229,7 @@ export async function lookAct(
   const at = (await read(['get', 'url']))?.trim() || null;
   const snapshot = await read(['snapshot']);
   const shot = (await read(['screenshot']))?.trim() || null;
+  const picture = await keepShot(room, boxId);
   const closed =
     input.close === true && (await boxStep('/close', () => closeBox(boxId, actor))).ok === true;
   await insertAction({
@@ -211,8 +244,17 @@ export async function lookAct(
       box: boxId,
       ...(environment ? { environment } : {}),
       ...(input.step ? { step: input.step } : {}),
+      ...(signedIn ? { as: signedIn.actor } : {}),
     },
-    output: { url: at, shot, snapshot: snapshot !== null, closed },
+    // the actor's name and whether it signed in, never its session (ISS-1386)
+    output: {
+      url: at,
+      shot,
+      picture,
+      snapshot: snapshot !== null,
+      signedIn: signedIn?.signedIn ?? null,
+      closed,
+    },
   });
   return {
     ok: true,
@@ -222,6 +264,8 @@ export async function lookAct(
       url: at,
       snapshot: snapshot === null ? null : cut(snapshot, SNAPSHOT_SHOWN),
       shot,
+      picture,
+      signIn: signedIn,
       watch,
       closed,
     },

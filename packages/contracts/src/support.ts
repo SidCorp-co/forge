@@ -1140,6 +1140,14 @@ export const supportReplyRequestSchema = z.strictObject({
 			"one line: why this message asked for a reply, kept on the reply's row",
 		),
 	request: supportReplyRequestNamedSchema.optional(),
+	shots: z
+		.array(z.uuid())
+		.min(1)
+		.max(ROOM_IMAGE_CAPS.perMessage)
+		.optional()
+		.describe(
+			"the `picture` of each look you took in this thread, posted after your text so the person sees what you saw (ISS-1386)",
+		),
 });
 /**
  * The session posts nothing for a message it was handed, and says why (ISS-942): chatter, a message
@@ -1959,6 +1967,10 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_LOOK_OUTSIDE_PROJECT",
 	/** The box door refused a look's open or command, its own code and words carried (ISS-1356). */
 	"SUPPORT_LOOK_BOX_REFUSED",
+	/** A look names an actor its environment's testing profile does not declare (ISS-1386). */
+	"SUPPORT_LOOK_ACTOR_UNKNOWN",
+	/** A reply names a shot no look of this room took in its thread (ISS-1386). */
+	"SUPPORT_REPLY_SHOT_UNKNOWN",
 	/** A morning reminder due on a core that knows no web app address to link its waits to. */
 	"SUPPORT_REMINDER_NO_WEB",
 	/** The chat server could not be read for the picture (ISS-1010). */
@@ -2201,6 +2213,8 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_LOOK_ENVIRONMENT_UNKNOWN: 400,
 	SUPPORT_LOOK_OUTSIDE_PROJECT: 403,
 	SUPPORT_LOOK_BOX_REFUSED: 409,
+	SUPPORT_LOOK_ACTOR_UNKNOWN: 404,
+	SUPPORT_REPLY_SHOT_UNKNOWN: 404,
 	SUPPORT_REMINDER_NO_WEB: 503,
 	SUPPORT_IMAGE_UNREACHABLE: 503,
 	SUPPORT_POST_IMAGE_UNKNOWN: 404,

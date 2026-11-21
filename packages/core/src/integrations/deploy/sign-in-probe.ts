@@ -25,7 +25,7 @@ export const TOKEN_PATHS = [
 ] as const;
 
 /** What `body` holds at the JSON pointer `path`; undefined where it holds nothing there. */
-function valueAt(body: unknown, path: string): unknown {
+export function valueAt(body: unknown, path: string): unknown {
   let at: unknown = body;
   for (const raw of path.slice(1).split('/')) {
     const key = raw.replaceAll('~1', '/').replaceAll('~0', '~');
@@ -147,6 +147,21 @@ function deletes(cookie: string): boolean {
 
 /** Sign in at `url` with `secret`, following no redirect; the answer names a status and a code only. */
 export async function trySignIn(secret: SignInBody, url: URL): Promise<SignInAnswer> {
+  return (await signInAt(secret, url)).answer;
+}
+
+/**
+ * A sign-in and the session it handed out, for a browser to hold (ISS-1386, a room agent's look):
+ * its `Set-Cookie` lines and its answer's body, kept only where it signed in. They hold the session,
+ * never the password, and are handed to no answer, log line or row.
+ */
+export interface SignedIn {
+  answer: SignInAnswer;
+  session: { setCookies: string[]; body: unknown } | null;
+}
+
+/** {@link trySignIn}, keeping the session where it signed in. */
+export async function signInAt(secret: SignInBody, url: URL): Promise<SignedIn> {
   const at = `${url.origin}${url.pathname}`;
   let res: Response;
   try {
@@ -160,10 +175,28 @@ export async function trySignIn(secret: SignInBody, url: URL): Promise<SignInAns
   } catch (err) {
     const cause = (err as { cause?: { code?: unknown } }).cause?.code;
     const why = shown(cause) ?? shown((err as { name?: unknown }).name) ?? 'no answer';
-    return { answer: 'unconfirmed', at, status: null, says: `could not be reached (${why})` };
+    const answer: SignInAnswer = {
+      answer: 'unconfirmed',
+      at,
+      status: null,
+      says: `could not be reached (${why})`,
+    };
+    return { answer, session: null };
   }
-  const { status } = res;
   const body: unknown = await res.json().catch(() => null);
+  const setCookies = res.headers.getSetCookie();
+  const answer = answerOf(secret, at, res.status, body, setCookies);
+  return { answer, session: answer.answer === 'signs-in' ? { setCookies, body } : null };
+}
+
+/** What a sign-in's status, body and cookies say of the value, as judge-login reads them. */
+function answerOf(
+  secret: SignInBody,
+  at: string,
+  status: number,
+  body: unknown,
+  setCookies: string[],
+): SignInAnswer {
   const code = codeOf(body);
   if (status >= 500 || status === 408 || status === 429) {
     return {
@@ -210,7 +243,7 @@ export async function trySignIn(secret: SignInBody, url: URL): Promise<SignInAns
       says: `answered ${status} with no token at ${pathSaid(secret.tokenPath)}, so there is no session to hand a judge`,
     };
   }
-  const cookie = res.headers.getSetCookie().some((c) => !deletes(c));
+  const cookie = setCookies.some((c) => !deletes(c));
   if (!bearer && !cookie) {
     return {
       answer: 'refused',

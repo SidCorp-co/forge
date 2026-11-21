@@ -42,8 +42,12 @@ export {
 } from './runtime-probe.js';
 export {
   keySaid,
+  type SignedIn,
   type SignInAnswer,
   type SignInBody,
   shown,
+  signInAt,
+  tokenIn,
   trySignIn,
+  valueAt,
 } from './sign-in-probe.js';

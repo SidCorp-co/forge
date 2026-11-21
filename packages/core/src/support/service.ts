@@ -20,6 +20,7 @@ import { endLastResortWait } from './last-resort.js';
 import { unreadLiveClaim } from './live-claims.js';
 import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
 import type { Refusal } from './refusals.js';
+import { postReplyShots, stageReplyShots } from './reply-shots.js';
 import { limitsOf } from './rules.js';
 import { type SessionDoor, screenForThread } from './screen.js';
 import { replyMarksOf } from './screen-claims.js';
@@ -149,6 +150,7 @@ export async function reply(
     why?: string | undefined;
     turn?: string | null | undefined;
     request?: NamedRequest | undefined;
+    shots?: string[] | undefined;
   },
 ): Promise<Outcome<{ messageId: string | null }>> {
   const conversationId = await knownThread(room, input.thread);
@@ -219,6 +221,9 @@ export async function reply(
     'reply',
   );
   if (!admitted.ok) return admitted;
+  // a look's shots are checked and staged before the text goes out (ISS-1386)
+  const staged = await stageReplyShots(room, input.thread, input.shots);
+  if (!staged.ok) return staged;
   const posted = await postInThread({
     room,
     thread: input.thread,
@@ -237,12 +242,15 @@ export async function reply(
       text,
       ...(input.why ? { why: await scrubbedForRoom(room, input.why) } : {}),
       ...(elsewhere ? { request: elsewhere } : {}),
+      ...(input.shots?.length ? { shots: input.shots } : {}),
     },
     // what it claims a screen shows and the looks its turn took, and a correction (ISS-1356)
     output: await replyMarksOf(text, input.turn),
     externalId: posted.messageId,
   });
   if (elsewhere) await answeredElsewhere(room, input.thread, elsewhere, posted.messageId);
+  const shots = await postReplyShots(room, staged.value, input.thread, posted.messageId);
+  if (shots.failure) return shots.failure;
   return { ok: true, value: { messageId: posted.messageId } };
 }
 
