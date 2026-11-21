@@ -9,6 +9,16 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.779] - 2026-11-21
+
+Room agents can open a screen; optional secret fields; protected secrets say who reads them
+
+### Fixed
+
+- **A protected variable says who reads it.** A secret link for a production slot says it is created protected and which runs read it; a run's whole variable list gives each withheld key its reason.
+- **A secret's box can be optional.** An asking agent marks a field optional; the form shows it in one word, saves with it empty and writes no key, so a person fills only what the value needs.
+- **A room agent's look opens its box.** The room's account holds one grant, driving a box on its own project, so a look opens, reads and closes a screen while every other write stays refused.
+
 ## [0.4.0-dev.778] - 2026-11-21
 
 Beta mirror reports every ported pair; room agents look at signed-in screens
