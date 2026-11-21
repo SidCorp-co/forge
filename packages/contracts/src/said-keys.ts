@@ -1599,7 +1599,7 @@ export const SAID = {
 		vars: { phase: "code" },
 	},
 	"feedback.rule.clarificationOpen": {
-		en: "{phase}: a clarification is open (round {round}); the reporter's answer owes the triage again",
+		en: "{phase}: clarification open, round {round}; the reporter's answer owes triage again",
 		vars: { phase: "code", round: "count" },
 	},
 	"feedback.rule.triagerTriages": {

@@ -292,7 +292,7 @@ describe('an item with a clarification open waits on its reporter, not the maste
         who: reporter,
         act: 'answer the clarification',
       });
-      expect(wait.rule).toContain('clarification is open');
+      expect(wait.rule).toContain('clarification open');
     }
     expect(await standingAs('member', ids.low)).toEqual({
       attentionGroup: 'needs_you',
