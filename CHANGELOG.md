@@ -9,6 +9,16 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.775] - 2026-11-21
+
+Merge marks: empty and foreign-repo marks no longer stall releases; one owner-reply rule
+
+### Fixed
+
+- **A mark at a commit its repository does not hold now names the route.** The mark stands with that reading; the release sweep drafts no release that cannot ship it, and the issue-flow guide teaches landing this project's half.
+- **A merge mark naming no commit, landing or artifacts no longer blocks the next one.** It stands on the marker's word, its answer names the shapes that would name evidence, and a later mark carrying one amends it in place.
+- **The reply card and the room guide now teach one rule.** An owner's message gets the answer, or one "on it, will report at ..." line within 30 minutes, and no other progress chatter.
+
 ## [0.4.0-dev.774] - 2026-11-21
 
 A merge naming an ended release run is refused before anything merges
