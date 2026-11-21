@@ -248,6 +248,14 @@ async function portProject(ctx: FireContext, betaProjectId: string, twin: DevTwi
   let noReopenCount = 0;
   for (const beta of betaIssues) {
     if (pairs.has(beta.id) || UNPORTED_BETA_STATUSES.has(beta.status)) continue;
+    // a dev issue already naming this beta issue is its twin whatever beta's status or age: adopted
+    // before the gates below, which only decide what is ported anew (ISS-1387)
+    const twinned = named.find((d) => firstLineNamesBetaIssue(d.firstLine, beta));
+    if (twinned) {
+      ctx.report.skipped.push(`${beta.key} (named on ${twinned.key})`);
+      pairs.set(beta.id, await adopt(beta, twin, { devIssueId: twinned.id }));
+      continue;
+    }
     const left = leftOnBeta(beta);
     // in flight or landed on beta: never dev's work to do (ISS-982); named where the ruling reaches it
     if (left !== null) {
