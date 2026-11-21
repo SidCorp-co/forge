@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.774] - 2026-11-21
+
+A merge naming an ended release run is refused before anything merges
+
+### Fixed
+
+- **A merge naming a release run that has ended merges nothing.** `merge-pull-request` now reads the `runId` it is sent: an ended run, or one that is not the release holding the request, is refused by name.
+
 ## [0.4.0-dev.773] - 2026-11-21
 
 Room agents look at the screen and read live settings before answering
