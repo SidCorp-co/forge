@@ -343,6 +343,8 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     integrations/identity/oidc.ts URL.href in start
     integrations/support-api/owner-oauth.ts URL.href in ownerAuthorizationUrl
     credentials/mcp-oauth-shape.ts URL.toString in redirectWith
+    support/look-act.ts URL handed to lib:set in environmentsWithAddress
+    support/look-act.ts URL.toString in lookAct
     integrations/inbound-door.ts URL.search in sameEndpoint
     integrations/llm/embeddings-client.ts URL handed to @types/node:fetchFn in timedFetch
     integrations/peer-forge/client.ts URL handed to @types/node:fetch in call
