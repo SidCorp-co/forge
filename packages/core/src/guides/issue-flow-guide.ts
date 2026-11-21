@@ -496,7 +496,9 @@ from \`awaiting_release\`, \`unmet\` left out where every criterion is met; a cr
 verdict is a fail, or one named with nowhere to go, is refused \`CLOSE_CRITERION_UNPLACED\`, a
 close with no release note recorded \`CLOSE_RELEASE_NOTE_MISSING\`, and one whose criteria text
 no criterion was read from \`CLOSE_CRITERIA_TEXT_UNREAD\`: add them once from the holder first. A release that claims an issue
-still at \`awaiting_release\` closes it too; one you closed it carries as it stands. Whether the work is live is read from that release's record, never from \`closed\`. On a project that
+still at \`awaiting_release\` closes it too, unless a criterion's newest verdict is a fail: then it
+stays there, named in the release's \`failed\`, until you move that criterion out with \`unmet\` or
+it is fixed and judged a pass; one you closed it carries as it stands. Whether the work is live is read from that release's record, never from \`closed\`. On a project that
 declares no production environment that release is the recorded landing
 (\`POST /api/projects/:id/release-records\`): the agent's record in its own words, a version
 optional and a commit only evidence, never checked. The record reports each criterion by the pass
