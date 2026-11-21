@@ -6,7 +6,8 @@
  * ISS-562) and ISS-783's at e54c95e12 (a person's mark at the merge of #1235, which links ISS-783,
  * made before the host's report of that merge reached the projection) read `asserted`, with
  * `merged_commit_sha` empty. A commit the repository does not vouch for is still recorded as the
- * caller's claim, as before, and the mark says why the repository did not take it.
+ * caller's claim, as before, and the mark says why the repository did not take it; one the
+ * repository answers it does not hold also names the route for code landing elsewhere (ISS-1340).
  *
  * @direct-test-of packages/core/src/issues/merge-marker.ts
  * @direct-test-of packages/core/src/issues/commit-landing.ts
@@ -130,13 +131,23 @@ describe('a mark naming a commit the repository vouches for is observed', () => 
     expect(detail).toContain('it declares ISS-55');
   });
 
-  it('keeps a commit the repository does not hold as the caller’s claim, and says why', async () => {
+  // ISS-1340 (FB-750): ISS-1339 marked at forge-plugin's c49b46a stood with no word of the route, and
+  // its release could never ship it
+  it('keeps a commit the repository does not hold as the caller’s claim, says why, and names the route', async () => {
     await world_();
     const iss562 = await issue(562, 'in_progress');
 
     const res = await mark(world.token, iss562, 'f0'.repeat(20));
     expect(res.status, JSON.stringify(res.body)).toBe(200);
-    expect((await issueRow(iss562))?.merged_commit_sha).toBeNull();
-    expect(detailOf(res.body)).toContain('COMMIT_NOT_IN_REPOSITORY');
+    const row = await issueRow(iss562);
+    expect(row?.merged_at).not.toBeNull();
+    expect(row?.merged_commit_sha).toBeNull();
+    const detail = detailOf(res.body);
+    expect(detail).toContain('COMMIT_NOT_IN_REPOSITORY');
+    expect(detail).toContain(`commit ${'f0'.repeat(20)} is not an object in acme/canawan-api`);
+    expect(detail).toContain(
+      "land this project's half here, at least its changelog fragment, and mark at that commit",
+    );
+    expect(detail).toContain('(not_found, COMMIT_NOT_IN_REPOSITORY');
   });
 });

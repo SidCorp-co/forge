@@ -425,14 +425,21 @@ landing and moved, its key in its own commit subject so the mark reads the commi
 2. \`POST /api/issues/:id/merge\` \`{ commit, target, note }\`, the commit as it stands on the target,
    whole: an abbreviated sha is refused \`COMMIT_NOT_WHOLE\`. Whether the work is done is your call:
    the mark refuses nothing for the evidence it lacks, and records what you name as given, with you
-   and your run as who said it. Name what you have — the commit in \`commit\`, never only in
+   and your run as who said it. A mark naming none of \`commit\`, \`landing\` or \`artifacts\`
+   stands on your word, its answer names the bodies that would, and the next mark naming one amends
+   it in place. Name what you have — the commit in \`commit\`, never only in
    \`note\`, which is no claim; where the deliverable lives outside a commit (a docs store, a live
    page, a CMS entry), \`landing\`, \`artifacts\` and a \`liveReading\` \`{ url, status }\` of where you
    read it live, on any project. Core reads a commit you name from the repository: it is this
    issue's when its subject declares the key or it merged a change request linking the issue, and is
    then stamped observed, whoever marks. Otherwise the mark records it as your claim, which the
    release places by that commit, and what the repository found — not found, not on the target, not
-   this issue's, unread — is the mark's reading, never a refusal. Marking after the fact, send
+   this issue's, unread — is the mark's reading, never a refusal. A commit the repository answers it
+   does not hold stands too, but no release of this project can ship it, so the release sweep leaves
+   the issue out while that commit is its only landing: where an issue's code lands in another
+   project's repository (a forge-plugin change for a forge issue), land this project's half too, at
+   least its changelog fragment, and mark at that commit, naming the other project's landing in
+   \`note\`. Marking after the fact, send
    \`landedAt\` (ISO), when the commit landed, which a release's containment reads; refused in the
    future, and taken before the issue was created. To correct a mark,
    \`DELETE /api/issues/:id/merge\` clears it first. A merge mark moves no status.

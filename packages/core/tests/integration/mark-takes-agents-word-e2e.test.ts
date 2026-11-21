@@ -13,6 +13,9 @@
  * A commit the repository can be asked about is a reading on the mark, never its refusal; input of
  * the wrong shape is still refused by name at its path; and a close rests on the mark alone.
  *
+ * ISS-1345 (FB-755): a mark naming none of commit, landing or artifacts still stands, and its answer
+ * names the shapes that would have named evidence.
+ *
  * @direct-test-of packages/core/src/issues/merge-marker.ts
  * @direct-test-of packages/core/src/issues/merge-routes.ts
  * @direct-test-of packages/core/src/issues/landing-evidence.ts
@@ -178,6 +181,39 @@ describe('epod ISS-74: every mark the run made is accepted on a git project (out
     expect(marked.said).toEqual({});
     expect(marked.detail).toContain('names no evidence');
     expect((await trailOf(id))?.payload.said).toEqual({});
+  });
+
+  // ISS-1345 (FB-755): `{}` sent to read the accepted shape stands, and its answer names the shapes
+  // that would have named evidence, this project's first
+  it.each([
+    ['an empty body', {}],
+    ['a target and a note alone', { target: 'main', note: 'landed' }],
+    ['a live reading alone', { liveReading: READ_LIVE }],
+  ])(
+    'takes a mark naming none of commit, landing or artifacts (%s), naming the shapes that would',
+    async (_, body) => {
+      const { id } = await issue(gitProject);
+      const marked = ok(await mark(agent, id, body));
+      expect(marked.action).toBe('merged');
+      expect(marked.mark).toBe('asserted');
+      expect(marked.detail).toContain('this mark names none of them');
+      expect(marked.detail).toContain('This project lands in git, `{ "commit": ');
+      expect(marked.detail).toContain('a project landing outside git, `{ "landing": ');
+      expect(marked.detail).toContain('The next mark naming one amends this mark in place');
+      expect((await row(id))?.merged_at).not.toBeNull();
+    },
+  );
+
+  it('names the outside-git shape first on a project landing outside git', async () => {
+    const { id } = await issue(outsideGit);
+    const marked = ok(await mark(person, id, { note: 'shipped to the store' }));
+    expect(marked.detail).toContain('This project lands outside git, `{ "landing": ');
+  });
+
+  it('adds no such sentence to a mark naming evidence', async () => {
+    const { id } = await issue(gitProject);
+    const marked = ok(await mark(agent, id, { artifacts: ARTIFACTS }));
+    expect(marked.detail).not.toContain('this mark names none of them');
   });
 });
 

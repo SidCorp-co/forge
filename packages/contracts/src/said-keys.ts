@@ -557,6 +557,12 @@ export const SAID = {
 	"issues.releaseHold.act.releaseOutcomeIncomplete": {
 		en: "release it with the rest of its outcome",
 	},
+	"issues.releaseHold.cause.releaseLandingNotHeld": {
+		en: "Its only landing is a commit this repository does not hold",
+	},
+	"issues.releaseHold.act.releaseLandingNotHeld": {
+		en: "land this project's half and mark it at that commit",
+	},
 	"issues.releaseHold.cause.releaseHeadCarriesHeld": {
 		en: "What production builds already holds a held issue",
 	},

@@ -172,6 +172,12 @@ const WORDS: Readonly<Record<string, Words>> = {
     act: 'issues.releaseHold.act.releaseWorkUnmerged',
     actor: 'person',
   },
+  // ISS-1340: its only landing is a commit its repository does not hold, which no release can ship
+  RELEASE_LANDING_NOT_HELD: {
+    cause: 'issues.releaseHold.cause.releaseLandingNotHeld',
+    act: 'issues.releaseHold.act.releaseLandingNotHeld',
+    actor: 'agent',
+  },
   RELEASE_SHIPPED_IN_OWED: {
     cause: 'issues.releaseHold.cause.releaseShippedInOwed',
     act: 'issues.releaseHold.act.releaseShippedInOwed',

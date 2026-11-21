@@ -185,8 +185,10 @@ export {
 export { issueTaskOf, listModulesForIssues } from './label-service.js';
 export { carriedToLanding, filesNamed, type LandedCarriage } from './landed-carriage.js';
 export { landingShortfall } from './landing-evidence.js';
+export { type LandingNotHeld, landingsNotHeldOf } from './landing-not-held.js';
 export { holderFanout, readClaim } from './lease-fanout.js';
 export { listIssues, ownedIssuesIn } from './list-service.js';
+export { NOT_HELD_ROUTE } from './mark-said.js';
 export {
   currentMarkClaims,
   currentMarkTimes,

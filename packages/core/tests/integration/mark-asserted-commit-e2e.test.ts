@@ -14,7 +14,16 @@
  * ISS-592 (REQ-68): MARK_ALREADY_STANDS said to `unmark` first and named only the UI rail, so an
  * agent guessed a route that does not exist. Every such refusal names `DELETE /api/issues/:id/merge`.
  *
+ * ISS-1345 (FB-755): an evidence-free mark (`{}`) kept every later mark carrying the evidence out
+ * with MARK_ALREADY_STANDS. The next mark naming a commit, landing or artifacts amends it in place,
+ * keeping both records of who said what; a mark whose commit claim stands is never written over.
+ *
+ * ISS-1340 (FB-750): the guide teaches the route for code that lands in another project.
+ *
  * @direct-test-of packages/core/src/issues/merge-marker.ts
+ * @direct-test-of packages/core/src/issues/merge-record.ts
+ * @direct-test-of packages/core/src/issues/merge-gate.ts
+ * @direct-test-of packages/core/src/issues/mark-detail.ts
  * @direct-test-of packages/core/src/issues/commit-landing.ts
  * @direct-test-of packages/core/src/issues/landing-evidence.ts
  * @direct-test-of packages/core/src/issues/mark-trail.ts
@@ -174,6 +183,13 @@ describe('the delivery guide teaches the asserted mark with its commit (ISS-575,
     expect(land).toContain('`DELETE /api/issues/:id/merge` clears it');
     expect(land).toContain("is the mark's reading, never a refusal");
     expect(land).toContain('`liveReading`');
+    // ISS-1345: an evidence-free mark stands and the next mark naming evidence amends it
+    expect(land).toContain('the next mark naming one amends it in place');
+    // ISS-1340: the route for code that lands in another project's repository
+    expect(land).toContain('A commit the repository answers it does not hold stands too');
+    expect(land).toContain(
+      "land this project's half too, at least its changelog fragment, and mark at that commit",
+    );
     expect(land).not.toMatch(/a `note` naming the commit/);
     for (const gone of [
       'NO_WORK_EVIDENCE',
@@ -231,5 +247,68 @@ describe('a re-mark refused MARK_ALREADY_STANDS names the route that clears the 
     const refused = standingArtifactsRefusal({ sent, wrote: false, held });
     expect(refused?.code).toBe('MARK_ALREADY_STANDS');
     expect(refused?.detail).toContain(DELETE_ROUTE);
+  });
+});
+
+describe('a mark carrying evidence amends an evidence-free one in place (ISS-1345)', () => {
+  const LANDED = 'https://shop.example.test/landed';
+  const ARTIFACTS = [{ surface: 'ui', ref: 'shop/landed', change: 'added' }];
+
+  async function records(id: string) {
+    return rows<{ actor_id: string; payload: { said: Record<string, unknown>; stamped: boolean } }>(
+      sql`SELECT actor_id, payload FROM activity_log
+           WHERE issue_id = ${id} AND action = 'issue.mergeMarked' ORDER BY created_at ASC`,
+    );
+  }
+
+  it.each([
+    ['a landing', () => landingProject, { landing: LANDED }, 'landed'],
+    ['artifacts', () => gitProject, { artifacts: ARTIFACTS }, 'asserted'],
+  ])(
+    'writes %s over `{}`, keeping its time and both records of who said what',
+    async (_, project, body, kind) => {
+      const id = await issue(project());
+      ok(await box('POST', `/api/issues/${id}/merge`, {}));
+      const first = await mergedAt(id);
+
+      const marked = ok(await box('POST', `/api/issues/${id}/merge`, body));
+
+      expect(marked.action).toBe('merged');
+      expect(marked.mark).toBe(kind);
+      expect(String(marked.detail)).toContain('It amends in place the mark standing since');
+      expect(await mergedAt(id)).toEqual(first);
+      const trail = await records(id);
+      expect(trail.map((t) => [t.payload.said, t.payload.stamped])).toEqual([
+        [{}, true],
+        [body, true],
+      ]);
+    },
+  );
+
+  it('writes a commit the repository cannot read over `{}` as the claim that stands', async () => {
+    const id = await issue(gitProject);
+    ok(await box('POST', `/api/issues/${id}/merge`, {}));
+    const marked = ok(
+      await box('POST', `/api/issues/${id}/merge`, { target: 'dev', commit: WHOLE }),
+    );
+    expect(marked.action).toBe('merged');
+    expect((await currentMarkClaims([id])).get(id)).toBe(WHOLE);
+  });
+
+  it('never writes over a mark whose commit claim stands in its trail', async () => {
+    const id = await issue(gitProject);
+    ok(await box('POST', `/api/issues/${id}/merge`, { target: 'dev', commit: WHOLE }));
+
+    const landing = refusalOf(await box('POST', `/api/issues/${id}/merge`, { landing: LANDED }));
+    expect(landing.code).toBe('MARK_ALREADY_STANDS');
+    const artifacts = refusalOf(
+      await box('POST', `/api/issues/${id}/merge`, { artifacts: ARTIFACTS }),
+    );
+    expect(artifacts.code).toBe('MARK_ALREADY_STANDS');
+    const again = ok(
+      await box('POST', `/api/issues/${id}/merge`, { target: 'dev', commit: OTHER }),
+    );
+    expect(again.action).toBe('already_merged');
+    expect((await currentMarkClaims([id])).get(id)).toBe(WHOLE);
   });
 });

@@ -113,6 +113,22 @@ export function markClaimsCommitSql(i: SQL): SQL {
 }
 
 /**
+ * The issue row aliased `i` carries a mark naming no evidence (ISS-1345): stamped, with no observed
+ * commit, no landing, no artifact and no paths a box read, and its current trail record claims no
+ * whole commit. The tracker keeps no column for the commit an `asserted` mark claims, so the columns
+ * alone cannot tell `{}` from a mark at an unvouched commit: the claim is read off the trail, by the
+ * reader every claim is read by (`markClaimsCommitSql`). A row with no trail record claims nothing.
+ */
+export function evidenceFreeMarkSql(i: SQL): SQL {
+  return sql`(${i}.merged_at IS NOT NULL
+    AND coalesce(trim(${i}.merged_commit_sha), '') = ''
+    AND ${i}.merged_landing IS NULL
+    AND ${i}.merged_artifacts IS NULL
+    AND ${i}.merged_paths IS NULL
+    AND NOT ${markClaimsCommitSql(i)})`;
+}
+
+/**
  * The commit the issue row aliased `i` is marked at, lower-cased, as `markedCommitsOf` reads it: the
  * observed merge's `merged_commit_sha`, else the whole commit its current mark claims. NULL where
  * neither: a mark naming no whole commit, an unmark, or no mark at all.

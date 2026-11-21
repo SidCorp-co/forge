@@ -1,10 +1,11 @@
 import type { LandingArtifact, MergedHead, ReadPaths } from '@forge/contracts/landing-artifacts';
 import type { MergeStampVia, OutboxActor } from '@forge/contracts/outbox-events';
-import { and, eq, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import type { Db, Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
 import { emitEvent } from '../outbox/index.js';
+import { stampGate } from './merge-gate.js';
 import {
   designOnlyStamp,
   joinedDesignArtifacts,
@@ -172,6 +173,8 @@ export async function recordIssueMerge(
     actor: OutboxActor | null;
     /** The route the merge arrived by, carried on the stamp's `issue.updated`. */
     via: MergeStampVia;
+    /** Also writes over a standing mark naming no evidence (ISS-1345, `mark-trail.ts:evidenceFreeMarkSql`). */
+    amendsEvidenceFree?: boolean;
   },
 ): Promise<MergeRecord> {
   const { issueId, evidence } = args;
@@ -183,27 +186,17 @@ export async function recordIssueMerge(
     .from(issues)
     .where(eq(issues.id, issueId))
     .limit(1);
+  const amends = args.amendsEvidenceFree === true && evidence.kind !== 'observed';
   const stampExpr =
     evidence.kind === 'observed'
       ? sqlTimestamp(evidence.mergedAt)
       : evidence.kind !== 'adopted' && evidence.at
         ? sqlTimestamp(evidence.at)
-        : sql`now()`;
+        : amends
+          ? sql`coalesce(${issues.mergedAt}, now())`
+          : sql`now()`;
 
-  // a later host merge of another commit supersedes what the row holds (REQ-63: the last request
-  // delivering an issue is its landing); every other observed stamp is first-wins, as before
-  const gate =
-    evidence.kind !== 'observed'
-      ? isNull(issues.mergedAt)
-      : hostMerge
-        ? or(
-            isNull(issues.mergedCommitSha),
-            and(
-              sql`${issues.mergedAt} < ${stampExpr}`,
-              sql`lower(${issues.mergedCommitSha}) <> ${evidence.commitSha.toLowerCase()}`,
-            ),
-          )
-        : isNull(issues.mergedCommitSha);
+  const gate = stampGate({ evidence, hostMerge, amends, stampExpr });
   // a mark's head fills a stamp holding none or reads that head again, and never replaces another
   const heldHead = prior?.mergedHead?.sha.toLowerCase() ?? null;
   const head = hostMerge

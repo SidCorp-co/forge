@@ -178,6 +178,31 @@ export function markReadPaths(args: {
   return { ok: true, paths: { commit: sent.commit, read: 'box', changes: sent.changes } };
 }
 
+/**
+ * What a mark naming none of `commit`, `landing` or `artifacts` adds to its answer (ISS-1345, FB-755):
+ * it stands on the marker's word (owner, 2026-11-05, ISS-1017), and the answer names the bodies that
+ * would name evidence, this project's shape first, and that the next one amends it in place.
+ */
+export function evidenceFreeSentence(shape: LandingShape): string {
+  const git = 'in git, `{ "commit": "<the whole sha it landed at>", "target": "<the branch>" }`';
+  const outside =
+    'outside git, `{ "landing": "<where it now is: a URL, a CMS entry, a store resource>" }`, with `artifacts` naming what it changed';
+  const [own, other] = shape === 'git' ? [git, outside] : [outside, git];
+  return (
+    'Evidence of a landing is a `commit`, `landing` or `artifacts`, and this mark names none of them. ' +
+    `This project lands ${own}; a project landing ${other}. The next mark naming one amends this ` +
+    "mark in place, and this mark's record keeps who made it."
+  );
+}
+
+/** The sentence a mark that amended an evidence-free one carries (ISS-1345): what it wrote over. */
+export function amendedSentence(at: Date): string {
+  return (
+    `It amends in place the mark standing since ${at.toISOString()}, which named no evidence; that ` +
+    "mark's record still says who made it and what it named."
+  );
+}
+
 /** Artifacts the stamp did not record because a mark already stands, or `null` where it did. */
 export function standingArtifactsRefusal(args: {
   sent: readonly LandingArtifact[] | null;

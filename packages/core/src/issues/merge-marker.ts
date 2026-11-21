@@ -28,18 +28,13 @@ import {
   standingMarkRefusal,
   wholeCommitRefusal,
 } from './landing-evidence.js';
+import { markDetailOf } from './mark-detail.js';
 import { refuseUncheckedMerge, resolveRecordedCommit, withCarriers } from './mark-preconditions.js';
-import { callerRunOf, type MarkSaid, type MarkSaidBy, saidOf, saidSentence } from './mark-said.js';
+import { callerRunOf, type MarkSaid, type MarkSaidBy, saidOf } from './mark-said.js';
 import { markTrailLabel, NOT_STAMPED, recordMarkTrail } from './mark-trail.js';
 import { clearMark, recordStampPaths } from './mark-writes.js';
 import { identifiedMergeForIssue } from './merge-identity.js';
-import {
-  describeAdoptionMark,
-  describeMergeMark,
-  designOnlyStamp,
-  type MergeMarkKind,
-  mergeMarkKindOf,
-} from './merge-mark-kind.js';
+import { designOnlyStamp, type MergeMarkKind, mergeMarkKindOf } from './merge-mark-kind.js';
 import { type MergeRecord, recordIssueMerge, recordMergeTarget } from './merge-record.js';
 import { contractDrift, postIssueNotice } from './ports.js';
 import { findIssueById, type IssueRow } from './read-service.js';
@@ -130,6 +125,8 @@ type Stamp = {
   adopted?: AdoptionHeld[] | null;
   /** What the repository said of the commit the mark names, where it was asked. */
   reading?: CommitReading | null;
+  amended?: Date | null;
+  shape?: LandingShape;
 };
 
 type Preflight = {
@@ -282,6 +279,7 @@ async function stampMark(
         via: 'mark',
         actor: args.actor.hookActor,
         evidence: { kind: 'landed', landing, at: args.mergedAt ?? null, artifacts },
+        amendsEvidenceFree: true,
       }),
       claimedCommit: args.commit ?? null,
       readFrom: null,
@@ -293,6 +291,7 @@ async function stampMark(
         via: 'mark',
         actor: args.actor.hookActor,
         evidence: { kind: 'asserted', at: args.mergedAt ?? null, artifacts },
+        amendsEvidenceFree: named.artifacts !== null || args.commit !== undefined,
       }),
       claimedCommit: args.commit ?? (await resolveRecordedCommit(issueId)),
       readFrom: null,
@@ -318,7 +317,14 @@ async function stampMark(
   }
   if (read.paths) await recordStampPaths(tx, issueId, read.paths, args.actor.hookActor);
   if (args.target) await recordMergeTarget(tx, issueId, args.target);
-  return { ...stamp, claimedTarget: args.target ?? null, reading: preflight.reading ?? null };
+  return {
+    ...stamp,
+    claimedTarget: args.target ?? null,
+    reading: preflight.reading ?? null,
+    amended:
+      !observed && !fromRepository && stamp.result.wrote ? (args.issue.mergedAt ?? null) : null,
+    shape,
+  };
 }
 
 /** The audit comment a mark or unmark leaves, and an unmark's issue.updated, in the caller's transaction. */
@@ -329,7 +335,7 @@ async function writeMarkTrail(
   stamp: Stamp,
 ): Promise<{ mark: MergeMarkKind; markDetail: string; said: MarkSaid; by: MarkSaidBy }> {
   const { id: issueId, projectId } = args.issue;
-  const { result, claimedCommit, readFrom } = stamp;
+  const { result, claimedCommit } = stamp;
   const marking = args.op === 'mark';
   const commit = result.commitSha ?? claimedCommit;
   const label = markTrailLabel(args.op, args.target, commit);
@@ -345,25 +351,19 @@ async function writeMarkTrail(
         mergedLanding: result.landing,
       })
     : 'unmarked';
-  // what the call named, as named, and who named it (ISS-1017)
   const said = saidOf(args);
   const reading = stamp.reading ?? null;
   const run = marking ? await callerRunOf(tx, issueId, args.actor.box ?? null) : null;
   const by: MarkSaidBy = { ...args.actor.hookActor, run };
-  const kindDetail =
-    stamp.adopted && result.wrote
-      ? describeAdoptionMark(stamp.adopted)
-      : (designMark.designStampDetail(result) ??
-        describeMergeMark({
-          kind: mark,
-          commitSha: result.commitSha,
-          claimedCommit,
-          landing: result.landing,
-          ...(readFrom && result.wrote ? { readFrom } : {}),
-          target: result.target,
-          claimedTarget: stamp.claimedTarget ?? null,
-        }));
-  const markDetail = marking ? `${kindDetail}. ${saidSentence(said, reading)}` : kindDetail;
+  const markDetail = markDetailOf({
+    marking,
+    mark,
+    stamp,
+    said,
+    reading,
+    commit,
+    claimedTarget: stamp.claimedTarget ?? null,
+  });
   const audit = await writeAuditComment(
     issueId,
     args.actor.commentAuthorId,

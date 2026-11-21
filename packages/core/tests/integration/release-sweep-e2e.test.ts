@@ -3,12 +3,20 @@
  * `awaiting_release` with a criterion whose latest verdict is `skipped` is left exactly where it is
  * by `sweepAutomaticReleases`, on a project that has otherwise opted all the way into "nobody
  * presses release", while its earned neighbour is cut.
+ *
+ * ISS-1340: an issue whose only landing is a commit its repository answered it does not hold is
+ * drafted into no release and held naming the route.
+ *
+ * @direct-test-of packages/core/src/release-batch/release-sweep.ts
+ * @direct-test-of packages/core/src/issues/landing-not-held.ts
+ * @direct-test-of packages/core/src/release-batch/landing-not-held-hold.ts
  */
 
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
+import { recordMarkTrail } from '../../src/issues/mark-trail.js';
 import { collectReleaseBlockers } from '../../src/release-batch/blockers.js';
 import { sweepAutomaticReleases } from '../../src/release-batch/release-sweep.js';
 import { readServingNow } from '../../src/release-batch/serving-reading.js';
@@ -98,6 +106,29 @@ async function waitingRow(n: number, blocks: string[]): Promise<string> {
   return id;
 }
 
+/** The row's mark claims `commit`, read by the repository as `outcome`: the trail record a mark writes. */
+async function markedAt(id: string, commit: string, outcome: string, code: string): Promise<void> {
+  await db.transaction((tx) =>
+    recordMarkTrail(tx, {
+      issueId: id,
+      actor: { type: 'user', id: ownerId, agency: 'agent' },
+      commentId: randomUUID(),
+      op: 'mark',
+      target: 'main',
+      commit,
+      stamped: true,
+      said: { commit, target: 'main' },
+      run: null,
+      commitReading: {
+        commit,
+        outcome,
+        code,
+        detail: `commit ${commit} is not an object in acme/forge`,
+      } as never,
+    }),
+  );
+}
+
 // a commit verdict emits `verdict.recorded`, whose delivery job needs the queue the server boots
 beforeAll(async () => {
   testEnv();
@@ -157,6 +188,32 @@ describe('release sweep (ISS-1117)', () => {
     expect(result.issuesCut).toBe(1);
     expect(await stored(id)).toMatchObject(AT_RELEASE);
     expect(await holdOf(id)).toBeNull();
+  });
+
+  // ISS-1340 (FB-750): ISS-1339's only landing was forge-plugin's c49b46a, which its repository
+  // answered it does not hold, and the sweep drafted forge 0.4.0-dev.742 for it, which never shipped
+  it('drafts no release for an issue whose only landing its repository does not hold, holding it on the route', async () => {
+    const notHeld = await waitingRow(1, [verdictBlock(1, 'pass')]);
+    const unread = await waitingRow(1, [verdictBlock(1, 'pass')]);
+    const foreign = 'c49b46a'.padEnd(40, '0');
+    await markedAt(notHeld, foreign, 'not_found', 'COMMIT_NOT_IN_REPOSITORY');
+    // a repository that could not be read says nothing about the commit: weighed as before
+    await markedAt(unread, 'e'.repeat(40), 'unread', 'COMMIT_UNVERIFIED');
+
+    const result = await sweepAutomaticReleases();
+
+    expect(result.issuesCut).toBe(1);
+    expect((await stored(unread)).claim).not.toBeNull();
+    const after = await stored(notHeld);
+    expect(after.claim).toBeNull();
+    expect(after.status).toBe('awaiting_release');
+    const held = await holdOf(notHeld);
+    expect(held?.code).toBe('RELEASE_LANDING_NOT_HELD');
+    expect(held?.owes).toBe('agent');
+    expect(held?.reason).toContain(`only landing is commit ${foreign}`);
+    expect(held?.reason).toContain(
+      "land this project's half here, at least its changelog fragment, and mark at that commit",
+    );
   });
 
   it('touches nothing when every waiting issue is unearned', async () => {

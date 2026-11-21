@@ -15,6 +15,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   type IssueCriteriaReport,
+  landingsNotHeldOf,
   unearnedCriteriaReports,
   waitingForReleaseSql,
 } from '../issues/index.js';
@@ -48,6 +49,7 @@ import {
   targetUndeclaredHold,
   writeReleaseHolds,
 } from './hold.js';
+import { landingNotHeldHold } from './landing-not-held-hold.js';
 import { productionDeploysOnLand } from './production-trigger.js';
 import { waitingIssueIds } from './queries.js';
 import {
@@ -429,9 +431,14 @@ async function sweepProject(
   for (const [id, o] of owed)
     await hold({ ...base, issueIds: [id], holdFor: () => shippedInHold(o) });
   const unowed = gate.filter((id) => !owed.has(id) && !blocked.has(id));
+  // a row whose only landing is a commit its repository answered it does not hold is drafted into
+  // no release, which could never ship it: held naming the route instead (ISS-1340)
+  const notHeld = await landingsNotHeldOf(unowed);
+  for (const [id, n] of notHeld)
+    await hold({ ...base, issueIds: [id], holdFor: () => landingNotHeldHold(n) });
   // a change rated high waited for its green cleanup before it landed (REQ-79 r4 BC-5,
   // `issues/merge-check.ts`): production deploys on land here, so no row waits on one now
-  const waiting = unowed;
+  const waiting = unowed.filter((id) => !notHeld.has(id));
   if (waiting.length === 0) return;
 
   const releaseGate = await readGate(projectId);

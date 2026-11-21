@@ -74,6 +74,16 @@ export function saidOf(args: {
   };
 }
 
+/**
+ * The route for a mark at a commit the repository answered it does not hold (ISS-1340, FB-750): the
+ * mark stands as the marker's word (owner, 2026-11-05, ISS-1017), and no release of this project can
+ * ship that commit, so the release sweep leaves the issue out while it is its only landing
+ * (`issues/landing-not-held.ts`). Only the host's null answer (`not_found`) is that reading; a
+ * repository that could not be read (`unread`) says nothing about the commit.
+ */
+export const NOT_HELD_ROUTE =
+  "No release of this project can ship a commit its repository does not hold, so the release sweep leaves this issue out while that commit is its only landing. Where this issue's code landed in another project's repository, land this project's half here, at least its changelog fragment, and mark at that commit, naming the other project's landing in `note`: a commit the repository reads as this issue's replaces this mark, and any other needs it cleared first with `DELETE /api/issues/:id/merge`.";
+
 /** The sentence saying what the mark named and what the repository said, beside its kind's. */
 export function saidSentence(said: MarkSaid, reading: CommitReading | null): string {
   const parts = [
@@ -101,7 +111,8 @@ function readingSentence(reading: CommitReading): string {
   if (reading.outcome === 'found') {
     return `The repository was read: ${reading.repository} holds commit ${reading.commit} on ${reading.branch} as this issue's.`;
   }
-  return `The repository was read and did not vouch for commit ${reading.commit} (${reading.outcome}, ${reading.code}: ${reading.detail}); a reading, which refuses nothing.`;
+  const read = `The repository was read and did not vouch for commit ${reading.commit} (${reading.outcome}, ${reading.code}: ${reading.detail}); a reading, which refuses nothing.`;
+  return reading.outcome === 'not_found' ? `${read} ${NOT_HELD_ROUTE}` : read;
 }
 
 /** The run session holding the issue on the caller's box, or null where none does or no box called. */

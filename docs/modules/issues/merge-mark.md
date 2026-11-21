@@ -69,6 +69,17 @@ refused on every such answer, and a mark naming no commit, branch or handoff `NO
 ISS-74, a docs-store deliverable with no commit, could not be marked at all). A commit named only in
 `note` is no claim.
 
+A `not_found` reading is the source host answering that the commit resolves to no object in the
+repository; `unread` says nothing about the commit. The mark stands either way, and a `not_found`
+answer names the route for code that lands in another project's repository — land this project's
+half, at least its changelog fragment, and mark at that commit
+(`packages/core/src/issues/mark-said.ts:NOT_HELD_ROUTE`, ISS-1340, FB-750). No release of this
+project can ship such a commit, so while it is the issue's only landing (no observed commit, no
+landing named) the release sweep drafts no release for it and holds it `RELEASE_LANDING_NOT_HELD`
+naming that route (`packages/core/src/issues/landing-not-held.ts:landingsNotHeldOf`,
+`packages/core/src/release-batch/release-sweep.ts`). The sweep reads the reading the mark recorded
+and asks no source host.
+
 Where no host or repository resolved the mark's `commit`, so the mark records it as the caller's
 claim, it is the whole 40-character sha or the mark is refused `COMMIT_NOT_WHOLE`
 (`packages/core/src/issues/landing-evidence.ts:wholeCommitRefusal`) and nothing is written: the claim is read only as the
@@ -89,7 +100,9 @@ record (`issue.mergeMarked`, `packages/core/src/issues/mark-said.ts:saidOf`): `c
 address the agent read the work live at and what it answered; core never fetches it), `note`,
 `mergedAt`, `contracts`, `adoptions`. Beside it the record keeps who said it — the actor, with its
 agency, and the run session holding the issue on the caller's box (`callerRunOf`) — and the reading of
-a named commit. A mark naming nothing records `{}` and its answer says it names no evidence. The answer
+a named commit. A mark naming nothing records `{}` and its answer says it names no evidence; one
+naming none of `commit`, `landing` or `artifacts` also names the bodies that would, this project's
+shape first (`packages/core/src/issues/landing-evidence.ts:evidenceFreeSentence`, ISS-1345). The answer
 carries the same three (`said`, `by`, `commitReading`), its `detail` says them, and the issue detail
 reads them back as `markSaid` (`markSaidOf`), which the web rail shows on the mark's date as who marked
 it and what the repository read. Input of the wrong shape is still refused by name at its path: a
@@ -112,6 +125,16 @@ lands after the stamp moves it, since an issue delivered across several requests
 (`packages/core/src/issues/merge-record.ts:recordIssueMerge`). A `200` that kept the old landing while the caller was told it had sent the
 evidence is what this replaced (ISS-1327). The exact landing re-sent is answered `already_merged`
 like any other repeat.
+
+One mark is written over by a landing or an assertion: one naming no evidence — no observed commit,
+no landing, no artifact, no paths a box read, and no commit claimed on its trail
+(`packages/core/src/issues/mark-trail.ts:evidenceFreeMarkSql`). The next mark naming a `commit`,
+`landing` or `artifacts` amends it in place (`packages/core/src/issues/merge-record.ts:recordIssueMerge`,
+`amendsEvidenceFree`), keeping its `merged_at` unless it names when the work landed, and both trail
+records stand, so who said what stays read (ISS-1345, FB-755: `{}` sent to read the shape kept the
+evidence out). The columns alone cannot tell `{}` from a mark at a commit the repository did not
+vouch for, since no column holds an asserted claim, so the trail is read: a mark whose commit claim
+stands there is never written over by another.
 
 ## A merge stamps only the issues it landed
 
