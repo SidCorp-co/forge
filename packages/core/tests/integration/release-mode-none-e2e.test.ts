@@ -183,8 +183,9 @@ describe('a landing is recorded as the release of a project with no production e
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(res.body.closed).toEqual([met]);
-    expect(res.body.failed).toMatchObject([{ id: issue }]);
-    expect(res.body.failed[0].reason).toContain("criterion 2's newest verdict is a fail");
+    const failed = res.body.failed as Array<{ id: string; reason: string }>;
+    expect(failed).toMatchObject([{ id: issue }]);
+    expect(failed[0]?.reason).toContain("criterion 2's newest verdict is a fail");
     expect(readingsOf(res.body)[0]).toBe('Shipped with 1 failing criterion: ISS-5 c2');
     expect(readingsOf(res.body)).toContain(
       `ISS-5: 3 live criteria, c1, c3 pass at \`${F4.slice(0, 12)}\`; c2 failed at \`${F4.slice(0, 12)}\``,
