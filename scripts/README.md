@@ -10,7 +10,7 @@ completes, is ignored, and cannot fail the gate. `archmap` was in exactly that s
 2026-08-13, documented as the relations gate the whole time it could not block anything.
 `verify --ci-parity` now fails on the mismatch.
 
-**Four jobs gate nothing, on purpose, since ISS-1370**: `core-integration`, `whole-tree`, `images`
+**Four jobs gate nothing, on purpose, since PRs #814 and #822** (ISS-1370 on `main`'s tracker, not forge-dev's): `core-integration`, `whole-tree`, `images`
 and `runner-platforms` (the runner's macOS and Windows legs) run on every push to a gated branch and
 nightly, never on a pull request, and sit outside `ci-passed`'s `needs`. A red there is fixed forward
 by whichever run lands next. The owner ruled it for forge-dev while it is a beta with no production;
@@ -351,7 +351,7 @@ Four contracts:
    Measured on PR #586 (ISS-1153): every job in `ci.yml` passed, `ci-passed` was green, and the PR
    was still held — by a high-severity CodeQL alert on a test helper that `pnpm verify` had no way
    to mention. Each post-merge job prints under its own heading, which says they run after the
-   merge (ISS-1370), read off which jobs `ci-passed` needs: one line per job, naming its platforms
+   merge (PR #814), read off which jobs `ci-passed` needs: one line per job, naming its platforms
    and what each step is locally, so a job that runs a gated step on another platform is listed
    too. `pnpm verify` names
    CodeQL under a heading of its own, `Nor these, which ci-passed does not gate either`, kept apart from the commands CI does run because `ci-passed` gates those and
@@ -908,7 +908,7 @@ Two, and they are the same shape: the check runs before the merge, and the merge
   names who was stranded.
 - **A stale green carried through by a branch that never re-ran.** The refusal above only reaches
   the stranded branch when that branch runs the check again before merging.
-  Branch protection's `strict: true` forced exactly that run, and ISS-1370 has the owner turn it
+  Branch protection's `strict: true` forced exactly that run, and PR #814 has the owner turn it
   off; the live ruleset is not readable from a checkout or from the Forge GitHub App's verbs, so
   which one holds is not verified here. With `strict` off that one path reaches the loss again, and
   `main`'s advisory is what still speaks.
@@ -1580,7 +1580,7 @@ printing `0 violations`.
 | R9 | every **declared** severity biome exits 0 on (`warn`, `info`, `on`) is counted by a baselined checker — it reads the configs, so a rule left non-blocking by preset default is out of its reach | `packages/core`'s 280 `warn` diagnostics, invisible to R1–R7 because all seven judge a *declared* axis |
 | R10 | every declared axis declares a numeric level of at least 2 | R1–R9 all skip an axis that is not level 2, and `hardened` needs only 4 of 5 — so an axis could declare 1, omit the key, or quote the digit, and pass the audit |
 | R11 | one branch set across the merge gate, and the merge target is in it | `ci.yml` triggered on `[main]` alone, so a pull request into any other base would have run no CI at all and reported no failure (ISS-1304) |
-| R12 | every `ci.yml` job but `ci-passed` is in exactly one of its `needs`, `$postMerge.jobs` and `$wholeSuite.jobs`, and every declared job exists; `$wholeSuite`, which blocks the release cut, names an axis and a level 1-3 | nothing yet — written with ISS-1370, which took four jobs out of `needs`: without it the next job left out would block nothing and be declared nowhere. ISS-471 added the third list, and its axis and level once the independent judge found it had neither |
+| R12 | every `ci.yml` job but `ci-passed` is in exactly one of its `needs`, `$postMerge.jobs` and `$wholeSuite.jobs`, and every declared job exists; `$wholeSuite`, which blocks the release cut, names an axis and a level 1-3 | nothing yet — written with PR #814, which took four jobs out of `needs`: without it the next job left out would block nothing and be declared nowhere. ISS-471 added the third list, and its axis and level once the independent judge found it had neither |
 
 Profiles bound **shape**, never tool choice — `baseline` (one axis measures) · `standard` (two axes
 block, both meta-checks) · `hardened` (every declared axis blocks, every needs-job asserted). "Two
