@@ -95,6 +95,9 @@ describe('the issue-flow guide states goals, with the gates a project turns on',
       '**The run holding the issue closes it:** write its release note (step 3), read it back with `GET /api/issues/:id`, then `POST /api/issues/:id/transition`',
     );
     expect(flat).toContain('a close with no release note recorded `CLOSE_RELEASE_NOTE_MISSING`');
+    expect(flat).toContain(
+      'so no criterion was read from it, `CLOSE_CRITERIA_TEXT_UNREAD`: put its criteria on the record once as the holder, `PUT /api/issues/:id/criteria`, then close',
+    );
     expect(flat).not.toContain('A release refuses to claim an issue without one.');
   });
 });

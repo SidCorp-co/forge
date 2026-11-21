@@ -501,7 +501,8 @@ write its release note (step 3), read it back with \`GET /api/issues/:id\`, then
 from \`awaiting_release\`, \`unmet\` left out where every criterion is met; a criterion whose newest
 verdict is a fail, or one named with nowhere to go, is refused \`CLOSE_CRITERION_UNPLACED\`, a
 close with no release note recorded \`CLOSE_RELEASE_NOTE_MISSING\`, and one whose criteria text
-no criterion was read from \`CLOSE_CRITERIA_TEXT_UNREAD\`: add them once from the holder first. A release that claims an issue
+has no numbered line, so no criterion was read from it, \`CLOSE_CRITERIA_TEXT_UNREAD\`: put its
+criteria on the record once as the holder, \`PUT /api/issues/:id/criteria\`, then close. A release that claims an issue
 still at \`awaiting_release\` closes it too, unless a criterion's newest verdict is a fail: then it
 stays there, named in the release's \`failed\`, until you move that criterion out with \`unmet\` or
 it is fixed and judged a pass; one you closed it carries as it stands. Whether the work is live is read from that release's record, never from \`closed\`. On a project that
