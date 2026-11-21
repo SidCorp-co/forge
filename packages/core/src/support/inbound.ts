@@ -97,8 +97,9 @@ export async function handleUnboundMessage(input: {
   m: RocketChatIncomingMessage;
 }): Promise<boolean> {
   return (
-    (await settleOwnerAnswer(ownerReplyOf({ ...input.m, text: screenAlone(input.m.text).text }))) !==
-    false
+    (await settleOwnerAnswer(
+      ownerReplyOf({ ...input.m, text: screenAlone(input.m.text).text }),
+    )) !== false
   );
 }
 
