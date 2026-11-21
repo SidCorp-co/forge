@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.771] - 2026-11-21
+
+A feedback item awaiting a clarification shows its reporter as next, not the master
+
+### Fixed
+
+- **An agent can no longer approve a kept credential.** Writing or removing one at the secret's own door now needs a person, like its approve and discard doors; a chat-server outage no longer parks an owner's release go.
+- **A feedback item with a clarification open now waits on its reporter.** Its standing names the reporter, agent or person, answering it on the item, the feedback list and the project standings, never the master; the answer hands triage back.
+
 ## [0.4.0-dev.770] - 2026-11-20
 
 Dev's whole suite green again: the release-hold test meets the verdict door
