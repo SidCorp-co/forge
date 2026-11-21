@@ -62,7 +62,7 @@ const VALID = `an issue, comment or session upload of this project: a picture ($
 
 /** One item checked: the image, or why it cannot go into a room. */
 async function checkOne(
-  userId: string,
+  userId: string | null,
   projectId: string,
   item: SupportMasterPostAttachment,
   at: string,
@@ -81,7 +81,7 @@ async function checkOne(
       `${named} belongs to another project, and this room is read by this project's people; name ${VALID}`,
     );
   }
-  if (!(await can(actorFor(userId), 'project.read', projectResource(att.projectId)))) {
+  if (userId && !(await can(actorFor(userId), 'project.read', projectResource(att.projectId)))) {
     return refusalOf(
       'SUPPORT_POST_IMAGE_UNREADABLE',
       at,
@@ -116,9 +116,12 @@ async function checkOne(
   }
 }
 
-/** Every item of a post checked and read, or every item's refusal; nothing is posted either way. */
+/**
+ * Every item of a post checked and read, or every item's refusal; nothing is posted either way.
+ * `userId` null: core's own post of a file the room itself made (a look's shot, ISS-1386).
+ */
 export async function checkPostImages(
-  userId: string,
+  userId: string | null,
   projectId: string,
   items: readonly SupportMasterPostAttachment[] | undefined,
 ): Promise<Outcome<PostImage[]>> {

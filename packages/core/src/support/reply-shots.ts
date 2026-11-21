@@ -66,8 +66,9 @@ export async function stageReplyShots(
         ],
   );
   if (unknown.length > 0) return { ok: false, refusals: unknown };
+  // the room's own look took each, on its own project: no reader's grant is asked of it
   const images = await checkPostImages(
-    room.principalUserId,
+    null,
     room.projectId,
     shots.map((attachmentId) => ({ target: 'session' as const, attachmentId })),
   );

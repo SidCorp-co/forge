@@ -288,8 +288,10 @@ const inputSchema = z.strictObject({
   ...SECRET_LINK_TOOL_FIELDS,
   // a look at a screen (ISS-1356): the fields its act takes beside the ones above
   ...supportLookRequestSchema
-    .pick({ path: true, viewport: true, box: true, step: true, close: true })
+    .pick({ path: true, viewport: true, as: true, box: true, step: true, close: true })
     .partial().shape,
+  // a look's pictures a reply posts after its text (ISS-1386)
+  shots: supportReplyRequestSchema.shape.shots,
   // a field two acts' requests both take, each judged by its own act's request: a record's or a
   // draft's kind, or a reference source's; a page's or a source's address; a one-line why, or what a
   // source teaches
@@ -319,7 +321,7 @@ const SIGNATURES = [
   'search { query, project? }',
   'thread { thread }',
   'tools {}',
-  'reply { thread, text, why?, request?: { thread, message } }',
+  'reply { thread, text, why?, request?: { thread, message }, shots?: [<a look picture>] }',
   'silent { thread, message?, reason }',
   `decide { thread, message?, decision: ${SUPPORT_ROUTING_DECISIONS.join(' | ')}, project?, signals: (${SUPPORT_ROUTING_SIGNALS.join(' | ')})[], confidence: ${SUPPORT_ROUTING_CONFIDENCES.join(' | ')}, why }`,
   'run { thread, tool, args? }',
@@ -372,7 +374,7 @@ const SIGNATURES = [
   'reference_cite { source, ref, verdict: take | reject, why, about?, project? }',
   'reference_propose { kind, url, why, areas, evidence, title?, priority?, followReleases?, project? }',
   'term { thread, message, slug, title, means, module, quote, aliases?, anchor?, project? }',
-  'look { thread, environment?, path?, viewport?: desktop | phone, box?, step?, close? } (a first look names environment; a look again names box)',
+  'look { thread, environment?, path?, viewport?: desktop | phone, as?, box?, step?, close? } (a first look names environment; a look again names box)',
   'secret_link { thread, why, project?, kind: variable, environment (null: every environment), key | kind: testing, profile, actor | service | kind: integration, provider; shape?: value | file | mailbox | signin | { fields }, example?, presign? }',
 ];
 
