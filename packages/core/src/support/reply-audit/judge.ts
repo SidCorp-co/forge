@@ -12,8 +12,19 @@ import type {
   SupportAuditRequest,
 } from '@forge/contracts/support-reply-audit';
 import { confidentLanguageOf } from '../../conversations/index.js';
+import { liveClaimIn } from '../live-claims.js';
 import type { AnsweringFrom, AnsweringLanguage } from './answering-language.js';
-import { apiHostLinkIn, grantTalkIn, uiDirectionIn } from './code-lines.js';
+import { apiHostLinkIn, grantTalkIn, liveStateClaimIn, uiDirectionIn } from './code-lines.js';
+
+/**
+ * The reads of live state around a reply (ISS-1354): whether its own turn made one, and when the
+ * session last made one in an earlier turn (null where none). A declared read, a run, a release or
+ * deployment read and a look at a screen each count.
+ */
+export interface TurnReads {
+  thisTurn: boolean;
+  earlierAt: Date | null;
+}
 
 export interface AuditedReply {
   /** The reply as posted. */
@@ -26,6 +37,8 @@ export interface AuditedReply {
   roomKind: SupportRoomKind;
   /** The API's public hosts no person-facing link may point at (`code-lines.ts:apiHosts`). */
   apiHosts: readonly string[];
+  /** The reads around the reply, where its turn is on the record; absent, none is judged. */
+  reads?: TurnReads | undefined;
 }
 
 export interface Judgement {
@@ -54,6 +67,8 @@ export function codeFindings(reply: AuditedReply): ReplyFinding[] {
   }
   const link = apiHostLinkIn(reply.text, reply.apiHosts);
   if (link) found.push({ line: 'web_links', why: `${link} is on the API host`, by: 'code' });
+  const stale = staleStateClaim(reply);
+  if (stale) found.push({ line: 'accurate', why: stale, by: 'code' });
   const written = confidentLanguageOf(reply.text);
   const held = reply.language;
   if (written && written !== held.language) {
@@ -64,6 +79,19 @@ export function codeFindings(reply: AuditedReply): ReplyFinding[] {
     });
   }
   return found;
+}
+
+/**
+ * Why a reply's statement of a live setting, account or release rests on no read of this turn
+ * (ISS-1354): one made in an earlier turn, or none. Null where it states none, or this turn read.
+ */
+function staleStateClaim(reply: AuditedReply): string | null {
+  if (!reply.reads || reply.reads.thisTurn) return null;
+  const claim = liveStateClaimIn(reply.text) ?? liveClaimIn(reply.text);
+  if (!claim) return null;
+  return reply.reads.earlierAt
+    ? `it states "${claim}" from a read made in an earlier turn (${reply.reads.earlierAt.toISOString()}), not one made in this turn`
+    : `it states "${claim}" with no read of it made in this turn`;
 }
 
 /**

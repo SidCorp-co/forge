@@ -2,6 +2,7 @@ import { REPLY_RUBRIC_LINES, type ReplyRubricLine } from '@forge/contracts/suppo
 import { describe, expect, it } from 'vitest';
 import { mapLine } from '../act-cards.js';
 import { answeringLanguageOf, personaLanguageOf } from './answering-language.js';
+import { liveStateClaimIn } from './code-lines.js';
 import { AUDIT_RUBRIC_TEXT } from './index.js';
 import { type AuditedReply, judgeReply } from './judge.js';
 
@@ -186,5 +187,45 @@ describe('support.audit keeps the verdict on a reply the agent posted (ISS-1250)
     expect(mapLine('audit')).toMatch(
       /^- When you posted a reply: audit it at once with support\.audit /,
     );
+  });
+
+  // ISS-1354 (FB-763, adminhub-api L-46): three failed audits in adminhub-api's room, each a statement
+  // of a live setting resting on an earlier turn's read or a release seeder, after ISS-1329's teaching
+  describe('a live-state claim is held to a read of its own turn (ISS-1354)', () => {
+    const FB763 = [
+      'Dạ chị, bên mình không có tài khoản API PGPrints nên chưa map được ạ.', // i18n-allow: a quoted FB-763 reply
+      'Có sẵn ô store_id trong form nhà cung cấp rồi ạ.', // i18n-allow: a quoted FB-763 reply
+    ];
+    const earlier = new Date('2026-11-19T04:20:00Z');
+    const judged = (text: string, reads: { thisTurn: boolean; earlierAt: Date | null }) =>
+      judgeReply({ ...reply(text), roomKind: 'support', reads }, []);
+
+    it('reads each quoted reply as a claim of a live setting, and no plan or order state as one', () => {
+      expect(FB763.map(liveStateClaimIn)).toEqual(['không có tài khoản', 'Có sẵn ô']); // i18n-allow: the quoted words
+      expect(liveStateClaimIn('The PGPrints account is not set up yet.')).toBe('is not set up');
+      expect(liveStateClaimIn('Em sẽ kiểm tra tài khoản PGPrints trên staging ạ.')).toBeNull(); // i18n-allow: a plan, no claim
+      expect(liveStateClaimIn('Dạ, đơn hàng số 42 của anh đã giao hôm qua ạ.')).toBeNull(); // i18n-allow: an order's state
+    });
+
+    it('fails accurate where the claim rests on an earlier turn’s read, with that reason', () => {
+      for (const text of FB763) {
+        const j = judged(text, { thisTurn: false, earlierAt: earlier });
+        expect(j.failed, text).toEqual(['accurate']);
+        expect(j.findings[0]?.by).toBe('code');
+        expect(j.findings[0]?.why).toContain(
+          'from a read made in an earlier turn (2026-11-19T04:20:00.000Z), not one made in this turn',
+        );
+      }
+      expect(
+        judged(FB763[0] ?? '', { thisTurn: false, earlierAt: null }).findings[0]?.why,
+      ).toContain('with no read of it made in this turn');
+    });
+
+    it('passes the same claim on a read of its own turn, and judges none where the turn is not on the record', () => {
+      for (const text of FB763) {
+        expect(judged(text, { thisTurn: true, earlierAt: null }).verdict, text).toBe('pass');
+        expect(judgeReply({ ...reply(text), roomKind: 'support' }, []).verdict, text).toBe('pass');
+      }
+    });
   });
 });

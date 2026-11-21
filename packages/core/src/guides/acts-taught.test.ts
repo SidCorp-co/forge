@@ -348,3 +348,35 @@ describe('an outside call proven only against a mock is not ready for the approv
     expect(text).toMatch(/release page line reads (it|Live or Simulated)/);
   });
 });
+
+describe('a room agent states a live setting from a read of its own turn, and names who acts (ISS-1354)', () => {
+  // FB-763 (adminhub-api L-46): after ISS-1329 taught reading first, three replies still failed audit:
+  // an account stated from an earlier turn's read, a field from the release seeder, and "em" for the
+  // member's own act. The lines are where the agent reads as it writes: the guide's Answering section
+  // and support.reply's card, served beneath it.
+  const prose = body('room-agent').split(/\s+/).join(' ');
+  const answering = prose.slice(
+    prose.indexOf('### Answering'),
+    prose.indexOf('### A secret you need'),
+  );
+
+  it('the Answering section holds a live setting to a read of this turn, or says from when', () => {
+    expect(answering).toContain(
+      'A live setting, account or field is stated from a read made in this turn',
+    );
+    expect(answering).toContain('or said to be from an earlier read and when');
+    expect(answering).toContain('never from a release note or what a master said');
+  });
+
+  it('the Answering section names who does each step, never "em" for another person\'s act, and the asker as who they are', () => {
+    expect(answering).toContain('Each step names who does it, by role or name');
+    expect(answering).toContain('never "em" for another person\'s act');
+    expect(answering).toContain('the asker is addressed as the person they are');
+  });
+
+  it("support.reply's card, served beneath the guide, carries the same line", () => {
+    expect(prose).toContain(
+      'A live setting or account is stated from a read made in this turn, or said to be from an earlier read and when; each step names who does it, by role or name, never “em” for another person’s act',
+    );
+  });
+});

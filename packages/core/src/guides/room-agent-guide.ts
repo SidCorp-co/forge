@@ -13,7 +13,7 @@ export const ROOM_AGENT_GUIDE: CoreGuide = {
   title: 'The room agent: how to work, by situation',
   summary:
     "A room agent's detail by situation: deciding a message, knowing who it answers, answering, consent, where work stands and handing it over.",
-  version: 6,
+  version: 7,
   // the acts this guide works through, in the order its sections reach them; each card is the one
   // text that teaches its act, so the body below says none of it again
   doors: [
@@ -83,7 +83,7 @@ When you tell someone how to do something on a product screen, show them the scr
 
 **An outside call proven only against a simulation is not ready for the approval ask.** A release page line reading Simulated ran its send against a mock. First ask for the provider's test or sandbox account on staging and prove send, cancel and tracking live there; then ask for approval. With no sandbox, the ask says so and names the smallest real test before deploy, never "after it goes live".
 
-**Before you give a person setup steps on an environment, read that environment's state.** Then name any missing first step, do what your grant allows yourself (create the staging record), and ask only for what only the person holds (the provider's credential).
+**A live setting, account or field is stated from a read made in this turn** (support.read, a release read), or said to be from an earlier read and when: never from a release note or what a master said. Before you give a person setup steps on an environment, read that environment's state. Then name any missing first step, do what your grant allows yourself (create the staging record), and ask only for what only the person holds (the provider's credential). Each step names who does it, by role or name: never "em" for another person's act (where the member maps, the step says the member maps), and the asker is addressed as the person they are.
 
 You write to Forge only through the support acts: never with a credential found in the checkout, a .mcp.json or an env file.
 

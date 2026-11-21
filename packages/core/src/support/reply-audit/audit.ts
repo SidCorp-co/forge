@@ -11,7 +11,7 @@ import type {
   SupportAuditRequest,
   SupportAuditView,
 } from '@forge/contracts/support-reply-audit';
-import { and, desc, eq, lte } from 'drizzle-orm';
+import { and, desc, eq, inArray, lte, ne, or, sql } from 'drizzle-orm';
 import { readMessages } from '../../conversations/index.js';
 import { db } from '../../db/client.js';
 import { conversations } from '../../db/schema-conversations.js';
@@ -26,7 +26,7 @@ import { knownThread, no, type Outcome, threadUnknown } from '../outcome.js';
 import type { RoomRow } from '../store.js';
 import { type AnsweringLanguage, answeringLanguageOf } from './answering-language.js';
 import { apiHosts } from './code-lines.js';
-import { type Judgement, judgeReply } from './judge.js';
+import { type Judgement, judgeReply, type TurnReads } from './judge.js';
 
 /** The thread's last messages the room's language is read from where neither the asker nor the persona tells it. */
 const CONTEXT_MESSAGES = 12;
@@ -37,12 +37,20 @@ interface Posted {
   /** The request it named, asked in another thread of the room (ISS-1314). */
   request: string | null;
   at: Date;
+  /** The session and turn that posted it, where a turn's request did (ISS-1029). */
+  sessionId: string | null;
+  turnId: string | null;
 }
 
 /** The reply the session posted in this room's thread under that chat message id, as it posted it. */
 async function replyPosted(room: RoomRow, thread: string, message: string): Promise<Posted | null> {
   const [row] = await db
-    .select({ input: supportActions.input, at: supportActions.createdAt })
+    .select({
+      input: supportActions.input,
+      at: supportActions.createdAt,
+      sessionId: supportActions.sessionId,
+      turnId: supportActions.turnId,
+    })
     .from(supportActions)
     .where(
       and(
@@ -59,7 +67,53 @@ async function replyPosted(room: RoomRow, thread: string, message: string): Prom
     | undefined;
   if (!row || typeof input?.text !== 'string') return null;
   const request = input.request?.message;
-  return { text: input.text, request: typeof request === 'string' ? request : null, at: row.at };
+  return {
+    text: input.text,
+    request: typeof request === 'string' ? request : null,
+    at: row.at,
+    sessionId: row.sessionId,
+    turnId: row.turnId,
+  };
+}
+
+/**
+ * The acts that read what an environment holds now (ISS-1354): a declared read or a run (recorded
+ * `diagnose`), a release or deployment read, and a look at a screen.
+ */
+const STATE_READ_TOOLS = ['releases', 'deployment', 'look'] as const;
+const stateRead = or(
+  eq(supportActions.kind, 'diagnose'),
+  and(eq(supportActions.kind, 'operation'), inArray(supportActions.tool, [...STATE_READ_TOOLS])),
+);
+
+/**
+ * The reads of live state around a reply its session posted in a turn: whether that turn made one,
+ * and when the session last made one in an earlier turn. Undefined where the reply names no turn.
+ */
+async function readsAround(posted: Posted): Promise<TurnReads | undefined> {
+  if (!posted.sessionId || !posted.turnId) return undefined;
+  const ofSession = and(eq(supportActions.sessionId, posted.sessionId), stateRead);
+  const [mine] = await db
+    .select({ id: supportActions.id })
+    .from(supportActions)
+    .where(and(ofSession, eq(supportActions.turnId, posted.turnId)))
+    .limit(1);
+  if (mine) return { thisTurn: true, earlierAt: null };
+  const [earlier] = await db
+    .select({
+      at: sql<Date | null>`max(${supportActions.createdAt})`.mapWith((v) =>
+        v ? new Date(v) : null,
+      ),
+    })
+    .from(supportActions)
+    .where(
+      and(
+        ofSession,
+        ne(supportActions.turnId, posted.turnId),
+        lte(supportActions.createdAt, posted.at),
+      ),
+    );
+  return { thisTurn: false, earlierAt: earlier?.at ?? null };
 }
 
 const textOf = (input: unknown) => {
@@ -212,6 +266,7 @@ export async function auditReply(
       language: await answeringOf(room, input.thread, conversationId, posted),
       roomKind: room.kind,
       apiHosts: apiHosts(),
+      reads: await readsAround(posted),
     },
     input.failed,
   );

@@ -105,3 +105,34 @@ export function apiHostLinkIn(text: string, hosts: readonly string[]): string | 
   }
   return null;
 }
+
+/**
+ * A statement of how a live setting, account or field stands (ISS-1354, FB-763): "there is no
+ * PGPrints API account", "the store_id field is there", "it is enabled". Words of a state, never a
+ * plan: what the agent will do is no claim about what stands.
+ */
+const STATE_NOUN_VI =
+  '(?:tài\\s+khoản|account|ô|trường|field|cấu\\s+hình|thiết\\s+lập|key|khóa|dịch\\s+vụ|service|nhà\\s+cung\\s+cấp|supplier|store|cửa\\s+hàng|API)'; // i18n-allow: the Vietnamese nouns of a setting a claim names
+const STATE_CLAIMS: readonly RegExp[] = [
+  new RegExp(
+    `${START}(?:không|chưa|đã|vẫn|đang)\\s+(?:có|được)\\s+(?:sẵn\\s+)?${STATE_NOUN_VI}(?![\\p{L}\\p{N}_])`, // i18n-allow: the Vietnamese phrasing being recorded
+    'iu',
+  ),
+  new RegExp(`${START}có\\s+sẵn\\s+${STATE_NOUN_VI}(?![\\p{L}\\p{N}_])`, 'iu'), // i18n-allow: the Vietnamese phrasing being recorded
+  new RegExp(
+    `${START}(?:đã|đang|chưa|vẫn)\\s+(?:được\\s+)?(?:bật|tắt|cấu\\s+hình|thiết\\s+lập|kích\\s+hoạt)(?![\\p{L}\\p{N}_])`, // i18n-allow: the Vietnamese phrasing being recorded
+    'iu',
+  ),
+  /\b(?:has|have|had)\s+no\s+(?:[\w-]+\s+){0,3}?(?:account|field|setting|key|credential|service|supplier)s?\b/i,
+  /\bthere\s+(?:is|are)\s+(?:no|already\s+an?|an?)\s+(?:[\w-]+\s+){0,3}?(?:account|field|setting|key|service|supplier)s?\b/i,
+  /\b(?:is|are)\s+(?:now\s+|already\s+|still\s+)?(?:not\s+)?(?:enabled|disabled|turned\s+on|turned\s+off|configured|set\s+up)\b/i,
+];
+
+/** The words of the first statement of a live setting's or account's state a reply makes, or null. */
+export function liveStateClaimIn(text: string): string | null {
+  for (const form of STATE_CLAIMS) {
+    const found = form.exec(text);
+    if (found) return found[0].trim();
+  }
+  return null;
+}

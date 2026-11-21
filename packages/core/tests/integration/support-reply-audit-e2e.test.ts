@@ -43,6 +43,8 @@ async function replyAndAudit(
   ask: string,
   text: string,
   failed: Array<{ line: string; why: string }> | null,
+  /** Run after the reply is posted and before it is audited, in the same turn. */
+  inTurn?: (message: string) => Promise<void>,
 ): Promise<{ thread: string; message: string; audit: Audit | null }> {
   await w.settleWarm();
   let message = '';
@@ -52,6 +54,7 @@ async function replyAndAudit(
     if (!m) return;
     const posted = await act({ action: 'reply', thread: m.thread, text });
     message = String(posted.messageId);
+    if (inTurn) await inTurn(message);
     if (!failed) return;
     const res = await fetch(`${w.core.base}/api/projects/${w.projectId}/support/session/audits`, {
       method: 'POST',
@@ -239,4 +242,37 @@ describe('a room agent audits its own reply with support.audit (ISS-1250)', () =
     expect(audit?.status, JSON.stringify(audit?.body)).toBe(200);
     expect(audit?.body).toMatchObject({ verdict: 'pass', failed: [] });
   }, 90_000);
+
+  // ISS-1354 (FB-763): "Không có tài khoản API PGPrints" rested on a supplier read from an earlier
+  // turn; the audit's `accurate` line, told by code, fails a live-state claim no read of its own turn holds
+  it('fails accurate on a live-state claim resting on an earlier turn’s read, and passes it on a read of its own turn', async () => {
+    // a declared read of the supplier, recorded in the reply's own turn as `support.read` records one
+    const readInTurnOf = async (message: string) => {
+      await rows(sql`INSERT INTO support_actions (room_id, project_id, thread, kind, actor_kind, tool, input, session_id, turn_id)
+               SELECT room_id, project_id, thread, 'diagnose', 'session', 'read', '{"name":"supplier"}'::jsonb, session_id, turn_id
+                 FROM support_actions WHERE kind = 'reply' AND external_id = ${message}`);
+    };
+    const claim = 'There is no PGPrints API account on staging yet.';
+    const first = await replyAndAudit(
+      'Does staging have the PGPrints account?',
+      claim,
+      [],
+      readInTurnOf,
+    );
+    expect(first.audit?.body, JSON.stringify(first.audit?.body)).toMatchObject({
+      verdict: 'pass',
+      failed: [],
+    });
+    const later = await replyAndAudit('And the PGPrints account, is it there now?', claim, []);
+    expect(later.audit?.status, JSON.stringify(later.audit?.body)).toBe(200);
+    expect(later.audit?.body).toMatchObject({ verdict: 'fail', failed: ['accurate'] });
+    const [finding] = (later.audit?.body.findings ?? []) as Array<{
+      line: string;
+      why: string;
+      by: string;
+    }>;
+    expect(finding).toMatchObject({ line: 'accurate', by: 'code' });
+    expect(finding?.why).toContain('"There is no PGPrints API account"');
+    expect(finding?.why).toContain('from a read made in an earlier turn');
+  }, 120_000);
 });
