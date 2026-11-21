@@ -43,7 +43,9 @@
  *                      each criterion it did not meet (named in `unmet`, or      CLOSE_CRITERION_UNPLACED
  *                      its newest verdict a fail) moved out on the record, to an
  *                      issue or the requirement (`close-in-scope.ts`); a release's
- *                      close answers its own criteria hold
+ *                      close answers its own criteria hold, but closes none
+ *                      whose newest verdict fails this round
+ *                      (`release-close-failing.ts`)
  *                      criteria text holding words, no live criterion read    CLOSE_CRITERIA_TEXT_UNREAD
  *                      from it: the holder adds them once first
  *                      the holder's close: a release note recorded, `Skip`       CLOSE_RELEASE_NOTE_MISSING

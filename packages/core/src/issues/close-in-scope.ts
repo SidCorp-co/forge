@@ -25,6 +25,7 @@ import { designShortfall, readDesignDelivery } from './design-delivered-guard.js
 import { issueDisplayIds } from './display-ids.js';
 import { issueIdOfKey } from './issue-route-ref.js';
 import { postIssueNotice } from './ports.js';
+import { releaseCloseFailing } from './release-close-failing.js';
 import type { GuardContext, GuardFault } from './transition-guards.js';
 
 /** One criterion the closer says it did not meet, and where it goes, as the transition body sends it. */
@@ -347,7 +348,8 @@ export async function postMovedOut(
 
 /**
  * closed from awaiting_release, met in scope: a release closes what it claimed
- * (`issues.release_batch_run_id`) and answers its own criteria hold; a design-only issue needs no one,
+ * (`issues.release_batch_run_id`) and answers its own criteria hold, refused where one fails this
+ * round (`release-close-failing.ts`); a design-only issue needs no one,
  * its approved revisions being what it delivered (REQ-45 BC-4), and neither does an adoption-only one
  * while its record holds (REQ-5 BC-17). Otherwise the close is the holding run's (`notTheHolder`, as
  * its move here was, `held` naming who else holds it), over its release note (`close-note-guard.ts`),
@@ -364,7 +366,12 @@ export async function inScopeGuard(
     sql`SELECT release_batch_run_id FROM issues WHERE id = ${ctx.issue.id}`,
   )) as unknown as Array<{ release_batch_run_id: string | null }>;
   if (rows[0]?.release_batch_run_id) {
-    return (await criteriaTextUnread(ctx)) ?? unmetUnread(ctx, 'a release claimed it');
+    // its own criteria hold only where none fails this round (ISS-1397): one that does is not closed
+    return (
+      (await criteriaTextUnread(ctx)) ??
+      unmetUnread(ctx, 'a release claimed it') ??
+      (await releaseCloseFailing(ctx, UNMET_DESTINATIONS))
+    );
   }
   // an adoption-only issue ships nothing either: the record it adopted is what landed (REQ-5 BC-17)
   const adoption = await readAdoptionDelivery(ctx.executor, ctx.issue.id);

@@ -170,15 +170,21 @@ describe('a landing is recorded as the release of a project with no production e
     expect(await statusOf(issue)).toBe('closed');
   });
 
-  it('records a landing over a fail at the landed head, naming the criterion beside it', async () => {
+  // ISS-1397: the landing is recorded whole, and it closes no issue over a failing criterion
+  it('records a landing over a fail at the landed head, naming the criterion beside it and leaving its issue open', async () => {
     const issue = await landedIssue(5, F4);
     await verdict(issue, 1, 'pass', F4);
     await verdict(issue, 2, 'fail', F4);
     await verdict(issue, 3, 'pass', F4);
+    const met = await landedIssue(6, F4);
+    await judgedAll(met, F4);
 
-    const res = await record([issue], F4);
+    const res = await record([issue, met], F4);
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(res.body.closed).toEqual([met]);
+    expect(res.body.failed).toMatchObject([{ id: issue }]);
+    expect(res.body.failed[0].reason).toContain("criterion 2's newest verdict is a fail");
     expect(readingsOf(res.body)[0]).toBe('Shipped with 1 failing criterion: ISS-5 c2');
     expect(readingsOf(res.body)).toContain(
       `ISS-5: 3 live criteria, c1, c3 pass at \`${F4.slice(0, 12)}\`; c2 failed at \`${F4.slice(0, 12)}\``,
@@ -187,10 +193,12 @@ describe('a landing is recorded as the release of a project with no production e
       count: 1,
       criteria: [{ issueId: issue, issueKey: 'ISS-5', criterion: 2 }],
     });
-    expect(await statusOf(issue)).toBe('closed');
-    // the release says it whole, on its list and its page, as the follow-up's evidence
+    expect(await statusOf(issue)).toBe('awaiting_release');
+    // the release says it whole, on its list and its page, as the follow-up's evidence; ISS-5,
+    // still at the gate, waits on the next release's draft
     const list = await ok(api(token, 'GET', `/api/projects/${projectId}/releases`));
     expect(list.releases).toMatchObject([
+      { version: '0.2.0', state: 'draft' },
       {
         version: '0.1.0',
         shippedFailing: { count: 1, sentence: 'Shipped with 1 failing criterion: ISS-5 c2' },
