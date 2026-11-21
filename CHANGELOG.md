@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.777] - 2026-11-21
+
+The owner's new question in a project thread is answered again
+
+### Fixed
+
+- **The owner's new message in a project thread is answered again.** Where several of his asks wait and it replies to none, each asker is told, and the operations room takes it as a turn instead of keeping it silently.
+
 ## [0.4.0-dev.776] - 2026-11-21
 
 Beta mirror names every ported pair; record-state reads and shipped-in drafts
