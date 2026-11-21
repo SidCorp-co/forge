@@ -115,7 +115,7 @@ describe('a search sent as a POST, at the token gate (ISS-1400)', () => {
     expect(body.details?.wanted).toBe('knowledge:write');
   });
 
-  it("refuses the memory upsert to a read-only token for lacking the write scope", async () => {
+  it('refuses the memory upsert to a read-only token for lacking the write scope', async () => {
     grant(['read'], ['knowledge:read', 'knowledge:write']);
     expect((await refusal(await post('/api/memory'))).code).toBe('INSUFFICIENT_SCOPE');
   });
