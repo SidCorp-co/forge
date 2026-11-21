@@ -6,7 +6,8 @@
 // refused by name (CLOSE_CRITERION_UNPLACED): silent loss is the one thing ruled out.
 //
 // A criterion stands unmet where the closer names it in `unmet`, or where its newest verdict is a
-// fail. Moving one retires it on the closing issue, recording where it went
+// fail this round, not one at or before the issue's latest reopen (`release-close-failing.ts:failingThisRound`,
+// the release's close reading the same). Moving one retires it on the closing issue, recording where it went
 // (`issue_criteria.moved_to_criterion_id`, `moved_to_requirement_id`), and appends it, trace and all,
 // to the destination issue, whose criteria text is rendered again from its rows. The requirement holds
 // one through the BC it traces, which stands with no live criterion proving it once this one retires.
@@ -25,7 +26,7 @@ import { designShortfall, readDesignDelivery } from './design-delivered-guard.js
 import { issueDisplayIds } from './display-ids.js';
 import { issueIdOfKey } from './issue-route-ref.js';
 import { postIssueNotice } from './ports.js';
-import { releaseCloseFailing } from './release-close-failing.js';
+import { failingThisRound, releaseCloseFailing } from './release-close-failing.js';
 import type { GuardContext, GuardFault } from './transition-guards.js';
 
 /** One criterion the closer says it did not meet, and where it goes, as the transition body sends it. */
@@ -214,8 +215,10 @@ export async function closeScopeOf(
     }
     moves.push({ ...base, to: { kind: 'issue', issueId: dest.id, key: dest.key } });
   }
-  for (const c of live) {
-    if (named.has(c.n) || c.latest?.verdict !== 'fail') continue;
+  // a fail recorded at or before the latest reopen judged the build it rejected: the release's close
+  // ignores it (ISS-1397), and so does this one, one rule for both closes
+  for (const c of await failingThisRound(executor, issue.id)) {
+    if (named.has(c.n)) continue;
     unplaced.push({
       criterion: c.n,
       why: 'its newest verdict is a fail, and the close names no destination for it',

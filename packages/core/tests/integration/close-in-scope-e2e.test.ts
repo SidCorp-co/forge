@@ -5,7 +5,8 @@
  *
  * - the run holding an issue closes it from `awaiting_release` with no release, its merge recorded;
  * - a close leaving a criterion it did not meet with no destination is refused by name, naming the
- *   criterion and the three places it may go;
+ *   criterion and the three places it may go; a fail recorded at or before the issue's latest reopen
+ *   holds the holder's close back no more than a release's (ISS-1397), and one after it still does;
  * - a close naming a destination for each moves each one out on the record first, and each
  *   destination holds its criterion;
  * - a release still closes an issue it claims, and only a release makes the work read live: the
@@ -23,6 +24,7 @@
  * @direct-test-of packages/core/src/issues/transition-body.ts
  * @direct-test-of packages/core/src/issues/merged-at.ts
  * @direct-test-of packages/core/src/issues/release-evidence.ts
+ * @direct-test-of packages/core/src/issues/release-close-failing.ts
  * @direct-test-of packages/core/src/pipeline/release-runs.ts
  * @direct-test-of packages/core/src/forecast/scope.ts
  * @direct-test-of packages/core/src/forecast/facts.ts
@@ -214,6 +216,33 @@ describe('an issue closes when met in scope (ISS-1062)', () => {
     expect(first?.detail).toContain('a new issue filed for it first');
     expect(first?.detail).toContain('the requirement the issue serves');
     expect(await statusOf(id)).toBe('awaiting_release');
+  });
+
+  it('closes over a fail its latest reopen voided, as a release does, and still refuses one after it', async () => {
+    const reopened = async (id: string) => {
+      await rows(sql`
+        INSERT INTO kernel_transitions (entity, entity_id, from_status, to_status, actor_type, actor_agency, source, created_at)
+        VALUES ('issue', ${id}, 'awaiting_release', 'reopen', 'system', 'agent', 'fixture', clock_timestamp())`);
+      await rows(sql`UPDATE issues SET merged_at = clock_timestamp() WHERE id = ${id}`);
+    };
+    // the fail judged the build the reopen rejected: the fix landed since, and nothing fails this round
+    const { id: voided } = await landed(['the field is listed', 'the field is sortable']);
+    await failVerdict(voided, 2);
+    await reopened(voided);
+    await lease(voided);
+    const r = await close(voided);
+    expect(r.status, JSON.stringify(r.json)).toBe(200);
+    expect(await statusOf(voided)).toBe('closed');
+
+    const { id: failsAgain } = await landed(['the field is listed', 'the field is sortable']);
+    await reopened(failsAgain);
+    await failVerdict(failsAgain, 2);
+    await lease(failsAgain);
+    const again = await close(failsAgain);
+    expect(again.status, JSON.stringify(again.json)).toBe(422);
+    expect(refusalsOf(again)[0]?.code).toBe('CLOSE_CRITERION_UNPLACED');
+    expect(refusalsOf(again)[0]?.detail).toContain('criterion 2: its newest verdict is a fail');
+    expect(await statusOf(failsAgain)).toBe('awaiting_release');
   });
 
   it('refuses a criterion the closer names unmet with no destination, and one sent to a frozen issue', async () => {
