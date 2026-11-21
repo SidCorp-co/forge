@@ -415,6 +415,17 @@ describe('a room agent says what a screen shows only from a look at it (ISS-1356
     expect(answering).toContain('a question asked again is counted against your turn');
   });
 
+  // ISS-1385: the card said "Results only: no acknowledgement", against the guide's line above
+  it("support.reply's card teaches the same rule as the guide's Answering section", () => {
+    expect(prose).toContain(
+      'An owner’s message gets the answer, or one “on it, will report at …” line within 30 minutes; no other acknowledgement, plan or progress',
+    );
+    expect(prose).not.toContain('Results only: no acknowledgement');
+    expect(answering).toContain(
+      'or a line saying you are on it and when you will report, within 30 minutes',
+    );
+  });
+
   it("serves support.look's card beneath the guide, and support.reply's card carries the line", () => {
     expect(prose).toContain('### `support.look`');
     expect(prose).toContain(

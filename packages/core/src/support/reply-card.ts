@@ -22,7 +22,7 @@ export const REPLY_CARD = {
     },
   ],
   practice: [
-    'Results only: no acknowledgement, plan or progress, save the one reply that an ask went to the team.',
+    'An owner’s message gets the answer, or one “on it, will report at …” line within 30 minutes; no other acknowledgement, plan or progress, save the one reply that an ask went to the team.',
     // ISS-1354 (FB-763): three failed audits after ISS-1329 taught reading first, at a line the agent did not read as it wrote
     // ISS-1356 (owner 2026-11-19): a menu item confirmed to a PGPrints user from a master's post, not a look
     'What a screen shows (a button, menu item, field, page) is said only from a look this turn with support.look; where you could not look, say you have not seen it yet, never the thing anyway.',
