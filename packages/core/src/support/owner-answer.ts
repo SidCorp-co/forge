@@ -178,7 +178,7 @@ async function tellSeveralWait(
       kind: 'message_in',
       actorKind: 'core',
       input: {
-        note: `The owner wrote in the technical channel (message ${message.id}): ${JSON.stringify(message.text.slice(0, 400))}. ${asks.length} questions wait for him there (${questions}), and it replies to none of them, so core settled none. Where his words answer one or more of yours, settle each as his citing message ${message.id}: support.answer_question { thread, forgeQuestion, message } for a question, support.release_decision for a release. Where you cannot tell which he means, ask him once in the technical channel with support.technical { need: "ask" }.`,
+        note: `The owner wrote in the technical channel (message ${message.id}): ${JSON.stringify(message.text.slice(0, 400))}. ${asks.length} questions wait for him there (${questions}), and it replies to none of them, so it was recorded on none. Where his words answer one or more of yours, settle each as his citing message ${message.id}: support.answer_question { thread, forgeQuestion, message } for a question, support.release_decision for a release. Where you cannot tell which he means, ask him once in the technical channel with support.technical { need: "ask" }.`,
       },
       externalId: `owner-answer-several:${message.id}:${ask.id}`,
     });

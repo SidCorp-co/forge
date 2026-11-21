@@ -256,14 +256,24 @@ describe('ISS-873: a parked question in a channel agent project posts nothing by
     // his message replying to neither of the two waiting is recorded on none, and each asker is told
     await w.settleWarm();
     const told = new Set<string>();
+    const teach: string[] = [];
     w.box.model = async (turn) => {
       for (const m of turn.messages) {
-        if (m.from === 'forge' && m.text.includes('recorded on none')) told.add(m.thread);
+        if (m.from !== 'forge' || !m.text.includes('recorded on none')) continue;
+        told.add(m.thread);
+        teach.push(m.text);
       }
     };
-    await chat.sayIn(DM, chat.alice, 'Có');
+    const bare = await chat.sayIn(DM, chat.alice, 'Có');
     await expect.poll(() => told.size, { timeout: 20_000 }).toBe(2);
     expect((await question(first.id))?.status).toBe('open');
+    // ISS-1347 (FB-786): one bare "ok" may answer several, so the agent may settle each it answers,
+    // citing his message, which its own record now holds
+    expect(teach[0]).toContain('support.answer_question { thread, forgeQuestion, message }');
+    const [copied] = await rows<{ n: number }>(sql`
+      SELECT count(*)::int AS n FROM support_actions
+       WHERE external_id = ${bare} AND kind = 'message_in' AND actor_key = ${OWNER_ID}`);
+    expect(copied?.n).toBe(1);
     // his reply to the first ask's line answers it, reaching the thread it was asked from
     const line = asks()[0]?.id ?? '';
     const said = await w.hear(() => chat.sayIn(DM, chat.alice, 'Có, cho tự chuyển', line));
