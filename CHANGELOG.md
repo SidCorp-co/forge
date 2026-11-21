@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.782] - 2026-11-21
+
+Releases keep an issue open when its latest live-criterion verdict failed
+
+### Fixed
+
+- **A release no longer closes an issue over a failing criterion.** The issue stays waiting for release, named among those the release could not close, with the criterion and the way on: move it out, or fix and re-judge it.
+
 ## [0.4.0-dev.781] - 2026-11-21
 
 Every beta mirror pair reported, and a self-audit names any served route
