@@ -9,6 +9,16 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.776] - 2026-11-21
+
+Beta mirror names every ported pair; record-state reads and shipped-in drafts
+
+### Fixed
+
+- **The beta mirror names every ported pair.** A beta issue named by its closed dev twin is adopted before the in-flight and before-ruling gates, so it is mirrored closed or refused by name, never passed over silently.
+- **A release draft holding issues an earlier release shipped now names shipped-in-records.** Its page and standing carry the act with the version it reads, and the release actions card says when to use the door.
+- **A room agent states an issue's or release's status only from a read this turn.** Its guide, reply card and audit now cover Forge record state, and an issue reads closed only once its release has deployed.
+
 ## [0.4.0-dev.775] - 2026-11-21
 
 Merge marks: empty and foreign-repo marks no longer stall releases; one owner-reply rule
