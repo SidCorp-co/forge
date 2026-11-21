@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.783] - 2026-11-21
+
+Hand fixes write the release record before any close by hand
+
+### Fixed
+
+- **A fix made by hand is taught to record its release before closing.** The release record closes the issue; a release refused over an issue already closed now says so and how to go on.
+
 ## [0.4.0-dev.782] - 2026-11-21
 
 Releases keep an issue open when its latest live-criterion verdict failed
