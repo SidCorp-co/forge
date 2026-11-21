@@ -487,6 +487,31 @@ describe('a release carries an issue its holder closed (ISS-1062)', () => {
     expect(await shippedIn(id)).toMatchObject({ version: '4.1.0' });
   });
 
+  // ISS-1399 (FB-807): pixelight's master closed first, and read only "not at the release gate"
+  it('refuses one its holder closed outside git, saying it is closed and the way on', async () => {
+    const { id, key } = await landed(['the storefront page shows the new price']);
+    await rows(sql`
+      UPDATE issues SET merged_commit_sha = NULL,
+             merged_artifacts = '[{"surface":"storefront","ref":"price page"}]'::jsonb
+       WHERE id = ${id}`);
+    await lease(id);
+    ok(await close(id));
+    expect(await roster()).not.toContain(id);
+    const r = await recordRelease([id], '4.3.0');
+    expect(r.status, JSON.stringify(r.json)).toBe(409);
+    const [first] = refusalsOf(r);
+    expect(first?.code).toBe('CLAIM_CONFLICT');
+    for (const said of [
+      `${key} is already \`closed\`, and no release can carry it`,
+      'Send the release again without it',
+      'reopen it, bring it back to `awaiting_release` and send it again',
+      'write the release record before any close by hand',
+    ]) {
+      expect(first?.detail).toContain(said);
+    }
+    expect(await shippedIn(id)).toBeNull();
+  });
+
   it('asks the reporter of feedback it carries to confirm only once a release holds it', async () => {
     const carrier = await landed(['the catalog lists the new field']);
     const filed = ok(

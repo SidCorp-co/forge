@@ -443,3 +443,17 @@ describe('a room agent says what a screen shows only from a look at it (ISS-1356
     );
   });
 });
+
+// ISS-1399 (FB-807): the row taught close-then-record, and the record refused the closed issue
+describe('the lifecycle guide teaches a fix made by hand to record its release before any close', () => {
+  it('names the release record, which closes it, before a close by hand', () => {
+    const row =
+      body('pipeline-and-issue-lifecycle')
+        .split('\n')
+        .find((r) => r.startsWith('| Finished the work entirely by hand')) ?? '';
+    expect(row).toContain('`awaiting_release`, then its release record, which closes it');
+    expect(row).toContain('`closed` by hand only where no record closes it');
+    expect(row).toContain('`CLAIM_CONFLICT`');
+    expect(row).not.toContain('then `closed` once its criteria are met in scope');
+  });
+});

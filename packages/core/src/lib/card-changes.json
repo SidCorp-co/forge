@@ -215,9 +215,9 @@
     "by": "ISS-1251"
   },
   "POST /api/issues/:id/merge": {
-    "hash": "5d4b88a469fc99e4",
-    "on": "2026-11-17",
-    "by": "ISS-1256"
+    "hash": "65663468a8e2db18",
+    "on": "2026-11-21",
+    "by": "ISS-1399"
   },
   "POST /api/issues/:id/merge-check": {
     "hash": "b0adebc07484b37d",

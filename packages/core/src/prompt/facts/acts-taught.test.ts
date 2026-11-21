@@ -16,6 +16,7 @@ import { ISSUE_FLOW_GUIDE } from '../../guides/issue-flow-guide.js';
 import { type CatalogDoor, cardText } from '../../lib/door-catalog.js';
 import { servedDoorCatalog } from '../../mcp/door-catalog.js';
 import { releaseBatchStatePrompt } from '../state-prompts/release-batch.js';
+import { affordanceRows } from './affordance-cards.js';
 import {
   DRIVE_RULES_TEXT,
   DRIVE_TOOL_REFERENCE_TEXT,
@@ -109,6 +110,21 @@ describe("a run's doors teach, on their cards, the acts that name what they wait
   it('marks an artifact another issue carries', () => {
     for (const word of ['"carriedBy":"<that issue\'s key>"', 'ARTIFACT_CARRIER_SHIPPED']) {
       expect(MARK).toContain(word);
+    }
+  });
+
+  // ISS-1399 (FB-807): pixelight's master closed first, and its release record was refused CLAIM_CONFLICT
+  it('teaches a fix made by hand to write its release record before any close by hand', () => {
+    const row = affordanceRows()
+      .split('\n')
+      .find((r) => r.startsWith('| A fix made by hand'));
+    for (const text of [MARK, row ?? '']) {
+      const flat = text.replace(/\s+/g, ' ');
+      const record = flat.indexOf('then write its release record, which closes it');
+      expect(record, text).toBeGreaterThan(flat.indexOf('move it to `awaiting_release`'));
+      expect(flat).toContain('close it by hand while you hold it only where no record closes it');
+      expect(flat).toContain('`CLAIM_CONFLICT`');
+      expect(flat).not.toContain('and close it while you hold it');
     }
   });
 

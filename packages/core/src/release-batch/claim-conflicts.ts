@@ -255,8 +255,11 @@ function closedSentences(list: ClaimConflict[]): string {
     );
   }
   if (rest.length > 0) {
+    // its holder closed it before any release claimed it (ISS-1399): the way on, and the order that avoids it
+    const it = agrees(rest.length, 'it', 'them');
+    const its = agrees(rest.length, 'its', 'their');
     out.push(
-      `${keys(rest)} ${isAre(rest)} \`closed\` with nothing a release carries: design-only, adoption-only, closed with no merge recorded, or closed before its holder could close it met in scope, which keeps what it holds.`,
+      `${keys(rest)} ${isAre(rest)} already \`closed\`, and no release can carry ${it}: a design-only, adoption-only or outside-git close was ${its} delivery, and a close with no merge recorded, or before its holder could close it met in scope, keeps what it holds. Send the release again without ${it}; where this release must carry ${its} work, reopen ${it}, bring ${it} back to \`awaiting_release\` and send ${it} again. A release closes what it carries, so write the release record before any close by hand.`,
     );
   }
   return out.join(' ');

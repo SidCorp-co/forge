@@ -225,8 +225,9 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     situations: [
       {
         when: 'A fix made by hand, outside the pipeline',
-        do: 'mark it merged (`issues/<id>/merge -X POST`, naming where it landed), then move it to `awaiting_release` and close it while you hold it, each criterion it did not meet named in `unmet` with where it goes; the release record says when it is live (with no production environment, `projects/<projectId>/release-records`)',
-        watch: 'an unmet criterion with nowhere to go is refused `CLOSE_CRITERION_UNPLACED`',
+        do: 'mark it merged (`issues/<id>/merge -X POST`, naming where it landed), move it to `awaiting_release`, then write its release record, which closes it (with no production environment, `projects/<projectId>/release-records`); close it by hand while you hold it only where no record closes it, each criterion it did not meet named in `unmet` with where it goes',
+        watch:
+          'a close by hand before the record can leave the record refused `CLAIM_CONFLICT`; an unmet criterion with nowhere to go is refused `CLOSE_CRITERION_UNPLACED`',
       },
       {
         when: 'your change landed on the branch it was cut for',
