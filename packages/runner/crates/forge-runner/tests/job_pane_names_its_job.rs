@@ -44,7 +44,7 @@ fn one_call_core() -> (String, mpsc::Receiver<String>) {
 /// `forge-runner api` run with `job` as `$FORGE_JOB`, where it names one, against `core`.
 fn api_call(core: &str, job: Option<&str>) -> (Output, Scratch) {
     let root = std::env::temp_dir().join(format!("frjn-{}", uuid::Uuid::new_v4().simple()));
-    let daemon = root.join("xdg/forge-runner");
+    let daemon = root.join("daemon");
     std::fs::create_dir_all(&daemon).unwrap();
     std::fs::write(
         daemon.join("config.toml"),
@@ -57,7 +57,10 @@ fn api_call(core: &str, job: Option<&str>) -> (Output, Scratch) {
         .env_clear()
         .env("PATH", "/usr/bin:/bin")
         .env("HOME", root.join("home"))
-        .env("XDG_CONFIG_HOME", root.join("xdg"))
+        // The config dir is named by the runner's own variable, as a daemon names it to every
+        // pane: `XDG_CONFIG_HOME` is read on linux alone, and macOS and windows resolve the OS
+        // config dir under the home or the profile, where no `config.toml` stands.
+        .env("FORGE_RUNNER_CONFIG_DIR", &daemon)
         .env("FORGE_RUNNER_CRED_STORE", "file")
         .env("FORGE_PAT", "forge_pat_person")
         .env("FORGE_PROJECT_SLUG", "forge");
