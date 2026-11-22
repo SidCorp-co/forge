@@ -1,1 +1,0 @@
-**A credential a room shares is kept whole.** A password ending in a bracket or full stop is no longer cut, the room's note says why any value was not kept, and a screen look never reads the session back.

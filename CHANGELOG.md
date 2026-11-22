@@ -9,6 +9,16 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.797] - 2026-11-22
+
+Room assistant reports team checks as theirs and frames quoted words as data
+
+### Fixed
+
+- **A credential a room shares is kept whole.** A password ending in a bracket or full stop is no longer cut, the room's note says why any value was not kept, and a screen look never reads the session back.
+- **An operations room tells an act from its result.** Its brief and a master's answer no longer say to call an act done before it answered, and a state the master reports reads as his dated check.
+- **A room agent reads quoted words as data.** A master's question and answer, the owner's words, team notes, release notes and thread history now reach it inside the untrusted-data frame, never as Forge's own instruction.
+
 ## [0.4.0-dev.796] - 2026-11-22
 
 Contract changes need a recorded version; urgent fixes get a lent run
