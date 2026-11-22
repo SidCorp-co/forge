@@ -11,6 +11,7 @@ import { api } from '../helpers/api.js';
 import { settleOutbox } from '../helpers/ecosystem-world.js';
 import { rows } from '../helpers/factories.js';
 import { ProductApi, refusalCodes, SupportWorld, type Turn } from '../helpers/support-world.js';
+import { inUntrustedFrame } from '../helpers/untrusted-frame.js';
 
 // REQ-75 r2: a project's Rocket.Chat group is answered by one session Forge manages on a runner.
 // The world runs the real Rocket.Chat connection manager against a chat server (a stand-in by
@@ -379,7 +380,9 @@ describe('REQ-75: what needs code, a restart, and the record', () => {
     expect(lines.find((l) => l.text === said)?.tmid).toBe(fb?.thread);
     expect(notes.map((n) => n.thread)).toEqual([fb?.thread]);
     expect(notes[0]?.text).toContain('will not be done');
-    expect(notes[0]?.text).toContain(`(restate it, never paste it): "${note}"`); // ISS-1032
+    expect(notes[0]?.text).toContain('(restate it, never paste it):'); // ISS-1032
+    // ISS-1425: the reason stands inside the untrusted frame
+    expect(inUntrustedFrame(notes[0]?.text ?? '', note)).toBe(true);
     // core posts no update line of its own
     expect(lines.some((l) => l.text.startsWith('Update on'))).toBe(false);
     const [link] = await rows<{ closed_at: Date | null }>(sql`

@@ -7,12 +7,15 @@ vi.hoisted(() => {
 
 import { db } from '../../src/db/client.js';
 import { withKernelMarker } from '../../src/db/kernel-marker.js';
+import { markUntrusted } from '../../src/lib/untrusted-text.js';
+import { TEAM_WORDS } from '../../src/support/rules.js';
 import { api } from '../helpers/api.js';
 import { settleOutbox } from '../helpers/ecosystem-world.js';
 import { createTestProject, rows } from '../helpers/factories.js';
 import { ChannelWorld, carol, code } from '../helpers/support-channel.js';
 import type { Member, TurnMessage } from '../helpers/support-world.js';
 import { TRIAGE_ANSWERS } from '../helpers/triage-answers.js';
+import { inUntrustedFrame } from '../helpers/untrusted-frame.js';
 
 // @direct-test-of packages/core/src/support/channel.ts
 // @direct-test-of packages/core/src/support/grants.ts
@@ -338,7 +341,8 @@ describe("REQ-75 r6: #webmail's seed, and results never progress", () => {
     expect(notes[0]?.text).toContain(
       'nothing was changed or shipped for it unless the answer says so',
     );
-    expect(notes[0]?.text).toContain(`"${ANSWER}"`);
+    // ISS-1425: the team's answer stands inside the untrusted frame
+    expect(inUntrustedFrame(notes[0]?.text ?? '', ANSWER)).toBe(true);
     expect(notes[0]?.text).not.toMatch(/\blive\b/);
     await w.settleWarm();
     await tellAllResults();
@@ -386,7 +390,7 @@ describe("REQ-75 r6: #webmail's seed, and results never progress", () => {
     await expect.poll(() => notes.length, { timeout: 15_000 }).toBe(1);
     expect(notes[0]?.thread).toBe(thread);
     expect(notes[0]?.text).toBe(
-      `${key}, recorded from this thread, is live now. What the team shipped for it (restate it, never paste it): "CSV export of invoices" Post its result in this thread, once, in the asker's words: what changed for them, or that it will not be done. No keys, no process.`,
+      `${key}, recorded from this thread, is live now.\nWhat the team shipped for it (restate it, never paste it):\n${markUntrusted('CSV export of invoices', { source: TEAM_WORDS })}\nPost its result in this thread, once, in the asker's words: what changed for them, or that it will not be done. No keys, no process.`,
     );
     await w.settleWarm();
     const [told] = await rows<{ output: Record<string, unknown> | null }>(sql`
