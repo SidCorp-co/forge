@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.794] - 2026-11-22
+
+Release reports keep the assistant's reply; superseded attempts name the live holder
+
+### Fixed
+
+- **A release-check report no longer erases the room agent's answer.** A report updates only its own earlier post, every edit is checked against the message's record, and an owner's message no turn took is listed for the master.
+- **A superseded release attempt's refusal names who holds the run.** A later attempt that failed after starting is named as holding it, as the guard reads it, never "no attempt holds the run" (ISS-1418).
+
 ## [0.4.0-dev.793] - 2026-11-22
 
 Lost-pane work backs off, and a queued release retry no longer takes the run
