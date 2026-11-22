@@ -1,9 +1,10 @@
 // A success answer a handler declares for the API contract (ISS-1412): the generator
-// (`api-contract/openapi.ts`) reads it off the handler, as it reads a validator's schema, and writes it
+// (`api-contract/openapi.ts`) reads it off a pass-through middleware, as it reads rawBody(), and writes it
 // under the operation's status. A route answers one body to every caller, but a door ahead of it may
 // answer its own credential with another, so a declaration names the credential it is answered under,
 // and the contract keeps every other caller's answer undeclared beside it.
 
+import type { MiddlewareHandler } from 'hono';
 import type { z } from 'zod';
 
 export interface DeclaredResponse {
@@ -20,8 +21,15 @@ const declared = new WeakMap<object, DeclaredResponse>();
 
 export const declaredResponses: Pick<WeakMap<object, DeclaredResponse>, 'get'> = declared;
 
-/** `handler`, its answer declared for the contract; the handler itself runs unchanged. */
-export function declareResponse<H extends object>(handler: H, response: DeclaredResponse): H {
-  declared.set(handler, response);
-  return handler;
+/**
+ * A middleware that only passes on, mounted beside the handler that answers, carrying that answer's
+ * declaration as `rawBody()` carries a body's: the check primitive the answering handler calls stays
+ * in its own module, never handed out as a value.
+ */
+export function declaredResponse(response: DeclaredResponse): MiddlewareHandler {
+  const middleware: MiddlewareHandler = async (_c, next) => {
+    await next();
+  };
+  declared.set(middleware, response);
+  return middleware;
 }

@@ -537,9 +537,9 @@ the caller's shell cannot mount a different route set.
 
 **What the contract does not say, it says it does not say.** Every operation carries one `default`
 response whose description reads *Undeclared* — the same text everywhere, so a differ sees a response
-being declared as the change it is. A handler declares a success answer with
-`packages/core/src/middleware/declared-response.ts:declareResponse`, naming its method, status and the
-credential it is given under; the generator writes it at exactly that route
+being declared as the change it is. A route declares a success answer by mounting
+`packages/core/src/middleware/declared-response.ts:declaredResponse` beside the handler that gives
+it, naming its method, status and the credential it is given under; the generator writes it at exactly that route
 (`packages/core/src/api-contract/declared-answers.ts:declaredAnswers`), its schema anyOf that body and
 every other caller's, which stays undeclared. The feedback server key's read is the one declared
 (ISS-1412). `x-forge-validated`

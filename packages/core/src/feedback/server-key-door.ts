@@ -28,13 +28,13 @@ import {
   type FeedbackServerKeyReadResponse,
   feedbackServerKeyReadResponseSchema,
 } from '@forge/contracts/feedback-server-keys';
-import { type Context, Hono, type MiddlewareHandler } from 'hono';
+import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { refused } from '../lib/refusal.js';
 import { readServerKeyBearer, serverKeyScopeRefusal } from '../middleware/bearer.js';
-import { declareResponse } from '../middleware/declared-response.js';
+import { declaredResponse } from '../middleware/declared-response.js';
 import { consumeRateLimit } from '../middleware/rate-limit.js';
 import { strictBody } from '../middleware/zod-validator.js';
 import { filedReadOf, rowIn } from './read.js';
@@ -153,23 +153,11 @@ feedbackServerKeyDoor.use('/:id/feedback', async (c, next) => {
   return fileWithServerKey(c, token);
 });
 
-// one segment only: `…/feedback/:fb/similar` and the like pass on, and `bearer.ts` refuses them
-const readDoor: MiddlewareHandler = async (c, next) => {
-  const token = readServerKeyBearer(c);
-  if (token === null) return next();
-  const ref = c.req.param('fb') ?? '';
-  if (c.req.method !== 'GET' || !/^(?:FB-)?\d{1,9}$/i.test(ref)) {
-    throw serverKeyScopeRefusal(
-      `${ADMITS} by its key (FB-n); ${c.req.method} ${c.req.path} is not that`,
-    );
-  }
-  return readWithServerKey(c, token, ref);
-};
-
-// the published contract carries this answer, so a product can pin the version that has its fields
+// one segment only: `…/feedback/:fb/similar` and the like pass on, and `bearer.ts` refuses them; the
+// published contract carries the read's answer, so a product can pin the version that has its fields
 feedbackServerKeyDoor.use(
   '/:id/feedback/:fb',
-  declareResponse(readDoor, {
+  declaredResponse({
     method: 'GET',
     status: 200,
     under: 'a feedback server key (Authorization: Bearer fsk_…), on an item its product filed',
@@ -177,4 +165,15 @@ feedbackServerKeyDoor.use(
       'where the item stands, its phase and its row chip as the project feedback page reads them, and on a declined item the reason its decline wrote for the reporter (ISS-1287, ISS-1412).',
     schema: feedbackServerKeyReadResponseSchema,
   }),
+  async (c, next) => {
+    const token = readServerKeyBearer(c);
+    if (token === null) return next();
+    const ref = c.req.param('fb') ?? '';
+    if (c.req.method !== 'GET' || !/^(?:FB-)?\d{1,9}$/i.test(ref)) {
+      throw serverKeyScopeRefusal(
+        `${ADMITS} by its key (FB-n); ${c.req.method} ${c.req.path} is not that`,
+      );
+    }
+    return readWithServerKey(c, token, ref);
+  },
 );

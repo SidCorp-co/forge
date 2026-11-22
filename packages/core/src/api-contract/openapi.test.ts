@@ -1,9 +1,12 @@
+/**
+ * @direct-test-of packages/core/src/api-contract/declared-answers.ts
+ */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { declareResponse } from '../middleware/declared-response.js';
+import { declaredResponse } from '../middleware/declared-response.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import {
   requireDeclared,
@@ -184,7 +187,7 @@ describe('the committed API contract names a permission on every operation', () 
 describe('a declared answer is written at its own route and nowhere else (ISS-1412)', () => {
   const body = z.strictObject({ reason: z.string().nullable() });
   const door = (method = 'GET') =>
-    declareResponse(async (_c: unknown, next: () => Promise<void>) => next(), {
+    declaredResponse({
       method,
       status: 200,
       under: 'a probe key',
