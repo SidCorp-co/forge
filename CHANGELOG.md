@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.792] - 2026-11-22
+
+A product learns why its feedback was declined; release retries work under zsh
+
+### Added
+
+- **A product reading its declined feedback learns why.** A feedback server key's read of a declined item answers `declineReason`, the reason written for its reporter, null otherwise; forge-api 30.6.0 declares that answer.
+
+### Fixed
+
+- **A release retry's tmux commands now work in zsh.** The earlier attempt's session target is quoted, so a live attempt no longer reads as ended and ending it takes effect.
+
 ## [0.4.0-dev.791] - 2026-11-22
 
 Forge refuses release acts from a superseded attempt and ends cancelled release sessions
