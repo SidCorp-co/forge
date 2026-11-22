@@ -9,7 +9,12 @@ import { db } from '../db/client.js';
 import { agentSessionTurns, jobs } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
 
+/** The tmux session name a box runs a pool job under, `forge-job-<job id>` (runner `pool_jobs::pane_name`). */
+export const JOB_PANE_PREFIX = 'forge-job-';
+
 interface PriorAttempt {
+  /** The attempt's job, whose pane on the box that ran it is `forge-job-<jobId>`. */
+  jobId: string;
   attempt: number;
   sessionId: string | null;
   /** Turns recorded for that attempt's session; `null` when the ledger holds none for it. */
@@ -95,6 +100,7 @@ export async function loadPriorAttempts(
         messageCount = s?.turns ?? null;
       }
       out.push({
+        jobId: row.id,
         attempt: row.attempts,
         sessionId: row.agentSessionId,
         messageCount,
@@ -149,6 +155,9 @@ export function renderPriorAttemptsBlock(attempts: PriorAttempt[], currentAttemp
     }.`,
     '',
   ];
+  lines.push(
+    `- Its session may still be acting: a failed attempt is one its box could no longer account for, not one known to have stopped. Its pane was \`${JOB_PANE_PREFIX}${last.jobId}\`. Before you push, tag, deploy or call \`finish\`, check that pane has ended: run from this pane, \`tmux has-session -t =${JOB_PANE_PREFIX}${last.jobId}\` asks the box's own tmux server and exits non-zero once it has. While it stands, act on nothing it may be acting on: end your turn saying so.`,
+  );
   if (last.sessionId) {
     lines.push(
       `- Its transcript: \`GET /api/agent-sessions/${last.sessionId}\`${

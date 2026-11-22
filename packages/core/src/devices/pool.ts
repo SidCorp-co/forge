@@ -33,6 +33,8 @@ export type PoolEntry = {
   attempts: number;
   relations: PoolRelation[];
   heldBy: string | null;
+  /** The attempt this job retries: a box holds the retry back while that attempt's pane stands (ISS-1351). */
+  retryOf: string | null;
 };
 
 /**
@@ -70,7 +72,7 @@ export async function readPool(args: {
   const projectFilter = args.projectId ? sql`AND j.project_id = ${args.projectId}` : sql``;
 
   const rows = (await db.execute(sql`
-    SELECT j.id, j.type, j.issue_id, j.attempts, j.held_by,
+    SELECT j.id, j.type, j.issue_id, j.attempts, j.held_by, j.retry_of,
            EXTRACT(EPOCH FROM (now() - j.queued_at)) / 60 AS age_minutes,
            i.iss_seq, i.title, i.description, i.priority, i.category, i.status,
            ipj.issue_prefix,
@@ -118,5 +120,6 @@ export async function readPool(args: {
     attempts: Number(row.attempts ?? 1),
     relations: (row.relations as PoolRelation[] | null) ?? [],
     heldBy: (row.held_by as string | null) ?? null,
+    retryOf: (row.retry_of as string | null) ?? null,
   }));
 }

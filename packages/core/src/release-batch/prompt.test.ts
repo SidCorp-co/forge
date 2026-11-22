@@ -172,3 +172,22 @@ describe('the release brief names the door that takes each thing it asks the run
     expect(brief).toContain('what you took from each in your account, `note` on `finish`');
   });
 });
+
+// ISS-1351 (FB-764): a release job cancelled under its run went on to push its release commit, and a
+// failed attempt's session pushed while the next attempt held the run. The brief has the run read its
+// run and its own job right before each push, tag and deploy, and stop on one it no longer holds.
+describe('the release brief reads the run it holds before every push and deploy (ISS-1351)', () => {
+  const text = prompt([MARK]);
+
+  it('names the run state and the job read to make right before each push, tag and deploy', () => {
+    expect(text).toContain('Right before every push, tag and deploy, read');
+    expect(text).toContain('/release-batches/run-1/state');
+    expect(text).toContain('forge-runner api jobs/<the job id the dispatch header names>');
+  });
+
+  it('names what says the run is no longer this job’s, and that it then stops acting', () => {
+    expect(text).toContain('`cancellationRequested` is true');
+    expect(text).toContain('anything but `dispatched`');
+    expect(text).toContain('push, tag and deploy nothing more, call no `finish` or `abort`');
+  });
+});
