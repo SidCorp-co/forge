@@ -19,7 +19,7 @@ import { requireDeclared, requiresByRule, requiresOnResolved } from '../permissi
 import { CLAIM_MIN_RUNNER } from '../runners/index.js';
 import { broadcastSessionEvent } from './agent-session-link.js';
 import { jobEphemeralTarget } from './job-push.js';
-import { readJobGate } from './job-queries.js';
+import { type JobGateRow, readJobGate } from './job-queries.js';
 import { scrubJobOutput } from './job-secret-scrub.js';
 import { assertJobOnDevice } from './lifecycle-routes.js';
 import { listJobEvents } from './read.js';
@@ -169,6 +169,12 @@ async function syncLinkedSession(
   if (reported) await setSessionRuntimeState(sessionId, reported);
 }
 
+/** A job cancelled with a kill requested of its box that the box has not acked since. */
+function cancelUnconfirmed(job: JobGateRow): boolean {
+  if (job.status !== 'cancelled' || !job.cancellationRequested || !job.killRequestedAt) return false;
+  return !job.killConfirmedAt || job.killConfirmedAt < job.killRequestedAt;
+}
+
 jobEventsRoutes.post(
   '/:id/events',
   requireDevice(),
@@ -186,6 +192,15 @@ jobEventsRoutes.post(
     const job = await readJobGate(jobId);
     if (!job) throw notFound('job not found');
     assertJobOnDevice(job, device.id);
+    // A job its run's close cancelled is terminal at once while its pane still runs: until the box
+    // acks the kill, its heartbeat is answered as a cancel, so the box closes the pane it holds now
+    // rather than read the job over and wait for the pane to idle (ISS-1410).
+    if (cancelUnconfirmed(job)) {
+      throw refuseJob(
+        'JOB_CANCEL_REQUESTED',
+        "this job was cancelled with its run while its process still runs: close its process and post kill-ack `killed`",
+      );
+    }
     if (TERMINAL_STATUSES.has(job.status)) {
       throw refuseJob('JOB_TERMINATED', 'job is in a terminal state');
     }

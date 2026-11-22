@@ -1,6 +1,7 @@
 // ISS-764 — prompt assembly for the release_batch job.
 // Untrusted issue text is wrapped via markUntrusted (same as every state prompt).
 
+import { JOB_ACT_HEADER } from '@forge/contracts/jobs';
 import { markUntrusted } from '../lib/untrusted-text.js';
 import { describeCrossings, type ReleasePath } from '../project-config/index.js';
 import { FINISH_ACCOUNT_KEY } from './finish-body.js';
@@ -102,7 +103,7 @@ ${channelLines}
 
 ### Issues in this batch (${issues.length})
 ${roster}
-${renderMarkedCommits(issues)}${renderReach(projectId, runId)}${renderMethod()}${renderProcedure(plan)}
+${renderMarkedCommits(issues)}${renderReach(projectId, runId)}${ATTEMPT_IDENTITY}${renderMethod()}${renderProcedure(plan)}
 Start by reading the batch context: \`forge-runner api ${releaseBatchPath(projectId, runId)}\`.
 `;
 }
@@ -127,6 +128,14 @@ A deploy that answers \`pendingHumanConfirm\` waits on a person's confirm, named
 A production act refused \`RELEASE_AWAITING_APPROVAL\` waits on the approval this run asked for: the run is parked on it, holding its version and roster, and Forge refuses its abort by an agent. End your turn there. The decision reaches this run, in this session or as a new release job on it: an approval carries the release on under the same version; a return names why, and then you answer it and ask again, or abort with that reason.
 `;
 }
+
+/**
+ * What a refusal naming this attempt means (ISS-1410): the box names the job on every call from its
+ * pane, and core refuses a release act from an attempt that no longer holds the run, by name.
+ */
+const ATTEMPT_IDENTITY = `
+Every call from this pane names your job (\`${JOB_ACT_HEADER}\`, from \`$FORGE_JOB\`). Forge refuses \`method\`, the range report, \`carried\`, a deploy, \`finish\` and \`abort\` from an attempt that no longer holds this run: \`RELEASE_ATTEMPT_SUPERSEDED\` names the later attempt that holds it, \`RELEASE_ATTEMPT_ENDED\` says this attempt was cancelled. Either one means this run is not yours: push, tag and deploy nothing more, and end the turn saying what was refused.
+`;
 
 /**
  * The line that points at the method, off the SAME constant the job's `skillName` carries.

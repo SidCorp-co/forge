@@ -17,6 +17,7 @@
  * Coolify route that happened to live in the provider-agnostic file.
  */
 
+import { JOB_ACT_HEADER } from '@forge/contracts/jobs';
 import type { Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -39,6 +40,7 @@ import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requiresOnParam } from '../permissions/index.js';
 import { announceIntegrationChanged } from '../project-config/index.js';
 import {
+  assertAttemptHoldsRun,
   coolifyDeliveryStatus,
   listApplicationsForIntegration,
   listCoolifyIntegrations,
@@ -174,9 +176,11 @@ function registerCommandRoutes(routes: Routes): void {
     '/:projectId/integrations/coolify/deploy',
     coolifyRun,
     zValidator('json', deployBodySchema),
-    (c) => {
+    async (c) => {
       const { targets, ...body } = c.req.valid('json');
       const projectId = c.req.param('projectId');
+      // a release attempt a later one superseded deploys nothing (ISS-1410)
+      await assertAttemptHoldsRun(c.req.header(JOB_ACT_HEADER), body.pipelineRunId ?? null);
       return answer(c, () =>
         targets
           ? deployWebOnly({

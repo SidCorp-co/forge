@@ -19,6 +19,13 @@ export const JOB_REFUSAL_CODES = [
 export type JobRefusalCode = (typeof JOB_REFUSAL_CODES)[number];
 
 /**
+ * The header a job pane's calls name their job by (ISS-1410): the box sets `$FORGE_JOB` in the pane
+ * of each pool job it starts, and `forge-runner api` sends it here. A job is one attempt, so the id
+ * names the attempt too; core refuses a release act from an attempt that no longer holds its run.
+ */
+export const JOB_ACT_HEADER = "x-forge-job";
+
+/**
  * Why a job type cannot be minted through `POST /api/projects/:id/jobs`. A runner serves a pool job
  * by its prompt alone and never branches on the type, so what decides is who mints the type: core's
  * own flows mint some, and no lane mints the rest any more (the staged lane and the `drive` job).

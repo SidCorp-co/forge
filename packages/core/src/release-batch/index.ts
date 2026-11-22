@@ -7,6 +7,7 @@ export {
   decideApprovalOfVersion,
   parseDecision,
 } from './approvals.js';
+export { assertAttemptHoldsRun } from './attempt-holds.js';
 export { RELEASE_REST_CARDS } from './cards.js';
 export { holdingReleaseOf, holdsAnAct, releaseRunsCarrying } from './carrying-release.js';
 export { admitChangeRequestMerge, refuseCallerRun } from './change-request-merge.js';

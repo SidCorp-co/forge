@@ -5,7 +5,11 @@
  * `JOB_CANCEL_REQUESTED`, the channel a lost `job.cancel` frame cannot take with it. Through the
  * app, against Postgres.
  *
+ * ISS-1410: a job its run's close cancelled is terminal at once while its pane still runs, so its
+ * heartbeat is answered as the cancel it is until the box acks the kill, never as a job that is over.
+ *
  * @direct-test-of packages/core/src/jobs/lifecycle-routes.ts
+ * @direct-test-of packages/core/src/jobs/events-routes.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -177,5 +181,27 @@ describe('a dispatched job nobody cancelled', () => {
     const failed = ok(await say('box', 'POST', `/api/jobs/${jobId}/fail`, { error: 'boom' }));
     expect(failed).toMatchObject({ status: 'failed' });
     expect(await cancelledFrames(jobId)).toBe(0);
+  });
+});
+
+describe('a dispatched job whose run is cancelled while its pane runs', () => {
+  const runOf = async (jobId: string): Promise<string> => {
+    const [row] = await rows<{ run: string }>(
+      sql`SELECT pipeline_run_id AS run FROM jobs WHERE id = ${jobId}`,
+    );
+    return row?.run ?? '';
+  };
+
+  it('has its heartbeat refused JOB_CANCEL_REQUESTED, not JOB_TERMINATED, until its box acks the kill', async () => {
+    const jobId = await dispatchedJob();
+    ok(await say('owner', 'POST', `/api/pipeline-runs/${await runOf(jobId)}/cancel`, {}));
+    expect(await statusOf(jobId)).toBe('cancelled');
+
+    const told = await beat(jobId);
+    expect(told.status, JSON.stringify(told.json)).toBe(422);
+    expect(refusalCodes(told)).toEqual(['JOB_CANCEL_REQUESTED']);
+
+    ok(await say('box', 'POST', `/api/jobs/${jobId}/kill-ack`, { outcome: 'killed' }));
+    expect(refusalCodes(await beat(jobId))).toEqual(['JOB_TERMINATED']);
   });
 });

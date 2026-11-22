@@ -1,4 +1,5 @@
 import { REASON_PARAGRAPH_MAX } from '@forge/contracts/comments';
+import { JOB_ACT_HEADER } from '@forge/contracts/jobs';
 import { ReleaseNamingSchema } from '@forge/contracts/release-notes';
 import {
   ReleaseRangeReadsBodySchema,
@@ -13,6 +14,7 @@ import { gatedRoutes } from '../middleware/gated-routes.js';
 import { notFound } from '../middleware/route-errors.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requireDeclaredHeld, requiresOnParam, requiresOnResolved } from '../permissions/index.js';
+import { assertAttemptHoldsRun } from './attempt-holds.js';
 import { carriedSchema, declareCarried } from './carried.js';
 import { createReleaseBatch } from './create.js';
 import { requireReleaseActAs } from './cut-as.js';
@@ -285,6 +287,7 @@ releaseBatchRoutes.post(
     const { projectId, runId } = c.req.valid('param');
     const userId = c.get('userId');
     await loadRunForProject(runId, projectId, userId);
+    await assertAttemptHoldsRun(c.req.header(JOB_ACT_HEADER), runId);
 
     const body = c.req.valid('json');
     const accepted = await acceptReleaseBatchFinish(runId, restActor(c), body);
@@ -307,6 +310,7 @@ releaseBatchRoutes.post(
     const { reason, promotedRoster, blocker, pushed, carried, shippedIn } = c.req.valid('json');
     const userId = c.get('userId');
     await loadRunForProject(runId, projectId, userId);
+    await assertAttemptHoldsRun(c.req.header(JOB_ACT_HEADER), runId);
 
     const result = await abortReleaseBatch(runId, reason ?? 'aborted by agent', userId, {
       promotedRoster,
@@ -336,6 +340,7 @@ releaseBatchRoutes.post(
     const { projectId, runId } = c.req.valid('param');
     const userId = c.get('userId');
     await loadRunForProject(runId, projectId, userId);
+    await assertAttemptHoldsRun(c.req.header(JOB_ACT_HEADER), runId);
     const { carried } = c.req.valid('json');
     return c.json(await declareCarried({ projectId, runId, carried, by: userId }));
   },
@@ -371,6 +376,7 @@ releaseBatchRoutes.post(
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
     await loadRunForProject(runId, projectId, c.get('userId'));
+    await assertAttemptHoldsRun(c.req.header(JOB_ACT_HEADER), runId);
     return c.json(await announceMethod({ runId, ...c.req.valid('json') }));
   },
 );
@@ -409,6 +415,7 @@ releaseBatchRoutes.post(
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
     const run = await loadRunForProject(runId, projectId, c.get('userId'));
+    await assertAttemptHoldsRun(c.req.header(JOB_ACT_HEADER), runId);
     const report = c.req.valid('json');
     return c.json(await recordRange({ projectId, runId, version: run.version, report }));
   },

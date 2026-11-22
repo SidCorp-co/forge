@@ -19,6 +19,7 @@ const jobGateColumns = {
   ackedAt: jobs.ackedAt,
   error: jobs.error,
   killRequestedAt: jobs.killRequestedAt,
+  killConfirmedAt: jobs.killConfirmedAt,
   cancellationRequested: jobs.cancellationRequested,
 } as const;
 
@@ -28,7 +29,7 @@ export type JobGateRow = {
 };
 
 /**
- * One job as the ingest and lifecycle GATES see it — the nine scalar columns
+ * One job as the ingest and lifecycle GATES see it — the ten scalar columns
  * those handlers actually read, never the prompt or failure payloads.
  *
  * Authorisation belongs to the caller, as with {@link readJob}.

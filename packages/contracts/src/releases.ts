@@ -1224,6 +1224,14 @@ export const RELEASE_REFUSAL_CODES = [
 	"RELEASE_SITE_NOT_SHIPPED",
 	/** A release record naming a site production does not declare, or one site twice (ISS-1077). */
 	"RELEASE_SITE_UNDECLARED",
+	/** A release act from an attempt a later attempt of the same release run superseded, naming the later one (ISS-1410). */
+	"RELEASE_ATTEMPT_SUPERSEDED",
+	/** A release act from an attempt that was cancelled, or whose cancel was requested, while it still acts on its run (ISS-1410). */
+	"RELEASE_ATTEMPT_ENDED",
+	/** A release act naming a job that is no attempt of the release run it acts on (ISS-1410). */
+	"RELEASE_ATTEMPT_NOT_ON_RUN",
+	/** A release act whose job header is no job id, or names no job (ISS-1410). */
+	"RELEASE_ATTEMPT_UNKNOWN",
 ] as const;
 export type ReleaseRefusalCode = (typeof RELEASE_REFUSAL_CODES)[number];
 export const RELEASE_REFUSAL_STATUSES = {
@@ -1247,6 +1255,9 @@ export const RELEASE_REFUSAL_STATUSES = {
 	RELEASE_SHIPPED_COMMIT_LACKS_LANDING: 409,
 	RELEASE_SHIPPED_COMMIT_UNREAD: 409,
 	RELEASE_SITE_NOT_SHIPPED: 409,
+	RELEASE_ATTEMPT_SUPERSEDED: 409,
+	RELEASE_ATTEMPT_ENDED: 409,
+	RELEASE_ATTEMPT_NOT_ON_RUN: 409,
 } as const satisfies RefusalStatuses<ReleaseRefusalCode | ReleaseBlockerCode>;
 
 /** What production serves, read when asked and never stored (core `release-batch/serving-reading.ts`). */

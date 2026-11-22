@@ -1,0 +1,1 @@
+**A superseded release attempt can no longer act on its run.** Job panes name their job on every call, and Forge refuses a range report, deploy, finish or abort from an earlier or cancelled attempt by name.
