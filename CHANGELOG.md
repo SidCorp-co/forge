@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.791] - 2026-11-22
+
+Forge refuses release acts from a superseded attempt and ends cancelled release sessions
+
+### Fixed
+
+- **A superseded release attempt can no longer act on its run.** Job panes name their job on every call, and Forge refuses a range report, deploy, finish or abort from an earlier or cancelled attempt by name.
+
 ## [0.4.0-dev.790] - 2026-11-22
 
 Release retries no longer deadlock behind an earlier attempt's standing pane
