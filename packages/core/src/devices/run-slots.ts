@@ -15,6 +15,14 @@
  * Give-back needs no code: when another project gets work the next answer gives it its floor, a
  * project then over its share is refused its next start at the door, and nothing running stops.
  *
+ * One run past the slots is lent (ISS-1420, `lendFor`) to a declaration over a critical or high issue
+ * while the box's last health measurement has room: a master whose slots a long build holds then
+ * dispatches its urgent fix instead of building it in its own pane. The lend takes no other project's
+ * slot, so it runs beside the count, never inside it:
+ * - one lent run at a time per project, and never past `LENT_RUN_CEILING` runs in use;
+ * - past the box's limit (its CPU pressure ceiling, memory or disk reserve, or no fresh measurement)
+ *   it is refused, and the refusal names why.
+ *
  * Forge Boxes ride the same rule (ISS-1276, ADR 0015), as `room`: no second counter, and no count of
  * boxes at all. A box's capacity is what the device's last health measurement leaves, after its
  * reserve and the boxes started since that measurement, against what the box's mode costs:
@@ -66,6 +74,29 @@ export interface BoxPlan {
 
 export type SlotAnswer = Map<string, number> & { boxes: BoxPlan };
 
+/** The priorities a ready part counts as urgent for: the slot rule's tier and the lend. */
+export const URGENT_PRIORITIES: ReadonlySet<string> = new Set(['critical', 'high']);
+
+/** The most runs a project holds at once with one lent: the `token-budget` rule's count for urgent work. */
+export const LENT_RUN_CEILING = 5;
+
+/** A declaration refused a slot, asking for one run past its project's slots (ISS-1420). */
+export interface LendAsk {
+  /** What `slotsFor` gives the project on this box now, and its runs holding one. */
+  slots: number;
+  inUse: number;
+  /** The declaration's issues by key, each with its priority. */
+  issues: readonly { key: string; priority: string | null }[];
+  /** The box's last health, or why there is none to trust (`box-health.ts:freshBoxHealth`). */
+  health: BoxHealthReport | { unmeasured: string };
+}
+
+/** Whether one run past the slots is lent, and why it is or is not, in words a master reads. */
+export interface Lend {
+  lent: boolean;
+  why: string;
+}
+
 function wholeCount(n: number, what: string): void {
   if (!Number.isInteger(n) || n < 0) {
     throw new RangeError(`slotsFor: ${what} must be a whole number of at least 0, got ${n}`);
@@ -111,13 +142,62 @@ export function slotsFor(
 
 const gb = (mb: number) => `${(mb / 1024).toFixed(1)} GB`;
 
+const cpuOver = (h: BoxHealthReport): string | null =>
+  h.cpu.pressureSomeAvg10 > h.cpu.ceiling
+    ? `CPU pressure is ${h.cpu.pressureSomeAvg10}% (PSI some avg10), over the ${h.cpu.ceiling}% ceiling`
+    : null;
+
+/**
+ * One run past the project's slots for a critical or high declaration while the box has room, or why
+ * none is lent. Asked only once every slot the project holds is in use.
+ */
+export function lendFor(ask: LendAsk): Lend {
+  wholeCount(ask.slots, 'slots');
+  wholeCount(ask.inUse, 'inUse');
+  const urgent = ask.issues.filter((i) => URGENT_PRIORITIES.has(i.priority ?? ''));
+  if (urgent.length === 0) {
+    return {
+      lent: false,
+      why: 'no run is lent past them: none of the declared issues is critical or high',
+    };
+  }
+  if (ask.inUse > ask.slots) {
+    return { lent: false, why: 'no run is lent past them: the project already runs past them' };
+  }
+  if (ask.inUse >= LENT_RUN_CEILING) {
+    return {
+      lent: false,
+      why: `no run is lent past them: ${ask.inUse} run(s) in use, and ${LENT_RUN_CEILING} is the most urgent work takes`,
+    };
+  }
+  const h = ask.health;
+  const full =
+    'unmeasured' in h
+      ? h.unmeasured
+      : (cpuOver(h) ??
+        (h.memory.availableMb <= h.memory.reserveMb
+          ? `available memory ${gb(h.memory.availableMb)} is within the ${gb(h.memory.reserveMb)} reserve`
+          : h.disk.freeMb <= h.disk.reserveMb
+            ? `free disk ${gb(h.disk.freeMb)} is within the ${gb(h.disk.reserveMb)} reserve`
+            : null));
+  if (full !== null || 'unmeasured' in h) {
+    return { lent: false, why: `no run is lent past them: ${full}` };
+  }
+  const named = urgent.map((i) => `${i.key} (${i.priority})`).join(', ');
+  return {
+    lent: true,
+    why:
+      `lent one run past the project's ${ask.slots} slot(s) for ${named}: the box has room ` +
+      `(CPU pressure ${h.cpu.pressureSomeAvg10}% of a ${h.cpu.ceiling}% ceiling)`,
+  };
+}
+
 /** Why a box of `cost` does not start now, or null where it fits. */
 function noRoom(room: BoxRoom, used: BoxCost, mode: BoxMode, cost: BoxCost): string | null {
   const h = room.health;
   if ('unmeasured' in h) return h.unmeasured;
-  if (h.cpu.pressureSomeAvg10 > h.cpu.ceiling) {
-    return `CPU pressure is ${h.cpu.pressureSomeAvg10}% (PSI some avg10), over the ${h.cpu.ceiling}% ceiling`;
-  }
+  const cpu = cpuOver(h);
+  if (cpu !== null) return cpu;
   const memory = h.memory.availableMb - h.memory.reserveMb - used.memoryMb;
   if (cost.memoryMb > memory) {
     return `available memory ${gb(h.memory.availableMb)} less the ${gb(h.memory.reserveMb)} reserve and ${gb(used.memoryMb)} for boxes starting leaves ${gb(Math.max(0, memory))}; a ${mode} box costs ${gb(cost.memoryMb)}`;

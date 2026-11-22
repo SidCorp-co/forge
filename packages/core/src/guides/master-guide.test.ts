@@ -134,6 +134,10 @@ describe('the master skill is a map, its method served by core (ISS-1251)', () =
       "Fold each builder's commits into the batch branch (cherry-pick or merge) and remove its tree once it is folded",
       'Declare its run first',
       '`RUN_SLOT_UNAVAILABLE`',
+      // ISS-1420: the route an urgent or small fix takes while every slot is held
+      'With every slot held, an urgent or small fix is still',
+      'dispatched, never built here: declare it, and a critical or high issue is lent one run past the',
+      'The refusal names why none was lent.',
       "Keep this session free to triage, answer a room agent's ask before any other work",
       'build in it only a change too small to brief',
       'the assumption written as one line on the issue or in the commit body',

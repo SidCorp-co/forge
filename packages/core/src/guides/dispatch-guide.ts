@@ -281,7 +281,10 @@ It works in batches, as §4 splits them:
    the box's account allows. Core opens a run only while the
    project has a slot free, and refuses \`RUN_SLOT_UNAVAILABLE\` naming its slots, how many are in use
    and that one frees when a run closes; parts of one issue each declare it in their own tree, and
-   each run is closed as its builder ends.
+   each run is closed as its builder ends. With every slot held, an urgent or small fix is still
+   dispatched, never built here: declare it, and a critical or high issue is lent one run past the
+   slots while the box has room (a fix the owner asked for ahead of the rest is high: set it first).
+   The refusal names why none was lent.
    Keep this session free to triage, answer a room agent's ask before any other work (Answering a room agent's ask) and land; build in it only a change too small to brief. A gap a loose issue leaves is filled by
    judgement, the assumption written as one line on the issue or in the commit body. A screen change a
    person asked for is not filled by judgement: before the build, each workflow they asked for (what

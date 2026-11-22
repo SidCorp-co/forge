@@ -12,6 +12,7 @@
  * @direct-test-of packages/core/src/masters/read.ts
  * @direct-test-of packages/core/src/issues/issue-lease.ts
  * @direct-test-of packages/core/src/devices/run-issue-return.ts
+ * @direct-test-of packages/core/src/devices/run-slots.ts
  */
 
 import { sql } from 'drizzle-orm';
@@ -32,6 +33,7 @@ import {
   createTestProject,
   createTestUser,
 } from '../helpers/factories.js';
+import { healthy } from '../helpers/forge-box-world.js';
 
 type Say = (who: string, method: string, path: string, body?: unknown) => Promise<Reply>;
 let say: Say;
@@ -41,6 +43,8 @@ let b = '';
 let boxId = '';
 let c = '';
 let waitBox = '';
+let d = '';
+let lendBox = '';
 
 async function issue(projectId: string, seq: number, priority = 'medium'): Promise<void> {
   await db.execute(sql`
@@ -74,13 +78,33 @@ beforeAll(async () => {
       FROM issues held, issues blocker
      WHERE held.project_id = ${c} AND held.iss_seq = 3
        AND blocker.project_id = ${c} AND blocker.iss_seq = 2`);
+  // ISS-1420's box: one slot, one project, a build holding it and urgent work behind it
+  d = (await createTestProject(ownerId)).id;
+  lendBox = await createTestDevice(ownerId, { maxSubagents: null });
+  await bindTestRunner(d, lendBox);
+  for (const [seq, priority] of [
+    [1, 'medium'],
+    [2, 'critical'],
+    [3, 'high'],
+    [4, 'medium'],
+  ] as const) {
+    await issue(d, seq, priority);
+  }
   const mint = async (deviceId: string, name: string) =>
-    (await mintPat({ permissions: ['*'], userId: ownerId, name, deviceId, projectIds: [a, b, c] }))
-      .plaintext;
+    (
+      await mintPat({
+        permissions: ['*'],
+        userId: ownerId,
+        name,
+        deviceId,
+        projectIds: [a, b, c, d],
+      })
+    ).plaintext;
   say = requester(app, {
     box: await mint(boxId, 'box'),
     lone: await mint(lone, 'lone'),
     waitBox: await mint(waitBox, 'waitBox'),
+    lendBox: await mint(lendBox, 'lendBox'),
     person: await userToken(ownerId),
   }) as Say;
 }, 120_000);
@@ -326,5 +350,64 @@ describe('subagent slots at run declare', () => {
     expect(await wait()).toBeNull();
     expect((await close((second.json as Doc).sessionId as string, 'waitBox')).status).toBe(200);
     expect(await steward()).toBe('admitted');
+  });
+});
+
+// ISS-1420 (FB-825, L-154): with the project's one slot held by a long build, a critical fix was refused
+// RUN_SLOT_UNAVAILABLE three times and the master built it in its own pane. A declare over a critical or
+// high issue is now lent one run past the slots while the box's last health has room, and says why.
+describe('a run lent past the slots for urgent work', () => {
+  const health = (over: Doc = {}, at = sql`now()`) =>
+    db.execute(sql`UPDATE devices SET box_health = ${JSON.stringify(healthy(over))}::jsonb,
+                   box_health_at = ${at} WHERE id = ${lendBox}`);
+  let build = '';
+
+  it('lends a critical declare one run past the held slot while the box has room, naming why', async () => {
+    const registered = await say('lendBox', 'POST', '/api/devices/me/master-session', {
+      projectId: d,
+      name: 'lend-master',
+      maxJobPanes: 1,
+      maxSubagents: 1,
+    });
+    expect(registered.status).toBe(200);
+    await health();
+    const held = await open('lendBox', d, 'ISS-1');
+    expect(held.status, detail(held)).toBe(200);
+    build = (held.json as Doc).sessionId;
+    expect((held.json as Doc).lent).toBeUndefined();
+    const why = "lent one run past the project's 1 slot(s) for ISS-2 (critical): the box has room";
+    const asked = await preflight('lendBox', d, 'ISS-2');
+    expect(asked.status, detail(asked)).toBe(200);
+    expect((asked.json as Doc).lent).toContain(why);
+    const lent = await open('lendBox', d, 'ISS-2');
+    expect(lent.status, detail(lent)).toBe(200);
+    expect((lent.json as Doc).lent).toContain(why);
+    const [run] = (await db.execute(sql`
+      SELECT pr.metadata ->> 'runLent' AS lent FROM agent_sessions s
+        JOIN pipeline_runs pr ON pr.id = s.pipeline_run_id
+       WHERE s.id = ${(lent.json as Doc).sessionId}`)) as unknown as Array<{ lent: string | null }>;
+    expect(run?.lent).toContain(why);
+    // a medium issue is never lent one, and the refusal names why no run was lent
+    const medium = await preflight('lendBox', d, 'ISS-4');
+    expect(codes(medium)).toEqual(['RUN_SLOT_UNAVAILABLE']);
+    expect(detail(medium)).toContain('none of the declared issues is critical or high');
+    // one lent at a time: a high issue behind it is refused, by name
+    const second = await preflight('lendBox', d, 'ISS-3');
+    expect(codes(second)).toEqual(['RUN_SLOT_UNAVAILABLE']);
+    expect(detail(second)).toContain('the project already runs past them');
+    expect((await close((lent.json as Doc).sessionId, 'lendBox')).status).toBe(200);
+  });
+
+  it("refuses the lend by name past the box's limit, or with no fresh measurement of it", async () => {
+    await health({ cpu: { pressureSomeAvg10: 90, ceiling: 40 } });
+    const over = await preflight('lendBox', d, 'ISS-3');
+    expect(codes(over)).toEqual(['RUN_SLOT_UNAVAILABLE']);
+    expect(detail(over)).toContain('CPU pressure is 90% (PSI some avg10), over the 40% ceiling');
+    await health({}, sql`now() - interval '1 day'`);
+    const stale = await preflight('lendBox', d, 'ISS-3');
+    expect(codes(stale)).toEqual(['RUN_SLOT_UNAVAILABLE']);
+    expect(detail(stale)).toContain("this device's box health was last reported");
+    expect(codes(await open('lendBox', d, 'ISS-3'))).toEqual(['RUN_SLOT_UNAVAILABLE']);
+    expect((await close(build, 'lendBox')).status).toBe(200);
   });
 });

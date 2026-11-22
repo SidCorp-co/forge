@@ -229,4 +229,13 @@ describe('a direct pass with every run slot in use asks no build', () => {
     const dispatch = masterWork(rows, none, 'dispatch', { held: 2, inUse: 2 });
     expect(dispatch).toEqual(masterWork(rows, none, 'dispatch', FREE));
   });
+
+  // ISS-1420: a critical or high row is lent one run past the slots at its declare, so it is named to declare
+  it('names a critical or high row to declare now, and none while every row is normal', () => {
+    const urgent = [{ ...issue('7'), priority: 'critical' }, ...rows];
+    expect(masterWork(urgent, none, 'direct', { held: 1, inUse: 1 }).nudge).toContain(
+      'Declare ISS-7 now: a critical or high issue is lent one run past the slots while the box has room.',
+    );
+    expect(full.nudge).not.toContain('is lent one run past the slots');
+  });
 });

@@ -37,6 +37,7 @@ export {
   readBoxSlotsForView,
   refuseRunWithoutSlot,
   subagentSlotsOf,
+  URGENT_PRIORITIES,
 } from './run-slots-read.js';
 export { subagentOver } from './run-verdict.js';
 export { SESSION_SILENCE_TIMEOUT_MS, SESSION_SILENCE_TIMEOUT_S } from './session-silence.js';

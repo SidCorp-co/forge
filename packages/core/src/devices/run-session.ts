@@ -64,7 +64,7 @@ import {
   queueableRefusal,
   recordRefusedDeclaration,
 } from './run-session-queued.js';
-import { refuseRunWithoutSlot } from './run-slots-read.js';
+import { takeRunSlot } from './run-slots-read.js';
 import { restartsSteps, takenBy } from './run-take.js';
 
 /** The box's own run id for this dispatch, so the two records can be joined. */
@@ -150,19 +150,19 @@ async function openSessionForBoxRun(
  * The refusals a run session's open would earn on its issues, asked before any run is declared: the
  * box's `run declare` asks this before it writes its row, and opens the session only after (ISS-1036),
  * so the one place a master can be told its dispatch cannot start is here, with the same function
- * the open calls. Nothing is written.
+ * the open calls. Nothing is written; it answers the declared issues' numbers, for the lend.
  */
 export async function preflightRunSession(args: {
   projectId: string;
   issueKeys: string[];
   requirement?: string;
   role?: string;
-}): Promise<void> {
-  if (await requirementSubject(args)) return;
+}): Promise<number[]> {
+  if (await requirementSubject(args)) return [];
   const canonical = await canonicaliseIssueKeys(args.projectId, args.issueKeys);
   const statuses = await readIssueStatuses(args.projectId, canonical.seqs);
   const taken = takenBy(canonical, statuses, args.role);
-  await refuseHeldTakeForSeqs(args.projectId, taken.seqs, args.role);
+  return refuseHeldTakeForSeqs(args.projectId, taken.seqs, args.role).then(() => canonical.seqs);
 }
 
 export async function openRunSession(args: {
@@ -276,10 +276,10 @@ export async function openRunSession(args: {
         if (winner && winner.status !== 'queued') return { existing: winner };
         queued = winner;
       }
-      // under the box's slot lock, so two opens racing for its last free slot cannot both take it
-      await refuseRunWithoutSlot({ deviceId: args.deviceId, projectId: args.projectId, tx });
+      // under the box's slot lock (two opens cannot both take its last slot); a lent run says why
+      const slot = await takeRunSlot(tx, args, canonical.seqs, metadata);
       if (queued) {
-        await promoteQueuedDeclaration(tx, queued, metadata);
+        await promoteQueuedDeclaration(tx, queued, slot.metadata);
         if (takes) {
           await takeIssueLeases(tx, {
             projectId: args.projectId,
@@ -291,9 +291,9 @@ export async function openRunSession(args: {
           if (restartsSteps(args.role)) await restartStepsForNewRun(tx, args.projectId, taken.seqs);
         }
         await pushProjectNow(tx, args.projectId, 'runs');
-        return { opened: { sessionId: queued.sessionId, runId: queued.runId } };
+        return { opened: { sessionId: queued.sessionId, runId: queued.runId, ...slot.said } };
       }
-      const run = await insertOneShotRun(tx, spec);
+      const run = await insertOneShotRun(tx, { ...spec, metadata: slot.metadata });
       const row = await insertSessionRow(tx, {
         projectId: args.projectId,
         deviceId: args.deviceId,
@@ -321,7 +321,7 @@ export async function openRunSession(args: {
       }
       // no run move is written as it opens, so its project's pages are told here (REQ-15 BC-10)
       await pushProjectNow(tx, args.projectId, 'runs');
-      return { opened: { sessionId: row.id, runId: run.id } };
+      return { opened: { sessionId: row.id, runId: run.id, ...slot.said } };
     })
     .catch(async (err: unknown) => {
       await queueIfRefused(err);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type SlotDemand, slotsFor } from './run-slots.js';
+import { LENT_RUN_CEILING, lendFor, type SlotDemand, slotsFor } from './run-slots.js';
 
 const p = (projectId: string, wants: number, urgent = false): SlotDemand => ({
   projectId,
@@ -49,5 +49,38 @@ describe('slotsFor', () => {
     expect(() => slotsFor([p('a', 1)], -1)).toThrow(/capacity must be a whole number/);
     expect(() => slotsFor([p('a', 1.5)], 2)).toThrow(/wants of a/);
     expect(() => slotsFor([p('a', 1), p('a', 2)], 2)).toThrow(/listed twice/);
+  });
+});
+
+// ISS-1420: one run past the slots for a critical or high declaration, within the token-budget count
+describe('lendFor', () => {
+  const room = {
+    memory: { availableMb: 9000, reserveMb: 1000 },
+    cpu: { pressureSomeAvg10: 4, ceiling: 40 },
+  };
+  const health = {
+    ...room,
+    disk: { freeMb: 9000, reserveMb: 1000 },
+    kvm: true,
+    modes: [],
+    held: [],
+  };
+  const ask = (inUse: number, slots: number, priority = 'critical') => ({
+    slots,
+    inUse,
+    issues: [{ key: 'ISS-9', priority }],
+    health,
+  });
+
+  it('never lends past the most runs urgent work takes, nor for normal work', () => {
+    expect(lendFor(ask(LENT_RUN_CEILING - 1, LENT_RUN_CEILING - 1)).lent).toBe(true);
+    const capped = lendFor(ask(LENT_RUN_CEILING, LENT_RUN_CEILING));
+    expect(capped).toEqual({
+      lent: false,
+      why: expect.stringContaining('is the most urgent work takes'),
+    });
+    expect(lendFor(ask(1, 1, 'medium')).why).toContain(
+      'none of the declared issues is critical or high',
+    );
   });
 });

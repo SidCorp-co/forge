@@ -8,7 +8,7 @@
 // row was asked every pass, though the box refuses each declare RUN_SLOT_UNAVAILABLE; the line says
 // the wait once instead. A row a decision holds never reaches here (`masters/owed.ts:readMasterWork`).
 
-import { readBoxSlotsForView, subagentSlotsOf } from '../devices/index.js';
+import { readBoxSlotsForView, subagentSlotsOf, URGENT_PRIORITIES } from '../devices/index.js';
 import { agrees } from '../lib/plural.js';
 
 /** The fields of an admissible issue the line names (`devices/admissible.ts:AdmissibleIssue`). */
@@ -43,7 +43,15 @@ export function admissibleLine(admissible: readonly AdmissibleNamed[], slots: Ru
   const more = n > NAMED ? `, and ${n - NAMED} more after them` : '';
   if (slotsFull(slots)) {
     const keys = admissible.slice(0, NAMED).map((a) => a.issueKey ?? a.issueId);
-    return ` ${n} admissible issue${agrees(n, '', 's')} ${agrees(n, 'waits', 'wait')} for a run slot, all ${slots.held} of the project's in use: ${keys.join(', ')}${more}. Build none and record no pass-over for ${them}; the pass after one of your runs closes names ${them} to take.`;
+    // a critical or high one is lent one run past the slots at its declare (ISS-1420), so it is not left to wait
+    const urgent = admissible
+      .filter((a) => URGENT_PRIORITIES.has(a.priority ?? ''))
+      .map((a) => a.issueKey ?? a.issueId);
+    const lend =
+      urgent.length > 0
+        ? ` Declare ${urgent.slice(0, NAMED).join(', ')} now: a critical or high issue is lent one run past the slots while the box has room.`
+        : '';
+    return ` ${n} admissible issue${agrees(n, '', 's')} ${agrees(n, 'waits', 'wait')} for a run slot, all ${slots.held} of the project's in use: ${keys.join(', ')}${more}. Build none and record no pass-over for ${them}; the pass after one of your runs closes names ${them} to take.${lend}`;
   }
   const named = admissible
     .slice(0, NAMED)

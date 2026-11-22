@@ -125,21 +125,23 @@ deviceRunSessionRoutes.post(
   zValidator('json', preflightBodySchema),
   async (c) => {
     const body = c.req.valid('json');
-    await preflightRunSession({
+    const issueSeqs = await preflightRunSession({
       projectId: body.projectId,
       issueKeys: body.issueKeys,
       ...(body.requirement ? { requirement: body.requirement } : {}),
       ...(body.role ? { role: body.role } : {}),
     });
     // every run holds a subagent slot, a judge's too; the open asks again under the box's lock (ISS-1245).
-    // Refused for a slot alone, the master's wait is kept, so the steward yields it the next one (ISS-1266)
-    await refuseDeclarationWithoutSlot({
+    // Refused for a slot alone, the master's wait is kept, so the steward yields it the next one (ISS-1266);
+    // a critical or high issue may be lent one run past the slots, and the answer says why (ISS-1420)
+    const lent = await refuseDeclarationWithoutSlot({
       deviceId: c.get('device').id,
       projectId: body.projectId,
       issueKeys: body.issueKeys,
+      issueSeqs,
       ...(body.requirement ? { requirement: body.requirement } : {}),
     });
-    return c.json({ ok: true as const });
+    return c.json({ ok: true as const, ...(lent ? { lent } : {}) });
   },
 );
 

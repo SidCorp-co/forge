@@ -20,23 +20,33 @@ import {
 import { BOX_MODES } from '@forge/contracts/boxes';
 import type { MasterSubagentSlots } from '@forge/contracts/master-standing';
 import { STARTED_SESSION_STATUSES } from '@forge/contracts/session-machine';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { memoizedRead } from '../db/read-memo.js';
-import { devices } from '../db/schema.js';
+import { devices, issues } from '../db/schema.js';
 import { lockXact } from '../lib/advisory-lock.js';
+import { canonicalIssueKey } from '../lib/issue-ref.js';
 import { isRefusal } from '../lib/refusal.js';
 import { readAdmissibleIssues } from './admissible.js';
 import { costOf, freshBoxHealth, readStoredBoxHealth } from './box-health.js';
 import { devicesPorts } from './ports.js';
 import { refuseDevice } from './refusals.js';
 import { endSlotWait, freshSlotWait, recordSlotWait } from './run-slot-wait.js';
-import { type BoxAsk, type BoxPlan, type SlotDemand, slotsFor } from './run-slots.js';
+import {
+  type BoxAsk,
+  type BoxPlan,
+  type Lend,
+  lendFor,
+  type SlotDemand,
+  slotsFor,
+  URGENT_PRIORITIES,
+} from './run-slots.js';
 import { SESSION_SILENCE_TIMEOUT_S } from './session-silence.js';
+
+export { URGENT_PRIORITIES };
 
 /** The run-session statuses that hold a subagent slot: a queued declaration runs nothing yet. */
 const HOLDING = STARTED_SESSION_STATUSES;
-const URGENT = new Set(['critical', 'high']);
 
 export interface ProjectSlots {
   projectId: string;
@@ -99,7 +109,7 @@ export async function readBoxSlots(
     const held = waiting.get(item.projectId) ?? { n: 0, urgent: false };
     waiting.set(item.projectId, {
       n: held.n + 1,
-      urgent: held.urgent || URGENT.has(item.priority ?? ''),
+      urgent: held.urgent || URGENT_PRIORITIES.has(item.priority ?? ''),
     });
   }
   // a steward runner job is a run of its project like any other (ISS-1255): live, it holds a slot;
@@ -219,19 +229,62 @@ export function readBoxSlotsForView(deviceId: string): Promise<BoxSlots> {
   return memoizedRead(`runSlots:${deviceId}`, () => readBoxSlots(deviceId));
 }
 
-function slotRefusal(projectId: string, box: BoxSlots, mine: ProjectSlots) {
+function slotRefusal(projectId: string, box: BoxSlots, mine: ProjectSlots, lend: Lend | null) {
   const withWork = box.projects.filter((p) => p.slots > 0).length;
   const capacity =
     box.capacity === null
       ? 'this box declares no `max_subagents` (`[runner]` in its runner config), so each project with work holds its floor of 1 alone'
       : `the box runs ${box.capacity} subagent(s) at once, shared by ${withWork} project(s) with work`;
+  // a declaration over issues is told whether one more run was lent, and why not (ISS-1420)
+  const lent = lend
+    ? ` A critical or high issue is lent one run past them while the box has room; ${lend.why}.`
+    : '';
   return refuseDevice(
     'RUN_SLOT_UNAVAILABLE',
     `project ${projectId} holds ${mine.slots} subagent slot(s) on this box and ${mine.inUse} are in use, ` +
-      `so no run is opened: ${capacity}. One frees when a run of this project closes ` +
+      `so no run is opened: ${capacity}.${lent} One frees when a run of this project closes ` +
       '(`forge-runner run close`); nothing running is stopped. Declare this run again then.',
     '/projectId',
   );
+}
+
+/** The declaration's issues by key with their priorities, for the lend (ISS-1420). */
+async function declaredIssues(
+  executor: Executor,
+  projectId: string,
+  seqs: readonly number[],
+): Promise<{ key: string; priority: string | null }[]> {
+  if (seqs.length === 0) return [];
+  const rows = await executor
+    .select({ seq: issues.issSeq, priority: issues.priority })
+    .from(issues)
+    .where(and(eq(issues.projectId, projectId), inArray(issues.issSeq, [...seqs])));
+  return rows.map((r) => ({ key: canonicalIssueKey(r.seq), priority: r.priority }));
+}
+
+/** Whether a declaration refused a slot is lent one run past the project's slots, read now. */
+async function lendNow(
+  executor: Executor,
+  deviceId: string,
+  projectId: string,
+  mine: ProjectSlots,
+  seqs: readonly number[],
+): Promise<Lend> {
+  const [[device], declared] = await Promise.all([
+    executor
+      .select({ boxHealth: devices.boxHealth, boxHealthAt: devices.boxHealthAt })
+      .from(devices)
+      .where(eq(devices.id, deviceId))
+      .limit(1),
+    declaredIssues(executor, projectId, seqs),
+  ]);
+  const stored = readStoredBoxHealth(device?.boxHealth, device?.boxHealthAt ?? null);
+  return lendFor({
+    slots: mine.slots,
+    inUse: mine.inUse,
+    issues: declared,
+    health: freshBoxHealth(stored, new Date()),
+  });
 }
 
 /**
@@ -267,7 +320,9 @@ async function slotOwedTo(deviceId: string, projectId: string): Promise<string |
 }
 
 /**
- * Refuse a run this project has no free slot for on this box. Inside an open, `tx` serializes every
+ * Refuse a run this project has no free slot for on this box, unless a declaration's critical or high
+ * issue is lent one run past its slots (`run-slots.ts:lendFor`); answers why it was lent, or null
+ * where a slot was free. Inside an open, `tx` serializes every
  * open on the box, so two declarations racing for the last slot cannot both take it, and the open
  * that takes one ends its master's wait.
  *
@@ -281,7 +336,10 @@ export async function refuseRunWithoutSlot(args: {
   projectId: string;
   tx?: Tx;
   yieldToQueued?: boolean;
-}): Promise<void> {
+  /** The issues a master's declaration names: with every slot in use, one critical or high among
+   *  them may be lent one run past them (ISS-1420). Work core starts on its own names none. */
+  issueSeqs?: readonly number[];
+}): Promise<string | null> {
   if (args.yieldToQueued) {
     const owed = await slotOwedTo(args.deviceId, args.projectId);
     if (owed) {
@@ -300,24 +358,61 @@ export async function refuseRunWithoutSlot(args: {
   });
   const mine = box.projects.find((p) => p.projectId === args.projectId);
   if (!mine) throw new Error('refuseRunWithoutSlot: the declaring project was not allocated');
-  if (mine.inUse >= mine.slots) throw slotRefusal(args.projectId, box, mine);
+  let lent: string | null = null;
+  if (mine.inUse >= mine.slots) {
+    const lend = args.issueSeqs
+      ? await lendNow(args.tx ?? db, args.deviceId, args.projectId, mine, args.issueSeqs)
+      : null;
+    if (!lend?.lent) throw slotRefusal(args.projectId, box, mine, lend);
+    lent = lend.why;
+  }
   // inside an open the slot is taken: the master's wait a refused declare left is over (ISS-1266)
   if (args.tx) await endSlotWait(args.tx, args.deviceId, args.projectId);
+  return lent;
+}
+
+/** Where a run lent past its project's slots keeps why it was lent (ISS-1420, `run-slots.ts:lendFor`). */
+export const RUN_LENT_METADATA_KEY = 'runLent';
+
+/**
+ * An open's slot, taken under the box's lock (`run-session.ts:openRunSession`): refused as
+ * `refuseRunWithoutSlot` refuses, else the run's metadata, with why it was lent where it was, and
+ * what the open answers of it.
+ */
+export async function takeRunSlot(
+  tx: Tx,
+  run: { deviceId: string; projectId: string },
+  issueSeqs: readonly number[],
+  metadata: Record<string, unknown>,
+): Promise<{ metadata: Record<string, unknown>; said: { lent?: string } }> {
+  const lent = await refuseRunWithoutSlot({
+    deviceId: run.deviceId,
+    projectId: run.projectId,
+    tx,
+    issueSeqs,
+  });
+  if (!lent) return { metadata, said: {} };
+  return { metadata: { ...metadata, [RUN_LENT_METADATA_KEY]: lent }, said: { lent } };
 }
 
 /**
  * The declare-time ask (`POST /me/run-sessions/preflight`): refused for want of a slot, it keeps the
  * master's wait (`run-slot-wait.ts`) and answers RUN_SLOT_UNAVAILABLE by name as before. The slot check
- * stays here, so no box accepts a dispatch core will not open.
+ * stays here, so no box accepts a dispatch core will not open. A lent run answers why it was lent.
  */
 export async function refuseDeclarationWithoutSlot(args: {
   deviceId: string;
   projectId: string;
   issueKeys: readonly string[];
+  issueSeqs: readonly number[];
   requirement?: string;
-}): Promise<void> {
+}): Promise<string | null> {
   try {
-    await refuseRunWithoutSlot({ deviceId: args.deviceId, projectId: args.projectId });
+    return await refuseRunWithoutSlot({
+      deviceId: args.deviceId,
+      projectId: args.projectId,
+      issueSeqs: args.issueSeqs,
+    });
   } catch (err) {
     if (isRefusal(err, 'RUN_SLOT_UNAVAILABLE')) await recordSlotWait(args);
     throw err;
