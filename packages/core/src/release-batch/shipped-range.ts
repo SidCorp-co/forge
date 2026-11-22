@@ -55,7 +55,8 @@ export interface RangeHost {
   readFile(path: string, ref: string, maxBytes: number): Promise<string | { missing: string }>;
 }
 
-const JOURNAL = /(^|\/)drizzle\/migrations\/meta\/_journal\.json$/;
+/** A drizzle journal in either of drizzle's layouts: `drizzle/meta/` (its default out) or `drizzle/migrations/meta/`. */
+const JOURNAL = /(^|\/)drizzle\/(migrations\/)?meta\/_journal\.json$/;
 const OPENAPI = /(^|\/)contracts\/[^/]+\.openapi\.json$/;
 const MANIFEST = /(^|\/)package\.json$/;
 const COMPOSE = /(^|\/)docker-compose[^/]*\.ya?ml$/;

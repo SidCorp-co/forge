@@ -66,6 +66,27 @@ describe('what a release range ships, read from the repository (BC-7, BC-9)', ()
     });
   });
 
+  it("names the migrations a journal at drizzle's default drizzle/meta/ gains, beside it (ISS-1404)", async () => {
+    const ADMIN = 'admin-ui/drizzle/meta/_journal.json';
+    const host = repo(
+      {
+        [BASE]: { [ADMIN]: journal('0009_nodes') },
+        [HEAD]: { [ADMIN]: journal('0009_nodes', '0010_sending_domain_per_node_selector') },
+      },
+      [ADMIN, 'admin-ui/drizzle/0010_sending_domain_per_node_selector.sql'],
+    );
+    const read = await shippedBetween(host, BASE, HEAD);
+    expect(read).toMatchObject({
+      state: 'read',
+      migrations: ['admin-ui/drizzle/0010_sending_domain_per_node_selector.sql'],
+    });
+    expect(rangeReads([{ path: ADMIN, change: 'changed' }])).toEqual([ADMIN]);
+  });
+
+  it('reads no journal from a _journal.json outside a drizzle folder', () => {
+    expect(rangeReads([{ path: 'admin-ui/meta/_journal.json', change: 'changed' }])).toEqual([]);
+  });
+
   it('names an API operation added, one changed through a schema it reaches, and one removed', async () => {
     const host = repo(
       {
