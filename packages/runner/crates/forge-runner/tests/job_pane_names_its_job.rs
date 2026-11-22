@@ -32,6 +32,19 @@ fn one_call_core() -> (String, mpsc::Receiver<String>) {
         while !head.ends_with(b"\r\n\r\n") && stream.read(&mut byte).unwrap_or(0) == 1 {
             head.push(byte[0]);
         }
+        // the call posts a body: read it before answering, since windows resets a socket closed
+        // with bytes unread and the client reads that as a failed send
+        let length = String::from_utf8_lossy(&head)
+            .lines()
+            .find_map(|l| {
+                let (k, v) = l.split_once(':')?;
+                k.trim()
+                    .eq_ignore_ascii_case("content-length")
+                    .then(|| v.trim().parse::<usize>().ok())?
+            })
+            .unwrap_or(0);
+        let mut body = vec![0u8; length];
+        let _ = stream.read_exact(&mut body);
         let _ = write!(
             stream,
             "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}"
