@@ -105,6 +105,8 @@ export const RUN_ISSUE_STATUSES_METADATA_KEY = "runIssueStatuses";
 export const RUN_DECLARATION_REFUSAL_METADATA_KEY = "declarationRefusal";
 /** What each carried issue was given when the run opened (`run-standing.ts:RunGiven`); nothing rewrites it. */
 export const RUN_GIVEN_METADATA_KEY = "runGiven";
+/** On a run lent past its project's subagent slots, why it was lent, as core's slot rule said it (ISS-1420). */
+export const RUN_LENT_METADATA_KEY = "runLent";
 /** On a run judging a shipped requirement at the requirement rather than an issue, its key (`REQ-76`, ISS-735). */
 export const RUN_REQUIREMENT_METADATA_KEY = "runRequirement";
 /**

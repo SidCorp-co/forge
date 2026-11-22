@@ -377,6 +377,15 @@ export interface RunDeployLock {
 	reclaimedFromRunId: string | null;
 }
 
+/** A run opened past its project's subagent slots for critical or high work (ISS-1420). */
+export interface RunLent {
+	/** Why it was lent, as core's slot rule said it at the open (`runLent`). */
+	reason: string;
+	/** The short line a person reads. */
+	line: string;
+	says: { line: Said; reason: Said };
+}
+
 /** The job behind a run, where one exists: its type and its own status. */
 export interface RunJob {
 	id: string;
@@ -413,6 +422,8 @@ export interface RunStanding
 	deployLocks: RunDeployLock[];
 	pipelineStatus: string;
 	job: RunJob | null;
+	/** Why the run was lent past its project's slots; null for a run that took a slot of its own. */
+	lent: RunLent | null;
 	startedAt: string;
 	finishedAt: string | null;
 	/** `rule` and `title` as said (`said.ts`). */

@@ -6,6 +6,7 @@ import type {
   RunGroup,
   RunHolder,
   RunLane,
+  RunLent,
   RunMasterRef,
   RunRelease,
   RunStanding,
@@ -158,6 +159,13 @@ function rootSessionOf(f: RunFacts): string | null {
   return f.session?.id ?? f.job?.agentSessionId ?? null;
 }
 
+// Why a run holds more than its project's slots, from what the open recorded (ISS-1420).
+function lentOf(reason: string | null | undefined): RunLent | null {
+  if (!reason) return null;
+  const line = say('runs.lent.line');
+  return { reason, line: sayEn(line), says: { line, reason: verbatim(reason) } };
+}
+
 export function runStandingOf(f: RunFacts, ctx: StandingContext): RunStanding {
   const base = finalOf(f) ?? liveOf(f, ctx);
   const reading = stuckOf(f, ctx, base);
@@ -202,6 +210,7 @@ export function runStandingOf(f: RunFacts, ctx: StandingContext): RunStanding {
     })),
     pipelineStatus: f.run.status,
     job: f.job ? { id: f.job.id, type: f.job.type, status: f.job.status } : null,
+    lent: lentOf(f.run.lent),
     startedAt: f.run.startedAt.toISOString(),
     finishedAt: iso(f.run.finishedAt),
   };

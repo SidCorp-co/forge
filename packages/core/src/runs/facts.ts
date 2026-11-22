@@ -1,5 +1,6 @@
 import {
   RUN_ISSUE_STATUSES_METADATA_KEY,
+  RUN_LENT_METADATA_KEY,
   RUN_SESSION_KIND,
   readReviewRun,
 } from '@forge/contracts/agent-sessions';
@@ -234,6 +235,7 @@ function runPart(b: BaseRun, lane: RunFacts['run']['rawLane'], t: Tables): RunFa
     declarationRefusal: declarationRefusalOf(metadataObject(b.metadata).declarationRefusal),
     review: reviewOf(b.metadata),
     failure: readRunFailure(b.metadata),
+    lent: str(metadataObject(b.metadata)[RUN_LENT_METADATA_KEY]),
   };
 }
 

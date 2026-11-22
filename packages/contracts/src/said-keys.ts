@@ -2583,6 +2583,7 @@ export const SAID = {
 		en: "this run carries no issue: no earlier attempt counted",
 	},
 	"runs.master.none": { en: "No master" },
+	"runs.lent.line": { en: "Lent past its slots for critical or high work" },
 	"runs.list.scopeRule": {
 		en: "live: running or paused; finished: completed, failed or cancelled",
 	},

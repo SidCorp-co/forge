@@ -120,10 +120,15 @@ const detail = (r: Reply): string => JSON.stringify(r.json);
 const preflight = (who: string, projectId: string, key: string) =>
   say(who, 'POST', '/api/devices/me/run-sessions/preflight', { projectId, issueKeys: [key] });
 
-async function open(who: string, projectId: string, key: string): Promise<Reply> {
+async function open(
+  who: string,
+  projectId: string,
+  key: string,
+  runId: string = crypto.randomUUID(),
+): Promise<Reply> {
   return say(who, 'POST', '/api/devices/me/run-sessions', {
     projectId,
-    runId: crypto.randomUUID(),
+    runId,
     issueKeys: [key],
     name: key,
   });
@@ -379,9 +384,22 @@ describe('a run lent past the slots for urgent work', () => {
     const asked = await preflight('lendBox', d, 'ISS-2');
     expect(asked.status, detail(asked)).toBe(200);
     expect((asked.json as Doc).lent).toContain(why);
-    const lent = await open('lendBox', d, 'ISS-2');
+    const lentRun = crypto.randomUUID();
+    const lent = await open('lendBox', d, 'ISS-2', lentRun);
     expect(lent.status, detail(lent)).toBe(200);
     expect((lent.json as Doc).lent).toContain(why);
+    // the run's own read and the project's run list name the lend and why, where a person and the
+    // master read them (the dev.796 judge's c2 fail: only the run's metadata held it)
+    const read = await say('person', 'GET', `/api/projects/${d}/runs/standing/${lentRun}`);
+    expect(read.status, detail(read)).toBe(200);
+    const shown = (read.json as Doc).run.lent;
+    expect(shown?.reason).toContain(why);
+    expect(shown?.line).toBe('Lent past its slots for critical or high work');
+    expect(shown?.says?.line?.key).toBe('runs.lent.line');
+    const listed = await say('person', 'GET', `/api/projects/${d}/runs/standing`);
+    const rows = (listed.json as Doc).items as Doc[];
+    expect(rows.find((r) => r.boxRunId === lentRun)?.lent?.reason).toContain(why);
+    expect(rows.find((r) => r.sessionId === build)?.lent).toBeNull();
     const [run] = (await db.execute(sql`
       SELECT pr.metadata ->> 'runLent' AS lent FROM agent_sessions s
         JOIN pipeline_runs pr ON pr.id = s.pipeline_run_id

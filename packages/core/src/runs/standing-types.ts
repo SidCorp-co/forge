@@ -46,6 +46,8 @@ export interface RunFacts {
     review?: { declaredBy: string; profile: string; expiresAt: Date } | null;
     /** The failure the run's own close recorded (`metadata.failure`), read where no job or session names one. */
     failure?: { code: string; detail: string } | null;
+    /** Why the run was lent past its project's slots (`runLent`, ISS-1420); null where it took its own. */
+    lent?: string | null;
     /** The take refusal a box's declaration is queued behind, until core admits it. */
     declarationRefusal: {
       code: string;

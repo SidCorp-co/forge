@@ -15,6 +15,7 @@
 
 import {
   RUN_DECLARATION_REFUSAL_METADATA_KEY,
+  RUN_LENT_METADATA_KEY,
   RUN_SESSION_KIND,
 } from '@forge/contracts/agent-sessions';
 import { BOX_MODES } from '@forge/contracts/boxes';
@@ -370,9 +371,6 @@ export async function refuseRunWithoutSlot(args: {
   if (args.tx) await endSlotWait(args.tx, args.deviceId, args.projectId);
   return lent;
 }
-
-/** Where a run lent past its project's slots keeps why it was lent (ISS-1420, `run-slots.ts:lendFor`). */
-export const RUN_LENT_METADATA_KEY = 'runLent';
 
 /**
  * An open's slot, taken under the box's lock (`run-session.ts:openRunSession`): refused as
