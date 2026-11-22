@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.795] - 2026-11-22
+
+The assistant re-reads a live setting before stating it and says where a raise landed
+
+### Fixed
+
+- **A room agent re-reads a setting before saying it is on or off.** Each turn names when it last read, a raise's result names where it landed, and the reply audit fails a raise reported with nothing landed that turn.
+
 ## [0.4.0-dev.794] - 2026-11-22
 
 Release reports keep the assistant's reply; superseded attempts name the live holder
