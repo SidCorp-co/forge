@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.785] - 2026-11-22
+
+A question a decision holds no longer wakes the master every pass
+
+### Fixed
+
+- **A question a decision holds no longer wakes the master.** An open question owed to the master or a peer leaves its owed-questions line while a decision on its issue holds, by a date to come or a condition.
+
 ## [0.4.0-dev.784] - 2026-11-21
 
 Read-only tokens can search memory and knowledge
