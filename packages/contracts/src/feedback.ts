@@ -1186,6 +1186,10 @@ export interface SimilarFeedbackResponse {
 		title: string;
 		phase: FeedbackPhase;
 		similarity: number;
+		/** The root this hit is a duplicate of, by key, the item a duplicate route names; null where the hit is itself a root (ISS-1402). */
+		duplicateOf: string | null;
+		/** The issues carrying the root's issue route, by key, oldest first; empty where no issue does (ISS-1402). */
+		carriers: string[];
 	}[];
 }
 

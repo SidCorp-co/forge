@@ -17,10 +17,10 @@ const P = "p1";
 const HITS: SimilarFeedbackResponse = {
   status: "ok",
   hits: [
-    { key: "FB-9", title: "Export drops the header row", phase: "planned", similarity: 0.82 },
-    { key: "FB-3", title: "Export is missing a column", phase: "new", similarity: 0.61 },
-    { key: "FB-5", title: "CSV export is empty", phase: "resolved", similarity: 0.55 },
-    { key: "FB-6", title: "Export is slow", phase: "verified", similarity: 0.41 },
+    { key: "FB-9", title: "Export drops the header row", phase: "planned", similarity: 0.82, duplicateOf: null, carriers: [] },
+    { key: "FB-3", title: "Export is missing a column", phase: "new", similarity: 0.61, duplicateOf: null, carriers: [] },
+    { key: "FB-5", title: "CSV export is empty", phase: "resolved", similarity: 0.55, duplicateOf: null, carriers: [] },
+    { key: "FB-6", title: "Export is slow", phase: "verified", similarity: 0.41, duplicateOf: null, carriers: [] },
   ],
 };
 

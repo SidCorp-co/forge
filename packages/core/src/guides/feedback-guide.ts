@@ -130,7 +130,9 @@ reporter's confirm in the fix's preview does as theirs (below).
   The answer's decision keeps it as \`inReplyTo\`.
 - **duplicate** names its root in the triage (\`duplicateOf\`): a root that is not itself a duplicate, and
   an item others point at stays a root (\`FEEDBACK_DUPLICATE_CHAIN\` names the root to use instead); an
-  item is never its own duplicate (\`FEEDBACK_DUPLICATE_SELF\`).
+  item is never its own duplicate (\`FEEDBACK_DUPLICATE_SELF\`). Route to the similar hit's root: a hit
+  that is itself a duplicate names it in \`duplicateOf\`, and every hit names its root's carrier issues in
+  \`carriers\` (empty where none carries it), so name that root, and its carrier where you link one.
 - **decline** is an act, not a route: its reason, in \`note\`, the reporter reads
   (\`FEEDBACK_DECLINE_REASON_REQUIRED\`), it carries no \`answers\` (\`CHECKLIST_ANSWER_INVALID\`), and it
   moves the item to \`declined\`. 180 days after the
@@ -259,6 +261,8 @@ project is strict, where whoever \`approvals.triage\` asks triages it (the one r
 asked); whoever \`approvals.triage\` asks to reroute a triaged one whose carrier died; the carrier to ship a planned one, or, where that carrier waits at \`awaiting_release\`, whoever
 makes the release (a release approver, a writer cutting it, or with no release model a writer releasing it by hand), and anyone
 to verify a resolved one, which is owed by nobody and so reads \`You\` for no one. It reads \`You\` only where the viewer holds that act.
-\`GET …/feedback/:fb/similar\` compares stored embeddings to find likely duplicates. How a requirement a
+\`GET …/feedback/:fb/similar\` compares stored embeddings to find likely duplicates: each hit answers its key, title,
+phase and similarity, its root where it is itself a duplicate (\`duplicateOf\`, else null), and the issues carrying
+that root's route (\`carriers\`, empty where none does). How a requirement a
 feedback item revises moves is in ${guideRef('requirement-lifecycle')}.`,
 };

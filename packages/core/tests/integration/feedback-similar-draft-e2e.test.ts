@@ -16,6 +16,7 @@ import {
   testEnv,
 } from '../helpers/ecosystem-world.js';
 import { createTestProject, createTestUser, rows } from '../helpers/factories.js';
+import { TRIAGE_ANSWERS } from '../helpers/triage-answers.js';
 
 const DIM = 1536;
 
@@ -114,5 +115,56 @@ describe('likely duplicates of a draft', () => {
       sql`SELECT count(*)::int AS n FROM item_embeddings WHERE project_id = ${projectId}`,
     );
     expect(n?.n).toBe(2);
+  });
+});
+
+describe('where a likely duplicate routes (ISS-1402)', () => {
+  let root = '';
+  let dup = '';
+  let carrier = '';
+  let lone = '';
+
+  beforeAll(async () => {
+    root = await file('Exporting the ledger drops the header row');
+    const triaged = ok(
+      await say('POST', at(`/feedback/${root}/triage`), {
+        route: 'issue',
+        note: 'header bug',
+        answers: TRIAGE_ANSWERS,
+      }),
+    );
+    carrier = ((triaged.effect as Doc).carriers as string[])[0] ?? '';
+    dup = await file('Exporting the ledger loses the header row');
+    ok(
+      await say('POST', at(`/feedback/${dup}/triage`), {
+        route: 'duplicate',
+        duplicateOf: root,
+        answers: TRIAGE_ANSWERS,
+      }),
+    );
+    lone = await file('Exporting the ledger header is missing');
+    await embedded(root);
+    await embedded(dup);
+    await embedded(lone);
+  });
+
+  it("names a duplicate hit's root and the root's carrier, so a triage routes there first time", async () => {
+    expect(carrier).toMatch(/^ISS-\d+$/);
+    const r = ok(await say('GET', at(`/feedback/${lone}/similar`)));
+    const hits = new Map((r.hits as Doc[]).map((h) => [h.key as string, h]));
+    expect(hits.get(dup)).toMatchObject({ duplicateOf: root, carriers: [carrier] });
+    expect(hits.get(root)).toMatchObject({ duplicateOf: null, carriers: [carrier] });
+    // an item nothing routed reads as before, saying no issue carries it
+    const others = [...hits.values()].filter((h) => h.key !== root && h.key !== dup);
+    expect(others.length).toBeGreaterThan(0);
+    for (const hit of others) expect(hit).toMatchObject({ duplicateOf: null, carriers: [] });
+    // the root it names is one a duplicate route takes: no FEEDBACK_DUPLICATE_CHAIN
+    ok(
+      await say('POST', at(`/feedback/${lone}/triage`), {
+        route: 'duplicate',
+        duplicateOf: hits.get(dup)?.duplicateOf,
+        answers: TRIAGE_ANSWERS,
+      }),
+    );
   });
 });

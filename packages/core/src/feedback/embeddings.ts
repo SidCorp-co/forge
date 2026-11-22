@@ -15,6 +15,7 @@ import { say, sayEn } from '@forge/contracts/said';
 import { eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { feedback } from '../db/schema-feedback.js';
+import { activeIssuePrefix } from '../issues/index.js';
 import {
   embedText,
   itemEmbeddingOf,
@@ -24,11 +25,15 @@ import {
 } from '../knowledge/index.js';
 import { background } from '../lib/background.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../lib/logger.js';
 import { requireDeclaredOn } from '../permissions/index.js';
 import { feedbackEgress, type ReadDoor } from './egress.js';
+import { rootRowsOf } from './linked-rows.js';
+import { carrierIssueRows } from './list-carriers.js';
 import { phaseOfRow } from './list-read.js';
-import { type FeedbackActor, rowIn } from './read.js';
+import { type FeedbackActor, type Row, rowIn } from './read.js';
+import { routeIssuesOf } from './relations.js';
 
 /** Embeds the item's text, replacing whatever row it held; a redacted item holds none. */
 export async function embedFeedback(feedbackId: string) {
@@ -108,6 +113,7 @@ async function hitsOf(
             ),
           );
   const byId = new Map(rows.map((r) => [r.id, r]));
+  const routing = await routingOf(projectId, rows);
   return Promise.all(
     nearest.flatMap((n) => {
       const item = byId.get(n.itemId);
@@ -118,10 +124,62 @@ async function hitsOf(
           title: withhold ? feedbackKey(item.fbSeq) : item.title,
           phase: await phaseOfRow(projectId, item),
           similarity: n.similarity,
+          ...routing(item),
         }))(),
       ];
     }),
   );
+}
+
+/**
+ * Where a duplicate of each hit would route (ISS-1402): the hit's root, where the hit is itself a
+ * duplicate, and the issues carrying the root's route, so a triage names the root and its carrier
+ * from this one read, never the nearest hit `FEEDBACK_DUPLICATE_CHAIN` then refuses
+ * (`verb-rules.ts:duplicateRefusal`). A root is one hop away: a duplicate never names a duplicate.
+ */
+async function routingOf(
+  projectId: string,
+  hits: readonly Row[],
+): Promise<(hit: Row) => { duplicateOf: string | null; carriers: string[] }> {
+  const byId = new Map(hits.map((r) => [r.id, r]));
+  const unread = [
+    ...new Set(
+      hits.flatMap((r) => (r.duplicateOf && !byId.has(r.duplicateOf) ? [r.duplicateOf] : [])),
+    ),
+  ];
+  for (const root of await rootRowsOf(unread)) byId.set(root.id, root);
+  const rootOf = (hit: Row): Row => {
+    if (!hit.duplicateOf) return hit;
+    const root = byId.get(hit.duplicateOf);
+    if (!root) {
+      throw new Error(
+        `${feedbackKey(hit.fbSeq)} is a duplicate of ${hit.duplicateOf}, which no feedback row holds`,
+      );
+    }
+    return root;
+  };
+  const routeIssues = await routeIssuesOf([...new Set(hits.map(rootOf))]);
+  const issueIds = [...new Set([...routeIssues.values()].flat())];
+  const [prefix, issueRows] = await Promise.all([
+    activeIssuePrefix(projectId),
+    issueIds.length === 0 ? [] : carrierIssueRows(issueIds),
+  ]);
+  const keyOf = new Map(issueRows.map((i) => [i.id, formatIssueRef(prefix, i.seq)]));
+  return (hit) => {
+    const root = rootOf(hit);
+    return {
+      duplicateOf: root === hit ? null : feedbackKey(root.fbSeq),
+      carriers: (routeIssues.get(root.id) ?? []).map((id) => {
+        const key = keyOf.get(id);
+        if (!key) {
+          throw new Error(
+            `${feedbackKey(root.fbSeq)} is carried by issue ${id}, which the carriers' read did not load`,
+          );
+        }
+        return key;
+      }),
+    };
+  };
 }
 
 export async function similarFeedbackAs(
