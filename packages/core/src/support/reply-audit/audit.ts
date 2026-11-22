@@ -12,7 +12,7 @@ import type {
   SupportAuditRequest,
   SupportAuditView,
 } from '@forge/contracts/support-reply-audit';
-import { and, desc, eq, inArray, lte, ne, or, sql } from 'drizzle-orm';
+import { and, desc, eq, lte, ne, or, sql } from 'drizzle-orm';
 import { readMessages } from '../../conversations/index.js';
 import { db } from '../../db/client.js';
 import { conversations } from '../../db/schema-conversations.js';
@@ -21,6 +21,7 @@ import { supportReplyVerdicts } from '../../db/schema-support-verdicts.js';
 import { doorNamed as servedDoorNamed } from '../../guides/index.js';
 import { auditCorrectionRef, recordCorrection } from '../../lessons/index.js';
 import { doorCatalog } from '../../lib/door-catalog.js';
+import { handedOn, isStateRead, stateRead } from '../dated-reads.js';
 import { supportConfigOf } from '../grants.js';
 import { roleOfRoom } from '../ops-role.js';
 import { knownThread, no, type Outcome, threadUnknown } from '../outcome.js';
@@ -78,29 +79,24 @@ async function replyPosted(room: RoomRow, thread: string, message: string): Prom
 }
 
 /**
- * The acts that read what an environment holds now (ISS-1354): a declared read or a run (recorded
- * `diagnose`), a release, issue or deployment read, and a look at a screen.
- */
-const STATE_READ_TOOLS = ['releases', 'issues', 'deployment', 'look'] as const;
-const stateRead = or(
-  eq(supportActions.kind, 'diagnose'),
-  and(eq(supportActions.kind, 'operation'), inArray(supportActions.tool, [...STATE_READ_TOOLS])),
-);
-
-/**
- * The reads of live state around a reply its session posted in a turn: whether that turn made one or
- * looked at a screen, and when the session last made one in an earlier turn. Undefined where the reply
- * names no turn.
+ * The acts around a reply its session posted in a turn: whether that turn read live state, looked at
+ * a screen or landed an act somewhere else, and when the session last read in an earlier turn.
+ * Undefined where the reply names no turn.
  */
 async function readsAround(posted: Posted): Promise<TurnReads | undefined> {
   if (!posted.sessionId || !posted.turnId) return undefined;
-  const ofSession = and(eq(supportActions.sessionId, posted.sessionId), stateRead);
+  const inTurn = and(
+    eq(supportActions.sessionId, posted.sessionId),
+    eq(supportActions.turnId, posted.turnId),
+  );
   const mine = await db
-    .select({ tool: supportActions.tool })
+    .select({ kind: supportActions.kind, tool: supportActions.tool })
     .from(supportActions)
-    .where(and(ofSession, eq(supportActions.turnId, posted.turnId)));
-  const looked = mine.some((r) => r.tool === 'look');
-  if (mine.length > 0) return { thisTurn: true, earlierAt: null, looked };
+    .where(and(inTurn, or(stateRead, handedOn)));
+  const reads = mine.filter((r) => isStateRead(r.kind, r.tool));
+  const acted = reads.length < mine.length;
+  const looked = reads.some((r) => r.tool === 'look');
+  if (reads.length > 0) return { thisTurn: true, earlierAt: null, looked, handedOn: acted };
   const [earlier] = await db
     .select({
       at: sql<Date | null>`max(${supportActions.createdAt})`.mapWith((v) =>
@@ -110,12 +106,13 @@ async function readsAround(posted: Posted): Promise<TurnReads | undefined> {
     .from(supportActions)
     .where(
       and(
-        ofSession,
+        eq(supportActions.sessionId, posted.sessionId),
+        stateRead,
         ne(supportActions.turnId, posted.turnId),
         lte(supportActions.createdAt, posted.at),
       ),
     );
-  return { thisTurn: false, earlierAt: earlier?.at ?? null, looked: false };
+  return { thisTurn: false, earlierAt: earlier?.at ?? null, looked: false, handedOn: acted };
 }
 
 const textOf = (input: unknown) => {

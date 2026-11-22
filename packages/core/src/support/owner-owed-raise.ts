@@ -39,7 +39,9 @@ const PER_SWEEP = 10;
 export type TechnicalRaise = (
   room: RoomRow,
   input: { thread: string; need: 'approval'; text: string; answers?: string | undefined },
-) => Promise<Outcome<{ channel: 'thread' | 'dm'; rid: string; messageId: string | null }>>;
+) => Promise<
+  Outcome<{ channel: 'thread' | 'dm'; rid: string; messageId: string | null; landed?: string }>
+>;
 
 let raise: TechnicalRaise | null = null;
 
@@ -236,6 +238,7 @@ export async function raiseOwed(
     value: {
       raised: true,
       channel: out.value.channel,
+      ...(out.value.landed ? { landed: out.value.landed } : {}),
       next: 'Raised in the technical channel. When he answers there, do it as him, citing his message.',
     },
   };

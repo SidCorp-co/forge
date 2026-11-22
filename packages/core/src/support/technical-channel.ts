@@ -58,6 +58,8 @@ export type Raised = Outcome<{
   rid: string;
   messageId: string | null;
   thread: string | null;
+  /** Where the raise landed, in words the agent reports it by (ISS-1416): whose thread, or a DM. */
+  landed?: string;
 }>;
 
 /** Where the project's channel is, resolved before a word is written: a thread, or a direct message. */
@@ -266,7 +268,13 @@ export async function raiseTechnical(
     output: { route: TECHNICAL, ...out.value },
     externalId: out.value.messageId,
   });
-  return out;
+  // FB-824: a raise said landed in AdminHub API's thread had landed in another project's
+  const name = (await projectName(room.projectId)) ?? 'this project';
+  const landed =
+    out.value.channel === 'thread'
+      ? `${name}'s own thread of ${out.value.rid}`
+      : `a direct message to ${name}'s owner`;
+  return { ok: true, value: { ...out.value, landed } };
 }
 
 /**

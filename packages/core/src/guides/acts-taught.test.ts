@@ -365,8 +365,9 @@ describe('a room agent states a live setting from a read of its own turn, and na
     expect(answering).toContain(
       "A live setting, account, field, or an issue's or release's status is stated from a read made in this turn",
     );
-    expect(answering).toContain('or said to be from an earlier read and when');
-    expect(answering).toContain('never from a release plan, release note or what a master said');
+    expect(answering).toContain(
+      'never from a release plan, release note, what a master said or a read already in your context',
+    );
   });
 
   it("the Answering section holds an issue's or release's status to a read, and closed to a deployed release (ISS-1389)", () => {
@@ -384,7 +385,26 @@ describe('a room agent states a live setting from a read of its own turn, and na
 
   it("support.reply's card, served beneath the guide, carries the same line", () => {
     expect(prose).toContain(
-      'A live setting, account, or an issue’s or release’s status is stated from a read made in this turn, or said to be from an earlier read and when; an issue is closed only once its release has deployed. Each step names who does it, never “em”',
+      'A live setting, account, or an issue’s or release’s status is stated from a read made in this turn; an earlier read, dated as the turn opens, is read again first. An issue is closed only once its release has deployed. Each step names who does it, never “em”',
+    );
+  });
+
+  // ISS-1416 (FB-824): "not enabled yet" and "still off" (in Vietnamese) were stated from reads a turn old, which the line's
+  // "or said to be from an earlier read and when" let stand; and a raise was told landed in AdminHub
+  // API's thread when it had been refused there
+  it('the Answering section has an earlier turn’s read made again before a setting is said on or off', () => {
+    expect(answering).not.toContain('or said to be from an earlier read and when');
+    expect(answering).toContain(
+      "A turn opens naming when you last read; a read from before it is an earlier turn's, so read again before you say a setting is on or off.",
+    );
+  });
+
+  it('the guide and the technical card have an act told from its result, refused or where it landed', () => {
+    expect(prose).toContain(
+      'An act you took is told from its result: a refused raise was not raised, and a raise that landed is named where its result says it landed.',
+    );
+    expect(prose).toContain(
+      'once its result says where it landed, tell that thread the answer or that it is in hand there; a refused raise was not raised',
     );
   });
 });

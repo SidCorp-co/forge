@@ -1725,9 +1725,9 @@
     "by": "ISS-1251"
   },
   "support.reply": {
-    "hash": "b2b0b90d4f721876",
-    "on": "2026-11-21",
-    "by": "ISS-1386"
+    "hash": "f55072be54a5bcac",
+    "on": "2026-11-22",
+    "by": "ISS-1416"
   },
   "support.requirements": {
     "hash": "793ed91dbfb6b6d7",
@@ -1770,9 +1770,9 @@
     "by": "ISS-1251"
   },
   "support.technical": {
-    "hash": "cbc01eae98dda516",
-    "on": "2026-11-18",
-    "by": "ISS-1299"
+    "hash": "3803629711ea6bb4",
+    "on": "2026-11-22",
+    "by": "ISS-1416"
   },
   "support.term": {
     "hash": "5a1b14059e67bba5",

@@ -99,8 +99,9 @@ describe('the 17/11 Forge-Communicate turns, replayed from their real input (c11
 // its day is counted as the room's daily line counts it; the replies the turns owed, each made after
 // a look or saying it has not seen the screen, pass and leave the day clean.
 describe('the 19/11 PGPrints thread, replayed through the audit and the daily line (ISS-1356)', () => {
-  const noLook = { thisTurn: false, earlierAt: null, looked: false };
-  const looked = { thisTurn: true, earlierAt: null, looked: true };
+  const noLook = { thisTurn: false, earlierAt: null, looked: false, handedOn: false };
+  // the owed mapping reply's turn looked, and filed the hidden item it reports (ISS-1416)
+  const looked = { thisTurn: true, earlierAt: null, looked: true, handedOn: true };
   const judgedIn = (text: string, reads: typeof noLook) =>
     judgeReply(
       { text, language: { language: 'vi', from: 'asker' }, roomKind: 'agent', apiHosts: [], reads },

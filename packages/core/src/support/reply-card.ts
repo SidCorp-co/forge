@@ -26,7 +26,8 @@ export const REPLY_CARD = {
     // ISS-1354 (FB-763): three failed audits after ISS-1329 taught reading first, at a line the agent did not read as it wrote
     // ISS-1356 (owner 2026-11-19): a menu item confirmed to a PGPrints user from a master's post, not a look
     'What a screen shows (a button, menu item, field, page) is said only from a look this turn with support.look, its picture posted with shots; where you could not look, say you have not seen it yet, never the thing anyway.',
-    'A live setting, account, or an issue’s or release’s status is stated from a read made in this turn, or said to be from an earlier read and when; an issue is closed only once its release has deployed. Each step names who does it, never “em”, and the asker is addressed as who they are.',
+    // ISS-1416 (FB-824): "not enabled yet" and "still off" stated from reads a turn old, which "or said to be from an earlier read and when" let stand
+    'A live setting, account, or an issue’s or release’s status is stated from a read made in this turn; an earlier read, dated as the turn opens, is read again first. An issue is closed only once its release has deployed. Each step names who does it, never “em”; the asker is addressed as who they are.',
   ],
   example: {
     thread: THREAD,

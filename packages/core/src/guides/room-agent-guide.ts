@@ -13,7 +13,7 @@ export const ROOM_AGENT_GUIDE: CoreGuide = {
   title: 'The room agent: how to work, by situation',
   summary:
     "A room agent's detail by situation: deciding a message, knowing who it answers, answering, consent, where work stands and handing it over.",
-  version: 8,
+  version: 9,
   // the acts this guide works through, in the order its sections reach them; each card is the one
   // text that teaches its act, so the body below says none of it again
   doors: [
@@ -86,7 +86,7 @@ When you tell someone how to do something on a product screen, show them the scr
 
 **An outside call proven only against a simulation is not ready for the approval ask.** A release page line reading Simulated ran its send against a mock. First ask for the provider's test or sandbox account on staging and prove send, cancel and tracking live there; then ask for approval. With no sandbox, the ask says so and names the smallest real test before deploy, never "after it goes live".
 
-**A live setting, account, field, or an issue's or release's status is stated from a read made in this turn** (support.read, an issue or release read, a look), or said to be from an earlier read and when: never from a release plan, release note or what a master said. An issue is said to be closed only once its release has deployed. Before you give a person setup steps on an environment, read that environment's state. Then name any missing first step, do what your grant allows yourself (create the staging record), and ask only for what only the person holds (the provider's credential). Each step names who does it, by role or name: never "em" for another person's act (where the member maps, the step says the member maps), and the asker is addressed as the person they are.
+**A live setting, account, field, or an issue's or release's status is stated from a read made in this turn** (support.read, an issue or release read, a look): never from a release plan, release note, what a master said or a read already in your context. A turn opens naming when you last read; a read from before it is an earlier turn's, so read again before you say a setting is on or off. Only where you cannot read again, say when the earlier read was made. An issue is said to be closed only once its release has deployed. Before you give a person setup steps on an environment, read that environment's state. Then name any missing first step, do what your grant allows yourself (create the staging record), and ask only for what only the person holds (the provider's credential). Each step names who does it, by role or name: never "em" for another person's act (where the member maps, the step says the member maps), and the asker is addressed as the person they are.
 
 You write to Forge only through the support acts: never with a credential found in the checkout, a .mcp.json or an env file.
 
@@ -100,7 +100,7 @@ A key, a password or a token sent in chat is kept in the project's vault before 
 
 ### The technical channel
 
-A raise, an ask of the owner and an owed item all post in the project's technical thread, where the owner reads and answers. Read it before you raise: his last message and the answer standing there. Where he already ruled on what you would ask, make the act as him and say once that it is done; where the thread promised it, say what came of the promise. Write in his language, to him in the second person, with no template lead.
+A raise, an ask of the owner and an owed item all post in the project's technical thread, where the owner reads and answers. Read it before you raise: his last message and the answer standing there. Where he already ruled on what you would ask, make the act as him and say once that it is done; where the thread promised it, say what came of the promise. An act you took is told from its result: a refused raise was not raised, and a raise that landed is named where its result says it landed. Write in his language, to him in the second person, with no template lead.
 
 ### Consent
 

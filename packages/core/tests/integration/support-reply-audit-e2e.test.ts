@@ -24,6 +24,8 @@ import { SupportWorld } from '../helpers/support-world.js';
 // @direct-test-of packages/core/src/support/screen-claims.ts
 // @direct-test-of packages/core/src/support/room-day.ts
 // @direct-test-of packages/core/src/support/actions-route.ts
+// @direct-test-of packages/core/src/support/dated-reads.ts
+// @direct-test-of packages/core/src/support/dispatch.ts
 // @direct-test-of packages/core/src/db/schema-support-verdicts.ts
 //
 // ISS-1250 (owner 2026-11-16, "teach the flow, not block it"): right after it posts a reply, a room's
@@ -49,13 +51,15 @@ async function replyAndAudit(
   failed: Array<{ line: string; why: string }> | null,
   /** Run after the reply is posted and before it is audited, in the same turn. */
   inTurn?: (message: string) => Promise<void>,
-): Promise<{ thread: string; message: string; audit: Audit | null }> {
+): Promise<{ thread: string; message: string; audit: Audit | null; handed: string }> {
   await w.settleWarm();
   let message = '';
   let audit: Audit | null = null;
+  let handed = '';
   w.box.model = async (turn, act) => {
     const m = turn.messages.find((x) => x.from !== 'forge' && x.text === ask);
     if (!m) return;
+    handed = turn.text;
     const posted = await act({ action: 'reply', thread: m.thread, text });
     message = String(posted.messageId);
     if (inTurn) await inTurn(message);
@@ -71,7 +75,7 @@ async function replyAndAudit(
   await w.untilLines((lines) => lines.some((l) => l.tmid === thread && l.text === text));
   await w.settleWarm();
   w.box.model = async () => {};
-  return { thread, message, audit };
+  return { thread, message, audit, handed };
 }
 
 const verdicts = () =>
@@ -424,4 +428,57 @@ describe("a room's screen claims, corrections and the owner's waits, on its reco
     expect(JSON.stringify(refused)).toContain('SUPPORT_LOOK_ENVIRONMENT_UNKNOWN');
     expect(JSON.stringify(refused)).toContain('its environments with one are none');
   }, 90_000);
+});
+
+// ISS-1416 (FB-824, forge L-168): "chưa bật" and "vẫn tắt" were stated from reads a turn or a day old,
+// which sat undated in the resident session's context; and a raise was told landed in AdminHub API's
+// technical thread when it had been refused there. The turn after a read names when it was made, and
+// the audit holds a report of an act to an act of its own turn that landed.
+describe('an earlier read is dated as a turn opens, and an act is told from its result (ISS-1416)', () => {
+  const actInTurnOf = (kind: string, tool: string) => async (message: string) => {
+    await rows(sql`INSERT INTO support_actions (room_id, project_id, thread, kind, actor_kind, tool, input, session_id, turn_id)
+             SELECT room_id, project_id, thread, ${kind}, 'session', ${tool}, '{}'::jsonb, session_id, turn_id
+               FROM support_actions WHERE kind = 'reply' AND external_id = ${message}`);
+  };
+
+  it('names the last read’s time as the next turn opens, and fails a setting said off from it', async () => {
+    const read = await replyAndAudit(
+      'Is the sync flag on in staging?',
+      'I read the staging flags now.',
+      [],
+      actInTurnOf('diagnose', 'read'),
+    );
+    const [last] = await rows<{ at: string }>(
+      sql`SELECT to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS at
+            FROM support_actions WHERE kind = 'diagnose' AND thread = ${read.thread}`,
+    );
+    const at = String(last?.at);
+    const claim = 'The sync flag is still disabled on staging.';
+    const later = await replyAndAudit('Is the sync flag still off?', claim, []);
+    expect(later.handed).toContain(
+      `Your last read of live state (a read, run, issue, release, deployment or look) was at ${at}, in an earlier turn: it is not current.`,
+    );
+    expect(later.handed).toContain('Read again before you say a setting is on or off');
+    expect(later.audit?.body).toMatchObject({ verdict: 'fail', failed: ['accurate'] });
+    expect(JSON.stringify(later.audit?.body.findings)).toContain(
+      `from a read made in an earlier turn (${at})`,
+    );
+  }, 120_000);
+
+  it('fails accurate on a raise reported with no act of its turn landed, and passes it after a raise landed', async () => {
+    const claim = "The host step was already raised in the project's technical thread.";
+    const refused = await replyAndAudit('Did the host step reach the owner?', claim, []);
+    expect(refused.audit?.body).toMatchObject({ verdict: 'fail', failed: ['accurate'] });
+    expect(JSON.stringify(refused.audit?.body.findings)).toContain('no act of this turn landed');
+    const landed = await replyAndAudit(
+      'And the database step?',
+      claim,
+      [],
+      actInTurnOf('routed', 'technical'),
+    );
+    expect(landed.audit?.body, JSON.stringify(landed.audit?.body)).toMatchObject({
+      verdict: 'pass',
+      failed: [],
+    });
+  }, 120_000);
 });

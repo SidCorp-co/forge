@@ -144,6 +144,30 @@ export function liveStateClaimIn(text: string): string | null {
   return null;
 }
 
+/**
+ * A report that an act was taken somewhere else (ISS-1416, FB-824): a need raised, posted, passed or
+ * asked in another thread, channel, or of a team, master or owner. "The host step was already raised
+ * in AdminHub API's technical thread" was told when that raise had been refused. Never a plan ("I
+ * will raise it"), nor one not taken ("not raised yet").
+ */
+const ACT_PLACE_VI = '(?:thread|luồng|kênh|channel|team|đội|master|owner|kỹ\\s+thuật)'; // i18n-allow: the Vietnamese places an act is reported landed in
+const ACT_CLAIMS: readonly RegExp[] = [
+  new RegExp(
+    `${START}(?:đã|vừa)\\s+(?:được\\s+)?(?:báo|gửi|chuyển|nêu|hỏi|nhắn|đăng|raise|post|escalate)(?![\\p{L}\\p{N}_])[^.!?\\n]{0,60}?${ACT_PLACE_VI}(?![\\p{L}\\p{N}_])`, // i18n-allow: the Vietnamese phrasing being recorded
+    'iu',
+  ),
+  /(?<!(?:\bnot|\bnever|\bbe|(?:\bnot|\bnever|n't)\s+(?:yet\s+)?been)\s+)\b(?:raised|posted|passed|forwarded|escalated|flagged|handed)\b[^.!?\n]{0,60}?\b(?:thread|channel|team|master|owner)s?\b/i,
+];
+
+/** The words of the first report of an act taken somewhere else a reply makes, or null. */
+export function actClaimIn(text: string): string | null {
+  for (const form of ACT_CLAIMS) {
+    const found = form.exec(text);
+    if (found) return found[0].trim();
+  }
+  return null;
+}
+
 /** The things of a screen a claim names, in Vietnamese and English. */
 const SCREEN_THING_VI = '(?:mục|nút|ô|trường|trang|tab|menu|màn\\s+hình|cột|biểu\\s+mẫu|form)'; // i18n-allow: the Vietnamese words for the things of a screen
 const SCREEN_THING_EN =

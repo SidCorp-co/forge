@@ -2,14 +2,15 @@ import { REPLY_RUBRIC_LINES, type ReplyRubricLine } from '@forge/contracts/suppo
 import { describe, expect, it } from 'vitest';
 import { mapLine } from '../act-cards.js';
 import { answeringLanguageOf, personaLanguageOf } from './answering-language.js';
-import { liveStateClaimIn } from './code-lines.js';
+import { actClaimIn, liveStateClaimIn } from './code-lines.js';
 import { AUDIT_RUBRIC_TEXT } from './index.js';
-import { type AuditedReply, judgeReply } from './judge.js';
+import { type AuditedReply, judgeReply, type TurnReads } from './judge.js';
 
 // @direct-test-of packages/core/src/support/reply-audit/judge.ts
 // @direct-test-of packages/core/src/support/reply-audit/teach.ts
 // @direct-test-of packages/core/src/support/reply-audit/index.ts
 // @direct-test-of packages/core/src/support/reply-audit/answering-language.ts
+// @direct-test-of packages/core/src/support/reply-audit/code-lines.ts
 //
 // ISS-1250 (owner 2026-11-16): the five quoted epod turns of the shared operations room, replayed
 // through the verdict support.audit keeps. Even where the agent's own reading claims a pass, each
@@ -198,7 +199,14 @@ describe('support.audit keeps the verdict on a reply the agent posted (ISS-1250)
     ];
     const earlier = new Date('2026-11-19T04:20:00Z');
     const judged = (text: string, reads: { thisTurn: boolean; earlierAt: Date | null }) =>
-      judgeReply({ ...reply(text), roomKind: 'support', reads: { ...reads, looked: false } }, []);
+      judgeReply(
+        {
+          ...reply(text),
+          roomKind: 'support',
+          reads: { ...reads, looked: false, handedOn: false },
+        },
+        [],
+      );
 
     it('reads each quoted reply as a claim of a live setting, and no plan or order state as one', () => {
       expect(FB763.map(liveStateClaimIn)).toEqual(['không có tài khoản', 'Có sẵn ô']); // i18n-allow: the quoted words
@@ -249,5 +257,62 @@ describe('support.audit keeps the verdict on a reply the agent posted (ISS-1250)
         expect(judgeReply({ ...reply(text), roomKind: 'support' }, []).verdict, text).toBe('pass');
       }
     });
+  });
+});
+
+// ISS-1416 (FB-824, forge L-168): two replies stated a setting off from a read a turn old, and one
+// told a raise landed in AdminHub API's technical thread when that raise had been refused there
+describe('an on/off state and an act taken are held to their own turn (ISS-1416)', () => {
+  const earlier = new Date('2026-11-21T11:30:57Z');
+  const judged = (text: string, reads: Partial<TurnReads> = {}, language: 'vi' | 'en' = 'vi') =>
+    judgeReply(
+      {
+        ...reply(text, language),
+        roomKind: 'support',
+        reads: { thisTurn: false, earlierAt: null, looked: false, handedOn: false, ...reads },
+      },
+      [],
+    );
+
+  it('fails accurate on a setting said off from an earlier turn’s read, naming that read’s time', () => {
+    for (const text of [
+      'Dạ tính năng đồng bộ trên staging chưa bật ạ.', // i18n-allow: the FB-824 shape
+      'Dạ cờ gửi mail vẫn tắt ạ.', // i18n-allow: the FB-824 shape
+    ]) {
+      const j = judged(text, { earlierAt: earlier });
+      expect(j.failed, text).toEqual(['accurate']);
+      expect(j.findings[0]?.why, text).toContain('(2026-11-21T11:30:57.000Z)');
+      expect(judged(text, { thisTurn: true }).verdict, text).toBe('pass');
+    }
+  });
+
+  it('reads a report of an act landed elsewhere as a claim, and no plan or act not taken as one', () => {
+    expect(actClaimIn("The host step was already raised in AdminHub API's technical thread.")).toBe(
+      "raised in AdminHub API's technical thread",
+    );
+    const vi = 'Em đã báo lên luồng kỹ thuật của AdminHub API rồi ạ.'; // i18n-allow: the FB-824 shape
+    expect(actClaimIn(vi)).toBe('đã báo lên luồng'); // i18n-allow: the quoted words
+    expect(actClaimIn('I passed it to the team; I will report back.')).toBe(
+      'passed it to the team',
+    );
+    for (const plan of [
+      'I will raise it in the technical thread.',
+      'It has not been raised in the thread yet.',
+      'Em sẽ báo lên luồng kỹ thuật ạ.', // i18n-allow: a plan, no claim
+      'ePOD v1.4.2 đã lên production.', // i18n-allow: a release, no act
+    ]) {
+      expect(actClaimIn(plan), plan).toBeNull();
+    }
+  });
+
+  it('fails accurate on a raise reported with no act of its turn landed, and passes it after one landed', () => {
+    const text = "The host step was already raised in AdminHub API's technical thread.";
+    const j = judged(text, {}, 'en');
+    expect(j.failed).toEqual(['accurate']);
+    expect(j.findings[0]).toMatchObject({ line: 'accurate', by: 'code' });
+    expect(j.findings[0]?.why).toContain('no act of this turn landed');
+    expect(j.findings[0]?.why).toContain('refused or landed and where');
+    expect(judged(text, { handedOn: true }, 'en').verdict).toBe('pass');
+    expect(judgeReply({ ...reply(text, 'en'), roomKind: 'support' }, []).verdict).toBe('pass');
   });
 });

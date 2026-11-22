@@ -15,6 +15,7 @@ import { confidentLanguageOf } from '../../conversations/index.js';
 import { liveClaimIn } from '../live-claims.js';
 import type { AnsweringFrom, AnsweringLanguage } from './answering-language.js';
 import {
+  actClaimIn,
   apiHostLinkIn,
   grantTalkIn,
   liveStateClaimIn,
@@ -27,12 +28,14 @@ import {
  * The reads of live state around a reply (ISS-1354): whether its own turn made one, and when the
  * session last made one in an earlier turn (null where none). A declared read, a run, a release or
  * deployment read and a look at a screen each count; `looked` is whether its turn looked at a screen
- * (ISS-1356).
+ * (ISS-1356), and `handedOn` whether an act of its turn landed somewhere else: a raise, a route, an
+ * ask or a filing (ISS-1416, `dated-reads.ts:handedOn`).
  */
 export interface TurnReads {
   thisTurn: boolean;
   earlierAt: Date | null;
   looked: boolean;
+  handedOn: boolean;
 }
 
 export interface AuditedReply {
@@ -80,6 +83,8 @@ export function codeFindings(reply: AuditedReply): ReplyFinding[] {
   if (stale) found.push({ line: 'accurate', why: stale, by: 'code' });
   const unseen = unseenScreenClaim(reply);
   if (unseen) found.push({ line: 'accurate', why: unseen, by: 'code' });
+  const unlanded = unlandedActClaim(reply);
+  if (unlanded) found.push({ line: 'accurate', why: unlanded, by: 'code' });
   const workaround = workaroundIn(reply.text);
   if (workaround) {
     found.push({
@@ -125,6 +130,19 @@ function unseenScreenClaim(reply: AuditedReply): string | null {
   if (!reply.reads || reply.reads.looked) return null;
   const claim = screenClaimIn(reply.text);
   return claim ? `it says what a screen shows ("${claim}") and this turn took no look at it` : null;
+}
+
+/**
+ * Why a reply's report of an act it took (a raise, a post elsewhere) has no result in its turn
+ * (ISS-1416, FB-824): "raised in AdminHub API's thread" when that raise was refused. Null where it
+ * reports none, or an act of its turn landed.
+ */
+function unlandedActClaim(reply: AuditedReply): string | null {
+  if (!reply.reads || reply.reads.handedOn) return null;
+  const claim = actClaimIn(reply.text);
+  return claim
+    ? `it says "${claim}" and no act of this turn landed: report an act from its result, refused or landed and where`
+    : null;
 }
 
 /**
