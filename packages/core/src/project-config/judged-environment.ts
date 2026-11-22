@@ -53,6 +53,26 @@ export function profileNotNamedSaid(judge: string, judged: Judged, asked: string
   return `environment \`${judged.environment}\`, which ${judge} judges as named by ${judged.namedBy}, names testing profile \`${judged.testing}\`, not \`${asked}\`.`;
 }
 
+/** Where an issue's work is read, for TESTING_ENVIRONMENT_NOT_JUDGED: the release's environment or
+ *  the landing's, or the one environment both name, said once with both reasons. */
+export function judgedOnSaid(
+  released: Judged | null,
+  landed: Judged,
+): { said: string; judged: string[] } {
+  const on = (j: Judged, namedBy = j.namedBy) => `\`${j.environment}\` (named by ${namedBy})`;
+  if (!released) return { said: on(landed), judged: [landed.environment] };
+  if (released.environment === landed.environment) {
+    return {
+      said: on(landed, `${released.namedBy} and by ${landed.namedBy}`),
+      judged: [landed.environment],
+    };
+  }
+  return {
+    said: `${on(released)} or ${on(landed)}`,
+    judged: [released.environment, landed.environment],
+  };
+}
+
 // the environment a job judges is the one deploying the branch its issue's work landed on —
 // the target the merge mark recorded — so no deployment is read and no dispatcher writes a field.
 // Where several deploy that branch, the testing profile the caller names picks the one that names
@@ -98,15 +118,12 @@ export async function judgedEnvironment(
   const landed = await landedEnvironment(id, issue, document, profileId, opts);
   if (named !== null) {
     if (landed.ok && landed.basis !== 'named' && landed.environment !== named) {
-      const on = (j: Judged) => `\`${j.environment}\` (named by ${j.namedBy})`;
+      const on = judgedOnSaid(released, landed);
       return refuse(
         422,
         'TESTING_ENVIRONMENT_NOT_JUDGED',
-        `${judge} named environment \`${named}\`, and issue ${id}'s work is read on ${released ? `${on(released)} or ${on(landed)}` : on(landed)}: a run names the environment it reads only for an issue whose work has not landed. Read again without \`environment\`, or naming the one its work is on. Nothing was read.`,
-        {
-          named,
-          judged: released ? [released.environment, landed.environment] : [landed.environment],
-        },
+        `${judge} named environment \`${named}\`, and issue ${id}'s work is read on ${on.said}: a run names the environment it reads only for an issue whose work has not landed. Read again without \`environment\`, or naming the one its work is on. Nothing was read.`,
+        { named, judged: on.judged },
       );
     }
     return landed;
