@@ -403,9 +403,7 @@ describe('a room agent states a live setting from a read of its own turn, and na
     expect(prose).toContain(
       'An act you took is told from its result: a refused raise was not raised, and a raise that landed is named where its result says it landed.',
     );
-    expect(prose).toContain(
-      'once its result says where it landed, tell that thread the answer or that it is in hand there; a refused raise was not raised',
-    );
+    expect(prose).toContain('tell that thread the answer, or where its result says it landed');
   });
 });
 
