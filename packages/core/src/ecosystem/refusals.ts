@@ -1,4 +1,5 @@
 import type { EcosystemRefusalCode } from '@forge/contracts/ecosystem';
+import { FEEDBACK_KINDS } from '@forge/contracts/feedback-terms';
 import { refuser } from '../lib/refusal.js';
 import type { ApiRefusal } from '../project-config/index.js';
 
@@ -78,6 +79,11 @@ function contractUnsetAt(raw: unknown, path: string): 'change-request' | 'rfi' |
   return isObject(ref) && unset(ref.contract) ? 'rfi' : null;
 }
 
+// the kinds a reporter files under; contract_change is core's own, filed for a breaking version
+export const HANDOFF_KINDS = FEEDBACK_KINDS.filter((k) => k !== 'contract_change')
+  .map((k) => `"${k}"`)
+  .join(' | ');
+
 function noContract(type: 'change-request' | 'rfi', raw: unknown): string {
   const from = isObject(raw) && typeof raw.from === 'string' ? raw.from : ':id';
   const asks =
@@ -87,7 +93,7 @@ function noContract(type: 'change-request' | 'rfi', raw: unknown): string {
   return (
     `${asks}. A finding in another project's part outside any contract (a defect, shared test infrastructure, ops) ` +
     `goes as a handoff, never under an invented contract: POST /api/projects/${from}/channel/handoffs ` +
-    '{ "to": <its project uuid>, "item": <your issue or feedback key>, "kind", "title", "whereSeen" } ' +
+    `{ "to": <its project uuid>, "item": <your issue or feedback key>, "kind": ${HANDOFF_KINDS}, "title", "whereSeen" } ` +
     "files it at that project's intake as feedback naming your item."
   );
 }

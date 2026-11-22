@@ -15,6 +15,7 @@ import { heldEcosystem } from './ecosystem-service.js';
 import { loadGraph } from './graph.js';
 import { membershipsWhere } from './membership-store.js';
 import { liveEdges, visibleMembers } from './party.js';
+import { HANDOFF_KINDS } from './refusals.js';
 import { projectsWhere, readEcosystems } from './store.js';
 
 /** A shared ecosystem the named project is seen in from one of the fence's projects. */
@@ -46,7 +47,8 @@ function handoffSaid(way: FenceWay): string {
   return (
     `a finding in ${way.to.slug}'s part (a defect, a question, an idea) goes to its intake by the ` +
     `handoff door, \`POST /api/projects/${way.from.id}/channel/handoffs\` { "to": "${way.to.id}", ` +
-    `"item": <the ISS-n or FB-n of ${way.from.slug} it came from>, "kind", "title", "whereSeen" }`
+    `"item": <the ISS-n or FB-n of ${way.from.slug} it came from>, "kind": ${HANDOFF_KINDS}, "title", ` +
+    '"whereSeen" }'
   );
 }
 

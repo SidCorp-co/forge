@@ -281,6 +281,7 @@ describe('a change request or RFI naming no contract is refused naming the hando
       ]);
       expect(refusal?.detail).toContain(`POST /api/projects/${w.project.forge}/channel/handoffs`);
       expect(refusal?.detail).toContain('outside any contract');
+      expect(refusal?.detail).toContain('"kind": "bug" | "change_request" | "question" | "idea"');
     }
   });
 
