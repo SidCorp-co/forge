@@ -5,8 +5,10 @@
 // reached the box) acts on a run a later attempt holds, and two sessions push, tag and deploy one
 // release. A job pane names its job on every call (`JOB_ACT_HEADER`, which the box sets as
 // `$FORGE_JOB`), so the doors a release run records through read which attempt is acting and refuse
-// one that is not the run's latest, or that ended. A call naming no job is a person's or a master's,
-// and goes on as before: the header is what a job pane says of itself, never a credential.
+// one a later started attempt superseded, or that ended. A call naming no job is a person's or a
+// master's, and goes on as before: the header is what a job pane says of itself, never a credential.
+// Only a retry that a box took supersedes (ISS-1418): one queued, held back behind the earlier pane or
+// cancelled before it started never ran, and the live earlier attempt still holds the run.
 
 import { JOB_ACT_HEADER } from '@forge/contracts/jobs';
 import { desc, eq } from 'drizzle-orm';
@@ -24,6 +26,8 @@ export interface ReleaseAttempt {
   cancellationRequested: boolean;
   /** The job's `attempts` count: 1 for a first job, one more for each retry of it. */
   attempts: number;
+  /** When a box took the job (`queued → dispatched`); null for one no box ever started. */
+  dispatchedAt: Date | null;
 }
 
 /** The job a call names, as the rule reads it: which run it is an attempt on. */
@@ -54,10 +58,18 @@ const STOP =
   'Push, tag and deploy nothing more from this session, call no finish or abort, and end the turn saying what you read.';
 
 /**
+ * A box took the attempt: the stamp that moves it `queued → dispatched` (`jobs/master-holds.ts:
+ * dispatchHeldJob`). A retry queued, held by a master that never stamped it, held back by its box
+ * while the earlier pane stands, or cancelled before any of that, has none.
+ */
+const started = (a: ReleaseAttempt): boolean => a.dispatchedAt !== null;
+
+/**
  * Whether `job` holds release run `runId`, read against `attempts`, every release job on that run,
- * newest first. It holds where it is the newest and no cancel reached it: a `done` attempt is the one
- * its run's own close finished, and a `failed` one no retry superseded may be a live pane an old
- * runner failed falsely.
+ * newest first. The holder is the newest attempt that started, or `job` itself where no attempt newer
+ * than it did. It holds where it is that holder and no cancel reached it: a `done` attempt is the one
+ * its run's own close finished, and a `failed` one no started retry superseded may be a live pane an
+ * old runner failed falsely.
  */
 export function attemptHolding(
   job: NamedJob,
@@ -65,18 +77,18 @@ export function attemptHolding(
   attempts: readonly ReleaseAttempt[],
 ): AttemptReading {
   if (job.type !== 'release_batch' || job.pipelineRunId !== runId) {
-    const holder = attempts[0];
+    const holder = attempts.find(started);
     return {
       code: 'RELEASE_ATTEMPT_NOT_ON_RUN',
       detail: `This call names job ${job.id} in ${JOB_ACT_HEADER}, a ${job.type} job on run ${job.pipelineRunId}, and acts on release run ${runId}, which ${holder ? `${named(holder)} holds` : 'no release job of its own holds'}. A job acts only on its own run. ${STOP}`,
     };
   }
-  const newest = attempts[0];
-  if (newest && newest.id !== job.id) {
-    const holds = !['failed', CANCELLED].includes(newest.status) && !newest.cancellationRequested;
+  const holder = attempts.find((a) => a.id === job.id || started(a));
+  if (holder && holder.id !== job.id) {
+    const holds = !['failed', CANCELLED].includes(holder.status) && !holder.cancellationRequested;
     return {
       code: 'RELEASE_ATTEMPT_SUPERSEDED',
-      detail: `Release run ${runId} is no longer this attempt's: ${named(job)} was superseded by ${named(newest)}, ${holds ? 'which holds the run now' : 'the latest attempt, so no attempt holds the run now'}. ${STOP}`,
+      detail: `Release run ${runId} is no longer this attempt's: ${named(job)} was superseded by ${named(holder)}, ${holds ? 'which holds the run now' : 'the latest attempt a box took, so no attempt holds the run now'}. ${STOP}`,
     };
   }
   if (job.status === CANCELLED || job.cancellationRequested) {
@@ -114,6 +126,7 @@ export async function assertAttemptHoldsRun(
       status: jobs.status,
       cancellationRequested: jobs.cancellationRequested,
       attempts: jobs.attempts,
+      dispatchedAt: jobs.dispatchedAt,
     })
     .from(jobs)
     .where(eq(jobs.id, said))
@@ -141,6 +154,7 @@ async function releaseJobsOn(runId: string): Promise<ReleaseAttempt[]> {
       status: jobs.status,
       cancellationRequested: jobs.cancellationRequested,
       attempts: jobs.attempts,
+      dispatchedAt: jobs.dispatchedAt,
     })
     .from(jobs)
     .where(eq(jobs.pipelineRunId, runId))

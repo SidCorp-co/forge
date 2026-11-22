@@ -4,6 +4,8 @@
  * 38611445 and d80cba45 were failed while their panes stood, and each next attempt was handed the
  * same run, so two sessions could push, tag and deploy one release while core refused nothing.
  * Planted through the app's own doors: a cut, its job failed and retried, and each attempt's acts.
+ * ISS-1418: only a retry that has started on a box supersedes; dev.791's run 978499ba had its live
+ * attempt 2 refused in favour of attempt 3, which was queued and cancelled without ever starting.
  *
  * @direct-test-of packages/core/src/release-batch/attempt-holds.ts
  * @direct-test-of packages/core/src/release-batch/routes.ts
@@ -137,6 +139,77 @@ describe('a release act names the attempt making it', () => {
     for (const r of await Promise.all(acts)) {
       expect(codeOf(r.body), JSON.stringify(r.body)).toBe('RELEASE_ATTEMPT_SUPERSEDED');
     }
+  });
+
+  /** A retry of `earlier` on the run, queued and not taken: the box holds it back while `earlier`'s pane stands. */
+  async function queuedRetry(earlier: string): Promise<string> {
+    const retry = randomUUID();
+    await db.execute(sql`
+      INSERT INTO jobs (id, project_id, pipeline_run_id, created_by, type, status, payload,
+                        attempts, retry_of, queued_at)
+      SELECT ${retry}, project_id, pipeline_run_id, created_by, type, 'queued', payload,
+             attempts + 1, id, now() + interval '2 seconds'
+        FROM jobs WHERE id = ${earlier}
+    `);
+    return retry;
+  }
+
+  const finish = (runId: string, job: string) =>
+    api(
+      token,
+      'POST',
+      `/api/projects/${projectId}/release-batches/${runId}/finish`,
+      {},
+      { [JOB_ACT_HEADER]: job },
+    );
+
+  it("dev.791's run 978499ba: a retry that never started supersedes nothing, and the live earlier attempt still holds the run", async () => {
+    const { runId, first } = await cut();
+    // attempt 2 failed on a false "lost its pane" while its pane worked on; attempt 3 queued behind it
+    const second = await retried(first);
+    await setStatus(second, 'failed');
+    const third = await queuedRetry(second);
+
+    expect((await method(runId, second)).status).toBe(200);
+    // dev.791 shipped on this finish, taken while attempt 3 still waited in the queue
+    const finished = await finish(runId, second);
+    expect(finished.status, JSON.stringify(finished.body)).toBe(202);
+    expect((finished.body as { finish?: { state?: string } }).finish?.state).toBe('accepted');
+
+    // attempt 3 was cancelled before any box took it: still nothing supersedes attempt 2
+    await withKernelMarker(db, (tx) =>
+      tx.execute(
+        sql`UPDATE jobs SET status = 'cancelled', finished_at = now() WHERE id = ${third}`,
+      ),
+    );
+    expect((await method(runId, second)).status).toBe(200);
+    // an attempt before the live one is still superseded, and the refusal names attempt 2
+    const older = await method(runId, first);
+    expect(codeOf(older.body), JSON.stringify(older.body)).toBe('RELEASE_ATTEMPT_SUPERSEDED');
+    expect(detailOf(older.body)).toContain(second);
+  });
+
+  it('a retry that has started on a box supersedes the earlier attempt, naming the retry', async () => {
+    const { runId, first } = await cut();
+    const second = await retried(first);
+    await setStatus(second, 'failed');
+    const third = await queuedRetry(second);
+    await setStatus(third, 'dispatched');
+
+    const refused = await method(runId, second);
+    expect(codeOf(refused.body), JSON.stringify(refused.body)).toBe('RELEASE_ATTEMPT_SUPERSEDED');
+    expect(detailOf(refused.body)).toContain(third);
+    expect(detailOf(refused.body)).toContain('attempt 3');
+    expect(codeOf((await finish(runId, second)).body)).toBe('RELEASE_ATTEMPT_SUPERSEDED');
+
+    // ended after starting, it still supersedes: the run is attempt 3's, and no attempt holds it
+    await withKernelMarker(db, (tx) =>
+      tx.execute(
+        sql`UPDATE jobs SET status = 'cancelled', finished_at = now() WHERE id = ${third}`,
+      ),
+    );
+    expect(codeOf((await method(runId, second)).body)).toBe('RELEASE_ATTEMPT_SUPERSEDED');
+    expect(codeOf((await method(runId, third)).body)).toBe('RELEASE_ATTEMPT_ENDED');
   });
 
   it('takes the attempt holding the run, a call naming no job, and a failed attempt no retry superseded', async () => {
