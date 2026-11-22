@@ -175,7 +175,7 @@ describe('ISS-1299: the technical thread speaks to the owner in one voice, his l
     expect(detailOf(reask)).toContain('toàn quyền');
     expect(detailOf(reask)).toContain('đang được làm');
     // ISS-1425: his words and the answer standing reach the turn inside the untrusted frame
-    expect(inUntrustedFrame(detailOf(reask), said)).toBe(true);
+    expect(inUntrustedFrame(detailOf(reask), 'toàn quyền')).toBe(true);
     expect(inUntrustedFrame(detailOf(reask), 'đang được làm')).toBe(true);
     expect(detailOf(reask)).toContain('support.owner_forge_act');
     expect(threadLines().length, 'no second ask was posted').toBe(before);

@@ -16,6 +16,7 @@ import {
 } from '../helpers/factories.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
 import { refusalCodes, SupportWorld, type Turn } from '../helpers/support-world.js';
+import { inUntrustedFrame } from '../helpers/untrusted-frame.js';
 
 /**
  * @direct-test-of packages/core/src/support/promise.ts
@@ -257,7 +258,8 @@ describe('ISS-1012: a support room promises to tell a person when an issue reach
     ]);
     expect(both[0] + both[1]).toBe(1);
     await expect.poll(() => notes.length, { timeout: 15_000 }).toBe(1);
-    expect(notes[0]?.text).toContain(`"${TITLE}"`);
+    // ISS-1425: the title stands inside the untrusted frame, never in core's sentence
+    expect(inUntrustedFrame(notes[0]?.text ?? '', TITLE)).toBe(true);
     expect(notes[0]?.text).toContain('it is on staging now');
     const lines = await w.untilLines((all) => all.some((l) => l.text.includes('đã lên staging')));
     expect(lines.filter((l) => l.text.includes('đã lên staging'))).toHaveLength(1);

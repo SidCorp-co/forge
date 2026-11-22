@@ -108,8 +108,10 @@ export function resultNote(r: ItemResult): string | null {
   // may quote a member (ISS-1425)
   const quoted = (lead: string, text: string | null) =>
     text?.trim()
-      ? ` ${lead} (restate it, never paste it):\n${markUntrusted(text.trim(), { source: TEAM_WORDS })}`
+      ? `\n${lead} (restate it, never paste it):\n${markUntrusted(text.trim(), { source: TEAM_WORDS })}`
       : '';
+  // what follows a frame starts its own line, never on the frame's closing one
+  const then = (words: string) => `${words}${words ? '\n' : ' '}${post}`;
   const hidden = r.withheld
     ? " Its words are withheld from this session by the project's data policy."
     : '';
@@ -120,14 +122,14 @@ export function resultNote(r: ItemResult): string | null {
     case 'resolved':
       if (r.route === 'answer') {
         const answer = quoted("The team's answer", r.answer) || hidden;
-        return `${recorded} was answered by the team: nothing was changed or shipped for it unless the answer says so.${answer} ${post}`;
+        return `${recorded} was answered by the team: nothing was changed or shipped for it unless the answer says so.${then(answer)}`;
       }
-      return `${recorded} is live now.${shipped} ${post}`;
+      return `${recorded} is live now.${then(shipped)}`;
     case 'verified':
-      return `${recorded} is live and confirmed fixed.${shipped} ${post}`;
+      return `${recorded} is live and confirmed fixed.${then(shipped)}`;
     case 'declined': {
       const reason = quoted('The reason they gave', r.declined) || hidden;
-      return `${recorded} will not be done: the team declined it.${reason} ${post}`;
+      return `${recorded} will not be done: the team declined it.${then(reason)}`;
     }
     default:
       return null;

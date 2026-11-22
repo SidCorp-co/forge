@@ -6,6 +6,8 @@ vi.hoisted(() => {
 });
 
 import { db } from '../../src/db/client.js';
+import { markUntrusted } from '../../src/lib/untrusted-text.js';
+import { SUPPORT_MEMBER_SOURCE, THREAD_BOT_SOURCE } from '../../src/support/thread-context.js';
 import { api } from '../helpers/api.js';
 import { rows } from '../helpers/factories.js';
 import { AgentWorld } from '../helpers/support-agent-world.js';
@@ -83,7 +85,11 @@ describe('the agent reads who is asking and the thread around a ruling', () => {
       member: { roles: ['user', 'product'], confirmed: true },
       accountRoles: ['product', 'technical'],
     });
-    expect(facts.thread.recent.map((l) => l.text)).toEqual(['is the ePOD release out?', POST]);
+    // ISS-1425: the member's line and the master's post reach the turn framed as data
+    expect(facts.thread.recent.map((l) => l.text)).toEqual([
+      markUntrusted('is the ePOD release out?', { source: SUPPORT_MEMBER_SOURCE }),
+      markUntrusted(POST, { source: THREAD_BOT_SOURCE }),
+    ]);
     expect(facts.thread.recent.at(-1)?.from).toBe('bot');
     expect(JSON.stringify(facts.thread)).not.toContain('English by default');
     expect(code(wrong)).toBe('OPS_ASKER_MESSAGE_UNKNOWN');

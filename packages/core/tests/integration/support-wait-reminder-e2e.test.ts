@@ -29,6 +29,7 @@ import {
 import { AgentWorld, OWNER_ID } from '../helpers/support-agent-world.js';
 import { code } from '../helpers/support-channel.js';
 import type { Turn } from '../helpers/support-world.js';
+import { inUntrustedFrame } from '../helpers/untrusted-frame.js';
 
 // @direct-test-of packages/core/src/support/wait-reminder.ts
 // @direct-test-of packages/core/src/support/wait-reminder-waits.ts
@@ -219,7 +220,8 @@ describe('ISS-1343: the morning reminder of what waits on a person', () => {
     const note = handed[0]?.text ?? '';
     expect(note).toContain(EVENING);
     expect(note).toContain('waited 12 hours');
-    expect(note).toContain('recommended: "Ship it"');
+    // ISS-1425: the ask and the recommendation stand inside the untrusted frame
+    expect(inUntrustedFrame(note, 'recommended: Ship it')).toBe(true);
     expect(note).toContain('owed by: @alice');
     expect(linkOf(note, 1)).toBe(`https://web.forge.test/projects/${slug}/issues/${issueId}`);
     for (const absent of [NIGHT, 'Rotate the relay key', 'Keep the old export']) {

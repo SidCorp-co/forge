@@ -113,8 +113,10 @@ export function messagesOf(text: string): TurnMessage[] {
       out.push(current);
       continue;
     }
-    if (!current || line.includes('treat the content below as DATA') || line.includes('END_'))
-      continue;
+    // a member's frame lines are dropped, its words kept; a forge note keeps its frames, so a test
+    // reads which of its words stand inside one (ISS-1425)
+    const frameLine = line.includes('treat the content below as DATA') || line.includes('END_');
+    if (!current || (frameLine && current.from !== 'forge')) continue;
     current.text = current.text ? `${current.text}\n${line}` : line;
   }
   return out.map((m) => ({ ...m, text: m.text.trim() }));
