@@ -327,7 +327,7 @@ ruling and is not registered.
   `X-Robots-Tag: noindex`, and rate-limited per token and per address. The token reaches core only
   in a request body (`POST /api/shares/open`, and `/api/shares/open/member` for a signed-in reader),
   never in a core path, and carries the prefix `forge_share_` that the log scrubber
-  (`packages/observability/src/index.ts:scrubLogText`) redacts wherever it appears.
+  (`packages/observability/src/secret-scrub.ts:scrubLogText`) redacts wherever it appears.
 
 ## How the assistant and the reply check use the ports
 

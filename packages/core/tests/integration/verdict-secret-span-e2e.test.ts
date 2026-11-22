@@ -7,7 +7,9 @@
  * and a short secret in a bracket is still refused, telling a writer of prose to reword.
  *
  * @direct-test-of packages/core/src/issues/criteria/verdict-input.ts
- * @direct-test-of packages/observability/src/index.ts
+ * @direct-test-of packages/observability/src/secret-patterns.ts
+ * @direct-test-of packages/observability/src/secret-scrub.ts
+ * @direct-test-of packages/observability/src/secret-spans.ts
  */
 
 import { randomUUID } from 'node:crypto';

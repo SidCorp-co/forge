@@ -361,6 +361,7 @@ describe("a builder's run checks the architecture contracts over what it touched
 
 describe("a builder's run lints what it touched and judges its changelog fragment, as verify does (ISS-1370)", () => {
   const CORE_LINT = 'biome check src tests --max-diagnostics=none';
+  const OBSERVABILITY_LINT = 'biome check src --max-diagnostics=none';
   const WEB_LINT =
     'eslint --pass-on-unpruned-suppressions --format ./eslint/count-formatter.mjs src';
   let tree = '';
@@ -370,6 +371,10 @@ describe("a builder's run lints what it touched and judges its changelog fragmen
       'packages/core/package.json': JSON.stringify({
         name: '@forge/core',
         scripts: { lint: CORE_LINT },
+      }),
+      'packages/observability/package.json': JSON.stringify({
+        name: '@forge/observability',
+        scripts: { lint: OBSERVABILITY_LINT },
       }),
       'packages/web-v2/package.json': JSON.stringify({
         name: 'web-v2',
@@ -383,6 +388,7 @@ describe("a builder's run lints what it touched and judges its changelog fragmen
       'packages/web-v2/node_modules',
       'packages/core/src',
       'packages/core/tests',
+      'packages/observability/src',
       'packages/web-v2/src',
       'packages/web-v2/eslint',
       'scripts',
@@ -429,6 +435,7 @@ describe("a builder's run lints what it touched and judges its changelog fragmen
           { path: 'packages/core/tests/b.test.ts', change: 'changed' },
           { path: 'packages/core/src/gone.ts', change: 'removed' },
           { path: 'packages/core/drizzle/meta/_journal.json', change: 'changed' },
+          { path: 'packages/observability/src/secret-scrub.ts', change: 'changed' },
           { path: 'packages/web-v2/src/page.tsx', change: 'changed' },
           { path: 'scripts/lib/x.mjs', change: 'changed' },
           { path: 'docs/VISION.md', change: 'changed' },
@@ -439,6 +446,10 @@ describe("a builder's run lints what it touched and judges its changelog fragmen
     expect(out.refusal).toBeNull();
     expect(calls.map((c) => [c.cwd, c.argv.join(' ')])).toEqual([
       ['packages/core', 'pnpm exec biome check --max-diagnostics=none src/a.ts tests/b.test.ts'],
+      [
+        'packages/observability',
+        'pnpm exec biome check --max-diagnostics=none src/secret-scrub.ts',
+      ],
       [
         'packages/web-v2',
         'pnpm exec eslint --pass-on-unpruned-suppressions --format ./eslint/count-formatter.mjs src/page.tsx',
@@ -452,6 +463,13 @@ describe("a builder's run lints what it touched and judges its changelog fragmen
         'form',
         'pass',
         ['packages/core/src/a.ts', 'packages/core/tests/b.test.ts'],
+      ],
+      [
+        'observability lint',
+        'conformance',
+        'form',
+        'pass',
+        ['packages/observability/src/secret-scrub.ts'],
       ],
       ['web lint', 'conformance', 'form', 'pass', ['packages/web-v2/src/page.tsx']],
       ['scripts lint', 'conformance', 'form', 'pass', ['scripts/lib/x.mjs']],
@@ -468,6 +486,7 @@ describe("a builder's run lints what it touched and judges its changelog fragmen
     );
     expect(out.checks.map((c) => [c.name, c.result, c.files])).toEqual([
       ['core lint', 'fail', ['packages/core/src/a.ts']],
+      ['observability lint', 'none', []],
       ['web lint', 'none', []],
       ['scripts lint', 'pass', ['scripts/y.mjs']],
     ]);
@@ -492,6 +511,7 @@ describe("a builder's run lints what it touched and judges its changelog fragmen
     expect(calls).toEqual([]);
     expect([...out.checks, record].map((c) => [c.name, c.scope, c.result, c.durationMs])).toEqual([
       ['core lint', 'form', 'none', 0],
+      ['observability lint', 'form', 'none', 0],
       ['web lint', 'form', 'none', 0],
       ['scripts lint', 'form', 'none', 0],
       ['release-record', 'record', 'none', 0],

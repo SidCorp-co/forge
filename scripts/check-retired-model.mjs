@@ -26,7 +26,7 @@ const ALLOW = [
 // One exact line, not a file: the rest of the file stays under every rule.
 export const ALLOW_LINES = [
   {
-    file: 'packages/observability/src/index.ts',
+    file: 'packages/observability/src/secret-patterns.ts',
     rule: 'release-path-keys',
     text: '"testCredentials",',
     why: 'the scrubber filters a retired secret-bearing key for ever: old clients, logs and replays still send it, and dropping the key sends their credentials out unscrubbed.',

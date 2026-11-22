@@ -1,9 +1,11 @@
 // A widget session token carries a visitor's chat and a status link token what they filed: both are
 // redacted by their prefix wherever they turn up, the status route's path included. A site key is
 // public — the page embeds it — and is kept.
+// @direct-test-of packages/observability/src/secret-patterns.ts
 
 import { describe, expect, it } from 'vitest';
-import { containsSecret, scrubLogText } from './index.js';
+import { scrubLogText } from './secret-scrub.js';
+import { containsSecret } from './secret-spans.js';
 
 const session = `fw_sess_${'Ab9_-'.repeat(8)}xyz`;
 const status = `fw_stat_${'Zq0-_'.repeat(8)}abc`;

@@ -3,7 +3,9 @@
 // names the span it read, so a refusal can say where without echoing the secret back.
 
 import { describe, expect, it } from 'vitest';
-import { containsSecret, FILTERED, scrubLogText, secretSpans } from './index.js';
+import { FILTERED } from './secret-patterns.js';
+import { scrubLogText } from './secret-scrub.js';
+import { containsSecret, secretSpans } from './secret-spans.js';
 
 const ALNUM = 'Ab1Cd2Ef3Gh4Ij5Kl6Mn7Op8Qr9St0Uv';
 const body = (n: number) => ALNUM.repeat(Math.ceil(n / ALNUM.length)).slice(0, n);

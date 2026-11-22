@@ -1,8 +1,10 @@
 // An MCP client's refresh token mints access tokens for a month, and a code redeems for one: both
 // are redacted by their prefix wherever they turn up, a callback URL or a form body included.
+// @direct-test-of packages/observability/src/secret-patterns.ts
 
 import { describe, expect, it } from 'vitest';
-import { containsSecret, scrubLogText } from './index.js';
+import { scrubLogText } from './secret-scrub.js';
+import { containsSecret } from './secret-spans.js';
 
 const refresh = `forge_mcp_rt_${'Ab9_-'.repeat(8)}xyz`;
 const code = `forge_mcp_code_${'Zq0-_'.repeat(8)}abc`;

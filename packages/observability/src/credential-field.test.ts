@@ -4,7 +4,9 @@
 // VERDICT_SECRET, because every screen that refuses a secret asks this scrubber.
 
 import { describe, expect, it } from 'vitest';
-import { containsSecret, FILTERED, scrubLogText, secretSpans } from './index.js';
+import { FILTERED } from './secret-patterns.js';
+import { scrubLogText } from './secret-scrub.js';
+import { containsSecret, secretSpans } from './secret-spans.js';
 
 describe('a credential field is told from prose by its value', () => {
   it.each([

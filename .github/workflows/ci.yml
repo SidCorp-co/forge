@@ -566,6 +566,9 @@ jobs:
       # `error`, the two length rules included, so a failure here is a real new
       # violation.
       - run: pnpm --filter @forge/core lint
+      # The same file-length cap over packages/observability, which this job's filter selects
+      # and which no other job lints (packages/observability/biome.json).
+      - run: pnpm --filter @forge/observability lint
       - run: pnpm --filter @forge/core test
       # BLOCKING since 2026-08-10, when 84 drifted errors were cleared to 0. tsgo
       # since 2026-10-10: the same errors as tsc, about five times faster.

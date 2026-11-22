@@ -15,13 +15,15 @@
   },
   "scripts": {
     "build": "node scripts/build.mjs",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "lint": "biome check src --max-diagnostics=none"
   },
   "files": [
     "dist",
     "src"
   ],
   "devDependencies": {
+    "@biomejs/biome": "^2.5.15",
     "@typescript/native-preview": "7.0.0-dev.20260707.2",
     "typescript": "^5.7.0"
   }

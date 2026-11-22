@@ -197,7 +197,7 @@ function verifyCheck(label) {
 }
 
 /** verify's form-axis lints, which a builder's run narrows to the files it touched (ISS-1370). */
-const FORM_LINTS = ['core lint', 'web lint', 'scripts lint'].map(verifyCheck);
+const FORM_LINTS = ['core lint', 'observability lint', 'web lint', 'scripts lint'].map(verifyCheck);
 /** verify's record-axis check, run whole where the change touched what it reads (ISS-1370). */
 const RELEASE_RECORD = verifyCheck('release-record');
 /** What check-release-record.mjs reads: the record, its fragments and the amnesty file. */

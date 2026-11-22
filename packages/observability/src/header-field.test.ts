@@ -5,13 +5,9 @@
 // of its line, as a header's value may run on in parts (a cookie's pairs).
 
 import { describe, expect, it } from 'vitest';
-import {
-  containsSecret,
-  FILTERED,
-  isCredentialHeader,
-  scrubLogText,
-  secretSpans,
-} from './index.js';
+import { FILTERED } from './secret-patterns.js';
+import { isCredentialHeader, scrubLogText } from './secret-scrub.js';
+import { containsSecret, secretSpans } from './secret-spans.js';
 
 /** Every header name the scrubber reads, as a writer would spell it. */
 const HEADERS = [

@@ -161,6 +161,13 @@ export const CHECKS = [
   },
   {
     axis: 'form',
+    label: 'observability lint',
+    cmd: ['pnpm', '--filter', '@forge/observability', 'lint'],
+    scanned: /Checked (\d+)/,
+    needs: ['deps'],
+  },
+  {
+    axis: 'form',
     label: 'web lint',
     cmd: ['pnpm', '--filter', 'web-v2', 'lint'],
     scanned: /Checked (\d+)/,

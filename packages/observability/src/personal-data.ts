@@ -1,4 +1,4 @@
-import { scrubLogText } from "./index.js";
+import { scrubLogText } from "./secret-scrub.js";
 
 /** What a redaction replaced, by kind; `secret` counts lines the secret scrubber changed. */
 type PersonalDataKind = "email" | "number" | "name" | "secret";

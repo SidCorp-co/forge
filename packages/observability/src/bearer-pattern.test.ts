@@ -1,9 +1,11 @@
 // The scrubber reads a bearer token by its shape, never the English word after `Bearer` (ISS-439:
 // "a Bearer credential" was refused as a secret in a judge's reopen reason and a review comment,
 // because every screen that refuses a secret asks this scrubber).
+// @direct-test-of packages/observability/src/secret-patterns.ts
 
 import { describe, expect, it } from 'vitest';
-import { containsSecret, scrubLogText } from './index.js';
+import { scrubLogText } from './secret-scrub.js';
+import { containsSecret } from './secret-spans.js';
 
 describe('a bearer token is told from prose by its shape', () => {
   it.each([

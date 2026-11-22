@@ -1,10 +1,11 @@
 // A product server's feedback key (ISS-922) files feedback into a project as that product: it is
 // redacted by its prefix wherever it turns up, a header line or cut off, and text that only mentions
 // the prefix in passing is kept.
-// @direct-test-of packages/observability/src/index.ts
+// @direct-test-of packages/observability/src/secret-patterns.ts
 
 import { describe, expect, it } from "vitest";
-import { containsSecret, scrubLogText } from "./index.js";
+import { scrubLogText } from "./secret-scrub.js";
+import { containsSecret } from "./secret-spans.js";
 
 const key = `fsk_${"Ab9_-".repeat(8)}xyz`;
 
