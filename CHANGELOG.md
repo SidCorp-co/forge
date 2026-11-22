@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.796] - 2026-11-22
+
+Contract changes need a recorded version; urgent fixes get a lent run
+
+### Fixed
+
+- **A landing that changes a published contract file is marked only once a decided version holds it.** The mark names the version to record or decide, so the contract registry no longer lags silently.
+- **A master with every run slot held can still dispatch an urgent fix.** A critical or high issue's declare is lent one more run while the box has room, saying why; past the box's limit it is refused.
+
 ## [0.4.0-dev.795] - 2026-11-22
 
 The assistant re-reads a live setting before stating it and says where a raise landed
