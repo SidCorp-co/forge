@@ -121,9 +121,9 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     header:x-request-id header:etag header:x-ratelimit-remaining header:x-ratelimit-reset`,
   'whether a sign-in page follows a sign-out (`session=ended`), so a demo core shows its form': words`
     query:session`,
-  'a header core’s own clients send: what they render, the project an /mcp call names, the run a box read is recorded against, the plugin version a narrowing is weighed against': words`
-    header:x-forge-capabilities header:x-forge-plugin header:x-forge-project-slug header:x-forge-run
-    header:x-forge-unresolved-ref`,
+  'a header core’s own clients send: what they render, the project an /mcp call names, the run a box read is recorded against, the plugin version a narrowing is weighed against, the job a job pane acts for': words`
+    header:x-forge-capabilities header:x-forge-job header:x-forge-plugin header:x-forge-project-slug
+    header:x-forge-run header:x-forge-unresolved-ref`,
   'a widget visitor, the page they are on and the origin that framed it, as the frame says, stored as data; the site key is public': words`
     field:json:context field:json:embeddedAt field:json:visitor field:json:visitorId field:param:siteKey`,
   'what a monitoring connection’s Prometheus and Alertmanager send once its sd or alerts token matched: the job discovered, the alerts fired (ISS-1225)': words`

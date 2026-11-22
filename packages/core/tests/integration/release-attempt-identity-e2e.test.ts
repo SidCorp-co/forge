@@ -63,7 +63,7 @@ describe('a release act names the attempt making it', () => {
   }
 
   /** The box failed `first` on a false reading while its pane stood, and the run was retried. */
-  async function retried(runId: string, first: string): Promise<string> {
+  async function retried(first: string): Promise<string> {
     const second = randomUUID();
     await setStatus(first, 'failed');
     await db.execute(sql`
@@ -94,7 +94,7 @@ describe('a release act names the attempt making it', () => {
 
   it("refuses the earlier attempt's act on a run a later attempt holds, naming the later one", async () => {
     const { runId, first } = await cut();
-    const second = await retried(runId, first);
+    const second = await retried(first);
 
     const refused = await method(runId, first);
     expect(refused.status, JSON.stringify(refused.body)).toBe(409);
@@ -108,10 +108,16 @@ describe('a release act names the attempt making it', () => {
 
   it('refuses the same attempt at the deploy, the range report and the finish', async () => {
     const { runId, first } = await cut();
-    await retried(runId, first);
+    await retried(first);
     const head = { [JOB_ACT_HEADER]: first };
     const acts = [
-      api(token, 'POST', `/api/projects/${projectId}/integrations/coolify/deploy`, { pipelineRunId: runId }, head),
+      api(
+        token,
+        'POST',
+        `/api/projects/${projectId}/integrations/coolify/deploy`,
+        { pipelineRunId: runId },
+        head,
+      ),
       api(
         token,
         'POST',
@@ -120,7 +126,13 @@ describe('a release act names the attempt making it', () => {
         head,
       ),
       api(token, 'POST', `/api/projects/${projectId}/release-batches/${runId}/finish`, {}, head),
-      api(token, 'POST', `/api/projects/${projectId}/release-batches/${runId}/abort`, { reason: 'mine' }, head),
+      api(
+        token,
+        'POST',
+        `/api/projects/${projectId}/release-batches/${runId}/abort`,
+        { reason: 'mine' },
+        head,
+      ),
     ];
     for (const r of await Promise.all(acts)) {
       expect(codeOf(r.body), JSON.stringify(r.body)).toBe('RELEASE_ATTEMPT_SUPERSEDED');
@@ -152,7 +164,9 @@ describe('a release act names the attempt making it', () => {
         FROM pipeline_runs WHERE project_id = ${projectId} AND kind = 'interactive' LIMIT 1
     `);
     const elsewhere = await method(runId, other);
-    expect(codeOf(elsewhere.body), JSON.stringify(elsewhere.body)).toBe('RELEASE_ATTEMPT_NOT_ON_RUN');
+    expect(codeOf(elsewhere.body), JSON.stringify(elsewhere.body)).toBe(
+      'RELEASE_ATTEMPT_NOT_ON_RUN',
+    );
   });
 
   it('refuses a job header that is no job id, or names no job, by name', async () => {

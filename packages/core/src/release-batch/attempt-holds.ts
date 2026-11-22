@@ -73,8 +73,7 @@ export function attemptHolding(
   }
   const newest = attempts[0];
   if (newest && newest.id !== job.id) {
-    const holds =
-      !['failed', CANCELLED].includes(newest.status) && !newest.cancellationRequested;
+    const holds = !['failed', CANCELLED].includes(newest.status) && !newest.cancellationRequested;
     return {
       code: 'RELEASE_ATTEMPT_SUPERSEDED',
       detail: `Release run ${runId} is no longer this attempt's: ${named(job)} was superseded by ${named(newest)}, ${holds ? 'which holds the run now' : 'the latest attempt, so no attempt holds the run now'}. ${STOP}`,

@@ -171,7 +171,8 @@ async function syncLinkedSession(
 
 /** A job cancelled with a kill requested of its box that the box has not acked since. */
 function cancelUnconfirmed(job: JobGateRow): boolean {
-  if (job.status !== 'cancelled' || !job.cancellationRequested || !job.killRequestedAt) return false;
+  if (job.status !== 'cancelled' || !job.cancellationRequested || !job.killRequestedAt)
+    return false;
   return !job.killConfirmedAt || job.killConfirmedAt < job.killRequestedAt;
 }
 
@@ -198,7 +199,7 @@ jobEventsRoutes.post(
     if (cancelUnconfirmed(job)) {
       throw refuseJob(
         'JOB_CANCEL_REQUESTED',
-        "this job was cancelled with its run while its process still runs: close its process and post kill-ack `killed`",
+        'this job was cancelled with its run while its process still runs: close its process and post kill-ack `killed`',
       );
     }
     if (TERMINAL_STATUSES.has(job.status)) {
