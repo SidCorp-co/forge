@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.788] - 2026-11-22
+
+A shipped release is judged with production's profile; cross-project waits are contract waits
+
+### Fixed
+
+- **A judge of a shipped release reads production's testing profile.** Unreleased landed work reads its merge target as before; an investigation can name the environment it reads, recorded on the run; a profile refusal names the environment and its source.
+- **A master waiting on another project's work is taught the contract wait.** Where it reads ordering, and in the refusal a cross-project dependency meets, it is told to wait on that project's contract version, never an edge to its issue.
+
 ## [0.4.0-dev.787] - 2026-11-22
 
 One voice in a users' room: a master's post replaces the assistant's answer
