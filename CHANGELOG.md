@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.789] - 2026-11-22
+
+Runner holds jobs whose pane still runs; cross-project findings taught the handoff door
+
+### Fixed
+
+- **A job is no longer failed while its session still runs.** The runner ends a pane only once it has truly gone, holds a retry back while the earlier attempt stands, and closes the session of every ended job.
+- **A finding in another project's part outside any contract is taught its door.** A change request or RFI naming no contract is refused `DOCUMENT_CONTRACT_MISSING`, naming the handoff door, which the orientation and draft card now teach.
+
 ## [0.4.0-dev.788] - 2026-11-22
 
 A shipped release is judged with production's profile; cross-project waits are contract waits
