@@ -11,6 +11,10 @@
 // - a master's post counts as the thread's result, so the room agent's one-result rule (REQ-77 BC-8)
 //   refuses it a second post there until the asker writes again (`thread-requests.ts`).
 // A post naming the told result it follows up on (ISS-872 `followsUp`) adds a line after it instead.
+// A group several bindings hold (ISS-933: one answers, the others speak when named) keeps a line of
+// the thread on each binding's room, and each project's master posts through its own; the answer is
+// read across all of them, so a master replaces the room agent's reply or another master's post
+// whichever room recorded it (ISS-1406, Forge-Feedback 2026-11-22: the two stood ten seconds apart).
 // Images still follow as their own messages: the chat server attaches no file to an edited post.
 
 import type { ProvenMessage } from '@forge/contracts/messaging';
@@ -21,23 +25,32 @@ import { db } from '../db/client.js';
 import { supportActions } from '../db/schema-support.js';
 import { editProvenReply } from '../integrations/rocketchat/index.js';
 import { no, type Outcome } from './outcome.js';
-import type { RoomRow } from './store.js';
+import { type RoomRow, roomsOnRid } from './store.js';
 import { postInThread, roomAuth } from './thread.js';
 
 /** The tool a master's post is recorded under (`master-post.ts:TOOL`). */
 const MASTER_POST = 'master_post';
 
+/** The bot's answer a master's post replaces, and the room whose record holds it. */
+export interface Answer {
+  messageId: string;
+  by: 'agent' | 'master';
+  conversationId: string | null;
+  room: RoomRow;
+}
+
 /**
  * The bot's post answering the thread's current request, which a master's post replaces: the latest
- * post in the thread when nobody has written there since and it is within the edit window; null
- * where a member wrote last, the bot has not answered, or the answer is too old to edit.
+ * post in the thread, on the record of any binding holding the group, when nobody has written there
+ * since and it is within the edit window; null where a member wrote last, the bot has not answered,
+ * or the answer is too old to edit.
  */
-export async function answerToReplace(
-  room: RoomRow,
-  thread: string,
-): Promise<{ messageId: string; by: 'agent' | 'master'; conversationId: string | null } | null> {
+export async function answerToReplace(room: RoomRow, thread: string): Promise<Answer | null> {
+  const holders = await roomsOnRid(room.rid);
+  const rooms = holders.some((r) => r.id === room.id) ? holders : [room, ...holders];
   const recent = await db
     .select({
+      roomId: supportActions.roomId,
       kind: supportActions.kind,
       tool: supportActions.tool,
       actorKind: supportActions.actorKind,
@@ -48,7 +61,10 @@ export async function answerToReplace(
     .from(supportActions)
     .where(
       and(
-        eq(supportActions.roomId, room.id),
+        inArray(
+          supportActions.roomId,
+          rooms.map((r) => r.id),
+        ),
         eq(supportActions.thread, thread),
         inArray(supportActions.kind, ['message_in', 'reply', 'routed']),
       ),
@@ -63,7 +79,13 @@ export async function answerToReplace(
     const answer = row.kind === 'reply' ? 'agent' : row.tool === MASTER_POST ? 'master' : null;
     if (!answer || !row.externalId) continue;
     if (Date.now() - row.at.getTime() > SUPPORT_MASTER_POST_EDIT_WINDOW_MS) return null;
-    return { messageId: row.externalId, by: answer, conversationId: row.conversationId };
+    const holder = rooms.find((r) => r.id === row.roomId) ?? room;
+    return {
+      messageId: row.externalId,
+      by: answer,
+      conversationId: row.conversationId,
+      room: holder,
+    };
   }
   return null;
 }
@@ -71,14 +93,14 @@ export async function answerToReplace(
 /**
  * Replace the bot's answer with the master's screened text, in the chat and in the thread's stored
  * line, so a cold replay or a lookup by message reads what the asker reads; why it could not, where
- * it could not.
+ * it could not. Edited through the bot of the room that posted it.
  */
 export async function replaceAnswer(
-  room: RoomRow,
-  answer: { messageId: string; conversationId: string | null },
+  answer: Pick<Answer, 'messageId' | 'conversationId' | 'room'>,
   text: string,
   proof: ProvenMessage,
 ): Promise<{ ok: true } | { ok: false; why: string }> {
+  const room = answer.room;
   const { auth } = await roomAuth(room);
   const out = await editProvenReply(auth, room.rid, answer.messageId, text, proof);
   if (out.ok && answer.conversationId) {
@@ -116,9 +138,10 @@ export async function postInOneVoice(input: {
     const posted = await postInThread(input);
     return { ok: true, value: { ...posted, replaced: null } };
   }
-  // the answer's own record names the conversation its line is stored in
-  const stored = { ...answer, conversationId: answer.conversationId ?? input.conversationId };
-  const out = await replaceAnswer(input.room, stored, input.text, input.proof);
+  // the answer's own record names the conversation its line is stored in; the thread's, where it is this room's
+  const own = answer.room.id === input.room.id ? input.conversationId : null;
+  const stored = { ...answer, conversationId: answer.conversationId ?? own };
+  const out = await replaceAnswer(stored, input.text, input.proof);
   if (!out.ok) {
     return no(
       'SUPPORT_POST_UNCHANGED',

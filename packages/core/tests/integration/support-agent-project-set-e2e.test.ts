@@ -34,6 +34,7 @@ import { refusalCodes, SupportWorld, type Turn } from '../helpers/support-world.
  * @direct-test-of packages/core/src/support/owner-ask-targets.ts
  * @direct-test-of packages/core/src/agent-sessions/chat-checkout.ts
  * @direct-test-of packages/core/src/support/master-post.ts
+ * @direct-test-of packages/core/src/support/one-voice.ts
  */
 
 // ISS-874, for every channel agent rather than one bot. The trial (test group 6ae81413, 2026-11-02):
@@ -512,5 +513,68 @@ describe('ISS-1230: a project the binding follows posts into the agent’s room'
     const other = await postIn(String(docs?.id), 'And the docs?');
     const said = [other.res.status, codesOf(other.res.body), other.lines];
     expect(said).toEqual([404, ['SUPPORT_ROOM_UNKNOWN'], []]);
+  });
+});
+
+// ISS-1406, Forge-Feedback 2026-11-22: the room agent answered (03:21:48) and a followed project's
+// master posted a contradicting line ten seconds later, both standing under one bot name. The
+// follower holds the group through a binding of its own, answering only when named, so its master
+// posted through its own room, whose record holds neither the agent's reply nor another master's post.
+describe('ISS-1406: one voice in a followed channel agent group', () => {
+  const ANSWER = 'Mình chưa thấy phiếu nào có đủ trường, bạn gửi thử một biểu mẫu nữa nhé.';
+  const FOLLOWED = 'Phiếu đã hiện đủ 7 trường, bạn không cần lưu lại cấu hình.';
+  const HOME = 'Phiếu đã hiện đủ 7 trường; bạn không cần làm gì thêm.';
+  const post = (projectId: string, text: string, thread: string) =>
+    api(w.owner, 'POST', `/api/projects/${projectId}/support/master-posts`, {
+      text,
+      rid: chat.rid,
+      thread,
+    });
+  const lines = (thread: string) =>
+    chat
+      .linesIn(chat.rid)
+      .filter((l) => l.tmid === thread)
+      .map((l) => l.text);
+  const answered = (ask: string) =>
+    onNextAsk(
+      () => chat.say(chat.bob, ask),
+      async (turn, act) => {
+        const asked = turn.messages.find((m) => m.from !== 'forge');
+        const out = await act({ action: 'reply', thread: asked?.thread, text: ANSWER });
+        expect(out, JSON.stringify(out)).not.toHaveProperty('error');
+      },
+    );
+
+  it("replaces the agent's answer and then the other master's post: one line stands", async () => {
+    // the follower binds the group itself, answering only when named (ISS-1220's shape)
+    const own = await api(w.owner, 'POST', '/api/integration-connections', {
+      provider: 'rocketchat',
+      displayName: 'FE mentions',
+      config: { serverUrl: chat.serverUrl },
+      secrets: { authToken: chat.bot.authToken, userId: chat.bot.userId },
+      bindings: [
+        {
+          projectId: feId,
+          role: 'service',
+          target: {
+            provider: 'rocketchat',
+            rids: [chat.rid],
+            support: { product: 'AdminHub FE', answers: 'mentions' },
+          },
+        },
+      ],
+    });
+    expect(own.status, JSON.stringify(own.body)).toBe(201);
+    const { thread } = await answered('Phiếu từ biểu mẫu Pixelight đã đủ trường chưa?');
+    expect(lines(thread)).toEqual([ANSWER]);
+    const followed = await post(feId, FOLLOWED, thread);
+    expect(followed.status, JSON.stringify(followed.body)).toBe(201);
+    // [ONE_VOICE_ROOM_ROW] before the fix: the follower's post stood beside the agent's answer
+    expect(followed.body).toMatchObject({ replaced: 'agent' });
+    expect(lines(thread)).toEqual([FOLLOWED]);
+    // the home project's master posts through the agent's room, and replaces the follower's post
+    const home = await post(w.projectId, HOME, thread);
+    expect(home.body, JSON.stringify(home.body)).toMatchObject({ replaced: 'master' });
+    expect(lines(thread)).toEqual([HOME]);
   });
 });
