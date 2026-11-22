@@ -89,6 +89,24 @@ pub async fn answer_cancel<F, Fut>(
     if held != Cancelled::NotHeld {
         return;
     }
+    // A pane this box no longer holds a slot for can still be running the job — let go of on a
+    // false reading, or by a daemon before this one. The cancel reaches it all the same (ISS-1351).
+    let pane = pane_name(job_id);
+    if !pool.panes.gone(&pane).await {
+        match pool.panes.kill(&pane).await {
+            Ok(()) => {
+                pool.panes.released(&pane).await;
+                tracing::info!("[pool] job {job_id} cancelled — {pane}, which no slot held, closed");
+                if let Err(e) = report.kill_ack(job_id, "killed").await {
+                    tracing::warn!("[cancel] kill-ack job={job_id}: {e}");
+                }
+            }
+            Err(e) => tracing::warn!(
+                "[pool] job {job_id} was cancelled and {pane} still stands, but it would not close: {e} — no kill-ack is true yet, so none is sent"
+            ),
+        }
+        return;
+    }
     let outcome = elsewhere().await;
     if let Err(e) = report.kill_ack(job_id, outcome).await {
         tracing::warn!("[cancel] kill-ack job={job_id}: {e}");

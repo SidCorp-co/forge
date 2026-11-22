@@ -20,6 +20,7 @@ impl Pool for OneJob {
             age_minutes: 0.0,
             attempts: 0,
             held_by: None,
+            retry_of: None,
         }])
     }
     async fn prepare(&self, _job_id: &str, session_id: &str) -> Result<Prepared> {
@@ -268,6 +269,7 @@ impl Pool for FencedJob {
             age_minutes: 0.0,
             attempts: 0,
             held_by: None,
+            retry_of: None,
         }])
     }
     async fn prepare(&self, _job_id: &str, _session_id: &str) -> Result<Prepared> {

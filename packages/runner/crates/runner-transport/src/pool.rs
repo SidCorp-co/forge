@@ -31,6 +31,9 @@ pub struct PoolEntry {
     pub attempts: i64,
     #[serde(default)]
     pub held_by: Option<String>,
+    /// The earlier attempt this job retries, whose pane may still run (ISS-1351).
+    #[serde(default)]
+    pub retry_of: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

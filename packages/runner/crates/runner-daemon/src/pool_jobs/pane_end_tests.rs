@@ -249,3 +249,104 @@ async fn a_stray_pane_whose_job_still_runs_is_held_again_not_closed() {
     assert!(log.lock().unwrap().is_empty(), "{:?}", log.lock().unwrap());
     assert_eq!(registry.count(), 1);
 }
+
+/// A pool holding one retry of `earlier`, which records whether anything was prepared.
+struct OneRetry {
+    earlier: &'static str,
+    prepared: Mutex<bool>,
+}
+
+#[async_trait::async_trait]
+impl Pool for OneRetry {
+    async fn claimable(
+        &self,
+        _project_id: &str,
+    ) -> std::result::Result<Vec<PoolEntry>, ReadFailure> {
+        Ok(vec![PoolEntry {
+            job_id: "job-attempt-2".into(),
+            job_type: "release_batch".into(),
+            issue_id: None,
+            issue_key: None,
+            age_minutes: 0.0,
+            attempts: 2,
+            held_by: None,
+            retry_of: Some(self.earlier.into()),
+        }])
+    }
+    async fn prepare(&self, _job_id: &str, _session_id: &str) -> Result<Prepared> {
+        *self.prepared.lock().unwrap() = true;
+        Ok(Prepared::Refused(pool::Refusal::AlreadyHeld))
+    }
+    async fn start(&self, _job_id: &str, _session_id: &str) -> Result<Started> {
+        unreachable!()
+    }
+    async fn release(&self, _job_id: &str, _session_id: &str) -> Result<()> {
+        unreachable!()
+    }
+    async fn mcp_servers(&self, _project_id: &str) -> Result<ProjectMcpServers> {
+        unreachable!()
+    }
+    async fn box_pat_reach(&self, _project_id: &str) -> BoxPatReach {
+        unreachable!()
+    }
+}
+
+async fn take_retry(earlier_pane_gone: bool) -> (Took, bool) {
+    let log: Log = Arc::default();
+    let panes = Scripted::new(vec![earlier_pane_gone], None, None, &log);
+    let pool = OneRetry {
+        earlier: "job-attempt-1",
+        prepared: Mutex::new(false),
+    };
+    let core = core(Standing::Ours, &log);
+    let took = take_one(
+        &JobPorts {
+            pool: &pool,
+            panes: &panes,
+            report: &core,
+            records: &NoRecords,
+        },
+        &JobPanes::new(),
+        ServedProject {
+            id: "project-1",
+            slug: "p1",
+        },
+        Some("master-session"),
+        4,
+        None,
+    )
+    .await;
+    let prepared = *pool.prepared.lock().unwrap();
+    (took, prepared)
+}
+
+#[tokio::test]
+async fn a_retry_is_not_taken_while_the_pane_of_the_attempt_it_retries_still_stands() {
+    let (took, prepared) = take_retry(false).await;
+    assert_eq!(took, Took::EarlierAttemptRuns("job-attempt-2".into()));
+    assert!(
+        !prepared,
+        "a second session was prepared on a run the first attempt's pane still acts on"
+    );
+}
+
+#[tokio::test]
+async fn a_retry_is_taken_once_the_pane_of_the_attempt_it_retries_has_ended() {
+    let (_, prepared) = take_retry(true).await;
+    assert!(prepared);
+}
+
+#[tokio::test]
+async fn a_job_this_box_concludes_has_its_pane_closed_before_core_is_told_it_failed() {
+    let log: Log = Arc::default();
+    let panes = Scripted::new(vec![false], None, None, &log);
+    let core = core(Standing::Ours, &log);
+    let registry = holding();
+    let live = registry.live().remove(0);
+    assert!(conclude(&panes, &core, &NoRecords, &registry, &live, "over".into()).await);
+    assert_eq!(
+        *log.lock().unwrap(),
+        vec![format!("kill {}", pane_name(JOB)), format!("fail {JOB}: over")],
+        "core retries a failed job at once, so a pane still open when it hears is two sessions on one run"
+    );
+}

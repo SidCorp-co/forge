@@ -240,7 +240,8 @@ async fn an_ack_core_does_not_take_keeps_the_slot_and_record_for_the_next_tick_t
 
 #[tokio::test]
 async fn a_job_this_box_holds_no_pane_for_is_answered_by_the_path_that_knows_other_processes() {
-    let w = world(true, Standing::Ours, true, Arc::new(JobPanes::new()));
+    let mut w = world(true, Standing::Ours, true, Arc::new(JobPanes::new()));
+    w.panes.gone = true;
     let pool = PoolPanes {
         panes: Arc::new(w.panes),
         records: Arc::new(w.records),
@@ -380,4 +381,29 @@ async fn a_heartbeat_core_refuses_with_job_cancel_requested_reaches_the_cancel()
         .collect();
     assert_eq!(acks, vec![r#"{"outcome":"killed"}"#.to_string()]);
     assert_eq!(w.registry.count(), 0);
+}
+
+/// A cancelled job whose pane still runs though no slot holds it — let go of on a false gone-read,
+/// as the forge-dev box did with every job — is closed and acked `killed`, not answered `not_found`
+/// while it goes on pushing (ISS-1351).
+#[tokio::test]
+async fn a_cancelled_job_whose_pane_stands_with_no_slot_is_closed_and_acked_killed() {
+    let w = world(true, Standing::Ours, true, Arc::new(JobPanes::new()));
+    let pool = PoolPanes {
+        panes: Arc::new(w.panes),
+        records: Arc::new(w.records),
+        registry: w.registry,
+    };
+    answer_cancel(&pool, &w.core, JOB, || async {
+        unreachable!("a pane standing on this box is this box's to close")
+    })
+    .await;
+    assert_eq!(
+        said(&w.log),
+        vec![
+            format!("kill {}", pane_name(JOB)),
+            format!("released {}", pane_name(JOB)),
+            format!("kill-ack {JOB} killed (holding 0)"),
+        ]
+    );
 }

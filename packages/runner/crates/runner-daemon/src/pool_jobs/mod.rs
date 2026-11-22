@@ -62,6 +62,9 @@ pub enum Took {
     /// box, which is the only session core holds a pool job under; nothing was
     /// asked of core beyond the read.
     NoMasterSession(String),
+    /// Every claimable job retries an attempt whose pane still stands on this box, so none is
+    /// taken until that pane has ended (ISS-1351).
+    EarlierAttemptRuns(String),
 }
 
 /// The four boundaries a claim crosses: the pool it reads, the terminal a
@@ -263,6 +266,30 @@ fn carrying(declared: &ProjectMcpServers) -> String {
     }
 }
 
+/// The job this pass may take: the first claimable one that retries no attempt whose pane still
+/// stands here. What the pass answers where there is none is the error.
+async fn claimable_entry(
+    ports: &JobPorts<'_>,
+    registry: &JobPanes,
+    project_id: &str,
+) -> std::result::Result<PoolEntry, Took> {
+    let entries = match ports.pool.claimable(project_id).await {
+        Ok(e) => e,
+        Err(e) => {
+            tracing::warn!(
+                "[pool] {project_id}: cannot read the pool — its queue is UNREAD, not empty: {e}"
+            );
+            return Err(Took::Unread(e));
+        }
+    };
+    let Some(first) = entries.first().map(|e| e.job_id.clone()) else {
+        return Err(Took::NothingClaimable);
+    };
+    first_not_behind_a_running_attempt(ports.panes, registry, entries)
+        .await
+        .ok_or(Took::EarlierAttemptRuns(first))
+}
+
 pub async fn take_one(
     ports: &JobPorts<'_>,
     registry: &JobPanes,
@@ -281,17 +308,9 @@ pub async fn take_one(
     if registry.count() >= bound {
         return Took::AtBound;
     }
-    let entries = match pool_ports.claimable(project_id).await {
-        Ok(e) => e,
-        Err(e) => {
-            tracing::warn!(
-                "[pool] {project_id}: cannot read the pool — its queue is UNREAD, not empty: {e}"
-            );
-            return Took::Unread(e);
-        }
-    };
-    let Some(entry) = entries.into_iter().next() else {
-        return Took::NothingClaimable;
+    let entry = match claimable_entry(ports, registry, project_id).await {
+        Ok(entry) => entry,
+        Err(none) => return none,
     };
     let Some(session_id) = master_session else {
         return Took::NoMasterSession(entry.job_id);
@@ -549,10 +568,12 @@ pub async fn supervise(
             PaneReading::Present => {}
             PaneReading::Doubted => continue,
             PaneReading::Ended => {
-                let reason = format!(
-                    "the job's pane `{}` ended without reporting an outcome",
-                    live.pane
-                );
+                let reason = registry.owed_failure(&live.job_id).unwrap_or_else(|| {
+                    format!(
+                        "the job's pane `{}` ended without reporting an outcome",
+                        live.pane
+                    )
+                });
                 if let Err(e) = report.fail(&live.job_id, &reason).await {
                     tracing::warn!(
                     "[pool] could not tell core job {} lost its pane: {e} — sending it again next tick",
@@ -675,18 +696,22 @@ async fn conclude(
     live: &Live,
     reason: String,
 ) -> bool {
-    if let Err(e) = report.fail(&live.job_id, &reason).await {
+    // Closed before core is told: a job core reads as failed is retried, and a pane left running
+    // under a failed job is two sessions on one run (ISS-1351).
+    if let Err(e) = panes.kill(&live.pane).await {
         tracing::warn!(
-            "[pool] could not tell core job {} is over: {e} — sending it again next tick",
-            live.job_id
+            "[pool] job {} is over but {} would not close: {e} — keeping it under supervision and telling core nothing yet, because a job failed while its pane runs is a job core hands out twice",
+            live.job_id,
+            live.pane
         );
         return false;
     }
-    if let Err(e) = panes.kill(&live.pane).await {
+    if let Err(e) = report.fail(&live.job_id, &reason).await {
+        registry.owe_failure(&live.job_id, &reason);
         tracing::warn!(
-            "[pool] job {} is over but {} would not close: {e} — keeping it under supervision, because a slot given back while its pane runs is a slot this box would hand out twice",
-            live.job_id,
-            live.pane
+            "[pool] {} is closed but core could not be told job {} is over: {e} — sending it again next tick",
+            live.pane,
+            live.job_id
         );
         return false;
     }

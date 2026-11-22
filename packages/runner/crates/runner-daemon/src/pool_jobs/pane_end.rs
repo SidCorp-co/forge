@@ -57,6 +57,11 @@ pub struct PaneReads {
     strays: HashSet<String>,
     /// Jobs that are over whose pane has been told to wait until it idles.
     waiting_idle: HashSet<String>,
+    /// Why a job this box closed is over, where core could not be told yet: the reason it is
+    /// told on the next tick, which reads the closed pane gone (ISS-1351).
+    owed: HashMap<String, String>,
+    /// Retries this box has said it holds back, so it says so once per retry.
+    held_back: HashSet<String>,
 }
 
 impl PaneReads {
@@ -64,6 +69,8 @@ impl PaneReads {
         self.gone_reads.remove(job_id);
         self.processes.remove(job_id);
         self.waiting_idle.remove(job_id);
+        self.owed.remove(job_id);
+        self.held_back.remove(job_id);
     }
 }
 
@@ -80,6 +87,16 @@ pub enum PaneReading {
 impl JobPanes {
     fn with_reads<T>(&self, f: impl FnOnce(&mut PaneReads) -> T) -> Option<T> {
         self.reads.lock().ok().map(|mut r| f(&mut r))
+    }
+
+    /// That this box closed the job's pane and owes core this reason for it.
+    pub fn owe_failure(&self, job_id: &str, reason: &str) {
+        self.with_reads(|r| r.owed.insert(job_id.to_string(), reason.to_string()));
+    }
+
+    /// The reason owed for a job whose pane this box closed, where one is.
+    pub fn owed_failure(&self, job_id: &str) -> Option<String> {
+        self.with_reads(|r| r.owed.get(job_id).cloned()).flatten()
     }
 
     /// The process this box read the job's pane running, where it read one.
@@ -215,6 +232,36 @@ pub(crate) async fn take_back_strays(
         again.join(", ")
     );
     again
+}
+
+/// The first claimable job whose earlier attempt has no pane standing on this box. A retry is
+/// held back while the attempt it retries may still be acting on the same run; tmux that cannot
+/// answer is not an ended pane, so it holds the retry too.
+pub(crate) async fn first_not_behind_a_running_attempt(
+    panes: &dyn Panes,
+    registry: &JobPanes,
+    entries: Vec<PoolEntry>,
+) -> Option<PoolEntry> {
+    for entry in entries {
+        let Some(earlier) = entry.retry_of.as_deref() else {
+            return Some(entry);
+        };
+        let pane = pane_name(earlier);
+        if panes.gone(&pane).await {
+            return Some(entry);
+        }
+        let first = registry
+            .with_reads(|r| r.held_back.insert(entry.job_id.clone()))
+            .unwrap_or(false);
+        if !first {
+            continue;
+        }
+        tracing::warn!(
+            "[pool] job {} retries job {earlier}, whose pane {pane} still stands on this box — not taken until that pane has ended",
+            entry.job_id
+        );
+    }
+    None
 }
 
 #[cfg(test)]
