@@ -114,6 +114,14 @@ pub trait Panes: Send + Sync {
     /// could not answer is not an ending, so it is not `gone` (ISS-1312).
     async fn gone(&self, name: &str) -> bool;
     async fn kill(&self, name: &str) -> Result<()>;
+    /// The pid of the process the pane runs, while tmux holds it; `None` where it cannot be read.
+    async fn pid(&self, _name: &str) -> Option<u32> {
+        None
+    }
+    /// How long the pane has written nothing; `None` where that cannot be read (ISS-1351).
+    async fn idle_for(&self, _name: &str) -> Option<std::time::Duration> {
+        None
+    }
     /// Every job pane on this box right now, by name.
     async fn names(&self) -> Vec<String>;
     /// Type a message core sent the job's session into its pane and submit it, answering in
@@ -455,6 +463,14 @@ impl Panes for TmuxPanes {
 
     async fn kill(&self, name: &str) -> Result<()> {
         terminal::kill(name).await
+    }
+
+    async fn pid(&self, name: &str) -> Option<u32> {
+        terminal::pane_pid(name).await
+    }
+
+    async fn idle_for(&self, name: &str) -> Option<std::time::Duration> {
+        terminal::pane_idle_for(name).await
     }
 
     async fn names(&self) -> Vec<String> {

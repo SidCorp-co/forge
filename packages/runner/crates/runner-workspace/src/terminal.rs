@@ -236,6 +236,25 @@ pub async fn job_pane_ended(name: &str) -> bool {
     has_session(name).await == Presence::Absent
 }
 
+/// How long a pane has written nothing to its terminal, read from tmux's own `window_activity`.
+/// An agent at work redraws its pane while it works, so an old reading is an agent waiting at its
+/// prompt. `None` where tmux could not answer for the pane, which says nothing about its agent.
+pub async fn pane_idle_for(name: &str) -> Option<Duration> {
+    let target = pane_target(name);
+    let out = tmux(&["display-message", "-p", "-t", &target, "#{window_activity}"])
+        .await
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let last: u64 = String::from_utf8_lossy(&out.stdout).trim().parse().ok()?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_secs();
+    Some(Duration::from_secs(now.saturating_sub(last)))
+}
+
 const SESSION_UNIT: &str = "forge-sessions";
 
 fn unit_for(dir: &std::path::Path) -> String {

@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 
 use super::tests::tmux_or_skip;
-use super::{job_pane_ended, JOB_PREFIX, TEST_SOCKET};
+use super::{job_pane_ended, pane_idle_for, JOB_PREFIX, TEST_SOCKET};
 
 struct Server(PathBuf);
 
@@ -70,4 +70,22 @@ async fn a_tmux_that_cannot_be_asked_ends_no_job_pane() {
         !job_pane_ended(&name).await,
         "a tmux with no server running is no answer, and no answer is no ending"
     );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_job_pane_reads_how_long_it_has_written_nothing_and_an_absent_one_reads_nothing() {
+    if !tmux_or_skip(
+        "a_job_pane_reads_how_long_it_has_written_nothing_and_an_absent_one_reads_nothing",
+    ) {
+        return;
+    }
+    let name = format!("{JOB_PREFIX}-{}", uuid::Uuid::new_v4());
+    let _server = server_holding(&name);
+    let idle = pane_idle_for(&name).await;
+    assert!(
+        idle.is_some_and(|d| d.as_secs() < 60),
+        "a pane started a moment ago read {idle:?}"
+    );
+    let other = format!("{JOB_PREFIX}-{}", uuid::Uuid::new_v4());
+    assert_eq!(pane_idle_for(&other).await, None);
 }

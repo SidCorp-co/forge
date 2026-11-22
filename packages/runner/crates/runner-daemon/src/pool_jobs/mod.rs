@@ -19,6 +19,8 @@ mod panes;
 pub use panes::*;
 mod cancel;
 pub use cancel::*;
+mod pane_end;
+pub use pane_end::*;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -541,24 +543,29 @@ pub async fn supervise(
     activity: &Activities,
 ) {
     let now = now_ms();
+    take_back_strays(panes, records, registry).await;
     for live in registry.live() {
-        if panes.gone(&live.pane).await {
-            let reason = format!(
-                "the job's pane `{}` ended without reporting an outcome",
-                live.pane
-            );
-            if let Err(e) = report.fail(&live.job_id, &reason).await {
-                tracing::warn!(
+        match read_pane(panes, registry, &live).await {
+            PaneReading::Present => {}
+            PaneReading::Doubted => continue,
+            PaneReading::Ended => {
+                let reason = format!(
+                    "the job's pane `{}` ended without reporting an outcome",
+                    live.pane
+                );
+                if let Err(e) = report.fail(&live.job_id, &reason).await {
+                    tracing::warn!(
                     "[pool] could not tell core job {} lost its pane: {e} — sending it again next tick",
                     live.job_id
                 );
+                    continue;
+                }
+                panes.released(&live.pane).await;
+                registry.forget(&live.job_id);
+                records.forget(&live.job_id).await;
+                tracing::warn!("[pool] job {} lost its pane {}", live.job_id, live.pane);
                 continue;
             }
-            panes.released(&live.pane).await;
-            registry.forget(&live.job_id);
-            records.forget(&live.job_id).await;
-            tracing::warn!("[pool] job {} lost its pane {}", live.job_id, live.pane);
-            continue;
         }
         if ended_on_refusal(panes, report, records, registry, activity, &live).await {
             continue;
@@ -622,22 +629,7 @@ pub async fn supervise(
                 cancel(panes, report, records, registry, &live.job_id).await;
             }
             Ok(Standing::Over) => {
-                if let Err(e) = panes.kill(&live.pane).await {
-                    tracing::warn!(
-                        "[pool] job {} is terminal but {} would not close: {e} — keeping it under supervision, and the next tick closes it",
-                        live.job_id,
-                        live.pane
-                    );
-                    continue;
-                }
-                panes.released(&live.pane).await;
-                registry.forget(&live.job_id);
-                records.forget(&live.job_id).await;
-                tracing::info!(
-                    "[pool] job {} is terminal — {} closed",
-                    live.job_id,
-                    live.pane
-                );
+                close_over(panes, records, registry, &live).await;
             }
             Err(e) => tracing::warn!("[pool] progress for job {}: {e}", live.job_id),
         }

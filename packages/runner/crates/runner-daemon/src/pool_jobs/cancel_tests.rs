@@ -220,8 +220,15 @@ async fn an_ack_core_does_not_take_keeps_the_slot_and_record_for_the_next_tick_t
         said(&w.log)
     );
 
-    // The next tick finds the pane gone and says so, which core settles `cancelled`.
+    // The next ticks find the pane gone and say so, which core settles `cancelled`: one gone-read
+    // is not an ending, the second is (ISS-1351).
     w.panes.gone = true;
+    w.sweep(&Activities::new()).await;
+    assert!(
+        !said(&w.log).contains(&format!("fail {JOB}")),
+        "{:?}",
+        said(&w.log)
+    );
     w.sweep(&Activities::new()).await;
     assert!(
         said(&w.log).contains(&format!("fail {JOB}")),

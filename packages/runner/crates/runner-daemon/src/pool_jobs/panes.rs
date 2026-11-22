@@ -79,6 +79,10 @@ pub struct JobPanes {
     /// The project each job this daemon took was taken for. A pane adopted
     /// across a restart has none, and is counted for every project.
     pub(crate) projects: Mutex<HashMap<String, String>>,
+    /// What the sweeps have read of each pane beyond the slot: gone-reads not yet confirmed,
+    /// the process each pane runs, the job panes no slot holds, and the panes waiting to idle
+    /// (ISS-1351).
+    pub(crate) reads: Mutex<PaneReads>,
 }
 
 impl Default for JobPanes {
@@ -95,6 +99,7 @@ impl JobPanes {
             said_at_bound: Mutex::new(None),
             unsessioned: Mutex::new(std::collections::HashSet::new()),
             projects: Mutex::new(HashMap::new()),
+            reads: Mutex::new(PaneReads::default()),
         }
     }
 
@@ -206,6 +211,9 @@ impl JobPanes {
         }
         if let Ok(mut projects) = self.projects.lock() {
             projects.remove(job_id);
+        }
+        if let Ok(mut reads) = self.reads.lock() {
+            reads.let_go(job_id);
         }
     }
 
@@ -363,38 +371,9 @@ pub async fn adopt(
     }
 
     for name in live {
-        let Some(job_id) = job_id_of(&name) else {
-            continue;
-        };
-        // What the last daemon's sweep left on this job's record is the whole
-        // of what this one knows about its agent until the pane's own hooks
-        // speak again.
-        let held = recorded.iter().find(|r| r.job_id == job_id);
-        let watch = match held.and_then(|r| r.watch.session_id()) {
-            Some(session) => Watch::Adopted {
-                session_id: session.to_string(),
-            },
-            None => Watch::Unhooked,
-        };
-        let seen = held.and_then(|r| r.seen);
-        let adopted = Live {
-            job_id,
-            pane: name,
-            watch,
-            seen,
-            transcript: held.and_then(|r| r.transcript.clone()),
-            opened_at: held.and_then(|r| r.opened_at),
-        };
-        registry.hold(
-            &adopted.job_id,
-            &adopted.pane,
-            adopted.watch.clone(),
-            adopted.seen,
-            adopted.transcript.clone(),
-            adopted.opened_at,
-        );
-        records.note(&adopted).await;
-        out.alive += 1;
+        if hold_pane(&name, &recorded, records, registry).await {
+            out.alive += 1;
+        }
     }
 
     if out.alive > 0 || out.buried > 0 {
@@ -405,4 +384,45 @@ pub async fn adopt(
         );
     }
     out
+}
+
+/// Hold a job pane standing on this box under supervision, carrying what its record says. `false`
+/// where the name is not a job pane's.
+pub(crate) async fn hold_pane(
+    name: &str,
+    recorded: &[Live],
+    records: &dyn Records,
+    registry: &JobPanes,
+) -> bool {
+    let Some(job_id) = job_id_of(name) else {
+        return false;
+    };
+    // What the last daemon's sweep left on this job's record is the whole
+    // of what this one knows about its agent until the pane's own hooks
+    // speak again.
+    let held = recorded.iter().find(|r| r.job_id == job_id);
+    let watch = match held.and_then(|r| r.watch.session_id()) {
+        Some(session) => Watch::Adopted {
+            session_id: session.to_string(),
+        },
+        None => Watch::Unhooked,
+    };
+    let adopted = Live {
+        job_id,
+        pane: name.to_string(),
+        watch,
+        seen: held.and_then(|r| r.seen),
+        transcript: held.and_then(|r| r.transcript.clone()),
+        opened_at: held.and_then(|r| r.opened_at),
+    };
+    registry.hold(
+        &adopted.job_id,
+        &adopted.pane,
+        adopted.watch.clone(),
+        adopted.seen,
+        adopted.transcript.clone(),
+        adopted.opened_at,
+    );
+    records.note(&adopted).await;
+    true
 }
