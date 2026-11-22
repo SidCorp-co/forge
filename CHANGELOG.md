@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.787] - 2026-11-22
+
+One voice in a users' room: a master's post replaces the assistant's answer
+
+### Fixed
+
+- **A users' thread speaks with one voice.** A master's post, follow-ups included, replaces the bot's newer answer whichever binding recorded it; masters read a thread before posting; the offline line waits three minutes and skips a thread already answered.
+
 ## [0.4.0-dev.786] - 2026-11-22
 
 Drizzle journal at drizzle/meta, similar-feedback roots, and a master's grant route
