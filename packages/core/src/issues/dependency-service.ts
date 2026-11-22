@@ -104,7 +104,7 @@ export async function setIssueDependency(
 ): Promise<SetIssueDependencyResult> {
   // One transaction, so the `FOR SHARE` read of both sides holds until the edge commits.
   const written = await db.transaction((tx) => writeIssueDependency(input, writer, tx));
-  const effects = describeDependencyKind(input.kind);
+  const effects = describeDependencyKind(input.kind, expiresEdge(input.validUntil));
   if (written.created) return { id: written.id, created: true, effects };
   return { id: written.id, created: false, updated: written.updated, effects };
 }
@@ -129,7 +129,10 @@ export async function writeIssueDependency(
     .where(inArray(issues.id, [input.fromIssueId, input.toIssueId]));
   if (sides.length !== 2) throw notFound('one or both issues not found');
   if (sides.some((s) => s.projectId !== input.projectId)) {
-    throw refuse('CROSS_PROJECT', `both issues of an edge are in this project. ${contractWaitWay}`);
+    throw refuse(
+      'CROSS_PROJECT',
+      `an edge joins two issues of one project, and this one names an issue of another. ${contractWaitWay}`,
+    );
   }
   // ISS-1237 — an edge naming an archived issue would point at a row no reader can find. The
   // `FOR SHARE` read waits on an archive holding either side, then reads what it committed. Only

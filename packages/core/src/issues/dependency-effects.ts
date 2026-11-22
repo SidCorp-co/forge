@@ -30,8 +30,18 @@ export type DependencyKindEffect = {
   note: string;
 };
 
-/** What wiring an edge of this kind will actually do, for the caller that just wired it. */
-export function describeDependencyKind(kind: IssueDependencyKind): DependencyKindEffect {
+const RETRACTED_NOTE =
+  'Retracted: its `validUntil` is past, so it gates no dispatch here; the list read shows it ' +
+  "expired. The master's own reading ignores expiry until forge-plugin ISS-347, so moving A forward " +
+  'is the route that releases B on both.';
+
+/** What wiring an edge of this kind will actually do, for the caller that just wired it; an edge
+ *  written already expired (a retract) does nothing, whatever its kind. */
+export function describeDependencyKind(
+  kind: IssueDependencyKind,
+  retracted = false,
+): DependencyKindEffect {
+  if (retracted) return { gatesDispatch: false, note: RETRACTED_NOTE };
   if (kind === DISPATCH_GATING_KIND) {
     return { gatesDispatch: true, note: GATES_DISPATCH_NOTE };
   }

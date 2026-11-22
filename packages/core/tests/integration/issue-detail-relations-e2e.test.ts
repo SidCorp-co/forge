@@ -113,5 +113,8 @@ describe('POST /api/issues/:id/dependencies across projects names the contract w
     });
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(res.body.created).toBe(true);
+    // written already expired, it gates nothing, and its answer says so (debt e67f5a86)
+    expect(res.body.effects).toMatchObject({ gatesDispatch: false });
+    expect((res.body.effects as { note: string }).note).toMatch(/^Retracted/);
   });
 });
