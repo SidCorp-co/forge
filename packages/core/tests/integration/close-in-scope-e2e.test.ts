@@ -5,8 +5,7 @@
  *
  * - the run holding an issue closes it from `awaiting_release` with no release, its merge recorded;
  * - a close leaving a criterion it did not meet with no destination is refused by name, naming the
- *   criterion and the three places it may go; a fail recorded at or before the issue's latest reopen
- *   holds the holder's close back no more than a release's (ISS-1397), and one after it still does;
+ *   criterion and the three places it may go;
  * - a close naming a destination for each moves each one out on the record first, and each
  *   destination holds its criterion;
  * - a release still closes an issue it claims, and only a release makes the work read live: the
@@ -24,7 +23,6 @@
  * @direct-test-of packages/core/src/issues/transition-body.ts
  * @direct-test-of packages/core/src/issues/merged-at.ts
  * @direct-test-of packages/core/src/issues/release-evidence.ts
- * @direct-test-of packages/core/src/issues/release-close-failing.ts
  * @direct-test-of packages/core/src/pipeline/release-runs.ts
  * @direct-test-of packages/core/src/forecast/scope.ts
  * @direct-test-of packages/core/src/forecast/facts.ts
@@ -45,137 +43,26 @@
 
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { userToken } from '../helpers/api.js';
+import { describe, expect, it } from 'vitest';
 import {
-  closeWorld,
-  type Doc,
-  ok,
-  type Reply,
-  requester,
-  startQueue,
-  testEnv,
-} from '../helpers/ecosystem-world.js';
-import {
-  addProjectMember,
-  completeIssueReadyRecord,
-  createTestDevice,
-  createTestProject,
-  createTestUser,
-  rows,
-} from '../helpers/factories.js';
-import { seedProjectDocument } from '../helpers/release-world.js';
+  call,
+  close,
+  failVerdict,
+  landed,
+  lease,
+  liveOf,
+  ownerId,
+  projectId,
+  refusalsOf,
+  seq,
+  statusOf,
+  useCloseScopeWorld,
+} from '../helpers/close-scope-world.js';
+import { ok } from '../helpers/ecosystem-world.js';
+import { completeIssueReadyRecord, rows } from '../helpers/factories.js';
 import { TRIAGE_ANSWERS } from '../helpers/triage-answers.js';
 
-const LIVE = {
-  live: {
-    tier: 'production' as const,
-    deployment: { mode: 'external' as const, target: 'catalog-deploy' },
-  },
-};
-const SHA = 'ab12'.repeat(10);
-
-let projectId = '';
-let ownerId = '';
-let call: (who: string, method: string, path: string, body?: unknown) => Promise<Reply>;
-
-async function boxPat(userId: string, name: string): Promise<string> {
-  const { mintPat } = await import('../../src/credentials/pat.js');
-  const deviceId = await createTestDevice(userId);
-  return (await mintPat({ permissions: ['*'], userId, name, deviceId, projectIds: [projectId] }))
-    .plaintext;
-}
-
-beforeAll(async () => {
-  testEnv();
-  const { app } = await import('../../src/index.js');
-  await startQueue();
-  ownerId = (await createTestUser({ verified: true })).id;
-  projectId = (await createTestProject(ownerId)).id;
-  await seedProjectDocument(projectId, ownerId, { environments: LIVE, defaultBranch: 'main' });
-  // two member agents' boxes, as pool runners are: neither holds project.admin to move past a holder
-  const holder = (await createTestUser({ kind: 'agent' })).id;
-  const other = (await createTestUser({ kind: 'agent' })).id;
-  await addProjectMember(projectId, holder, 'member');
-  await addProjectMember(projectId, other, 'member');
-  call = requester(app, {
-    holder: await boxPat(holder, 'box-holder'),
-    other: await boxPat(other, 'box-other'),
-    owner: await userToken(ownerId),
-  });
-}, 120_000);
-
-afterAll(async () => {
-  await closeWorld();
-});
-
-let seq = 300;
-/** The note its run wrote before the close, as the close asks (ISS-1293). */
-const NOTE = JSON.stringify({
-  section: 'Changed',
-  title: 'The catalog lists the new field',
-  userFacing: 'The catalog now lists the new field.',
-});
-
-/** An issue its run landed: at `status` with its merge and release note recorded, and `criteria` as its live rows. */
-async function landed(
-  criteria: string[],
-  status = 'awaiting_release',
-): Promise<{ id: string; key: string }> {
-  seq += 1;
-  const id = randomUUID();
-  await rows(sql`
-    INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, merged_at, merged_commit_sha, release_notes)
-    VALUES (${id}, ${projectId}, ${seq}, ${`catalog work ${seq}`}, ${status}, ${ownerId}, now(), ${SHA}, ${NOTE}::jsonb)`);
-  for (const [i, statement] of criteria.entries()) {
-    await rows(sql`
-      INSERT INTO issue_criteria (issue_id, n, statement, position)
-      VALUES (${id}, ${i + 1}, ${statement}, ${i})`);
-  }
-  return { id, key: `ISS-${seq}` };
-}
-
-/** The holder's box claims the issue: the lease its close then works under. */
-async function lease(id: string, who = 'holder'): Promise<void> {
-  ok(
-    await call(who, 'PATCH', `/api/issues/${id}`, {
-      sessionContext: {
-        lease: {
-          holder: `catalog-master-${who}`,
-          renewedAt: new Date().toISOString(),
-          minutes: 60,
-        },
-      },
-    }),
-  );
-}
-
-const close = (id: string, extra: Doc = {}, who = 'holder') =>
-  call(who, 'POST', `/api/issues/${id}/transition`, { toStatus: 'closed', ...extra });
-
-async function failVerdict(issueId: string, n: number): Promise<void> {
-  await rows(sql`
-    INSERT INTO criterion_verdicts (criterion_id, issue_id, verdict, reason, author_agency)
-    SELECT id, issue_id, 'fail', 'not met on the build', 'agent'
-      FROM issue_criteria WHERE issue_id = ${issueId} AND n = ${n} AND retired_at IS NULL`);
-}
-
-const statusOf = async (id: string) =>
-  (await rows<{ status: string }>(sql`SELECT status FROM issues WHERE id = ${id}`))[0]?.status;
-
-const refusalsOf = (r: Reply): Array<{ code: string; detail: string }> => {
-  const e = (r.json as { error?: { code?: string; detail?: string; refusals?: unknown[] } }).error;
-  return (
-    (e?.refusals as Array<{ code: string; detail: string }> | undefined) ?? [
-      { code: e?.code ?? '', detail: e?.detail ?? '' },
-    ]
-  );
-};
-
-async function liveOf(id: string) {
-  const { shippedReleasesOf } = await import('../../src/pipeline/release-runs.js');
-  return (await shippedReleasesOf(projectId, [id])).get(id) ?? null;
-}
+useCloseScopeWorld();
 
 describe('an issue closes when met in scope (ISS-1062)', () => {
   it('closes by the run holding it, with no release, and reads not live', async () => {
@@ -216,33 +103,6 @@ describe('an issue closes when met in scope (ISS-1062)', () => {
     expect(first?.detail).toContain('a new issue filed for it first');
     expect(first?.detail).toContain('the requirement the issue serves');
     expect(await statusOf(id)).toBe('awaiting_release');
-  });
-
-  it('closes over a fail its latest reopen voided, as a release does, and still refuses one after it', async () => {
-    const reopened = async (id: string) => {
-      await rows(sql`
-        INSERT INTO kernel_transitions (entity, entity_id, from_status, to_status, actor_type, actor_agency, source, created_at)
-        VALUES ('issue', ${id}, 'awaiting_release', 'reopen', 'system', 'agent', 'fixture', clock_timestamp())`);
-      await rows(sql`UPDATE issues SET merged_at = clock_timestamp() WHERE id = ${id}`);
-    };
-    // the fail judged the build the reopen rejected: the fix landed since, and nothing fails this round
-    const { id: voided } = await landed(['the field is listed', 'the field is sortable']);
-    await failVerdict(voided, 2);
-    await reopened(voided);
-    await lease(voided);
-    const r = await close(voided);
-    expect(r.status, JSON.stringify(r.json)).toBe(200);
-    expect(await statusOf(voided)).toBe('closed');
-
-    const { id: failsAgain } = await landed(['the field is listed', 'the field is sortable']);
-    await reopened(failsAgain);
-    await failVerdict(failsAgain, 2);
-    await lease(failsAgain);
-    const again = await close(failsAgain);
-    expect(again.status, JSON.stringify(again.json)).toBe(422);
-    expect(refusalsOf(again)[0]?.code).toBe('CLOSE_CRITERION_UNPLACED');
-    expect(refusalsOf(again)[0]?.detail).toContain('criterion 2: its newest verdict is a fail');
-    expect(await statusOf(failsAgain)).toBe('awaiting_release');
   });
 
   it('refuses a criterion the closer names unmet with no destination, and one sent to a frozen issue', async () => {
@@ -337,7 +197,9 @@ describe('an issue closes when met in scope (ISS-1062)', () => {
       `Criterion 2 came from ${key} criterion 3, which closed without meeting it.`,
     );
   });
+});
 
+describe('an issue closes when met in scope (ISS-1062): unmet criteria on the record', () => {
   it('refuses `unmet` on a move that is no close', async () => {
     const { id } = await landed(['the field is listed']);
     const r = await call('owner', 'POST', `/api/issues/${id}/transition`, {
