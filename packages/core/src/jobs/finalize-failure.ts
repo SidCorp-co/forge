@@ -14,8 +14,9 @@ import { syncAgentSessionLifecycle } from './agent-session-link.js';
 import { finalizeJobDone, hasTerminalHandoffForAttempt } from './finalize-done.js';
 import { holdAutoReleases, holdJobForReason, RUN_CLOSED } from './hold.js';
 import { pushJobChanged } from './job-push.js';
+import { PANE_LOST_REPEATEDLY, paneLossStopSentence } from './pane-loss.js';
 import type { RetryOutcome } from './retry.js';
-import { scheduleAutoRetryWithVerify } from './retry.js';
+import { paneLossesOf, scheduleAutoRetryWithVerify } from './retry.js';
 
 type JobRow = typeof jobs.$inferSelect;
 
@@ -51,6 +52,24 @@ const HOLD_WEDGE_CONTENT: Partial<
       'This step already spent its one automatic release. Resume the held job (POST /api/jobs/:id/resume) once the check can run.',
   },
 };
+
+/**
+ * What the record says of a job whose box lost its pane too many times in a row (ISS-1415): the job,
+ * the item it served, the failure and the count, for the person whose ask places it again.
+ */
+function paneLossCopy(job: JobRow, error: string) {
+  const losses = paneLossesOf(job, error);
+  const item = job.issueId
+    ? 'its issue'
+    : `${job.type === 'release_batch' ? 'release run' : 'run'} ${job.pipelineRunId}`;
+  const said = paneLossStopSentence({
+    what: `The ${job.type} job ${job.id}`,
+    item,
+    losses,
+    failure: job.error ?? error,
+  });
+  return { losses, said };
+}
 
 interface FinalizeFailedJobOptions {
   /** Human-readable failure reason; passed to the retry engine. */
@@ -98,7 +117,15 @@ async function reconcileIssueStatusAfterFailure(
       logger.info({ jobId: heldJobId, reason }, 'hold: self-clearing, no wedge emitted');
       return;
     }
-    const content = HOLD_WEDGE_CONTENT[reason];
+    const content =
+      reason === PANE_LOST_REPEATEDLY
+        ? {
+            title: "Step held: its box keeps losing the job's pane",
+            summary: paneLossCopy(job, job.error ?? '').said,
+            nextStep:
+              'Once the box keeps its panes (update its runner), resume the held job (POST /api/jobs/:id/resume): that is the ask that places it again.',
+          }
+        : HOLD_WEDGE_CONTENT[reason];
     await emitPipelineWedge({
       projectId: row.projectId,
       issueId: row.id,
@@ -173,6 +200,14 @@ export async function finalizeFailedJob(
   // just been scheduled; the retry shares the same run.
   await syncAgentSessionLifecycle(updated, 'failed', {
     retryPending: retry.scheduled === true,
+    ...(retry.reason === PANE_LOST_REPEATEDLY && !updated.issueId
+      ? {
+          runFailure: {
+            code: PANE_LOST_REPEATEDLY,
+            detail: paneLossCopy(updated, opts.error).said,
+          },
+        }
+      : {}),
   });
 
   await pushJobChanged(updated, 'job.failed', {

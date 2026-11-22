@@ -260,8 +260,13 @@ const SESSION_STATUS_OF_JOB_OUTCOME = {
 export async function syncAgentSessionLifecycle(
   job: JobRow,
   outcome: 'done' | 'failed' | 'cancelled',
-  options?: { retryPending?: boolean },
+  options?: {
+    retryPending?: boolean;
+    /** Why the run fails where the retry engine stopped by name rather than the job's own failure. */
+    runFailure?: RunFailureCause;
+  },
 ): Promise<void> {
+  const cause = options?.runFailure ?? jobFailureCause(job);
   if (!job.agentSessionId) {
     // ISS-101 — even without a linked session, close one-shot runs whose
     // backing job terminated without spawning a session.
@@ -269,7 +274,7 @@ export async function syncAgentSessionLifecycle(
       try {
         const runOutcome =
           outcome === 'cancelled' ? 'cancelled' : outcome === 'failed' ? 'failed' : 'completed';
-        await closeRunAfterJob(job.pipelineRunId, runOutcome, jobFailureCause(job));
+        await closeRunAfterJob(job.pipelineRunId, runOutcome, cause);
       } catch (err) {
         logger.warn({ err, jobId: job.id }, 'agent-session-link: close-run (no-session) failed');
       }
@@ -297,7 +302,7 @@ export async function syncAgentSessionLifecycle(
     if (!options?.retryPending) {
       const runOutcome =
         outcome === 'cancelled' ? 'cancelled' : outcome === 'failed' ? 'failed' : 'completed';
-      await closeRunAfterJob(job.pipelineRunId, runOutcome, jobFailureCause(job));
+      await closeRunAfterJob(job.pipelineRunId, runOutcome, cause);
     }
   } catch (err) {
     logger.warn(

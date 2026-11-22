@@ -12,7 +12,11 @@ import { releaseHoldWords, WORDED_RELEASE_HOLDS } from '../issues/index.js';
 import { failureCause, gateCause, personCause, stuckCause } from './hold-causes.js';
 
 const CODE = /[a-z]+_[a-z_]+|[A-Z]{3,}_[A-Z_]+/;
-const JOB_HOLD_REASONS = ['retry_rounds_exhausted', 'non_retryable_terminal'];
+const JOB_HOLD_REASONS = [
+  'retry_rounds_exhausted',
+  'pane_lost_repeatedly',
+  'non_retryable_terminal',
+];
 const GENERIC_GATES = [
   'blocked_on_machine',
   'blocked_on_master_or_peer',

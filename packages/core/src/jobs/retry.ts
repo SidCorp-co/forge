@@ -31,6 +31,7 @@ import {
 import type { RequiredCapabilities } from '../runners/index.js';
 import { onlineCapableDeviceIds } from '../runners/index.js';
 import { RUN_CLOSED } from './hold.js';
+import { endedOnPaneLoss, PANE_LOST_REPEATEDLY, paneLossPlacement } from './pane-loss.js';
 
 type JobRow = typeof jobs.$inferSelect;
 
@@ -65,7 +66,19 @@ const CAPACITY_DEFER_CEILING_MS = 5 * 60_000;
 type RetryDecision =
   | { kind: 'retry'; state: AutoRetryPayload }
   | { kind: 'defer'; state: AutoRetryPayload }
-  | { kind: 'give_up'; reason: 'retry_rounds_exhausted' | 'all_devices_exhausted' };
+  | {
+      kind: 'give_up';
+      reason: 'retry_rounds_exhausted' | 'all_devices_exhausted' | typeof PANE_LOST_REPEATEDLY;
+    };
+
+/**
+ * How many jobs of the chain in a row, this one included, ended on their box losing the job's pane
+ * (ISS-1415): the count the chain carries, zero after a failure of any other kind.
+ */
+export function paneLossesOf(job: Pick<JobRow, 'payload' | 'error'>, reason: string): number {
+  if (!endedOnPaneLoss(job.error || reason)) return 0;
+  return (readAutoRetryPayload(job.payload)?.paneLosses ?? 0) + 1;
+}
 
 function nextRetry(job: JobRow, maxAttempts: number, online: string[], now: Date): RetryDecision {
   if (job.attempts + 1 > maxAttempts) return { kind: 'give_up', reason: 'retry_rounds_exhausted' };
@@ -350,29 +363,41 @@ export async function scheduleAutoRetryWithVerify(
   const required = (job.payload as { requiredCapabilities?: RequiredCapabilities } | null)
     ?.requiredCapabilities;
   const healthyDevices = await onlineCapableDeviceIds(job.projectId, required);
-  const outcome = nextRetry(
-    job,
-    isFailoverAction ? FAILOVER_MAX_ATTEMPTS : RETRY_MAX_ATTEMPTS,
-    healthyDevices,
-    new Date(),
-  );
+  const now = new Date();
+  // a box that keeps losing the job's pane is waited out longer each time, then not retried (ISS-1415)
+  const paneLosses = paneLossesOf(job, reason);
+  const paneWait = paneLossPlacement(paneLosses, now, now);
+  const outcome: RetryDecision =
+    paneWait.kind === 'stop'
+      ? { kind: 'give_up', reason: PANE_LOST_REPEATEDLY }
+      : nextRetry(
+          job,
+          isFailoverAction ? FAILOVER_MAX_ATTEMPTS : RETRY_MAX_ATTEMPTS,
+          healthyDevices,
+          now,
+        );
   const capacityEntityId = capacityWedgeEntityId(job.projectId, 'all');
   if (outcome.kind === 'give_up') {
     logger.info(
-      { jobId: job.id, attempts: job.attempts, reason: outcome.reason },
+      { jobId: job.id, attempts: job.attempts, paneLosses, reason: outcome.reason },
       'retry: chain stopped',
     );
     return { scheduled: false, reason: outcome.reason };
   }
   if (outcome.kind === 'defer') await notifyCapacityOutage(job, capacityEntityId, required);
   else await resolvePipelineWedge(capacityEntityId);
-  const next = outcome.state;
+  const next: AutoRetryPayload = { ...outcome.state, ...(paneLosses > 0 ? { paneLosses } : {}) };
 
-  // A failover retries at once for whichever box claims it.
-  const cooldownMs = isFailoverAction ? 0 : RETRY_COOLDOWN_MS;
+  // A failover retries at once for whichever box claims it; a lost pane waits its growing interval.
+  const cooldownMs =
+    paneWait.kind === 'wait'
+      ? paneWait.at.getTime() - now.getTime()
+      : isFailoverAction
+        ? 0
+        : RETRY_COOLDOWN_MS;
   let newJobId: string;
   try {
-    newJobId = await insertRetryJob(job, next, new Date(Date.now() + cooldownMs));
+    newJobId = await insertRetryJob(job, next, new Date(now.getTime() + cooldownMs));
   } catch (err) {
     if (!isRefusal(err, 'RUN_NOT_ACCEPTING_WORK')) throw err;
     logger.info({ jobId: job.id, runId: job.pipelineRunId }, 'retry: run closed, no retry');
@@ -396,6 +421,7 @@ export async function scheduleAutoRetryWithVerify(
       attempt: job.attempts + 1,
       maxAttempts: next.maxAttempts,
       cooldownSec: cooldownMs / 1000,
+      paneLosses,
       reason,
     },
     'retry: auto-retry scheduled',

@@ -25,6 +25,7 @@ const JOB_GATES: ReadonlySet<string> = new Set([
   'all_devices_exhausted',
   'verify_unavailable',
   'retry_rounds_exhausted',
+  'pane_lost_repeatedly',
   'non_retryable_terminal',
   'retry_cooldown',
 ]);

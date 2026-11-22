@@ -61,6 +61,7 @@ const GATE: Readonly<Record<string, SaidPlainKey>> = {
   verify_unavailable: 'overview.hold.cause.gate.verifyUnavailable',
   retry_cooldown: 'overview.hold.cause.gate.retryCooldown',
   retry_rounds_exhausted: 'overview.hold.cause.gate.retryRoundsExhausted',
+  pane_lost_repeatedly: 'overview.hold.cause.gate.paneLostRepeatedly',
   non_retryable_terminal: 'overview.hold.cause.gate.nonRetryableTerminal',
   deploy_locked: 'overview.hold.cause.gate.deployLocked',
   issue_busy: 'overview.hold.cause.gate.issueBusy',

@@ -144,12 +144,15 @@ export const FAILOVER_MAX_ATTEMPTS = 10;
  *
  *   - `maxAttempts`   — the budget the chain was retried under.
  *   - `deferredSince` — when the chain first found NO usable device; null once one appears.
+ *   - `paneLosses`    — how many jobs of the chain in a row ended on their box losing the job's pane
+ *                       (ISS-1415): each waits longer for its retry, and past a cap there is none.
  */
 export const AUTO_RETRY_PAYLOAD_KEY = "_autoRetry";
 
 export interface AutoRetryPayload {
 	maxAttempts: number;
 	deferredSince: string | null;
+	paneLosses?: number;
 }
 
 /** The retry state a job carries, or null on a job that is not a retry (or predates the budget). */
@@ -164,6 +167,9 @@ export function readAutoRetryPayload(
 	return {
 		maxAttempts: r.maxAttempts,
 		deferredSince: typeof r.deferredSince === "string" ? r.deferredSince : null,
+		...(typeof r.paneLosses === "number" && r.paneLosses > 0
+			? { paneLosses: r.paneLosses }
+			: {}),
 	};
 }
 

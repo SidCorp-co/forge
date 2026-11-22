@@ -2762,6 +2762,9 @@ export const SAID = {
 	"overview.hold.cause.gate.retryRoundsExhausted": {
 		en: "Retried too many times; it will not resume itself",
 	},
+	"overview.hold.cause.gate.paneLostRepeatedly": {
+		en: "Its box kept losing the job; it waits for a person to resume it",
+	},
 	"overview.hold.cause.gate.nonRetryableTerminal": {
 		en: "Failed in a way a retry cannot fix",
 	},

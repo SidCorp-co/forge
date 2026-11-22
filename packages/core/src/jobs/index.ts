@@ -31,6 +31,16 @@ export {
   releaseHoldsOf,
   releaseJobHold,
 } from './master-holds.js';
+export {
+  type ItemJobEnd,
+  PANE_LOSS_CAP,
+  PANE_LOST_REPEATEDLY,
+  type PaneLossPlacement,
+  type PaneLossStreak,
+  paneLossPlacement,
+  paneLossStopSentence,
+  paneLossStreak,
+} from './pane-loss.js';
 export { parkedOnAHuman } from './park-deadline.js';
 export { poolPrompt, settleNoPromptJob } from './pool-served.js';
 export {

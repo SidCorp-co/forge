@@ -17,6 +17,7 @@ import { isRefusal } from '../lib/refusal.js';
 import { type KernelActor, type KernelExecutor, transition } from '../lifecycle/index.js';
 import { assertRunAcceptsWork, resolvePipelineWedge } from '../pipeline/index.js';
 import { onlineCapableDeviceIds, type RequiredCapabilities } from '../runners/index.js';
+import { PANE_LOST_REPEATEDLY } from './pane-loss.js';
 
 export {
   AUTO_RELEASE_REASONS,
@@ -33,6 +34,8 @@ const HOLD_REASONS: ReadonlySet<string> = new Set([
   'retry_rounds_exhausted',
   'non_retryable_terminal',
   'verify_unavailable',
+  // its box lost the job's pane too many times in a row: a person's resume is the ask (ISS-1415)
+  PANE_LOST_REPEATEDLY,
 ]);
 
 /** The outcome a hold or retry reads when its run no longer takes work: no successor, by name. */
