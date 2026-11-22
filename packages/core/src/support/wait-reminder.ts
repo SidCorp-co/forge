@@ -15,6 +15,7 @@ import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import { supportActions } from '../db/schema-support.js';
 import { logger } from '../lib/logger.js';
+import { markUntrusted } from '../lib/untrusted-text.js';
 import { webBaseUrl } from '../lib/web-base-url.js';
 import { emitNotification } from '../notifications/index.js';
 import { readProjectDocument } from '../project-config/index.js';
@@ -113,15 +114,15 @@ function waitLine(w: Wait, n: number, now: Date): string {
   const owes = w.owes.map((o) => (o.mention ? `@${o.mention}` : o.name)).join(', ');
   const parts = [
     `${n}. waited ${ageOf(w.since, now)}`,
-    `asks: ${JSON.stringify(w.ask)}`,
-    `recommended: ${w.recommended ? JSON.stringify(w.recommended) : 'none on record'}`,
     `owed by: ${owes || 'nobody named'}`,
     `link: ${w.link}`,
   ];
   if (w.escalated) {
     parts.push('waited past 14 days: propose deferring or dropping it, recommending the defer');
   }
-  return parts.join(' · ');
+  // its ask and recommendation are their writer's words (a master's or a run's), framed (ISS-1425)
+  const words = `asks: ${w.ask}\nrecommended: ${w.recommended ?? 'none on record'}`;
+  return `${parts.join(' · ')}\n${markUntrusted(words, { source: 'the wait as its writer put it' })}`;
 }
 
 /** What the agent is handed: what to do, then the waits as the record holds them, oldest first. */

@@ -19,6 +19,7 @@ import { withKernelMarker } from '../../src/db/kernel-marker.js';
 import { api } from '../helpers/api.js';
 import { createTestFeedback, createTestIssue, rows } from '../helpers/factories.js';
 import { refusalCodes, SupportWorld } from '../helpers/support-world.js';
+import { inUntrustedFrame } from '../helpers/untrusted-frame.js';
 
 // ISS-1243 (owner, 2026-11-15). Item 14: a room agent asks its master in its turn, and the answer
 // comes back into the same session, which answers the person itself; nothing is relayed and nothing
@@ -133,6 +134,9 @@ describe('ISS-1243: a room agent asks its master in its turn', () => {
         timeout: 15_000,
       })
       .toBe(true);
+    // ISS-1425: the master's answer reaches the turn inside the untrusted frame
+    const handed = notes.find((n) => n.thread === thread && n.text.includes(answer));
+    expect(inUntrustedFrame(handed?.text ?? '', answer)).toBe(true);
     expect(await w.linesIn(thread)).toEqual([]);
     expect((await asksOf()).body).toMatchObject({ waiting: 0, breached: 0 });
     expect((await asksOf('all')).body).toMatchObject({ waiting: 0, breached: 1 });

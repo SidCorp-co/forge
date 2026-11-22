@@ -15,6 +15,7 @@ import { agentQuestions, isChoiceStep } from '../db/schema-questions.js';
 import { supportActions } from '../db/schema-support.js';
 import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
+import { markUntrusted } from '../lib/untrusted-text.js';
 import { answerAs } from '../questions/index.js';
 import { memberMessage } from './channel-store.js';
 import { deliverWaiting } from './dispatch.js';
@@ -53,8 +54,9 @@ async function agentRoomOf(projectId: string): Promise<RoomRow | null> {
 function taskNote(thread: string, r: ChannelAgentRound): string {
   return [
     `A run is parked on a question (Forge question ${r.questionId}, round ${r.round}). First answer it from the record below, or read more with support.issues and support.requirements: where the record settles it, call support.answer_question { thread: "${thread}", source, option | answer } and post nothing. Only if the owner is truly needed, ask once with support.ask_owner { thread: "${thread}", question, forgeQuestion: "${r.questionId}" }, in the persona's language and plain words with no code: it goes to the project's technical channel, and his reply there reaches this thread. Post this question nowhere else.`,
-    r.facts,
-    `The record: ${JSON.stringify(r.record)}`,
+    // the run's question and the record (feedback a member wrote among it) are data, framed (ISS-1425)
+    markUntrusted(r.facts, { source: 'the parked question, as the run wrote it' }),
+    `The record:\n${markUntrusted(JSON.stringify(r.record), { source: 'the record about the question' })}`,
   ].join('\n\n');
 }
 

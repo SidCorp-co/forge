@@ -14,6 +14,7 @@ import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { confidentLanguageOf } from '../conversations/index.js';
 import { db } from '../db/client.js';
 import { supportActions } from '../db/schema-support.js';
+import { markUntrusted } from '../lib/untrusted-text.js';
 import { no, type Outcome } from './outcome.js';
 import { roomLanguage } from './report-thread.js';
 import type { RoomRow } from './store.js';
@@ -178,7 +179,7 @@ export function heldRaise(
   if (!spoke || answers === spoke.message) return null;
   const who = spoke.writer ? `@${spoke.writer}` : 'a person';
   const standing = turn.standing
-    ? ` The thread's answer to him since, which stands as its promise: "${quoted(turn.standing)}". Your words answer that promise, saying what came of it, and never contradict it.`
+    ? `The thread's answer to him since, which stands as its promise:\n${markUntrusted(quoted(turn.standing), { source: 'the thread answer standing' })}\nYour words answer that promise, saying what came of it, and never contradict it.`
     : '';
   const act = sameRoom
     ? `Where his words already rule on what you raise (an act he asked for or allowed), make it as him now with support.owner_forge_act (or answer_question, release_decision) citing message ${spoke.message}, and post no ask: tell him once that it is done, or name the one act no door makes.`
@@ -186,7 +187,8 @@ export function heldRaise(
   return no(
     'SUPPORT_RAISE_THREAD_UNREAD',
     '/answers',
-    `${who} wrote in the technical thread ${Math.max(1, Math.round((Date.now() - spoke.at.getTime()) / 60_000))} min ago, message ${spoke.message}: "${quoted(spoke.text)}".${standing} ${act} To post, raise again with answers: "${spoke.message}", your words ${speakTo(turn)}. Nothing was raised.`,
+    // his words, and the answer standing, are data framed in the refusal, never core's (ISS-1425)
+    `${who} wrote in the technical thread ${Math.max(1, Math.round((Date.now() - spoke.at.getTime()) / 60_000))} min ago, message ${spoke.message}:\n${markUntrusted(quoted(spoke.text), { source: 'a person in the technical thread' })}\n${[standing, act].filter(Boolean).join(' ')} To post, raise again with answers: "${spoke.message}", your words ${speakTo(turn)}. Nothing was raised.`,
   );
 }
 

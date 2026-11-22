@@ -10,6 +10,7 @@ import { randomUUID } from 'node:crypto';
 import { db } from '../../src/db/client.js';
 import { createTestIssue, rows } from '../helpers/factories.js';
 import { SupportWorld } from '../helpers/support-world.js';
+import { inUntrustedFrame } from '../helpers/untrusted-frame.js';
 
 // ISS-854 (owner, agenfold REQ-13): a release that reaches production tells each channel room that
 // opted in (`announce.releases` on its support block), the agent's way: the release's user-facing
@@ -84,6 +85,13 @@ describe('ISS-854: a release reaching production is handed to the opted-in roomâ
     expect(notes[0]?.text).toContain(
       'You can now export your orders to a CSV file from the Orders page.',
     );
+    // ISS-1425: the notes are their writers' words, handed inside the untrusted frame
+    expect(
+      inUntrustedFrame(
+        notes[0]?.text ?? '',
+        'You can now export your orders to a CSV file from the Orders page.',
+      ),
+    ).toBe(true);
     // what a Skip note says is never handed on as a change
     expect(notes[0]?.text).not.toContain('Skip');
 

@@ -9,6 +9,7 @@ import {
   type SupportRecordKind,
   type SupportRoomConfig,
 } from '@forge/contracts/support';
+import { markUntrusted } from '../lib/untrusted-text.js';
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
@@ -96,13 +97,19 @@ export interface ItemResult {
  * what shipped, the decline's reason) is handed to the session as material to restate, so the room
  * hears what the master did or decided. Null for a phase that is progress, never posted.
  */
+/** The source a result note's team words are framed under (ISS-1425). */
+export const TEAM_WORDS = "the team's words on the item";
+
 export function resultNote(r: ItemResult): string | null {
   const post =
     "Post its result in this thread, once, in the asker's words: what changed for them, or that it will not be done. No keys, no process.";
   const recorded = `${r.key}${r.elsewhere ? ` of ${r.elsewhere}` : ''}, recorded from this thread,`;
-  // the team's words are for the session to restate, never to paste
+  // the team's words are for the session to restate, never to paste; framed as data, since they
+  // may quote a member (ISS-1425)
   const quoted = (lead: string, text: string | null) =>
-    text?.trim() ? ` ${lead} (restate it, never paste it): "${text.trim()}"` : '';
+    text?.trim()
+      ? ` ${lead} (restate it, never paste it):\n${markUntrusted(text.trim(), { source: TEAM_WORDS })}`
+      : '';
   const hidden = r.withheld
     ? " Its words are withheld from this session by the project's data policy."
     : '';

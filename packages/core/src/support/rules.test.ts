@@ -5,12 +5,14 @@ import {
 } from '@forge/contracts/support';
 import { describe, expect, it } from 'vitest';
 import { settleSupportRoom } from '../integrations/rocketchat/support-binding.js';
+import { markUntrusted } from '../lib/untrusted-text.js';
 import {
   clipMessage,
   type ItemResult,
   limitsOf,
   mintConfirmCode,
   resultNote,
+  TEAM_WORDS,
   threadOf,
   visitorIdOf,
 } from './rules.js';
@@ -93,13 +95,15 @@ const SHIPPED: ItemResult = {
 const POST =
   "Post its result in this thread, once, in the asker's words: what changed for them, or that it will not be done. No keys, no process.";
 const ANSWER = 'Nothing was shared: an admin adds them under Mail, then Delegation.';
+const framed = (text: string) => markUntrusted(text, { source: TEAM_WORDS });
 
 describe('the note says what settled the item, by its route (ISS-1032)', () => {
   it('tells an answered item as answered, with the answer to restate, never as live', () => {
     const note = resultNote({ ...SHIPPED, route: 'answer', answer: ANSWER });
     expect(note).toContain('was answered by the team');
     expect(note).toContain('nothing was changed or shipped for it unless the answer says so');
-    expect(note).toContain(`(restate it, never paste it): "${ANSWER}"`);
+    // ISS-1425: the team's words stand inside the untrusted frame, never in core's sentence
+    expect(note).toContain(`(restate it, never paste it):\n${framed(ANSWER)} ${POST}`);
     expect(note).not.toMatch(/\blive\b/);
     expect(note?.endsWith(POST)).toBe(true);
   });
@@ -125,7 +129,7 @@ describe('the note says what settled the item, by its route (ISS-1032)', () => {
   it('carries what the team shipped, so the room hears what was done (owner, 2026-11-06)', () => {
     const shipped = ['CSV export of invoices', 'Invoices list paging'];
     expect(resultNote({ ...SHIPPED, shipped })).toBe(
-      `FB-3, recorded from this thread, is live now. What the team shipped for it (restate it, never paste it): "CSV export of invoices; Invoices list paging" ${POST}`,
+      `FB-3, recorded from this thread, is live now. What the team shipped for it (restate it, never paste it):\n${framed('CSV export of invoices; Invoices list paging')} ${POST}`,
     );
     expect(resultNote({ ...SHIPPED, phase: 'verified', shipped })).toContain(
       'is live and confirmed fixed. What the team shipped for it',
@@ -135,7 +139,7 @@ describe('the note says what settled the item, by its route (ISS-1032)', () => {
   it('carries a decline’s reason, and says it declined where none was given', () => {
     const reason = 'The host owns that limit.';
     expect(resultNote({ ...SHIPPED, phase: 'declined', route: null, declined: reason })).toBe(
-      `FB-3, recorded from this thread, will not be done: the team declined it. The reason they gave (restate it, never paste it): "${reason}" ${POST}`,
+      `FB-3, recorded from this thread, will not be done: the team declined it. The reason they gave (restate it, never paste it):\n${framed(reason)} ${POST}`,
     );
     expect(resultNote({ ...SHIPPED, phase: 'declined', route: null, declined: '  ' })).toBe(
       `FB-3, recorded from this thread, will not be done: the team declined it. ${POST}`,

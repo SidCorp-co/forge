@@ -3,6 +3,7 @@
 // note names the issue by its title, as the person knows it; the session posts in its own words.
 
 import type { SupportPromiseState } from '@forge/contracts/support';
+import { markUntrusted } from '../lib/untrusted-text.js';
 import type { ProjectDocument } from '../project-config/index.js';
 
 type Environments = ProjectDocument['environments'];
@@ -45,18 +46,22 @@ export interface PromiseFacts {
   asker: string;
 }
 
+/** The source a promise note's issue title is framed under (ISS-1425). */
+export const PROMISE_TITLE = 'the title of the promised work';
+
 const HOW =
   'Post it once, in this thread, in your own words and the persona of this room: name the work by what the person knows it as, never by a key, an id or a commit. Nothing else is owed on this promise.';
 
 /** What the session is told when a promise is answered, to tell the person in its thread. */
 export function promiseNote(state: Exclude<SupportPromiseState, 'open'>, f: PromiseFacts): string {
-  const what = `You promised ${f.asker} in this thread to tell them when "${f.title}" (${f.key}) reaches ${f.environment}.`;
+  // the title is its writer's words, which may be a member's: framed as data (ISS-1425)
+  const what = `You promised ${f.asker} in this thread to tell them when the work titled below (${f.key}) reaches ${f.environment}.\n${markUntrusted(f.title, { source: PROMISE_TITLE })}\n`;
   switch (state) {
     case 'reached':
-      return `${what} It has: ${f.environment} now runs a build holding that work. Tell ${f.asker} it is on ${f.environment} now. ${HOW}`;
+      return `${what}It has: ${f.environment} now runs a build holding that work. Tell ${f.asker} it is on ${f.environment} now. ${HOW}`;
     case 'dropped':
-      return `${what} It never will: the team dropped that work. Tell ${f.asker} it will not reach ${f.environment}, and that nothing more will come of this promise. ${HOW}`;
+      return `${what}It never will: the team dropped that work. Tell ${f.asker} it will not reach ${f.environment}, and that nothing more will come of this promise. ${HOW}`;
     case 'untracked':
-      return `${what} The project no longer tracks ${f.environment}, so Forge cannot see when the work gets there and this promise cannot be kept. Tell ${f.asker} you can no longer tell them when it reaches ${f.environment}. ${HOW}`;
+      return `${what}The project no longer tracks ${f.environment}, so Forge cannot see when the work gets there and this promise cannot be kept. Tell ${f.asker} you can no longer tell them when it reaches ${f.environment}. ${HOW}`;
   }
 }

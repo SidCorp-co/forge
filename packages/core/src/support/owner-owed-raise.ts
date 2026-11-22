@@ -17,6 +17,7 @@ import { readNeedsYouDecisions } from '../assistant/index.js';
 import { db } from '../db/client.js';
 import { supportActions } from '../db/schema-support.js';
 import { logger } from '../lib/logger.js';
+import { markUntrusted } from '../lib/untrusted-text.js';
 import { findProjectSlugs } from '../projects/index.js';
 import { deliverWaiting } from './dispatch.js';
 import { grantsOf, supportConfigOf } from './grants.js';
@@ -69,10 +70,16 @@ function taskNote(thread: string, project: string, d: NeedsYouDecision, to: stri
   return [
     `An item on ${project} waits on the owner (${d.key}, ${d.id}). Put it to him now with support.raise_owed { thread: "${thread}", text }: ${to}; plain words with no code, what it is, the options and your recommendation, short. It is posted in the project's technical channel, once; post it nowhere else.`,
     'When he answers, in any words, settle it as him citing his own message (support.answer_question for a question, support.release_decision for a release decision, support.owner_forge_act for any other Forge act he asks: a requirement, a design, a release cut or approval with carry, a merge mark, config, an ecosystem invite or a membership answer); never send him to a page. An act no door makes from chat is refused naming where it is made: tell him that in one line, never that it is being done.',
-    `What is asked: ${d.question}`,
-    `What it changes: ${d.changes}. Impact: ${d.impact}.`,
-    `Options: ${answers.join('; ')}.`,
-    recommended,
+    // the item's words are its writers' (a master's or a run's), data framed, never core's (ISS-1425)
+    markUntrusted(
+      [
+        `What is asked: ${d.question}`,
+        `What it changes: ${d.changes}. Impact: ${d.impact}.`,
+        `Options: ${answers.join('; ')}.`,
+        recommended,
+      ].join('\n'),
+      { source: 'the item as the record holds it' },
+    ),
   ].join('\n');
 }
 

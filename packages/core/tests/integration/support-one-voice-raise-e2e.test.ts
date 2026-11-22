@@ -19,6 +19,7 @@ import { ecosystemDoc, JOIN_HEAD, settleOutbox } from '../helpers/ecosystem-worl
 import { createTestRequirement, rows, seedOrg } from '../helpers/factories.js';
 import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 import { SupportWorld } from '../helpers/support-world.js';
+import { inUntrustedFrame } from '../helpers/untrusted-frame.js';
 
 // @direct-test-of packages/core/src/support/technical-channel.ts
 // @direct-test-of packages/core/src/support/technical-turn.ts
@@ -173,6 +174,9 @@ describe('ISS-1299: the technical thread speaks to the owner in one voice, his l
     expect(detailOf(reask)).toContain(said);
     expect(detailOf(reask)).toContain('toàn quyền');
     expect(detailOf(reask)).toContain('đang được làm');
+    // ISS-1425: his words and the answer standing reach the turn inside the untrusted frame
+    expect(inUntrustedFrame(detailOf(reask), said)).toBe(true);
+    expect(inUntrustedFrame(detailOf(reask), 'đang được làm')).toBe(true);
     expect(detailOf(reask)).toContain('support.owner_forge_act');
     expect(threadLines().length, 'no second ask was posted').toBe(before);
     // his word makes the link as him: the steward's invite, then the member's accept

@@ -12,6 +12,7 @@ import { agentQuestions, isChoiceStep, type QuestionStep } from '../db/schema-qu
 import { supportActions } from '../db/schema-support.js';
 import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
+import { markUntrusted } from '../lib/untrusted-text.js';
 import { answerAs } from '../questions/index.js';
 import { deliverWaiting } from './dispatch.js';
 import { grantsOf, supportConfigOf } from './grants.js';
@@ -184,7 +185,8 @@ async function tellSeveralWait(
       kind: 'message_in',
       actorKind: 'core',
       input: {
-        note: `The owner wrote in the technical channel (message ${message.id}): ${JSON.stringify(message.text.slice(0, 400))}. ${asks.length} questions wait for him there (${questions}), and it replies to none of them, so it was recorded on none. Where his words answer one or more of yours, settle each as his citing message ${message.id}: support.answer_question { thread, forgeQuestion, message } for a question, support.release_decision for a release. Where you cannot tell which he means, ask him once in the technical channel with support.technical { need: "ask" }.`,
+        // his words and the questions are data, framed, never core's sentence (ISS-1425)
+        note: `The owner wrote in the technical channel (message ${message.id}):\n${markUntrusted(message.text.slice(0, 400), { source: 'the owner, in the technical channel' })}\n${asks.length} questions wait for him there:\n${markUntrusted(questions, { source: 'the questions put to the owner' })}\nHis message replies to none of them, so it was recorded on none. Where his words answer one or more of yours, settle each as his citing message ${message.id}: support.answer_question { thread, forgeQuestion, message } for a question, support.release_decision for a release. Where you cannot tell which he means, ask him once in the technical channel with support.technical { need: "ask" }.`,
       },
       externalId: `owner-answer-several:${message.id}:${ask.id}`,
     });

@@ -1,7 +1,14 @@
 import { supportPromiseRequestSchema } from '@forge/contracts/support';
 import { describe, expect, it } from 'vitest';
+import { markUntrusted } from '../lib/untrusted-text.js';
 import type { ProjectDocument } from '../project-config/index.js';
-import { environmentNamed, environmentNames, promiseNote, untrackedWhy } from './promise-rules.js';
+import {
+  environmentNamed,
+  environmentNames,
+  PROMISE_TITLE,
+  promiseNote,
+  untrackedWhy,
+} from './promise-rules.js';
 
 // ISS-1012: the pure rules of a support room's promise to tell a person when an issue reaches an
 // environment.
@@ -74,7 +81,10 @@ describe('a promise the room cannot keep is named (criterion 6)', () => {
 describe('the session is told once, to say it in its own words (criteria 4, 5)', () => {
   it('names the issue by its title and the environment, and asks for one post with no key', () => {
     const note = promiseNote('reached', FACTS);
-    expect(note).toContain('"Orders show their delivery date"');
+    // ISS-1425: the title stands inside the untrusted frame, never in core's sentence
+    expect(note).toContain(
+      `\n${markUntrusted('Orders show their delivery date', { source: PROMISE_TITLE })}\nIt has:`,
+    );
     expect(note).toContain('it is on staging now');
     expect(note).toMatch(/Post it once, in this thread, in your own words/);
     expect(note).toMatch(/never by a key, an id or a commit/);

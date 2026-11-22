@@ -26,10 +26,8 @@ import { OWNER_MAP_ACTS, roomConductLines } from './room-conduct.js';
 import { type RoutingSignals, routingSignalsOf } from './routing-signals.js';
 import type { ActionRow, RoomRow } from './store.js';
 import { recentThreads, threadWritings } from './store.js';
+import { SUPPORT_MEMBER_SOURCE, THREAD_BOT_SOURCE } from './thread-context.js';
 import { threadConversation } from './thread-conversation.js';
-
-/** The source label every member line carries inside its untrusted frame. */
-export const SUPPORT_MEMBER_SOURCE = 'support group member';
 
 /**
  * The support doors' map (ISS-1251, prompt-is-a-map): the acts a support group's and a channel
@@ -225,7 +223,9 @@ export async function coldThreads(room: RoomRow): Promise<string> {
         if (m.role === 'user') {
           return `${m.authorLabel ?? 'member'}: ${markUntrusted(m.content, { source: SUPPORT_MEMBER_SOURCE })}`;
         }
-        return `${m.role === 'assistant' ? 'you' : 'record'}: ${m.content}`;
+        // a bot post may be a master's, quoting a member: framed as data too (ISS-1425)
+        const source = m.role === 'assistant' ? THREAD_BOT_SOURCE : 'the thread record';
+        return `${m.role === 'assistant' ? 'you' : 'record'}: ${markUntrusted(m.content, { source })}`;
       });
     if (lines.length > 0) blocks.push(`thread ${thread}:\n${lines.join('\n')}`);
   }

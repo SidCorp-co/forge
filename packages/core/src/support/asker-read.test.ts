@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { markUntrusted } from '../lib/untrusted-text.js';
 import { readerFor, rolesOfAccount } from './asker-read.js';
-import { aroundMessage, type ThreadLine } from './thread-context.js';
+import {
+  aroundMessage,
+  SUPPORT_MEMBER_SOURCE,
+  THREAD_BOT_SOURCE,
+  type ThreadLine,
+} from './thread-context.js';
 
 // @direct-test-of packages/core/src/support/asker-read.ts
 // @direct-test-of packages/core/src/support/thread-context.ts
@@ -22,6 +28,7 @@ const line = (
   authorKey: who ? `u-${who}` : null,
   externalId: id,
 });
+const member = (text: string) => markUntrusted(text, { source: SUPPORT_MEMBER_SOURCE });
 
 describe('the thread around a message', () => {
   const lines: ThreadLine[] = [
@@ -37,19 +44,21 @@ describe('the thread around a message', () => {
 
   it('hands the post the ruling answers, and what its writer said earlier, never what came after', () => {
     const around = aroundMessage(lines, 'm4', 'u-chuong');
+    // ISS-1425: a bot's post (a master's among them) and a member's line reach the turn framed
     expect(around.recent.at(-1)).toEqual({
       from: 'bot',
-      text: 'ePOD v1.4.2 is live: the new errors read in Vietnamese.',
+      text: markUntrusted('ePOD v1.4.2 is live: the new errors read in Vietnamese.', {
+        source: THREAD_BOT_SOURCE,
+      }),
     });
     expect(around.recent).toHaveLength(6);
-    expect(around.recent.map((l) => l.text)).not.toContain('stayed silent: chatter');
-    expect(around.recent.map((l) => l.text)).not.toContain('later line');
-    expect(around.recent.map((l) => l.text)).not.toContain(
-      '@babo language per the setting, English by default',
-    );
+    const said = around.recent.map((l) => l.text).join('\n');
+    expect(said).not.toContain('stayed silent: chatter');
+    expect(said).not.toContain('later line');
+    expect(said).not.toContain('@babo language per the setting, English by default');
     expect(around.theirEarlier).toEqual([
-      { from: 'chuong', text: 'keep the CLI errors short' },
-      { from: 'chuong', text: 'and log them' },
+      { from: 'chuong', text: member('keep the CLI errors short') },
+      { from: 'chuong', text: member('and log them') },
     ]);
   });
 });

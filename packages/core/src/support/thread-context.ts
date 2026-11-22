@@ -10,6 +10,7 @@ import { readMessages, type StoredConversationMessage } from '../conversations/i
 import { db } from '../db/client.js';
 import { projects } from '../db/schema-projects.js';
 import { supportMasterAsks } from '../db/schema-support-asks.js';
+import { markUntrusted } from '../lib/untrusted-text.js';
 
 /** How many of the thread's lines before the message are handed. */
 const RECENT_LINES = 6;
@@ -36,9 +37,18 @@ export interface ThreadAround {
   theirEarlier: SaidLine[];
 }
 
+/** The source label every member line carries inside its untrusted frame. */
+export const SUPPORT_MEMBER_SOURCE = 'support group member';
+
+/** The source a thread's bot post carries inside its frame: the session's own, or a master's (ISS-1425). */
+export const THREAD_BOT_SOURCE = "a bot post in this thread, yours or a master's";
+
+// a member's line, and a bot's that may be a master's quoting one, are data, framed (ISS-1425)
 const saidOf = (m: ThreadLine): SaidLine => ({
   from: m.role === 'user' ? (m.authorLabel ?? 'member') : 'bot',
-  text: m.content,
+  text: markUntrusted(m.content, {
+    source: m.role === 'user' ? SUPPORT_MEMBER_SOURCE : THREAD_BOT_SOURCE,
+  }),
 });
 
 /** The lines around `message` by `writer` (their chat account id), out of the thread's lines. */
@@ -77,5 +87,8 @@ export async function openAsksOf(roomId: string, thread: string): Promise<string
         isNull(supportMasterAsks.answeredAt),
       ),
     );
-  return rows.map((r) => `to the ${r.slug} master: ${r.question}`);
+  return rows.map(
+    (r) =>
+      `to the ${r.slug} master:\n${markUntrusted(r.question, { source: 'your ask of the master' })}`,
+  );
 }

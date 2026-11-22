@@ -11,6 +11,7 @@ import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { supportActions } from '../db/schema-support.js';
 import { logger } from '../lib/logger.js';
+import { markUntrusted } from '../lib/untrusted-text.js';
 import { consume } from '../outbox/index.js';
 import { deliverWaiting } from './dispatch.js';
 import { supportConfigOf } from './grants.js';
@@ -120,7 +121,8 @@ async function tellRoom(
   );
   const note = [
     `${releases.length === 1 ? 'A release' : `${releases.length} releases`} reached production (${releases.map((r) => r.version).join(', ')}). What changed for users, from the release notes:`,
-    ...lines,
+    // the notes are their writers' words (a master's or a run's), framed as data (ISS-1425)
+    markUntrusted(lines.join('\n'), { source: 'the release notes' }),
     "Tell the channel in one short post, in your persona's language and voice, with support.announce or where the channel's rules put such news: what changed for them, never issue keys, versions or process unless your persona asks for them. Post nothing if none of it matters to this channel.",
   ].join('\n');
   const now = new Date();

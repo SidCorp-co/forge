@@ -20,6 +20,7 @@ import { createTestIssue, rows } from '../helpers/factories.js';
 import { AgentWorld, OWNER_ID } from '../helpers/support-agent-world.js';
 import { code } from '../helpers/support-channel.js';
 import type { StandInRocketChat } from '../helpers/support-chat-server.js';
+import { inUntrustedFrame } from '../helpers/untrusted-frame.js';
 
 // ISS-1243 item 23 (owner, 2026-11-16): every decision his Needs you lists is handed to the
 // project's agent once, and the agent puts it to him in the technical channel once, nowhere else;
@@ -100,6 +101,10 @@ describe('ISS-1243 item 23: what waits on the owner, raised by the agent once pe
     expect((await handOwnerOwed(room)).handed).toBeGreaterThanOrEqual(1);
     await expect.poll(() => notes.length, { timeout: 15_000 }).toBe(1);
     expect(notes[0]?.text).toContain('Ship the size-M print rule before the catalog sync?');
+    // ISS-1425: the item's words are its writer's, handed inside the untrusted frame
+    expect(
+      inUntrustedFrame(notes[0]?.text ?? '', 'Ship the size-M print rule before the catalog sync?'),
+    ).toBe(true);
     expect(notes[0]?.text).toContain('Recommended: yes');
     // his reply is settled as him through the act that fits it, owner_forge_act included (item 24)
     expect(notes[0]?.text).toContain('support.owner_forge_act');

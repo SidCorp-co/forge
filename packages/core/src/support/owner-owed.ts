@@ -8,6 +8,7 @@ import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { agentQuestions, isChoiceStep } from '../db/schema-questions.js';
+import { markUntrusted } from '../lib/untrusted-text.js';
 import { keyOf } from './ops-reads.js';
 import { projectsInScope } from './ops-scope.js';
 import { no, type Outcome } from './outcome.js';
@@ -58,9 +59,11 @@ export async function ownerOwedNote(room: RoomRow): Promise<string | null> {
     const on = project && q.issSeq !== null ? ` on ${keyOf(project, q.issSeq)}` : '';
     const options =
       step && isChoiceStep(step)
-        ? ` — options: ${step.options.map((o) => `${o.id} (${o.label})`).join(', ')}`
+        ? `\noptions: ${step.options.map((o) => `${o.id} (${o.label})`).join(', ')}`
         : '';
-    return `- question ${q.id}${on}: ${JSON.stringify(clipped(step?.prompt ?? ''))}${options}`;
+    // a question's words and options are its writer's (a master or a run), framed (ISS-1425)
+    const words = `${clipped(step?.prompt ?? '')}${options}`;
+    return `- question ${q.id}${on}:\n${markUntrusted(words, { source: 'the question as its writer put it' })}`;
   });
   const more = rows.length > SHOWN ? [`- and ${rows.length - SHOWN} more`] : [];
   return [
