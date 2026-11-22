@@ -328,7 +328,7 @@ pub async fn take_one(
             Err(gave_back) => return gave_back,
         };
 
-    let (env, channel) = open_channel(
+    let (mut env, channel) = open_channel(
         &cwd,
         &prepared.agent_session_id,
         project_id,
@@ -337,6 +337,12 @@ pub async fn take_one(
         tokens,
         control::HOOKS_CAN_REPORT,
     );
+    // Every call the pane makes names this job, which is one attempt: core refuses a release act
+    // from an attempt that no longer holds its run, naming the one that does (ISS-1410).
+    env.push((
+        runner_transport::JOB_ENV.to_string(),
+        prepared.job_id.clone(),
+    ));
 
     let opened_at = now_ms();
     if let Err(e) = panes

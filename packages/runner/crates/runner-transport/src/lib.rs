@@ -63,6 +63,15 @@ pub const DEFAULT_DEADLINE: std::time::Duration = std::time::Duration::from_secs
 /// not a hung peer. Applied with `.timeout(LONG_DEADLINE)` on the request.
 pub const LONG_DEADLINE: std::time::Duration = std::time::Duration::from_secs(120);
 
+/// The variable a box sets in the pane of each pool job it starts, naming that job, which is one
+/// attempt of its work (ISS-1410).
+pub const JOB_ENV: &str = "FORGE_JOB";
+
+/// The header a call from a job pane names its job by
+/// (`packages/contracts/src/jobs.ts:JOB_ACT_HEADER`): core refuses a release act from an attempt
+/// that no longer holds its run, naming the attempt that does.
+pub const JOB_HEADER: &str = "x-forge-job";
+
 /// Shared HTTP client + auth context for the REST surface.
 #[derive(Clone)]
 pub struct CoreClient {
@@ -70,6 +79,8 @@ pub struct CoreClient {
     device_token: String,
     http: reqwest::Client,
     rollover: Rollover,
+    /// The job this client's calls are made for, sent as [`JOB_HEADER`] on each.
+    job: Option<String>,
 }
 
 impl CoreClient {
@@ -92,7 +103,22 @@ impl CoreClient {
             device_token: device_token.into(),
             http,
             rollover: ROLLOVER,
+            job: None,
         }
+    }
+
+    /// The same client naming `job` on every call, where it names one; a blank one names none.
+    pub fn with_job(mut self, job: Option<&str>) -> Self {
+        self.job = job
+            .map(str::trim)
+            .filter(|j| !j.is_empty())
+            .map(str::to_string);
+        self
+    }
+
+    /// The job this client's calls name, where they name one.
+    pub fn job(&self) -> Option<&str> {
+        self.job.as_deref()
     }
 
     /// The same client waiting a rollover out by `rollover` instead of [`ROLLOVER`].
@@ -116,11 +142,15 @@ impl CoreClient {
     /// A call to `path` on core, carrying the device token. Its `send` waits a rollover out
     /// ([`rollover`]); there is no way to send one that does not.
     pub fn request(&self, method: reqwest::Method, path: &str) -> CoreRequest {
+        let builder = self
+            .http
+            .request(method, self.url(path))
+            .bearer_auth(&self.device_token);
         CoreRequest {
-            builder: self
-                .http
-                .request(method, self.url(path))
-                .bearer_auth(&self.device_token),
+            builder: match &self.job {
+                Some(job) => builder.header(JOB_HEADER, job.as_str()),
+                None => builder,
+            },
             rollover: self.rollover,
         }
     }

@@ -108,7 +108,13 @@ fn rest_credential(ctx: &Ctx) -> anyhow::Result<Result<(CoreClient, String), Str
         },
         Credential::Refused(why) => return Ok(Err(why)),
     };
-    Ok(Ok((CoreClient::new(core_url, token), sent_as)))
+    // A pool job's pane names its job on every call, so core can refuse a release act from an
+    // attempt that no longer holds its run (ISS-1410).
+    let job = std::env::var(runner_transport::JOB_ENV).ok();
+    Ok(Ok((
+        CoreClient::new(core_url, token).with_job(job.as_deref()),
+        sent_as,
+    )))
 }
 
 /// Where `cred_store::load_pat` took this person's own PAT from, in its own order.

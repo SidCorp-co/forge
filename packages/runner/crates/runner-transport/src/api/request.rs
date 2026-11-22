@@ -350,6 +350,36 @@ mod tests {
         );
     }
 
+    /// ISS-1410: a job pane's call names its job, so core can refuse a release act from an attempt
+    /// that no longer holds its run; a client naming no job sends none, and `-H` replaces it.
+    #[tokio::test]
+    async fn a_client_for_a_job_names_it_on_every_call_and_one_for_none_names_none() {
+        let (client, head) = recording_core().await;
+        let job = "38611445-0000-4000-8000-000000000001";
+        let client = client.with_job(Some(job));
+        let resp = run(&client, &call(None, &[])).await;
+        assert_eq!(resp.outcome.exit_code, 0, "{}", resp.stderr);
+        let head = head.await.unwrap();
+        assert_eq!(values_of(&head, crate::JOB_HEADER), vec![job], "{head}");
+
+        let head = sent_head(call(None, &[])).await;
+        assert!(values_of(&head, crate::JOB_HEADER).is_empty(), "{head}");
+
+        let (client, head) = recording_core().await;
+        let client = client.with_job(Some(job));
+        let resp = run(&client, &call(None, &[("X-Forge-Job", "d80cba45")])).await;
+        assert_eq!(resp.outcome.exit_code, 0, "{}", resp.stderr);
+        assert_eq!(
+            values_of(&head.await.unwrap(), crate::JOB_HEADER),
+            vec!["d80cba45"]
+        );
+
+        assert_eq!(
+            CoreClient::new("http://x", "t").with_job(Some("  ")).job(),
+            None
+        );
+    }
+
     #[tokio::test]
     async fn a_body_with_no_caller_content_type_carries_exactly_one_default() {
         let head = sent_head(call(Some(Body::Json("{}".into())), &[])).await;

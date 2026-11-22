@@ -470,3 +470,124 @@ async fn a_pane_with_no_refusal_is_not_concluded_by_this_reading() {
     assert!(report.0.lock().unwrap().is_empty());
     assert_eq!(registry.count(), 1);
 }
+
+/// A pool holding one job the box prepares and starts, prepared with no agent session so no hooks
+/// are written for it.
+struct StartedJob;
+
+#[async_trait::async_trait]
+impl Pool for StartedJob {
+    async fn claimable(
+        &self,
+        _project_id: &str,
+    ) -> std::result::Result<Vec<PoolEntry>, ReadFailure> {
+        Ok(vec![PoolEntry {
+            job_id: "d80cba45".into(),
+            job_type: "release_batch".into(),
+            issue_id: None,
+            issue_key: None,
+            age_minutes: 0.0,
+            attempts: 1,
+            held_by: None,
+            retry_of: None,
+        }])
+    }
+    async fn prepare(&self, _job_id: &str, _session_id: &str) -> Result<Prepared> {
+        Ok(Prepared::Took(Box::new(
+            serde_json::from_value(serde_json::json!({
+                "jobId": "d80cba45",
+                "type": "release_batch",
+                "repoPath": std::env::temp_dir().to_string_lossy(),
+                "promptString": "release it",
+            }))
+            .expect("a prepared job"),
+        )))
+    }
+    async fn start(&self, _job_id: &str, _session_id: &str) -> Result<Started> {
+        Ok(Started::Ok)
+    }
+    async fn release(&self, _job_id: &str, _session_id: &str) -> Result<()> {
+        unreachable!("a started job is not given back")
+    }
+    async fn mcp_servers(&self, _project_id: &str) -> Result<ProjectMcpServers> {
+        Ok(ProjectMcpServers::default())
+    }
+    async fn box_pat_reach(&self, _project_id: &str) -> BoxPatReach {
+        BoxPatReach::Reaches
+    }
+}
+
+/// A pane's name and the environment it was started with.
+type Opened = (String, Vec<(String, String)>);
+
+/// Panes that open, keeping the environment each was started with.
+#[derive(Default)]
+struct EnvPanes(Mutex<Vec<Opened>>);
+
+#[async_trait::async_trait]
+impl Panes for EnvPanes {
+    async fn open(
+        &self,
+        name: &str,
+        _cwd: &Path,
+        _prompt: &str,
+        env: &[(String, String)],
+        _launch: &Launch<'_>,
+    ) -> Result<()> {
+        self.0.lock().unwrap().push((name.into(), env.to_vec()));
+        Ok(())
+    }
+    async fn released(&self, _name: &str) {}
+    async fn gone(&self, _name: &str) -> bool {
+        false
+    }
+    async fn kill(&self, _name: &str) -> Result<()> {
+        Ok(())
+    }
+    async fn names(&self) -> Vec<String> {
+        Vec::new()
+    }
+    async fn send_line(
+        &self,
+        _name: &str,
+        _text: &str,
+    ) -> std::result::Result<terminal::Prompt, terminal::NotTyped> {
+        unreachable!()
+    }
+}
+
+/// ISS-1410: a job pane's calls name the job they act for, so core can refuse a release act from
+/// an attempt that no longer holds its run; the pane is started with its job in `$FORGE_JOB`,
+/// which `forge-runner api` sends on every call.
+#[tokio::test]
+async fn a_job_pane_is_started_naming_its_own_job() {
+    let panes = EnvPanes::default();
+    let registry = JobPanes::new();
+    let took = take_one(
+        &JobPorts {
+            pool: &StartedJob,
+            panes: &panes,
+            report: &Failures::default(),
+            records: &NoRecords,
+        },
+        &registry,
+        ServedProject {
+            id: "project-1",
+            slug: "p1",
+        },
+        Some("master-1"),
+        4,
+        None,
+    )
+    .await;
+    assert_eq!(took, Took::Started("d80cba45".into()));
+    let opened = panes.0.lock().unwrap().clone();
+    assert_eq!(opened.len(), 1);
+    let named: Vec<&str> = opened[0]
+        .1
+        .iter()
+        .filter(|(k, _)| k == "FORGE_JOB")
+        .map(|(_, v)| v.as_str())
+        .collect();
+    assert_eq!(named, vec!["d80cba45"], "{:?}", opened[0].1);
+}
