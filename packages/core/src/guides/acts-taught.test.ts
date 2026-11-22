@@ -70,6 +70,8 @@ describe('the issue-flow method teaches the acts that name what they wait on', (
         '`issues/<dependent>/dependencies -X POST`',
         'a park is only for an act a person owes',
         'QUESTION_MERGE_IS_ORDERING',
+        "another project's work is a contract wait on its version",
+        '`POST /api/issues/:id/contract-waits`',
       ],
     ],
     [

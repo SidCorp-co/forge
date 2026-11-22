@@ -244,8 +244,9 @@ sits behind a closed section. A question without \`plain\` is still asked, and t
 wrote none.
 
 Waiting on another issue's landing is not a park but a \`blocks\` edge, the issue left where it
-is, and waiting on this issue's own landing is a park its merge mark answers: how each is written,
-and what each is refused, is the transition card below.
+is; another project's work is a contract wait on its version, never an edge to its issue
+(\`POST /api/issues/:id/contract-waits\`); and waiting on this issue's own landing is a park its
+merge mark answers: how each is written, and what each is refused, is the transition card below.
 
 ### 4. Build
 - One branch, cut from \`baseBranch\`, in a worktree of its own — the brief names it.
