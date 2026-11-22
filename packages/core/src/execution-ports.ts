@@ -66,7 +66,7 @@ import { liveChecksOf, provideMastersPorts } from './masters/index.js';
 import { foreignScriptChars } from './memory/index.js';
 import { emitNotification, tellSessionPrompt } from './notifications/index.js';
 import { currentOnboardingBrief } from './onboarding/index.js';
-import { landedWorkOwed, wedgedWorkOwed } from './pipeline/index.js';
+import { landedWorkOwed, shippedReleasesOf, wedgedWorkOwed } from './pipeline/index.js';
 import { registerRoomBridge } from './previews/index.js';
 import {
   actingSecretRefsOfSession,
@@ -216,6 +216,8 @@ const secretRefsReadBy = async (sessionId: string) => [
 ];
 
 export const declaredRunSecretPorts = {
+  shippedReleaseOf: async (projectId: string, issueId: string) =>
+    (await shippedReleasesOf(projectId, [issueId])).get(issueId) ?? null,
   declaredRunOfCall,
   declaredRunElsewhere,
   liveMasterSessionOf,

@@ -43,6 +43,11 @@ pub struct Args {
     /// The run to read as; default `self`, the run declared over this checkout.
     #[arg(long, default_value = "self")]
     pub run: String,
+    /// The environment to read, for a run over an issue whose work has not landed (an
+    /// investigation): it is handed the profile that environment names (ISS-1407). Core refuses it
+    /// for an issue whose landing or release already names the environment.
+    #[arg(long)]
+    pub environment: Option<String>,
     /// Directory to write the session into (created 0700); default a `forge-judge-<run>` directory
     /// under the system temp dir, outside every checkout. The directory is recorded on the run and
     /// its close removes it; an `--out-dir` is recorded only when it is named `forge-judge-<run>`.
@@ -101,9 +106,35 @@ pub(crate) fn named(
     Ok(actor.to_string())
 }
 
+/// The environment `--environment` names, as core declares environment names: a lower-case
+/// letter, then lower-case letters, digits and `-`.
+pub(crate) fn environment_named(environment: Option<&str>) -> Result<Option<String>, String> {
+    match environment {
+        None => Ok(None),
+        Some(e)
+            if e.len() <= 63
+                && e.starts_with(|c: char| c.is_ascii_lowercase())
+                && e.chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') =>
+        {
+            Ok(Some(e.to_string()))
+        }
+        Some(e) => Err(format!(
+            "--environment `{e}` is no environment name: a lower-case letter, then lower-case \
+             letters, digits or `-`"
+        )),
+    }
+}
+
 /// The read's path, before `self` is named as a run.
-pub(crate) fn secret_path(profile: &str, run: &str, actor: &str) -> String {
-    format!("/api/jobs/{run}/testing-profiles/{profile}/secrets?actor={actor}")
+pub(crate) fn secret_path(
+    profile: &str,
+    run: &str,
+    actor: &str,
+    environment: Option<&str>,
+) -> String {
+    let on = environment.map_or(String::new(), |e| format!("&environment={e}"));
+    format!("/api/jobs/{run}/testing-profiles/{profile}/secrets?actor={actor}{on}")
 }
 
 /// The one secret's value in core's answer, or the line saying what came back instead.
@@ -211,11 +242,15 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         Ok(a) => a,
         Err(why) => return refuse(&why),
     };
+    let environment = match environment_named(args.environment.as_deref()) {
+        Ok(e) => e,
+        Err(why) => return refuse(&why),
+    };
     let client = match rest_client(&ctx)? {
         Ok(c) => c,
         Err(why) => return refuse(&why),
     };
-    let asked = secret_path(&args.profile, &args.run, &actor);
+    let asked = secret_path(&args.profile, &args.run, &actor, environment.as_deref());
     let (path, run_label) = match std::env::current_dir() {
         Ok(here) => match run_self::name_self(&asked, &here, || {
             Ledger::default_path()

@@ -648,13 +648,32 @@ fn a_read_names_one_actor_and_never_the_whole_profile() {
 #[test]
 fn the_path_asks_for_the_one_actor_as_self_or_the_run() {
     assert_eq!(
-        secret_path("stg", "self", "admin"),
+        secret_path("stg", "self", "admin", None),
         "/api/jobs/self/testing-profiles/stg/secrets?actor=admin"
     );
     assert_eq!(
-        secret_path("stg", RUN, "admin"),
+        secret_path("stg", RUN, "admin", None),
         format!("/api/jobs/{RUN}/testing-profiles/stg/secrets?actor=admin")
     );
+}
+
+// ISS-1407: an investigation names the environment it reads, and a name core would refuse is
+// refused here before anything is read
+#[test]
+fn an_investigation_names_the_environment_it_reads() {
+    assert_eq!(
+        secret_path("prod", "self", "ops", Some("production")),
+        "/api/jobs/self/testing-profiles/prod/secrets?actor=ops&environment=production"
+    );
+    assert_eq!(environment_named(None), Ok(None));
+    assert_eq!(
+        environment_named(Some("production")),
+        Ok(Some("production".into()))
+    );
+    for bad in ["Production", "prod&actor=x", "-stg", ""] {
+        let why = environment_named(Some(bad)).unwrap_err();
+        assert!(why.contains("no environment name"), "{bad}: {why}");
+    }
 }
 
 #[test]

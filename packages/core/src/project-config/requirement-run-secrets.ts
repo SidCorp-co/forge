@@ -4,7 +4,11 @@
 // TESTING_SECRETS_NOT_LANDED claiming it named no issue (REQ-35 BC-3 and BC-7, run b2bd9ecb).
 
 import type { PatPrincipal } from '../middleware/require-pat.js';
-import { judgedEnvironment, judgingEnvironmentOf } from './judged-environment.js';
+import {
+  judgedEnvironment,
+  judgingEnvironmentOf,
+  profileNotNamedSaid,
+} from './judged-environment.js';
 import { projectConfigPorts, type RequirementSecretReadAudit } from './ports.js';
 import type { ProjectDocument } from './schema.js';
 import { readProjectConfig } from './service.js';
@@ -47,6 +51,7 @@ async function requirementEnvironment(args: {
     // an issue whose work has not landed names no environment; the next one, or the fallback, may
     if (!read.ok && read.refusal.code === 'TESTING_SECRETS_NOT_LANDED') continue;
     if (read.ok && read.testing === profileId) {
+      // a release that carried the issue is recorded as its landing: the audit's bases are a column's
       return { ok: true, environment: read.environment, basis: 'landing', issueId: id };
     }
     if (!landed || (!landed.ok && read.ok)) landed = read;
@@ -56,7 +61,7 @@ async function requirementEnvironment(args: {
     return refuse(
       422,
       'TESTING_PROFILE_NOT_NAMED',
-      `environment \`${landed.environment}\`, which ${judge} judges ${requirement} on (where its delivering issues landed), names testing profile \`${landed.testing}\`, not \`${profileId}\`.`,
+      profileNotNamedSaid(`${judge}, judging ${requirement},`, landed, profileId),
     );
   }
   const judging = judgingEnvironmentOf(document);
@@ -84,7 +89,7 @@ async function requirementEnvironment(args: {
     return refuse(
       422,
       'TESTING_PROFILE_NOT_NAMED',
-      `environment \`${name}\`, which ${judge} judges ${requirement} on (${said}, no delivering issue having landed), names testing profile \`${testing}\`, not \`${profileId}\`.`,
+      `environment \`${name}\`, which ${judge} judges ${requirement} on as named by the fallback, ${said}, no delivering issue having landed, names testing profile \`${testing}\`, not \`${profileId}\`.`,
     );
   }
   return { ok: true, environment: name, basis, issueId: null };

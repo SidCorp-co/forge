@@ -20,6 +20,8 @@ export interface RunSecretResolve {
   tokenId: string;
   /** The person who declared the run, where it is a review run (`devices/review-run.ts`). */
   declaredBy?: string;
+  /** What named the environment read (ISS-1407): its landing, the release that carried it, the run itself, or the fallback. */
+  basis?: 'landing' | 'release' | 'named' | 'judgedOn' | 'production';
 }
 
 /** Audit the read, committed before any value leaves. */

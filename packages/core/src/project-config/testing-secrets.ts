@@ -4,7 +4,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
 import type { PatPrincipal } from '../middleware/require-pat.js';
-import { judgedEnvironment } from './judged-environment.js';
+import { judgedEnvironment, profileNotNamedSaid } from './judged-environment.js';
 import { projectConfigPorts } from './ports.js';
 import { resolveForRequirementRun } from './requirement-run-secrets.js';
 import { resolveForReviewRun } from './review-run-secrets.js';
@@ -87,6 +87,8 @@ export async function resolveTestingSecrets(args: {
   jobId: string;
   profileId: string;
   asked: SecretChoice | null;
+  /** The environment the caller names to read (ISS-1407): taken for an issue with nothing landed. */
+  environment?: string | null;
 }): Promise<TestingSecretsOutcome> {
   const { principal, profileId } = args;
   if (args.jobId !== SELF_JOB && principal.deviceId) {
@@ -119,14 +121,16 @@ export async function resolveTestingSecrets(args: {
       `project ${job.projectId} declares no project document, so no environment names a testing profile.`,
     );
   }
-  const judged = await judgedEnvironment(job.issueId, project.document, `job ${jobId}`, profileId);
+  const judged = await judgedEnvironment(job.issueId, project.document, `job ${jobId}`, profileId, {
+    named: args.environment ?? null,
+  });
   if (!judged.ok) return judged;
   const { environment, testing } = judged;
   if (testing !== profileId) {
     return refuse(
       422,
       'TESTING_PROFILE_NOT_NAMED',
-      `environment \`${environment}\`, which job ${jobId} judges, names testing profile \`${testing}\`, not \`${profileId}\`.`,
+      profileNotNamedSaid(`job ${jobId}`, judged, profileId),
     );
   }
 
@@ -230,10 +234,22 @@ async function resolveForDeclaredRun(args: {
   principal: PatPrincipal;
   profileId: string;
   asked: SecretChoice | null;
+  environment?: string | null;
   run: DeclaredRun;
 }): Promise<TestingSecretsOutcome> {
   const { principal, profileId, run } = args;
   const judge = `run ${run.runId}`;
+  if (args.environment && (run.review || (run.issueIds.length === 0 && run.requirement))) {
+    const at = run.review
+      ? 'for review, with the one profile its declaration names'
+      : `at ${run.requirement}, where its delivering issues' landing names it`;
+    return refuse(
+      422,
+      'TESTING_ENVIRONMENT_NOT_JUDGED',
+      `${judge} named environment \`${args.environment}\`, and it was declared ${at}: only a run over an issue whose work has not landed names the environment it reads. Read again without \`environment\`. Nothing was read.`,
+      { named: args.environment },
+    );
+  }
   if (run.review) return resolveForReviewRun({ ...args, review: run.review });
   // a judge declared at a requirement names no issue by design (ISS-735), so no issue walk names it
   if (run.issueIds.length === 0 && run.requirement) {
@@ -255,9 +271,10 @@ async function resolveForDeclaredRun(args: {
   for (const id of run.issueIds) {
     const read = await judgedEnvironment(id, project.document, judge, profileId, {
       unmarked: 'judging',
+      named: args.environment ?? null,
     });
     if (read.ok && read.testing === profileId) {
-      if (read.basis !== 'landing') {
+      if (read.basis !== 'landing' && read.basis !== 'release') {
         unlanded ??= { read, id };
         continue;
       }
@@ -280,13 +297,9 @@ async function resolveForDeclaredRun(args: {
   }
   if (!judged.ok) return judged;
   if (!issueId) {
-    return refuse(
-      422,
-      'TESTING_PROFILE_NOT_NAMED',
-      `environment \`${judged.environment}\`, which ${judge} judges, names testing profile \`${judged.testing}\`, not \`${profileId}\`.`,
-    );
+    return refuse(422, 'TESTING_PROFILE_NOT_NAMED', profileNotNamedSaid(judge, judged, profileId));
   }
-  const { environment } = judged;
+  const { environment, basis } = judged;
 
   const refs = await profileRefs(
     run.projectId,
@@ -304,6 +317,7 @@ async function resolveForDeclaredRun(args: {
     runId: run.runId,
     deviceId: principal.deviceId ?? '',
     environment,
+    basis,
     profile: profileId,
     refs: refs.wanted,
     tokenId: principal.tokenId,

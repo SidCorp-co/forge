@@ -87,8 +87,11 @@ Read these before judging anything, while whoever sent you can still equip you.
   inside its own checkout, where the box sends the id of the run declared over that checkout in place
   of \`self\` and says so on stderr; from anywhere else it sends that run id as \`<run>\` itself. Core learns of a declared run when its box opens the run's session there:
   before \`forge-runner run declare\` answers, or on the next sweep of a box on forge-runner 0.18.0 or earlier, seconds after: a read before it is refused
-  \`TESTING_SECRETS_RUN_NOT_RECORDED\`, and the same call answers once it has. Only the profile of the environment deploying the branch the
-  issue's work landed on is answered, while the run runs; each read is audited on the issue and each
+  \`TESTING_SECRETS_RUN_NOT_RECORDED\`, and the same call answers once it has. Only the profile of the environment the issue's
+  work is on is answered, while the run runs: production where a shipped release carried it, else the one
+  deploying the branch its merge mark targets; for an issue with nothing landed (an investigation), the
+  environment the run names with \`--environment <env>\` (\`&environment=<env>\`), else
+  \`delivery.judgedOn\`, else production. A refusal names the environment and what named it. Each read is audited on the issue and each
   value is scrubbed from what the run posts. A judge declared at a requirement
   (\`--requirement REQ-n\`) reads the environment its delivering issues landed on, else the one
   \`delivery.judgedOn\` names, else production, each read audited on the requirement; where none of

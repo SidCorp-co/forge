@@ -239,6 +239,10 @@ export const TESTING_SECRETS_REFUSAL_CODES = [
 	"TESTING_SECRETS_NO_TESTING_PROFILE",
 	"TESTING_PROFILE_NOT_NAMED",
 	"TESTING_PROFILE_NOT_DECLARED",
+	/** A declared run named an environment to read that the project document does not declare (ISS-1407). */
+	"TESTING_ENVIRONMENT_UNDECLARED",
+	/** A run named an environment other than the one its issue's landing or release names: only an issue with nothing landed takes the environment its run names (ISS-1407). */
+	"TESTING_ENVIRONMENT_NOT_JUDGED",
 	/** A read named no actor, service or ref: a run receives only the one secret it names (ISS-868). */
 	"TESTING_SECRET_UNCHOSEN",
 	/** A read named more than one of actor, service and ref: one secret per read (ISS-868). */

@@ -71,6 +71,12 @@ const choiceQuery = z.strictObject({
   actor: z.string().regex(NAME).optional(),
   service: z.string().regex(NAME).optional(),
   ref: z.string().regex(SECRET_REF).optional(),
+  // the environment a declared run over an issue with nothing landed reads (ISS-1407): an
+  // investigation names it, and is handed only the profile that environment already names
+  environment: z
+    .string()
+    .regex(/^[a-z][a-z0-9-]{0,62}$/)
+    .optional(),
 });
 
 /** The one secret the query names, null where it names none, or the refusal of more than one. */
@@ -107,7 +113,7 @@ jobTestingSecretsRoutes.get(
     'query',
     choiceQuery,
     invalid(
-      'the query names one secret, once: actor=<actor name> or service=<service name> as the testing profile declares them, or ref=secret://<scope>/<name> (both parts ^[a-z][a-z0-9-]{0,62}$) or var://<KEY> the profile names',
+      'the query names one secret, once: actor=<actor name> or service=<service name> as the testing profile declares them, or ref=secret://<scope>/<name> (both parts ^[a-z][a-z0-9-]{0,62}$) or var://<KEY> the profile names; and, for a declared run over an issue with nothing landed, environment=<environment name> (^[a-z][a-z0-9-]{0,62}$) it reads',
       'SECRET_REF_SHAPE',
     ),
   ),
@@ -118,13 +124,15 @@ jobTestingSecretsRoutes.get(
   ),
   async (c) => {
     const { id, profileId } = c.req.valid('param');
-    const asked = choiceOf(c.req.valid('query'));
+    const query = c.req.valid('query');
+    const asked = choiceOf(query);
     const principal = await jobCredential(c);
     const outcome = await resolveTestingSecrets({
       principal,
       jobId: id,
       profileId,
       asked,
+      environment: query.environment ?? null,
     });
     if (!outcome.ok) {
       const { status, code, message, details } = outcome.refusal;

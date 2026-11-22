@@ -40,6 +40,8 @@ export interface RunSecretResolveAudit extends SecretResolveAudit {
   sessionId: string;
   runId: string;
   deviceId: string;
+  /** What named the environment read: the issue's landing, the release that carried it, the run, or the project's fallback. */
+  basis?: 'landing' | 'release' | 'named' | 'judgedOn' | 'production';
   /** The person who declared the run, where it is a review run. */
   declaredBy?: string;
 }
@@ -96,6 +98,8 @@ interface ProjectConfigPorts {
   liveMasterSessionOf(args: { deviceId: string; projectId: string }): Promise<string | null>;
   /** Audit a declared run's resolve on the issue it judges, committed before any value leaves. */
   recordRunSecretResolve(audit: RunSecretResolveAudit): Promise<void>;
+  /** The shipped release still holding the issue's work, by version; null while none does (ISS-1407). */
+  shippedReleaseOf(projectId: string, issueId: string): Promise<{ version: string } | null>;
   /** The requirement a judge run was declared at, by key, and the project's issues delivering it. */
   requirementJudgedBy(
     projectId: string,
