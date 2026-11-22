@@ -10,11 +10,16 @@
 //   correction is the same act, so it replaces rather than stacks;
 // - a master's post counts as the thread's result, so the room agent's one-result rule (REQ-77 BC-8)
 //   refuses it a second post there until the asker writes again (`thread-requests.ts`).
-// A post naming the told result it follows up on (ISS-872 `followsUp`) adds a line after it instead.
+// A post naming the told result it follows up on (ISS-872 `followsUp`) never erases that message:
+// where it is still the thread's latest answer the post adds a line after it, and where the agent
+// answered since, the post replaces that newer answer as any other does (ISS-1406, Forge-Feedback
+// 2026-11-22: a thread told a result made every master's post a follow-up, and each stood beside
+// the agent's answer of ten seconds before, contradicting it).
 // A group several bindings hold (ISS-933: one answers, the others speak when named) keeps a line of
 // the thread on each binding's room, and each project's master posts through its own; the answer is
 // read across all of them, so a master replaces the room agent's reply or another master's post
-// whichever room recorded it (ISS-1406, Forge-Feedback 2026-11-22: the two stood ten seconds apart).
+// whichever room recorded it (ISS-1406: before, a mention-only project's master posting in a thread
+// the group's own agent answered stood beside that answer).
 // Images still follow as their own messages: the chat server attaches no file to an edited post.
 
 import type { ProvenMessage } from '@forge/contracts/messaging';
@@ -133,7 +138,8 @@ export async function postInOneVoice(input: {
   /** A post naming the told result it follows up on adds to it, never erasing it (ISS-872). */
   followsUp?: string | undefined;
 }): Promise<Outcome<Placed>> {
-  const answer = input.followsUp ? null : await answerToReplace(input.room, input.thread);
+  const latest = await answerToReplace(input.room, input.thread);
+  const answer = latest && latest.messageId !== input.followsUp ? latest : null;
   if (!answer) {
     const posted = await postInThread(input);
     return { ok: true, value: { ...posted, replaced: null } };

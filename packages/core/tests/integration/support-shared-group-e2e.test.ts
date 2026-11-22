@@ -3,6 +3,7 @@
 // @direct-test-of packages/core/src/support/turn-retry.ts
 // @direct-test-of packages/core/src/support/dispatch.ts
 // @direct-test-of packages/core/src/support/store.ts
+// @direct-test-of packages/core/src/support/one-voice.ts
 
 import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -179,6 +180,26 @@ describe('a group two projects share on one bot (ISS-1220)', () => {
       });
       expect(posted.status, JSON.stringify(posted.body)).toBeLessThan(300);
     }
+  });
+
+  // ISS-1406: each project's master posts through its own room of the group, and the thread reads one voice
+  it("replaces the other project's agent answer with the mention-only project's master post", async () => {
+    const thread = await w.chat.say(w.chat.bob, 'my parcel shows delivered but nothing came');
+    await settled(thread);
+    await repliedAfter(room.mail, thread);
+    const lines = () => chat.linesIn(chat.rid).filter((l) => l.tmid === thread);
+    expect(lines().map((l) => l.text)).toEqual([`Answered ${thread}`]);
+    const posted = await api(w.owner, 'POST', `/api/projects/${w.projectId}/support/master-posts`, {
+      text: 'The courier left it at the front desk; ask there today.',
+      rid: chat.rid,
+      thread,
+    });
+    expect(posted.status, JSON.stringify(posted.body)).toBe(201);
+    // [ONE_VOICE_ROOM_ROW] before the fix: it stood beside mail's answer, recorded on mail's room
+    expect(lines().map((l) => l.text)).toEqual([
+      'The courier left it at the front desk; ask there today.',
+    ]);
+    expect(posted.body).toMatchObject({ replaced: 'agent' });
   });
 
   // ISS-1243, sid-email thread zUTf: sid-desk had replied there once, so every later message of it
