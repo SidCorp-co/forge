@@ -1,3 +1,4 @@
+// @gate-input whole-tree — it runs each taught command under zsh, which the guard cannot see
 import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import { JOB_PANE_PREFIX, renderPriorAttemptsBlock } from './prior-attempts.js';
