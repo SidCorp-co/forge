@@ -22,7 +22,12 @@ const row = (over: Partial<ActionRow>): ActionRow =>
 
 const agentReply = row({});
 const post = (input: Record<string, unknown>, n = 40) =>
-  row({ kind: 'routed', tool: 'master_post', input: { by: 'u-master', ...input }, createdAt: at(n) });
+  row({
+    kind: 'routed',
+    tool: 'master_post',
+    input: { by: 'u-master', ...input },
+    createdAt: at(n),
+  });
 
 const report: Editor = { kind: 'report', projectId: PROJECT, report: 'release 0.310.0' };
 const oneVoice: Editor = { kind: 'one-voice' };
@@ -63,7 +68,7 @@ describe('editRefusal', () => {
     );
   });
 
-  it("lets a master edit only the post that stands as its own, not one another voice replaced", () => {
+  it('lets a master edit only the post that stands as its own, not one another voice replaced', () => {
     expect(editRefusal([post({})], 'm1', own)).toBeNull();
     // a master's post replaced the agent's reply: the message is that master's now
     expect(editRefusal([agentReply, post({})], 'm1', own)).toBeNull();
