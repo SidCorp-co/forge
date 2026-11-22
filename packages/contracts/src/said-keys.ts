@@ -2763,7 +2763,7 @@ export const SAID = {
 		en: "Retried too many times; it will not resume itself",
 	},
 	"overview.hold.cause.gate.paneLostRepeatedly": {
-		en: "Its box kept losing the job; it waits for a person to resume it",
+		en: "Its box kept losing the job; a person resumes it",
 	},
 	"overview.hold.cause.gate.nonRetryableTerminal": {
 		en: "Failed in a way a retry cannot fix",
