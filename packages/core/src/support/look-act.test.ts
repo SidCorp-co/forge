@@ -84,6 +84,11 @@ describe('who a look signs in as, and what its feed shows', () => {
       sameSite: 'None',
     });
     expect(cookieOf('sid=; Max-Age=0', at)).toBeNull();
+    expect(cookieOf('sid=; Expires=Thu, 01 Jan 1970 00:00:00 GMT', at)).toBeNull();
+    // Max-Age outranks Expires, so a past Expires beside a live Max-Age keeps the cookie
+    expect(cookieOf('sid=abc; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Max-Age=60', at)?.value).toBe(
+      'abc',
+    );
     expect(cookieOf('=nameless', at)).toBeNull();
   });
 

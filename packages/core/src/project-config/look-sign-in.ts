@@ -79,11 +79,16 @@ export function cookieOf(line: string, url: URL): BrowserCookie | null {
     secure: false,
     sameSite: null,
   };
+  // a delete is Max-Age <= 0, or an Expires already past where no Max-Age overrides it (RFC 6265)
+  let maxAge = false;
+  let expired = false;
   for (const attr of attrs) {
     const at = attr.indexOf('=');
     const k = (at < 0 ? attr : attr.slice(0, at)).trim().toLowerCase();
     const v = at < 0 ? '' : attr.slice(at + 1).trim();
+    if (k === 'max-age') maxAge = true;
     if (k === 'max-age' && Number(v) <= 0) return null;
+    if (k === 'expires' && Date.parse(v) <= Date.now()) expired = true;
     if (k === 'domain' && v) cookie.domain = v.replace(/^\./, '').toLowerCase();
     if (k === 'path' && v.startsWith('/')) cookie.path = v;
     if (k === 'httponly') cookie.httpOnly = true;
@@ -93,7 +98,7 @@ export function cookieOf(line: string, url: URL): BrowserCookie | null {
       cookie.sameSite = s === 'strict' ? 'Strict' : s === 'none' ? 'None' : 'Lax';
     }
   }
-  return cookie.name ? cookie : null;
+  return cookie.name && !(expired && !maxAge) ? cookie : null;
 }
 
 /**
