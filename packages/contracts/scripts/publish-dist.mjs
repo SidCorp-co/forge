@@ -78,10 +78,17 @@ export function publish(staged, dist) {
 export function emitAndPublish(pkg, args) {
 	const dist = join(pkg, "dist");
 	const staged = stagingDir(dist);
-	const emitted = spawnSync("tsgo", [...args, "--outDir", staged], {
+	const run = spawnSync("tsgo", [...args, "--outDir", staged], {
 		cwd: pkg,
 		stdio: "inherit",
-	}).status;
+	});
+	if (run.error) {
+		// run straight with node, node_modules/.bin is not on PATH and tsgo never starts
+		console.error(
+			`build: tsgo could not start (${run.error.message}); run it through pnpm, e.g. \`pnpm --filter <package> build\`, which puts node_modules/.bin on PATH.`,
+		);
+	}
+	const emitted = run.status;
 	if (emitted !== 0) {
 		rmSync(staged, { recursive: true, force: true });
 		return emitted ?? 1;
