@@ -1,14 +1,9 @@
 // What a channel agent's thread owes: whether a request in it has no result yet (REQ-77 BC-8).
 
-import { and, desc, eq, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { supportActions } from '../db/schema-support.js';
-
-/**
- * The record, in a request's own thread, that a reply posted in another thread of the room answered
- * it (ISS-1314): the thread's result, though nothing was posted there.
- */
-export const ANSWERED_ELSEWHERE = 'answered_elsewhere';
+import { answersThread } from './thread-answer.js';
 
 /**
  * Whether a thread holds a request its replies have not answered: what a request is, for the one
@@ -25,23 +20,8 @@ export async function unansweredInThread(roomId: string, thread: string): Promis
   const [last, before] = await db
     .select({ at: supportActions.createdAt })
     .from(supportActions)
-    // a master's post in the thread is its result too: one voice per thread (ISS-1243, `one-voice.ts`),
-    // and so is a reply in another thread that named this thread's request (ISS-1314); a report
-    // (a release check) answers no request, so the room agent still owes its result (ISS-1417)
-    .where(
-      and(
-        inThread,
-        or(
-          eq(supportActions.kind, 'reply'),
-          and(
-            eq(supportActions.kind, 'routed'),
-            eq(supportActions.tool, 'master_post'),
-            isNull(sql`${supportActions.input}->>'report'`),
-          ),
-          and(eq(supportActions.kind, 'routed'), eq(supportActions.tool, ANSWERED_ELSEWHERE)),
-        ),
-      ),
-    )
+    // what answers a thread is one definition every reader shares (ISS-1422, `thread-answer.ts`)
+    .where(and(inThread, answersThread))
     .orderBy(desc(supportActions.createdAt))
     .limit(2);
   if (!last) return true;

@@ -27,7 +27,8 @@ import { replyMarksOf } from './screen-claims.js';
 import { insertAction, type RoomRow } from './store.js';
 import { roomHoldingThread } from './technical-thread-room.js';
 import { actingThread, noteInThread, postInThread, scrubbedForRoom } from './thread.js';
-import { ANSWERED_ELSEWHERE, type NamedRequest, resultOwed } from './thread-requests.js';
+import { ANSWERED_ELSEWHERE } from './thread-answer.js';
+import { type NamedRequest, resultOwed } from './thread-requests.js';
 
 export type { Outcome } from './outcome.js';
 

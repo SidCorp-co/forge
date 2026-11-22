@@ -18,6 +18,7 @@ import { SupportWorld, type Turn } from '../helpers/support-world.js';
 // @direct-test-of packages/core/src/support/post-edit-door.ts
 // @direct-test-of packages/core/src/support/report-post.ts
 // @direct-test-of packages/core/src/support/dropped-unanswered.ts
+// @direct-test-of packages/core/src/support/thread-answer.ts
 // @direct-test-of packages/core/src/support/one-voice.ts
 // @direct-test-of packages/core/src/support/master-post.ts
 //
@@ -151,18 +152,37 @@ describe("ISS-1417: an owner's message no turn took is listed for the master", (
       INSERT INTO support_actions (room_id, project_id, thread, kind, actor_kind, actor_key, input, external_id, created_at)
       VALUES (${id}::uuid, ${w.projectId}, 'owner-thread-1417', 'message_in', 'member', ${chat.alice.userId},
               '{"text": "Đâu đưa cái hướng dẫn có UI đây xem", "addressed": "nobody"}'::jsonb, 'owner-msg-1417', ${old}::timestamptz),
+             (${id}::uuid, ${w.projectId}, 'owner-elsewhere-1422', 'message_in', 'member', ${chat.alice.userId},
+              '{"text": "Còn bản kia thì sao?", "addressed": "nobody"}'::jsonb, 'owner-msg-1422', ${old}::timestamptz),
              (${id}::uuid, ${w.projectId}, 'chatter-thread-1417', 'message_in', 'member', ${chat.bob.userId},
               '{"text": "ăn trưa chưa", "addressed": "nobody"}'::jsonb, 'chatter-msg-1417', ${old}::timestamptz)`);
-    expect(await dropHeldTooLong(room)).toBeGreaterThanOrEqual(2);
+    expect(await dropHeldTooLong(room)).toBeGreaterThanOrEqual(3);
     const owed = async () => (await mastersPorts().unhandledRoomMessagesOwed?.(w.projectId)) ?? [];
     // [DROPPED_TOLD_NOWHERE] before the fix: the master's owed line held nothing of it
     expect(await owed()).toEqual([
       expect.objectContaining({
         rid: chat.rid,
         code: 'HELD_TOO_LONG',
-        count: 1,
-        threads: ['owner-thread-1417'],
+        count: 2,
+        threads: expect.arrayContaining(['owner-thread-1417', 'owner-elsewhere-1422']),
       }),
+    ]);
+    // ISS-1422: a reply in another thread naming his message answers it, as support.reply records one;
+    // [ANSWERED_ELSEWHERE_STILL_OWED] before the fix: it stayed on the owed line
+    await rows(sql`
+      INSERT INTO support_actions (room_id, project_id, thread, kind, actor_kind, tool, input)
+      VALUES (${id}::uuid, ${w.projectId}, 'owner-elsewhere-1422', 'routed', 'session', 'answered_elsewhere',
+              '{"message": "owner-msg-1422", "thread": "owner-thread-1417", "reply": "reply-elsewhere-1422"}'::jsonb)`);
+    expect(await owed()).toEqual([
+      expect.objectContaining({ count: 1, threads: ['owner-thread-1417'] }),
+    ]);
+    // a report in his thread answers nobody's request (ISS-1417), so it is still owed
+    await rows(sql`
+      INSERT INTO support_actions (room_id, project_id, thread, kind, actor_kind, tool, input, external_id)
+      VALUES (${id}::uuid, ${w.projectId}, 'owner-thread-1417', 'routed', 'session', 'master_post',
+              '{"text": "Bản 0.310.0 đã kiểm.", "report": "release 0.310.0"}'::jsonb, 'report-1422')`);
+    expect(await owed()).toEqual([
+      expect.objectContaining({ count: 1, threads: ['owner-thread-1417'] }),
     ]);
     // answered in his thread, it is owed no more
     await rows(sql`

@@ -10,6 +10,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { grantsOf, supportConfigOf } from './grants.js';
 import { roomById } from './store.js';
+import { answersThread } from './thread-answer.js';
 
 /** The code a dropped message is listed under beside the messages a room could not take. */
 export const DROPPED_UNANSWERED = 'HELD_TOO_LONG';
@@ -36,8 +37,9 @@ type Row = {
 
 /**
  * The member messages of `projectId`'s rooms dropped since `since` with no turn taking them, that the
- * room's owner wrote or that named the bot, and that no reply or master's answer in their thread
- * followed, on any binding's record of the group: one row per room.
+ * room's owner wrote or that named the bot, and that no answer of their thread followed, on any
+ * binding's record of the group, as every reader reads an answer (`thread-answer.ts`, ISS-1422: one
+ * answered from another thread is owed no more): one row per room.
  */
 export async function droppedUnansweredOf(
   projectId: string,
@@ -49,10 +51,9 @@ export async function droppedUnansweredOf(
      WHERE a.project_id = ${projectId} AND a.kind = 'message_in' AND a.actor_kind = 'member'
        AND a.output ? 'dropped' AND a.created_at >= ${since.toISOString()}::timestamptz
        AND NOT EXISTS (
-         SELECT 1 FROM support_actions b JOIN support_rooms h ON h.id = b.room_id
-          WHERE h.rid = r.rid AND b.thread = a.thread AND b.created_at > a.created_at
-            AND ((b.kind = 'reply' AND b.actor_kind = 'session')
-              OR (b.kind = 'routed' AND b.tool = 'master_post' AND b.input->>'report' IS NULL)))
+         SELECT 1 FROM support_actions JOIN support_rooms h ON h.id = support_actions.room_id
+          WHERE h.rid = r.rid AND support_actions.thread = a.thread
+            AND support_actions.created_at > a.created_at AND ${answersThread})
      ORDER BY a.created_at DESC
   `)) as unknown as Row[];
   const owners = new Map<string, string | null>();

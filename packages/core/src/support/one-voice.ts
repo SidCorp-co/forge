@@ -27,7 +27,7 @@
 
 import type { ProvenMessage } from '@forge/contracts/messaging';
 import { SUPPORT_MASTER_POST_EDIT_WINDOW_MS } from '@forge/contracts/support';
-import { and, desc, eq, gte, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, or } from 'drizzle-orm';
 import { replaceSentContent } from '../conversations/index.js';
 import { db } from '../db/client.js';
 import { supportActions } from '../db/schema-support.js';
@@ -36,12 +36,7 @@ import { type EditOutcome, editBotPost } from './post-edit-door.js';
 import { placeReport, type Report } from './report-post.js';
 import { type RoomRow, roomsOnRid } from './store.js';
 import { postInThread } from './thread.js';
-
-/** The tool a master's post is recorded under (`master-post.ts:TOOL`). */
-const MASTER_POST = 'master_post';
-
-/** A record that is no report: a report answers no one's request (ISS-1417). */
-export const notAReport = isNull(sql`${supportActions.input}->>'report'`);
+import { answersThread, MASTER_POST } from './thread-answer.js';
 
 /** The bot's answer a master's post replaces, and the room whose record holds it. */
 export interface Answer {
@@ -64,8 +59,9 @@ async function holdersOf(room: RoomRow): Promise<RoomRow[]> {
 }
 
 /**
- * Whether the bot answered in `thread` at or after `since`, on any binding's record of the group:
- * the room agent's reply or a master's post (ISS-1406: a thread so answered is told no offline line).
+ * Whether the bot answered in `thread` at or after `since`, on any binding's record of the group, as
+ * every reader reads an answer (`thread-answer.ts`; ISS-1406: a thread so answered is told no
+ * offline line).
  */
 export async function answeredSince(room: RoomRow, thread: string, since: Date): Promise<boolean> {
   const rooms = await holdersOf(room);
@@ -80,10 +76,7 @@ export async function answeredSince(room: RoomRow, thread: string, since: Date):
         ),
         eq(supportActions.thread, thread),
         gte(supportActions.createdAt, since),
-        or(
-          and(eq(supportActions.kind, 'reply'), eq(supportActions.actorKind, 'session')),
-          and(eq(supportActions.kind, 'routed'), eq(supportActions.tool, MASTER_POST), notAReport),
-        ),
+        answersThread,
       ),
     )
     .limit(1);
@@ -110,9 +103,9 @@ export async function answerToReplace(room: RoomRow, thread: string): Promise<An
           rooms.map((r) => r.id),
         ),
         eq(supportActions.thread, thread),
-        inArray(supportActions.kind, ['message_in', 'reply', 'routed']),
-        // a report is no answer to the current request, so one voice reads past it (ISS-1417)
-        notAReport,
+        // the thread's messages and its answers: a report is none, so one voice reads past it
+        // (ISS-1417), and one answered elsewhere posted nothing here to replace (ISS-1422)
+        or(eq(supportActions.kind, 'message_in'), answersThread),
       ),
     )
     .orderBy(desc(supportActions.createdAt))

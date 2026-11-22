@@ -7,14 +7,14 @@
 // member messages and answers of each thread. The daily review points its master here. It writes
 // nothing and decides nothing.
 
-import { and, eq, gte, inArray, lt, or } from 'drizzle-orm';
+import { and, eq, gte, inArray, lt } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { supportActions } from '../db/schema-support.js';
 import { supportReplyVerdicts } from '../db/schema-support-verdicts.js';
 import { owedBy } from './question-task.js';
 import type { ReplyMarks } from './screen-claims.js';
 import type { RoomRow } from './store.js';
-import { ANSWERED_ELSEWHERE } from './thread-requests.js';
+import { answersThread } from './thread-answer.js';
 
 /** How long an owner message may stand with no answer before the day names it. */
 export const OWNER_ANSWER_MINUTES = 30;
@@ -116,15 +116,6 @@ export function roomDayOf(input: {
   };
 }
 
-/** A thread's answer: a reply, a master's post, or a reply elsewhere naming its request. */
-const ANSWER = or(
-  eq(supportActions.kind, 'reply'),
-  and(
-    eq(supportActions.kind, 'routed'),
-    inArray(supportActions.tool, ['master_post', ANSWERED_ELSEWHERE]),
-  ),
-);
-
 /** The room's day over `[since, until)`, read from its record. */
 export async function readRoomDay(room: RoomRow, since: Date, until: Date): Promise<RoomDay> {
   const inRoom = eq(supportActions.roomId, room.id);
@@ -189,7 +180,7 @@ export async function readRoomDay(room: RoomRow, since: Date, until: Date): Prom
             and(
               inRoom,
               inArray(supportActions.thread, threads),
-              ANSWER,
+              answersThread,
               gte(supportActions.createdAt, since),
             ),
           );

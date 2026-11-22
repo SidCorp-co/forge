@@ -23,6 +23,7 @@ import { SupportWorld } from '../helpers/support-world.js';
 // @direct-test-of packages/core/src/support/look-act.ts
 // @direct-test-of packages/core/src/support/screen-claims.ts
 // @direct-test-of packages/core/src/support/room-day.ts
+// @direct-test-of packages/core/src/support/thread-answer.ts
 // @direct-test-of packages/core/src/support/actions-route.ts
 // @direct-test-of packages/core/src/support/dated-reads.ts
 // @direct-test-of packages/core/src/support/dispatch.ts
@@ -387,6 +388,12 @@ describe("a room's screen claims, corrections and the owner's waits, on its reco
     const [room] = await rows<{ id: string }>(
       sql`SELECT id FROM support_rooms WHERE project_id = ${w.projectId}::uuid`,
     );
+    // ISS-1422: a release-check report lands in his thread; it answers nobody, so his wait runs on
+    // [REPORT_ENDED_THE_WAIT] before the fix: the day read him answered at the report
+    await rows(sql`
+      INSERT INTO support_actions (room_id, project_id, thread, kind, actor_kind, tool, input, external_id)
+      VALUES (${room?.id}::uuid, ${w.projectId}, ${waiting}, 'routed', 'session', 'master_post',
+              '{"text": "Release 0.310.0 checked.", "report": "release 0.310.0"}'::jsonb, 'report-1422')`);
     const until = new Date(Date.now() + 31 * 60_000).toISOString();
     const path = `/api/projects/${w.projectId}/support/rooms/${room?.id}/day?until=${encodeURIComponent(until)}`;
     const got = await api(w.owner, 'GET', path);
