@@ -4,6 +4,7 @@
  * rules and refuses them in the envelope.
  */
 
+import { ADD_CONTRACT_WAIT_SHAPE } from '@forge/contracts/contract-waits';
 import type { DependencyRefusalCode } from '@forge/contracts/issues';
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -21,6 +22,16 @@ import { publishPipelineHealthChanged } from './pipeline-health.js';
 export type IssueDependencyKind = (typeof issueDependencyKinds)[number];
 
 const refuse = refuser<DependencyRefusalCode>('DEPENDENCY_REFUSED');
+
+/**
+ * The way to wait on another project's work (REQ-9 BC-1, ISS-1408): every refusal a dependency
+ * across projects meets names it, so a master told no edge is told which door waits instead.
+ */
+export const contractWaitWay = `Work in another project is waited on by its contract version, never an edge to its issue: POST /api/issues/:id/contract-waits ${ADD_CONTRACT_WAIT_SHAPE}`;
+
+/** What an edge's other side takes: an issue id of this project, never a key another project's work goes by. */
+export const dependsOnIdShape = (): string =>
+  `the other side of an edge is the id (a uuid) of an issue in this project, never a key. ${contractWaitWay}`;
 
 export type SetIssueDependencyInput = {
   projectId: string;
@@ -117,12 +128,8 @@ export async function writeIssueDependency(
     .from(issues)
     .where(inArray(issues.id, [input.fromIssueId, input.toIssueId]));
   if (sides.length !== 2) throw notFound('one or both issues not found');
-  for (const s of sides) {
-    if (s.projectId !== input.projectId)
-      throw refuse(
-        'CROSS_PROJECT',
-        'both issues of an edge are in this project. Work in another project is waited on by its contract version, never its issue: POST /api/issues/:id/contract-waits { contract: <provider slug>/<contract slug>, minVersion }',
-      );
+  if (sides.some((s) => s.projectId !== input.projectId)) {
+    throw refuse('CROSS_PROJECT', `both issues of an edge are in this project. ${contractWaitWay}`);
   }
   // ISS-1237 — an edge naming an archived issue would point at a row no reader can find. The
   // `FOR SHARE` read waits on an archive holding either side, then reads what it committed. Only

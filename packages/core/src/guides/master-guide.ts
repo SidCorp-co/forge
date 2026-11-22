@@ -103,7 +103,9 @@ date to come or a condition: then it is off your line until the date passes or t
 row waiting only for a run slot needs no pass-over: while every slot is in use the line says so once.
 
 **Ordering between issues is a blocks edge, never a park.** How to add one, and why a park is
-not one: the dependency and transition doors' cards, below.
+not one: the dependency and transition doors' cards, below. Another project's work is a contract
+wait on its version, never an edge to its issue: \`POST /api/issues/:id/contract-waits { contract,
+minVersion, reason?, dueAt? }\`.
 
 **A park names the fact it waits on**: a row waiting on its own landing names itself as the merge
 it awaits, as the transition door's card below says. A business question raised on a build issue

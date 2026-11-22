@@ -138,6 +138,7 @@ describe('the issue-flow method teaches the acts that name what they wait on', (
     for (const word of [
       '**Waiting on another issue is not `needs_info`.**',
       'it is only for an act a person owes',
+      "Another project's work is a contract wait on its version, `POST /api/issues/:id/contract-waits { contract, minVersion, reason?, dueAt? }`, never an edge to its issue",
       'add a `blocks` edge (`issues/<dependent>/dependencies -X POST`)',
       '`"awaitsMerge":{"issueId":"<id>"}`, naming this issue',
       "a park naming another issue's mark is refused `QUESTION_MERGE_IS_ORDERING`",

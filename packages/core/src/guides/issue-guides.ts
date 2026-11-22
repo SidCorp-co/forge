@@ -292,7 +292,7 @@ Leaving costs nothing beyond naming the status the park left — \`issue_work_st
 
 A plan awaiting a person's approval, where the project's policy asks one, is \`needs_decision\`. A tradeoff or a scope call inside agreed work is not: the agent decides it and records the choice on the item it shapes. These were the old \`waiting\` park's kinds; \`waiting\` folded into \`needs_info\` with its kind kept.
 
-**Waiting on another issue is not \`needs_info\`.** Ordering between issues is a \`blocks\` edge, the waiting issue left where it is and no person asked anything: \`needs_info\` reads on every board as a person owing an answer, so it is only for an act a person owes.
+**Waiting on another issue is not \`needs_info\`.** Ordering between issues is a \`blocks\` edge, the waiting issue left where it is and no person asked anything: \`needs_info\` reads on every board as a person owing an answer, so it is only for an act a person owes. Another project's work is a contract wait on its version, \`POST /api/issues/:id/contract-waits { contract, minVersion, reason?, dueAt? }\`, never an edge to its issue.
 
 **A step that cannot RUN is not \`needs_info\`.** No runner, provider quota, project budget, retries spent — the JOB is \`held\` and the issue stays where it is. \`pipelineHealth.waitingOn.reason = 'job_held'\` names the condition, and nothing is being asked of you: a capacity hold resumes itself when capacity returns.
 

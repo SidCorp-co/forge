@@ -195,9 +195,9 @@
     "by": "ISS-1283"
   },
   "POST /api/issues/:id/dependencies": {
-    "hash": "477dedf06a6d2efc",
-    "on": "2026-11-17",
-    "by": "ISS-1251"
+    "hash": "199ee0c8a6c51c9c",
+    "on": "2026-11-22",
+    "by": "ISS-1408"
   },
   "POST /api/issues/:id/events": {
     "hash": "14bc10f066235374",

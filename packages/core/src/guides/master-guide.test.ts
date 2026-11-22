@@ -80,6 +80,7 @@ describe('the master skill is a map, its method served by core (ISS-1251)', () =
       '/naming -X PUT',
       // ordering is a blocks edge; a park names what it waits on, from the cards beneath
       '**Ordering between issues is a blocks edge, never a park.**',
+      "Another project's work is a contract wait on its version, never an edge to its issue: `POST /api/issues/:id/contract-waits { contract, minVersion, reason?, dueAt? }`",
       'only for an act a person owes',
       '`QUESTION_MERGE_IS_ORDERING`',
       '`"awaitsMerge":{"issueId":"<id>"}`',

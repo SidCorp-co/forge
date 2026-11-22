@@ -214,7 +214,7 @@ against live code or git before you rely on it.
 | You need | Call |
 |---|---|
 | Issues, status, tasks | \`/api/issues/:id\`, \`/api/issues/:id/comments\`, \`/api/projects/:id/issues\`. A chat session files no issue: it records Feedback or a Requirement draft or revision, and an issue it files is refused with CHAT_FILES_FEEDBACK_NOT_ISSUES, unless the project's gate profile turns \`chat_files_issue\` off (yolo) |
-| Ordering between issues | \`relations\` on the create (\`POST /api/projects/:id/issues\`), or \`POST /api/issues/:id/dependencies\` once both exist |
+| Ordering between issues | \`relations\` on the create (\`POST /api/projects/:id/issues\`), or \`POST /api/issues/:id/dependencies\` once both exist; another project's work is a contract wait on its version, \`POST /api/issues/:id/contract-waits { contract, minVersion }\`, never an edge to its issue |
 | Repo path, branches, preview URLs, test credentials | \`GET /api/projects/:id\` and \`GET /api/projects/:id/config\` |
 | Gates and policy | \`GET /api/projects/:id/gates\`, \`GET /api/projects/:id/policy\` |
 | The project's own prose | \`/api/projects/:id/knowledge\` |

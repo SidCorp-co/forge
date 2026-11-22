@@ -29,7 +29,7 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
         when: 'Ordering between issues',
         do: 'Blocker known at create time → `projects/<id>/issues -X POST` with `relations:[{ kind:\'blocks\', dependsOnId }]`, committed before the issue dispatches. Both exist → `issues/<dependent>/dependencies -X POST -d \'{"dependsOnId":"<blocker>","kind":"blocks"}\'` (retract with `validUntil` in the past).',
         watch:
-          'Only a `blocks` edge gates dispatch, never prose. An `open` issue whose edge is sent in a second call can dispatch in the gap',
+          "Only a `blocks` edge gates dispatch, never prose. An `open` issue whose edge is sent in a second call can dispatch in the gap. Another project's work is a contract wait on its version (`issues/<id>/contract-waits -X POST`), never an edge to its issue",
       },
     ],
     practice: [

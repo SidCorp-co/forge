@@ -21,6 +21,7 @@ import { requireDeclared, requiresOnResolved } from '../permissions/index.js';
 import { dependencyEdgeById, loadIssueDependencyEdges } from './dependency-read.js';
 import {
   deleteIssueDependency,
+  dependsOnIdShape,
   type SetIssueDependencyInput,
   setIssueDependency,
 } from './dependency-service.js';
@@ -38,7 +39,7 @@ const edgeParamSchema = z.object({ id: z.uuid(), edgeId: z.uuid() });
 
 const createBodySchema = z
   .object({
-    dependsOnId: z.uuid(),
+    dependsOnId: z.uuid({ error: dependsOnIdShape }),
     kind: z.enum(issueDependencyKinds).default('blocks'),
     reason: z.string().trim().min(1).max(REASON_PARAGRAPH_MAX).optional(),
     validUntil: z.iso.datetime().optional(),

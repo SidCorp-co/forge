@@ -10,6 +10,7 @@ import { REASON_PARAGRAPH_MAX } from '@forge/contracts/comments';
 import { z } from 'zod';
 import type { IssueDependencyExecutor } from './dependency-executor.js';
 import {
+  dependsOnIdShape,
   type IssueDependencyWrite,
   type IssueDependencyWriter,
   type SetIssueDependencyInput,
@@ -33,8 +34,8 @@ const RELATION_KINDS = ['blocks', 'relates'] as const;
 export const issueRelationInputSchema = z
   .object({
     kind: z.enum(RELATION_KINDS).default('blocks'),
-    dependsOnId: z.uuid().optional(),
-    blocksId: z.uuid().optional(),
+    dependsOnId: z.uuid({ error: dependsOnIdShape }).optional(),
+    blocksId: z.uuid({ error: dependsOnIdShape }).optional(),
     reason: z.string().max(REASON_PARAGRAPH_MAX).optional(),
     validUntil: z.iso.datetime().optional(),
   })

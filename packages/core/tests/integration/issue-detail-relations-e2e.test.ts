@@ -21,6 +21,7 @@ let token: string;
 let blocker: { id: string; key: string };
 let dependent: { id: string; key: string };
 let loose: { id: string; key: string };
+let elsewhere: { id: string; key: string };
 
 beforeAll(async () => {
   await truncateAll();
@@ -32,6 +33,10 @@ beforeAll(async () => {
   blocker = await createTestIssue(project.id, user.id, 1, { status: 'open', createdAt: at });
   dependent = await createTestIssue(project.id, user.id, 2, { status: 'open', createdAt: at });
   loose = await createTestIssue(project.id, user.id, 3, { status: 'open', createdAt: at });
+  // another project's issue: this user is no member there, as a fenced master is not
+  const stranger = await createTestUser({ verified: true });
+  const other = await createTestProject(stranger.id);
+  elsewhere = await createTestIssue(other.id, stranger.id, 1, { status: 'open', createdAt: at });
   const edge = await api(token, 'POST', `/api/issues/${dependent.id}/dependencies`, {
     dependsOnId: blocker.id,
     kind: 'blocks',
@@ -66,5 +71,47 @@ describe('GET /api/issues/:id carries its relations (R-5)', () => {
       blocks: { incoming: [], outgoing: [] },
       blockedBy: [],
     });
+  });
+});
+
+// ISS-1408: a wait on another project's work is a contract wait, and the door that cannot make the
+// edge says so, whether it was handed that project's issue id or a key it could read off a note
+describe('POST /api/issues/:id/dependencies across projects names the contract wait (ISS-1408)', () => {
+  const namesTheWay = (body: unknown) => {
+    const said = JSON.stringify(body);
+    expect(said).toContain('POST /api/issues/:id/contract-waits');
+    expect(said).toContain('minVersion');
+    expect(said).toContain('dueAt?');
+  };
+
+  it("another project's issue is refused CROSS_PROJECT, naming the contract-wait door and its body", async () => {
+    const res = await api(token, 'POST', `/api/issues/${loose.id}/dependencies`, {
+      dependsOnId: elsewhere.id,
+      kind: 'blocks',
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    expect(res.body.error.code).toBe('CROSS_PROJECT');
+    namesTheWay(res.body);
+  });
+
+  it('a key where the id goes is refused naming the same way, never an edge', async () => {
+    const res = await api(token, 'POST', `/api/issues/${loose.id}/dependencies`, {
+      dependsOnId: 'ISS-1',
+      kind: 'blocks',
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(400);
+    namesTheWay(res.body);
+    const read = await api(token, 'GET', `/api/issues/${loose.id}`);
+    expect(read.body.relations.blockedBy).toEqual([]);
+  });
+
+  it('a same-project blocks edge is written as before', async () => {
+    const res = await api(token, 'POST', `/api/issues/${loose.id}/dependencies`, {
+      dependsOnId: blocker.id,
+      kind: 'blocks',
+      validUntil: new Date(Date.now() - 60_000).toISOString(),
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(res.body.created).toBe(true);
   });
 });
