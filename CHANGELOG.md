@@ -9,6 +9,16 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.798] - 2026-11-22
+
+Room threads answered by one rule, lent runs say why, truthful earlier raises pass review
+
+### Fixed
+
+- **A run lent past its project's slots now says so where it is read.** A run's standing, alone or in the project's run list, names the lend and why it was given.
+- **A report no longer answers a room thread.** Every reader shares one definition: a release check ends no owner's wait on the room's day, and a reply in another thread naming the message takes it off the master's owed line.
+- **A room reply reporting an earlier raise now passes its audit.** A raise that landed in an earlier turn of the thread, or of the request it answers, backs "I raised it earlier"; one with no raise landed still fails.
+
 ## [0.4.0-dev.797] - 2026-11-22
 
 Room assistant reports team checks as theirs and frames quoted words as data
