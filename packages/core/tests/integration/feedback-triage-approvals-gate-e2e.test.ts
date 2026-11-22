@@ -4,7 +4,11 @@
  * item takes feedback.approve, and a writer without it proposes a `feedback_triage` suggestion a holder
  * accepts; off, any project writer routes it. A decline stays feedback.approve's either way.
  *
+ * ISS-1426: the draft a triage files takes its typed criteria in the same act, and one filed with none
+ * is answered with a warning naming the door that adds them.
+ *
  * @direct-test-of packages/core/src/feedback/triage.ts
+ * @direct-test-of packages/core/src/feedback/route-write.ts
  * @direct-test-of packages/contracts/src/person-gates.ts
  * @direct-test-of packages/contracts/src/gate-profiles.ts
  */
@@ -157,6 +161,69 @@ describe('approvals.triage false: any project writer routes the item', () => {
     expect(refused.detail).toContain(
       "Gate approval_triage is enforced by this project's gate profile strict (gates.profile)",
     );
+    expect(await statusOf(fb)).toBe('new');
+  });
+});
+
+describe('createIssue.criteria: the filed draft carries its typed criteria (ISS-1426)', () => {
+  type Effect = { carriers: string[]; warnings?: { code: string; path: string; detail: string }[] };
+  const effectOf = (r: Res) => r.body.effect as Effect;
+  async function criteriaOf(key: string) {
+    const issue = await api(owner, 'GET', `/api/issues/${key}?projectId=${projectId}`);
+    expect(issue.status, JSON.stringify(issue.body)).toBe(200);
+    const id = (issue.body as { id: string }).id;
+    const read = await api(owner, 'GET', `/api/issues/${id}/criteria`);
+    expect(read.status, JSON.stringify(read.body)).toBe(200);
+    const { criteria } = read.body as { criteria: { n: number; statement: string }[] };
+    return { id, criteria: criteria.map(({ n, statement }) => ({ n, statement })) };
+  }
+
+  it('files them numbered in order, and warns of nothing', async () => {
+    const fb = await fileBug('The board loses a card on drag');
+    const r = await triage(owner, fb, {
+      ...ROUTE,
+      createIssue: {
+        criteria: [
+          { statement: 'A dragged card lands where it is dropped.' },
+          { statement: ' A drop outside a column puts the card back. ' },
+        ],
+      },
+    });
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    const [key] = effectOf(r).carriers;
+    expect(effectOf(r).warnings).toBeUndefined();
+    expect((await criteriaOf(key ?? '')).criteria).toEqual([
+      { n: 1, statement: 'A dragged card lands where it is dropped.' },
+      { n: 2, statement: 'A drop outside a column puts the card back.' },
+    ]);
+  });
+
+  it('answers a draft filed with none with a warning naming the criteria door', async () => {
+    const fb = await fileBug('The board drops a label');
+    const r = await triage(owner, fb);
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    const [key] = effectOf(r).carriers;
+    const { id, criteria } = await criteriaOf(key ?? '');
+    expect(criteria).toEqual([]);
+    expect(effectOf(r).warnings).toEqual([
+      {
+        code: 'ISSUE_FILED_WITHOUT_CRITERIA',
+        path: '/createIssue/criteria',
+        detail: expect.stringContaining(
+          `${key} was filed with no criteria: put them with PUT /api/issues/${id}/criteria`,
+        ),
+      },
+    ]);
+  });
+
+  it('refuses a blank statement at its field and writes nothing', async () => {
+    const fb = await fileBug('The board blinks');
+    const r = await triage(owner, fb, {
+      ...ROUTE,
+      createIssue: { criteria: [{ statement: '   ' }] },
+    });
+    expect(r.status, JSON.stringify(r.body)).toBe(400);
+    expect(JSON.stringify(r.body)).toContain('createIssue');
     expect(await statusOf(fb)).toBe('new');
   });
 });

@@ -118,6 +118,9 @@ reporter's confirm in the fix's preview does as theirs (below).
   a draft, or \`title\` to start one) and \`answer\` (the text the reporter reads, \`FEEDBACK_ANSWER_MISSING\`
   without it). A carrier of another route is \`FEEDBACK_ROUTE_TARGET_MISMATCH\`; two alternatives at once,
   or a route that needs a carrier and names none, \`FEEDBACK_ROUTE_INCOMPLETE\`.
+- **File the draft with its criteria**: \`createIssue.criteria: [{ statement }]\` writes them as its typed
+  criteria in the same act, numbered in order. A draft filed with none is answered with an
+  \`ISSUE_FILED_WITHOUT_CRITERIA\` warning naming \`PUT /api/issues/:id/criteria\`; put them there before it is built.
 - **A person names no issue.** On a person's web session a triage carrying \`issue\`, \`createIssue.title\` or
   \`createIssue.description\` is refused \`FEEDBACK_ISSUE_ACT_FORBIDDEN\` at that field, nothing written: the
   person routes the item to a fix (\`{ route: "issue", createIssue: {} }\`) and the project's agents file or

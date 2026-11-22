@@ -12,6 +12,7 @@ import {
 	type FeedbackSeverity,
 } from "./feedback-terms.js";
 import { triageAnswersInput } from "./feedback-triage.js";
+import { ISSUE_CRITERIA_MAX } from "./issue-design.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
 import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
 import {
@@ -507,6 +508,13 @@ const carrierFields = {
 			complexity: z.enum(REGISTRY_ISSUE_COMPLEXITIES).optional(),
 			category: z.string().trim().min(1).max(100).optional(),
 			priority: z.enum(REGISTRY_ISSUE_PRIORITIES).optional(),
+			/** The draft's typed criteria, numbered in order as `PUT /api/issues/:id/criteria` numbers them (ISS-1426). */
+			criteria: z
+				.array(
+					z.strictObject({ statement: z.string().trim().min(1).max(10_000) }),
+				)
+				.max(ISSUE_CRITERIA_MAX)
+				.optional(),
 		})
 		.optional(),
 	suggestion: z.uuid().optional(),
@@ -560,7 +568,7 @@ export const feedbackTriageSchema = z.strictObject({
 	diagnosis: recordingDiagnosisSchema.optional(),
 });
 export type FeedbackTriage = z.infer<typeof feedbackTriageSchema>;
-export const FEEDBACK_TRIAGE_SHAPE = `{ route?: ${FEEDBACK_TRIAGE_ROUTES.join(" | ")}, answers?: { criterion: REQ-n BC-m | none, severity: ${FEEDBACK_SEVERITIES.join(" | ")}, reproduced }, issue?: ISS-n | [ISS-n, …] | createIssue?: { title?, description?, complexity?, category?, priority? } | suggestion? | requirement? | title? | answer?, inReplyTo? (answer to a reopened item: the reopen or reply it answers) | duplicateOf?, kind?, note? (decline: the reason, and no answers), diagnosis?: { recording, cause, fix } (issue only) }`;
+export const FEEDBACK_TRIAGE_SHAPE = `{ route?: ${FEEDBACK_TRIAGE_ROUTES.join(" | ")}, answers?: { criterion: REQ-n BC-m | none, severity: ${FEEDBACK_SEVERITIES.join(" | ")}, reproduced }, issue?: ISS-n | [ISS-n, …] | createIssue?: { title?, description?, complexity?, category?, priority?, criteria?: [{ statement }] } | suggestion? | requirement? | title? | answer?, inReplyTo? (answer to a reopened item: the reopen or reply it answers) | duplicateOf?, kind?, note? (decline: the reason, and no answers), diagnosis?: { recording, cause, fix } (issue only) }`;
 
 /** Stamped by core on a `feedback_triage` suggestion: the nearest item, or why dedup did not run. */
 export const feedbackDedupSchema = z.strictObject({
@@ -1199,6 +1207,15 @@ export interface FeedbackTriageEffect {
 	route: FeedbackTriageRoute;
 	/** What carries the route by key, every issue of an issue route; none for a decline or an answer. */
 	carriers: string[];
+	/** What the act did that the triager should not miss: an issue it filed with no criteria (ISS-1426). */
+	warnings?: FeedbackTriageWarning[];
+}
+
+/** An issue the triage filed with no typed criteria, and the door that adds them. */
+export interface FeedbackTriageWarning {
+	code: "ISSUE_FILED_WITHOUT_CRITERIA";
+	path: string;
+	detail: string;
 }
 
 /** A feedback item's key, `FB-<seq>`. */

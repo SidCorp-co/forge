@@ -466,7 +466,16 @@ export async function triageIn(
   await retireOtherTriageProposals(tx, row, actor, fromSuggestionId);
   // a first triage onto work keeps the report as its reporter's correction (ISS-867)
   if (firstTriage) await keepTriageAsCorrection(tx, row, route);
-  return { refusals: null, effect: { feedback: feedbackKey(row.fbSeq), route, carriers } };
+  const { warnings } = written;
+  return {
+    refusals: null,
+    effect: {
+      feedback: feedbackKey(row.fbSeq),
+      route,
+      carriers,
+      ...(warnings.length ? { warnings } : {}),
+    },
+  };
 }
 
 /** A merged item tells its own reporters and its repeats', once, which item carries their report. */

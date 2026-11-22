@@ -7,6 +7,7 @@
 import {
   type FeedbackTriage,
   type FeedbackTriageRoute,
+  type FeedbackTriageWarning,
   feedbackKey,
 } from '@forge/contracts/feedback';
 import { requirementKey } from '@forge/contracts/requirements';
@@ -19,11 +20,12 @@ import {
   insertContractWaitIn,
   insertIssueRow,
   liveWaitOn,
+  putCriteria,
   writeCoreRecord,
 } from '../issues/index.js';
 import { dataPolicyOf, egressAt, storedText } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import type { Refusal } from '../lib/refusal.js';
+import { type Refusal, RefusalError } from '../lib/refusal.js';
 import {
   createRequirementIn,
   linkIssueRefusal,
@@ -309,13 +311,46 @@ async function fileIssueIn(tx: Tx, input: RouteInput): Promise<CarrierIssue> {
     const refusal = await upgradeWaitIn(tx, row, filed, actor.userId);
     if (refusal) throw new Error(`a filed upgrade issue was refused its wait: ${refusal.detail}`);
   }
+  await filedCriteriaIn(tx, issue.id, w.createIssue?.criteria ?? []);
   return filed;
+}
+
+/**
+ * The filed draft's criteria, written through the criteria door's own store and numbered in order
+ * as it numbers lines sent without one (ISS-1426); a refusal names the triage field that sent them.
+ */
+async function filedCriteriaIn(
+  tx: Tx,
+  issueId: string,
+  criteria: NonNullable<CreateIssue['criteria']>,
+): Promise<void> {
+  if (criteria.length === 0) return;
+  try {
+    await putCriteria(
+      tx,
+      issueId,
+      criteria.map((c, i) => ({ n: i + 1, statement: c.statement })),
+    );
+  } catch (err) {
+    if (!(err instanceof RefusalError)) throw err;
+    const refusals = err.refusals.map((r) => ({ ...r, path: `/createIssue${r.path}` }));
+    throw new RefusalError(refusals, err.fallbackCode);
+  }
+}
+
+/** The line a triage answers with for an issue it filed with no criteria: the door that adds them. */
+function uncriteriedWarning(issue: CarrierIssue): FeedbackTriageWarning {
+  return {
+    code: 'ISSUE_FILED_WITHOUT_CRITERIA',
+    path: '/createIssue/criteria',
+    detail: `${issue.key} was filed with no criteria: put them with PUT /api/issues/${issue.id}/criteria before it is built, or send createIssue.criteria [{ statement }] with the triage`,
+  };
 }
 
 export async function writeRouteIn(
   tx: Tx,
   input: RouteInput,
-): Promise<{ refusals: Refusal[] } | { carriers: string[] }> {
+): Promise<{ refusals: Refusal[] } | { carriers: string[]; warnings: FeedbackTriageWarning[] }> {
   const { row, route, write: w, actor } = input;
   const named = await namedCarrierIn(tx, input);
   if ('refusal' in named) return { refusals: [named.refusal] };
@@ -327,10 +362,12 @@ export async function writeRouteIn(
   });
   if (fit) return { refusals: [fit] };
   let { columns, keys, issues } = named;
+  const warnings: FeedbackTriageWarning[] = [];
   const filed = route === 'issue' && w.createIssue !== undefined;
   if (filed) {
     issues = [await fileIssueIn(tx, input)];
     keys = issues.map((i) => i.key);
+    if (!w.createIssue?.criteria?.length) warnings.push(...issues.map(uncriteriedWarning));
   } else if (route === 'issue' && row.kind === 'contract_change') {
     for (const issue of issues) {
       const refusal = await upgradeWaitIn(tx, row, issue, actor.userId);
@@ -371,5 +408,5 @@ export async function writeRouteIn(
       ],
     });
   }
-  return { carriers: keys };
+  return { carriers: keys, warnings };
 }
