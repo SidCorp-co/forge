@@ -375,11 +375,21 @@ export async function roomsOfProjects(projectIds: readonly string[]): Promise<st
  * The threads of a room holding a message no turn took, each with its thread's conversation, the
  * thread whose message waited longest first.
  */
-export async function undeliveredThreads(
-  roomId: string,
-): Promise<{ thread: string; conversationId: string | null }[]> {
+export async function undeliveredThreads(roomId: string): Promise<
+  {
+    thread: string;
+    conversationId: string | null;
+    /** When its oldest waiting message arrived, and its newest (ISS-1406). */
+    since: Date;
+    last: Date;
+  }[]
+> {
   const rows = await db
-    .select({ thread: supportActions.thread, conversationId: supportActions.conversationId })
+    .select({
+      thread: supportActions.thread,
+      conversationId: supportActions.conversationId,
+      at: supportActions.createdAt,
+    })
     .from(supportActions)
     .where(
       and(
@@ -389,9 +399,13 @@ export async function undeliveredThreads(
       ),
     )
     .orderBy(asc(supportActions.createdAt));
-  const seen = new Map<string, string | null>();
-  for (const r of rows) if (!seen.has(r.thread)) seen.set(r.thread, r.conversationId);
-  return [...seen].map(([thread, conversationId]) => ({ thread, conversationId }));
+  const seen = new Map<string, { conversationId: string | null; since: Date; last: Date }>();
+  for (const r of rows) {
+    const held = seen.get(r.thread);
+    if (held) held.last = r.at;
+    else seen.set(r.thread, { conversationId: r.conversationId, since: r.at, last: r.at });
+  }
+  return [...seen].map(([thread, w]) => ({ thread, ...w }));
 }
 
 /**

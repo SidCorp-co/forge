@@ -24,7 +24,7 @@
 
 import type { ProvenMessage } from '@forge/contracts/messaging';
 import { SUPPORT_MASTER_POST_EDIT_WINDOW_MS } from '@forge/contracts/support';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, or } from 'drizzle-orm';
 import { replaceSentContent } from '../conversations/index.js';
 import { db } from '../db/client.js';
 import { supportActions } from '../db/schema-support.js';
@@ -50,9 +50,41 @@ export interface Answer {
  * since and it is within the edit window; null where a member wrote last, the bot has not answered,
  * or the answer is too old to edit.
  */
-export async function answerToReplace(room: RoomRow, thread: string): Promise<Answer | null> {
+/** Every room recording the group's threads: the room's own, and each other binding's of its group. */
+async function holdersOf(room: RoomRow): Promise<RoomRow[]> {
   const holders = await roomsOnRid(room.rid);
-  const rooms = holders.some((r) => r.id === room.id) ? holders : [room, ...holders];
+  return holders.some((r) => r.id === room.id) ? holders : [room, ...holders];
+}
+
+/**
+ * Whether the bot answered in `thread` at or after `since`, on any binding's record of the group:
+ * the room agent's reply or a master's post (ISS-1406: a thread so answered is told no offline line).
+ */
+export async function answeredSince(room: RoomRow, thread: string, since: Date): Promise<boolean> {
+  const rooms = await holdersOf(room);
+  const [row] = await db
+    .select({ id: supportActions.id })
+    .from(supportActions)
+    .where(
+      and(
+        inArray(
+          supportActions.roomId,
+          rooms.map((r) => r.id),
+        ),
+        eq(supportActions.thread, thread),
+        gte(supportActions.createdAt, since),
+        or(
+          and(eq(supportActions.kind, 'reply'), eq(supportActions.actorKind, 'session')),
+          and(eq(supportActions.kind, 'routed'), eq(supportActions.tool, MASTER_POST)),
+        ),
+      ),
+    )
+    .limit(1);
+  return Boolean(row);
+}
+
+export async function answerToReplace(room: RoomRow, thread: string): Promise<Answer | null> {
+  const rooms = await holdersOf(room);
   const recent = await db
     .select({
       roomId: supportActions.roomId,

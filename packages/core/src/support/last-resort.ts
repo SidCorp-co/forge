@@ -27,6 +27,16 @@ import { isCoreThread, supportVenueId } from './rules.js';
 import type { RoomRow } from './store.js';
 import { postInThread, roomAuth, TOP_LEVEL, topLevelThreadOf } from './thread.js';
 
+/**
+ * How long a member's message waits on a room with no box before its thread is told the offline line
+ * (ISS-1406, Forge-Feedback 2026-11-22: the line stood at 02:45 beside the answer of 02:59). Three
+ * minutes, the sum of what a box coming back takes on core's own clocks: a box is read gone only after
+ * `BOX_STALE_MS` (90 s, three missed beats), a cold session is warmed again after `WARM_RETRY_MS`
+ * (60 s, `warm.ts`), and a warm turn answers in about 30 s (forge's room, p50 of 115 sends). A thread
+ * the room agent or a master answers within it is told nothing.
+ */
+export const OFFLINE_GRACE_MS = 3 * 60_000;
+
 /** What telling a thread came to: the message posted, or why nothing was. */
 export type Told =
   | { posted: true; messageId: string | null; conversationId: string }

@@ -1,5 +1,7 @@
 // @direct-test-of packages/core/src/support/delivery.ts
 // @direct-test-of packages/core/src/support/last-resort.ts
+// @direct-test-of packages/core/src/support/dispatch.ts
+// @direct-test-of packages/core/src/support/one-voice.ts
 
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -11,6 +13,8 @@ vi.hoisted(() => {
 
 import { LAST_RESORT_LINES } from '../../src/conversations/last-resort.js';
 import { db } from '../../src/db/client.js';
+import { OFFLINE_GRACE_MS } from '../../src/support/last-resort.js';
+import { api } from '../helpers/api.js';
 import { rows } from '../helpers/factories.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
 import { BASE, GrantedRoom } from '../helpers/support-grants-world.js';
@@ -35,6 +39,34 @@ async function boxIs(status: 'online' | 'offline'): Promise<void> {
       sql`UPDATE runners SET status = ${status}, last_seen_at = ${seen} WHERE device_id = ${w.box.deviceId}`,
     );
   });
+}
+
+/** The offline lines the room was told in `thread`. */
+const offlineLinesIn = async (thread: string) =>
+  (await w.chat.botLines()).filter(
+    (l) => l.tmid === thread && l.text === LAST_RESORT_LINES.offline,
+  );
+
+/** The member's message in `thread`, recorded and still waiting, made to have waited `ms` already. */
+async function waited(thread: string, ms: number): Promise<void> {
+  await expect
+    .poll(async () => {
+      const held = await rows(sql`
+        SELECT 1 FROM support_actions WHERE room_id = ${roomId}::uuid AND thread = ${thread}
+           AND kind = 'message_in' AND delivered_at IS NULL`);
+      return held.length;
+    })
+    .toBeGreaterThan(0);
+  await rows(sql`
+    UPDATE support_actions SET created_at = now() - make_interval(secs => ${ms / 1000})
+     WHERE room_id = ${roomId}::uuid AND thread = ${thread} AND kind = 'message_in'`);
+}
+
+/** Two of the drain's ticks, as its process timer runs them every 2 s (`timer-registry.ts`). */
+async function ticks(): Promise<void> {
+  const { drainSupportRooms } = await import('../../src/support/dispatch.js');
+  await drainSupportRooms();
+  await drainSupportRooms();
 }
 
 beforeAll(async () => {
@@ -113,15 +145,22 @@ describe('REQ-75 r5: a room that cannot answer says why (BC-26)', () => {
     await boxIs('online');
   });
 
-  it('hands a message that waited out an offline box to the session the moment a box is back', async () => {
+  // ISS-1406, Forge-Feedback 2026-11-22: the offline line stood at 02:45 beside the answer of 02:59
+  it('tells a waiting thread the offline line once, only after the grace window, and hands it on when a box is back', async () => {
     await w.settleWarm();
     const seen: string[] = [];
     w.box.model = async (turn) => {
       for (const m of turn.messages) if (m.from !== 'forge') seen.push(m.text);
     };
     await boxIs('offline');
-    await w.chat.say(w.chat.bob, 'is the export stuck?');
-    await w.untilLines((ls) => ls.some((l) => l.text === LAST_RESORT_LINES.offline));
+    const thread = await w.chat.say(w.chat.bob, 'is the export stuck?');
+    await waited(thread, 0);
+    await ticks();
+    // [OFFLINE_NO_GRACE] before the fix: the line was posted on the message's first hand-over
+    expect(await offlineLinesIn(thread)).toEqual([]);
+    await waited(thread, OFFLINE_GRACE_MS + 1_000);
+    await ticks();
+    expect(await offlineLinesIn(thread)).toHaveLength(1);
     expect(seen).toEqual([]);
     await boxIs('online');
     // what the box coming online runs (`support/index.ts:registerSupportConsumers`)
@@ -129,6 +168,31 @@ describe('REQ-75 r5: a room that cannot answer says why (BC-26)', () => {
     await warmRoomsOfDevice(w.box.deviceId);
     // well inside the 30 s a failed dispatch waits: finding no box is not a failed dispatch
     await expect.poll(() => seen, { timeout: 5_000 }).toContain('is the export stuck?');
+    await w.settleWarm();
+  });
+
+  it('tells no offline line to a thread a master answered within the grace window', async () => {
+    await w.settleWarm();
+    const seen: string[] = [];
+    w.box.model = async (turn) => {
+      for (const m of turn.messages) if (m.from !== 'forge') seen.push(m.text);
+    };
+    await boxIs('offline');
+    const thread = await w.chat.say(w.chat.bob, 'did my import finish?');
+    await waited(thread, 0);
+    const posted = await api(w.owner, 'POST', `/api/projects/${w.projectId}/support/master-posts`, {
+      text: 'Your import finished at 09:10; every row is in.',
+      rid: w.chat.rid,
+      thread,
+    });
+    expect(posted.status, JSON.stringify(posted.body)).toBe(201);
+    await waited(thread, OFFLINE_GRACE_MS + 1_000);
+    await ticks();
+    expect(await offlineLinesIn(thread)).toEqual([]);
+    await boxIs('online');
+    const { warmRoomsOfDevice } = await import('../../src/support/warm.js');
+    await warmRoomsOfDevice(w.box.deviceId);
+    await expect.poll(() => seen, { timeout: 5_000 }).toContain('did my import finish?');
     await w.settleWarm();
   });
 

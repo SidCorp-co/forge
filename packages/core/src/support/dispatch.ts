@@ -42,7 +42,8 @@ import {
 import { grantsOf, supportConfigOf } from './grants.js';
 import { leftToBoxProcess } from './hand-off.js';
 import { injectWaiting, settleInjects } from './inject.js';
-import { endRoomLastResortWait, tellLastResort } from './last-resort.js';
+import { endRoomLastResortWait, OFFLINE_GRACE_MS, tellLastResort } from './last-resort.js';
+import { answeredSince } from './one-voice.js';
 import { projectsInScope } from './ops-scope.js';
 import { ownViewOf } from './owner-git.js';
 import { coldThreads, roomMessages } from './prompt.js';
@@ -333,9 +334,16 @@ const refusedAs = (err: unknown, code: string) =>
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
-/** Tell each thread with a message waiting that its assistant has no box to run on, once; the messages wait. */
+/**
+ * Tell each thread whose message has waited past the grace window that its assistant has no box to
+ * run on, once; the messages wait. A box back within the window, or a master's or the agent's answer
+ * in it, leaves the thread told nothing (ISS-1406); the drain's next tick reads the window again.
+ */
 async function tellOffline(room: RoomRow): Promise<void> {
+  const now = Date.now();
   for (const waiting of await undeliveredThreads(room.id)) {
+    if (now - waiting.since.getTime() < OFFLINE_GRACE_MS) continue;
+    if (await answeredSince(room, waiting.thread, waiting.last)) continue;
     // a thread another binding of a shared group holds is told nothing by this one (ISS-1243)
     if (await threadHeldByAnother(room, waiting.thread)) continue;
     const told = await tellLastResort(room, waiting.thread, 'offline');
