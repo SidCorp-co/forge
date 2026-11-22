@@ -9,6 +9,16 @@ const USE = 'forge door use, 2026-08-19..11-17';
 
 export const SUPPORT_SCENARIOS: readonly CardScenario[] = [
   {
+    name: 'a master needing a grant sent between two doors that refuse it (FB-813)',
+    card: 'POST /api/projects/:id/support/technical-needs',
+    source:
+      'FB-813, the sid-desk master 2026-11-22T03:11Z: support.technical refused SUPPORT_NOT_THE_ROOM_SESSION, master-posts refused SUPPORT_PERMISSION_TALK',
+    situation: 'An owner-ordered production investigation needs a grant the master does not hold',
+    bad: 'the master called support.technical, then posted in the room that it lacked the permission',
+    good: 'raise it here in your own words to the channel’s reader, and tell the asker’s thread only that it is in hand',
+    teaches: [/raise it here/i, /refused to you/i],
+  },
+  {
     name: 'a room post deleted by a chat id no master post held: SUPPORT_POST_UNKNOWN',
     card: 'DELETE /api/projects/:id/support/master-posts/:messageId',
     source: `${USE}: its one call refused SUPPORT_POST_UNKNOWN`,

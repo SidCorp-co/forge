@@ -26,6 +26,7 @@ import { code } from '../helpers/support-channel.js';
 // @direct-test-of packages/core/src/support/one-voice.ts
 // @direct-test-of packages/core/src/support/master-post.ts
 // @direct-test-of packages/core/src/support/thread-requests.ts
+// @direct-test-of packages/core/src/support/routing-routes.ts
 //
 // ISS-1243 item 13 (owner 2026-11-15): a project names exactly one technical channel, its own thread
 // of the shared operations room (the default, ISS-1271) or a direct message to one person, and a room
@@ -135,6 +136,8 @@ describe('no permission talk in a work thread', () => {
     );
     expect(code(outs[0])).toBe('SUPPORT_PERMISSION_TALK');
     expect(JSON.stringify(outs[0])).toContain('support.technical');
+    // a room session is sent to its own door, never the master's twin (ISS-1405 c3)
+    expect(JSON.stringify(outs[0])).not.toContain('technical-needs');
     expect(code(outs[1])).toBe('SUPPORT_PERMISSION_TALK');
     expect(outs[2]?.isError, JSON.stringify(outs[2])).toBe(false);
     expect(w.threadLines(w.stand.rid, heard.id).map((l) => l.text)).toEqual([
@@ -147,6 +150,66 @@ describe('no permission talk in a work thread', () => {
       'SUPPORT_PERMISSION_TALK',
       'SUPPORT_PERMISSION_TALK',
     ]);
+  });
+});
+
+// ISS-1405 (FB-813, the sid-desk master 2026-11-22): a master's post naming a grant it needs was
+// refused toward support.technical, which refuses every credential but a room session's, and back.
+// Its refusal now names the master's own door, and the exact call it advises is taken.
+describe("a master's need goes to a door its own credential is accepted at", () => {
+  const refusalOf = (res: { body: unknown }) =>
+    (res.body as { error?: { refusals?: { code: string; detail: string }[] } }).error
+      ?.refusals?.[0];
+
+  it('names the master’s technical door, and that exact call raises the need in the channel', async () => {
+    await setChannel(null);
+    const asked = await w.hear(() => w.stand.say(w.stand.bob, 'is the prod log readable yet?'));
+    const post = await api(w.owner, 'POST', `/api/projects/${w.projectId}/support/master-posts`, {
+      text: "I don't have permission to read the production logs yet.",
+      rid: w.stand.rid,
+      thread: asked.id,
+    });
+    const refusal = refusalOf(post);
+    expect(refusal?.code, JSON.stringify(post.body)).toBe('SUPPORT_PERMISSION_TALK');
+    expect(refusal?.detail).not.toContain('support.technical {');
+    const advised = /POST (\/api\/projects\/:id\/support\/technical-needs) \{ need, text \}/.exec(
+      refusal?.detail ?? '',
+    );
+    expect(advised, refusal?.detail).not.toBeNull();
+    expect(w.threadLines(w.stand.rid, asked.id)).toEqual([]);
+    const before = w.stand.linesIn('D-alice').length;
+    const raised = await api(w.owner, 'POST', (advised?.[1] ?? '').replace(':id', w.projectId), {
+      need: 'permission',
+      text: 'Please grant me read access to the production logs for the outage you asked about.',
+    });
+    expect(raised.status, JSON.stringify(raised.body)).toBe(201);
+    expect(raised.body).toMatchObject({ channel: 'dm', rid: 'D-alice' });
+    expect(
+      w.stand
+        .linesIn('D-alice')
+        .slice(before)
+        .map((l) => l.text),
+    ).toEqual([
+      `${w.projectName} · Please grant me read access to the production logs for the outage you asked about.`,
+    ]);
+    const routed = await rows<{ tool: string; input: Record<string, unknown> }>(
+      sql`SELECT tool, input FROM support_actions WHERE kind = 'routed' AND tool = 'technical' AND input->>'by' = ${w.ownerId}`,
+    );
+    expect(routed).toEqual([
+      expect.objectContaining({ input: expect.objectContaining({ need: 'permission' }) }),
+    ]);
+  });
+
+  it('refuses by name a channel the master’s raise cannot reach, raising nothing', async () => {
+    await setChannel({ kind: 'thread' });
+    const out = await api(w.owner, 'POST', `/api/projects/${w.projectId}/support/technical-needs`, {
+      need: 'approval',
+      text: 'May I restart the worker on production?',
+    });
+    expect(refusalOf(out)?.code, JSON.stringify(out.body)).toBe(
+      'SUPPORT_TECHNICAL_CHANNEL_UNNAMED',
+    );
+    await setChannel(null);
   });
 });
 

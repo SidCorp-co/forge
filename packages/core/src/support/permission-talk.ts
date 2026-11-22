@@ -45,6 +45,17 @@ const MAY_SAY_NEED: ReadonlySet<string> = new Set(['ask_owner', 'technical']);
 export const screensPermissionTalk = (tool: string): boolean => !MAY_SAY_NEED.has(tool);
 
 /**
+ * The door a poster raises the need at, one its own credential is accepted at (ISS-1405): a project
+ * master's post (`master-post.ts:TOOL`, its edit too) goes to its own twin of the technical door,
+ * since the room session's `support.technical` refuses every credential but that session's
+ * (FB-813: the two refusals sent a master back and forth); every other post is a room session's.
+ */
+export const needDoorOf = (tool: string): string =>
+  tool === 'master_post'
+    ? 'POST /api/projects/:id/support/technical-needs { need, text } (:id your project)'
+    : `${TECHNICAL_DOOR} { thread, need, text }`;
+
+/**
  * Null where the post may go; otherwise the refusal, recorded on the thread with nothing posted,
  * naming the words and the door the need goes through instead.
  */
@@ -72,6 +83,6 @@ export async function permissionTalkRefusal(
   return no(
     'SUPPORT_PERMISSION_TALK',
     '/text',
-    `nothing was posted: the post tells the thread you lack a permission or wait on someone to grant one ("${quote}"). Raise that need with ${TECHNICAL_DOOR} { thread, need, text }, the project's technical channel, and tell this thread the answer, or one short note that it is in hand.`,
+    `nothing was posted: the post tells the thread you lack a permission or wait on someone to grant one ("${quote}"). Raise that need with ${needDoorOf(tool)}, the project's technical channel, and tell this thread the answer, or one short note that it is in hand.`,
   );
 }

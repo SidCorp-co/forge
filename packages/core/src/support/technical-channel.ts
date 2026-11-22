@@ -10,7 +10,11 @@
 // cannot be reached is refused by name, naming the key that fixes it; nothing falls back to the
 // asker's thread.
 
-import type { TechnicalChannel, TechnicalNeed } from '@forge/contracts/support-technical';
+import type {
+  SupportMasterTechnicalRequest,
+  TechnicalChannel,
+  TechnicalNeed,
+} from '@forge/contracts/support-technical';
 import {
   directRoomFor,
   FIXED_REPLY_CONSTANT,
@@ -22,10 +26,11 @@ import { grantsOf, supportConfigOf } from './grants.js';
 import { no, type Outcome, threadUnknown } from './outcome.js';
 import { ownerUsername } from './owner-consent.js';
 import { projectThreadFor, sharedRoomOf } from './project-thread.js';
+import { roomIsBound } from './rooms.js';
 import { screenForThread } from './screen.js';
-import { insertAction, type RoomRow } from './store.js';
+import { insertAction, type RoomRow, roomsOfProject } from './store.js';
 import { heldRaise, readTechnicalTurn, type TechnicalTurn, wordsMisfit } from './technical-turn.js';
-import { actingThread, postInThread, roomAuth, scrubbedForRoom } from './thread.js';
+import { actingThread, postInThread, roomAuth, scrubbedForRoom, TOP_LEVEL } from './thread.js';
 
 /** The tool a raised need is recorded under on the asker's thread. */
 export const TECHNICAL = 'technical';
@@ -60,8 +65,8 @@ export type Destination =
   | { kind: 'thread'; room: RoomRow; thread: string }
   | { kind: 'dm'; rid: string; user: string };
 
-async function sharedThreadOf(room: RoomRow, path: string): Promise<Outcome<Destination>> {
-  const shared = await sharedRoomOf(room.projectId);
+async function sharedThreadOf(projectId: string, path: string): Promise<Outcome<Destination>> {
+  const shared = await sharedRoomOf(projectId);
   if (!shared) {
     return no(
       'SUPPORT_TECHNICAL_CHANNEL_UNNAMED',
@@ -69,7 +74,7 @@ async function sharedThreadOf(room: RoomRow, path: string): Promise<Outcome<Dest
       `this project's technical channel is its own thread of the operations room its organization shares, and its organization binds no operations room of scope forge; bind one, or name a direct message in ${KEY}. Nothing was raised.`,
     );
   }
-  const at = await projectThreadFor(shared, room.projectId);
+  const at = await projectThreadFor(shared, projectId);
   if (!at.ok) {
     return no(
       'SUPPORT_TECHNICAL_CHANNEL_UNREACHABLE',
@@ -108,7 +113,9 @@ async function directOf(
 /** The project's channel for `room`, or the refusal naming the key that fixes it at `path`. */
 export async function destinationOf(room: RoomRow, path: string): Promise<Outcome<Destination>> {
   const channel = await technicalChannelOf(room.projectId);
-  return channel.kind === 'thread' ? sharedThreadOf(room, path) : directOf(room, channel, path);
+  return channel.kind === 'thread'
+    ? sharedThreadOf(room.projectId, path)
+    : directOf(room, channel, path);
 }
 
 export async function postTo(room: RoomRow, to: Destination, text: string): Promise<Raised> {
@@ -256,6 +263,106 @@ export async function raiseTechnical(
     actorKind: 'session',
     tool: TECHNICAL,
     input,
+    output: { route: TECHNICAL, ...out.value },
+    externalId: out.value.messageId,
+  });
+  return out;
+}
+
+/**
+ * The project's own bound room a direct message to its technical channel is sent from: any where the
+ * channel names its person, else one whose binding names an owner, the owner's room first.
+ */
+async function directRoomOf(
+  projectId: string,
+  channel: { user?: string | undefined },
+): Promise<RoomRow | null> {
+  const rooms: RoomRow[] = [];
+  for (const room of await roomsOfProject(projectId)) {
+    if (await roomIsBound(room)) rooms.push(room);
+  }
+  if (channel.user) return rooms[0] ?? null;
+  for (const room of rooms) {
+    const config = await supportConfigOf(room);
+    if (config?.ownerRoom === room.rid && grantsOf(config).owner) return room;
+  }
+  for (const room of rooms) {
+    if (grantsOf(await supportConfigOf(room)).owner) return room;
+  }
+  return rooms[0] ?? null;
+}
+
+/**
+ * Where a master's raise goes (ISS-1405): the project's channel, and the room its bot speaks from,
+ * the shared operations room for its thread, else the project's own room for a direct message.
+ */
+async function masterDestinationOf(
+  projectId: string,
+): Promise<Outcome<{ room: RoomRow; to: Destination }>> {
+  const channel = await technicalChannelOf(projectId);
+  if (channel.kind === 'thread') {
+    const to = await sharedThreadOf(projectId, '/need');
+    if (!to.ok) return to;
+    if (to.value.kind !== 'thread') throw new Error('a shared thread resolved to a direct message');
+    return { ok: true, value: { room: to.value.room, to: to.value } };
+  }
+  const room = await directRoomOf(projectId, channel);
+  if (!room) {
+    return no(
+      'SUPPORT_TECHNICAL_CHANNEL_UNREACHABLE',
+      '/need',
+      `this project's technical channel is a direct message, and the project binds no chat room whose bot could send it; bind one, or name the shared thread in ${KEY}. Nothing was raised.`,
+    );
+  }
+  const to = await directOf(room, channel, '/need');
+  return to.ok ? { ok: true, value: { room, to: to.value } } : to;
+}
+
+/**
+ * A project master raises one need in its project's technical channel under its own credential
+ * (ISS-1405, FB-813): the room session's door (`raiseTechnical`) admits only a support group's own
+ * session, so a master told by `SUPPORT_PERMISSION_TALK` to raise a grant it needs is sent here. The
+ * line is read and screened as a room agent's raise is (held on a person's unanswered message, in
+ * the reader's language, no internal code), posted only in the channel, and recorded as the master's
+ * on the room it went through.
+ */
+export async function raiseAsMaster(
+  actor: { userId: string; projectId: string },
+  input: SupportMasterTechnicalRequest,
+): Promise<Raised> {
+  const from = await masterDestinationOf(actor.projectId);
+  if (!from.ok) return from;
+  const { room, to } = from.value;
+  const turn = await turnAt(room, to);
+  // a master holds no room session, so a held raise teaches it the general answer, never a session door
+  const unread = heldRaise(turn, input.answers, false) ?? wordsMisfit(turn, input.text);
+  if (unread) return unread;
+  const thread = to.kind === 'thread' ? to.thread : TOP_LEVEL;
+  const line = await screenForThread(
+    room,
+    null,
+    thread,
+    await lineOf(room, to.kind, input.text),
+    'operations-reply',
+    TECHNICAL,
+  );
+  if (!line.ok) return line;
+  const out = await postTo(room, to, line.value.text);
+  if (!out.ok) return out;
+  await insertAction({
+    roomId: room.id,
+    projectId: room.projectId,
+    conversationId: null,
+    thread,
+    kind: 'routed',
+    actorKind: 'session',
+    tool: TECHNICAL,
+    input: {
+      need: input.need,
+      text: input.text,
+      by: actor.userId,
+      ...(room.projectId === actor.projectId ? {} : { for: actor.projectId }),
+    },
     output: { route: TECHNICAL, ...out.value },
     externalId: out.value.messageId,
   });

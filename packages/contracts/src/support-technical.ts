@@ -103,6 +103,17 @@ export type SupportTechnicalRequest = z.infer<
 >;
 
 /**
+ * A project master's twin of support.technical (ISS-1405): the same need, raised in its project's
+ * technical channel under the master's own credential, which the room session's door refuses. No
+ * thread: a master raises from no work thread.
+ */
+export const supportMasterTechnicalRequestSchema =
+	supportTechnicalRequestSchema.omit({ thread: true });
+export type SupportMasterTechnicalRequest = z.infer<
+	typeof supportMasterTechnicalRequestSchema
+>;
+
+/**
  * The acts with serious consequence a room agent may not run on its own (item 16): each is refused
  * by name and raised in the technical channel. The project document's `agentDeny` names them; absent
  * is every one of them, and an empty list denies none.

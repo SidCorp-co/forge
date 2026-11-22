@@ -44,6 +44,33 @@ export const SUPPORT_REST_CARDS = {
     audience: ['master'],
     scenarios: ['the ePOD release posts told in the asker’s thread once checked live'],
   },
+  'POST /api/projects/:id/support/technical-needs': {
+    purpose:
+      'Raises a need the master holds (a grant, an approval, a finding, an ask) in its project’s technical channel.',
+    situations: [
+      {
+        when: 'a task the owner gave you needs a grant or an approval you do not hold',
+        do: 'raise it here in your own words to the channel’s reader, and tell the asker’s thread only that it is in hand',
+        watch:
+          'a room post saying you lack it is refused SUPPORT_PERMISSION_TALK; support.technical is a room session’s door, refused to you',
+      },
+    ],
+    practice: [
+      'Write to the reader in the channel’s language, in the second person.',
+      'A held raise names the person’s message: raise again with `answers` set to it.',
+    ],
+    example: {
+      need: 'permission',
+      text: 'Please grant me read access to the production logs for the outage you asked me to look into.',
+    },
+    // FB-813 (sid-desk master, 2026-11-22T03:11Z): support.technical refused it
+    // SUPPORT_NOT_THE_ROOM_SESSION and master-posts refused SUPPORT_PERMISSION_TALK pointing back there
+    redFlag:
+      'Telling a room thread you lack a grant, or calling support.technical, which no master’s credential passes.',
+    family: 'rooms',
+    audience: ['master'],
+    scenarios: ['a master needing a grant sent between two doors that refuse it (FB-813)'],
+  },
   'PATCH /api/projects/:id/support/master-posts/:messageId': {
     purpose: 'Replaces the words of a post you made in a room, within its edit window.',
     situations: [
