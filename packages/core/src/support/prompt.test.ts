@@ -4,6 +4,7 @@ import { ROOM_AGENT_GUIDE } from '../guides/room-agent-guide.js';
 import { provideDoorCatalog } from '../lib/door-catalog.js';
 import { servedDoorCatalog } from '../mcp/door-catalog.js';
 import { actCard, mapLine } from './act-cards.js';
+import { masterAnsweredNote } from './master-ask.js';
 import { operationsBrief } from './ops-prompt.js';
 import { agentOpening, grantsLine, SUPPORT_MAP_ACTS, supportBrief, toolsLine } from './prompt.js';
 import { linksOnWeb, ROOM_MAP_ACTS, roomConductLines, SHOW_HOW } from './room-conduct.js';
@@ -269,6 +270,22 @@ describe('every room agent brief carries the room conduct', () => {
     for (const text of [brief, channel, operations]) {
       expect(taught(text)).toContain(linksOnWeb('http://localhost:3000'));
     }
+  });
+
+  // ISS-1416 reopen (FB-824's transcripts): an operations room said a raise was made 3 s after it was
+  // refused, following its brief's "one short line that it is in hand" and the master's answer's
+  // "make the act as them and say it is done"; and stated a state from a master's check as its own
+  it("tells an act from its result, and a master's reported state as his dated read", () => {
+    expect(operations).toContain(
+      "one short line that it is in hand once the act's result says where it landed, as a refused act was not made",
+    );
+    const note = masterAnsweredNote('Is the drive back?', 'Still read-only at 17:05.');
+    expect(note).toContain("tell it from the act's result: done once it answered");
+    expect(note).toContain('a refused act was not made');
+    expect(note).not.toContain('say it is done');
+    expect(note).toContain(
+      'A state he reports is his read, not yours: say it as his check and when he made it',
+    );
   });
 });
 

@@ -167,6 +167,17 @@ export async function asksOfThread(room: RoomRow, thread: string): Promise<Maste
 }
 
 /**
+ * The note a master's answer is handed to the room's session as. FB-824's transcripts (ISS-1416): a
+ * reply stated "still off" in the turn that handed it the master's check, its own last read hours old
+ * and of another screen, and a reply said a
+ * raise was made 3 s after it was refused, following "make the act as them and say it is done". A
+ * state he reports is his read, dated; an act is told from its result.
+ */
+export function masterAnsweredNote(question: string, answer: string): string {
+  return `The master answered your ask (${question}): ${answer}. Answer the person in this thread yourself now, in your own words and in the language they write, to them in the second person, with what this settles; the master's words are for you, never posted as they are. A state he reports is his read, not yours: say it as his check and when he made it, or read it yourself in this turn. Where they already ruled on it, make the act as them and tell it from the act's result: done once it answered, and a refused act was not made; never ask them again.`;
+}
+
+/**
  * The master answers an ask put to its project's master: recorded with who and when, and handed into
  * the asking thread for the room's session, which tells the person itself. Nothing is posted. An ask
  * of another project, or one already answered, is refused by name.
@@ -214,7 +225,7 @@ export async function answerMasterAsk(
     kind: 'message_in',
     actorKind: 'core',
     input: {
-      note: `The master answered your ask (${answered.question}): ${answer}. Answer the person in this thread yourself now, in your own words and in the language they write, to them in the second person, with what this settles; the master's words are for you, never posted as they are. Where they already ruled on it, make the act as them and say it is done; never ask them again.`,
+      note: masterAnsweredNote(answered.question, answer),
       ask: answered.id,
     },
     externalId: `master-ask:${answered.id}`,
