@@ -187,7 +187,15 @@ describe('the release brief reads the run it holds before every push and deploy 
 
   it('names what says the run is no longer this job’s, and that it then stops acting', () => {
     expect(text).toContain('`cancellationRequested` is true');
-    expect(text).toContain('anything but `dispatched`');
     expect(text).toContain('push, tag and deploy nothing more, call no `finish` or `abort`');
+  });
+
+  // ISS-1411 (FB-819): a runner that marks a job failed within a minute while its session runs made
+  // "anything but `dispatched`" stop every attempt at its first push, and agenfold's 0.307.0 shipped
+  // nothing on attempt 8. A job read failed alone is not a run taken away; a cancel is.
+  it('stops on a cancel, never on a job read failed alone', () => {
+    expect(text).toContain('your job’s `status` reads `cancelled`');
+    expect(text).not.toContain('anything but `dispatched`');
+    expect(text).toContain('A job read `failed` alone is not that');
   });
 });

@@ -21,9 +21,8 @@ describe('a retry’s brief names the pane of the attempt it retries (ISS-1351)'
   });
 
   // ISS-1411 (FB-819): on a box whose runner never ends a failed attempt's pane, "end your turn
-  // while it stands" stopped every retry and deadlocked agenfold's 0.307.0 on attempt 8. The earlier
-  // attempt's own release brief stops it before any act once its job reads failed, so the retry
-  // ends that pane and goes on.
+  // while it stands" stopped every retry and deadlocked agenfold's 0.307.0 on attempt 8. The retry
+  // holds the run, so it ends that pane, which keeps two attempts from acting at once, and goes on.
   it('has the new session end a pane that still stands and go on, never stop on it', () => {
     const block = renderPriorAttemptsBlock([earlier], 2);
     expect(block).toContain('Before you push, tag, deploy or call `finish`');
