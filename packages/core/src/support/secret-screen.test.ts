@@ -2,7 +2,7 @@
 // here is an obvious fake planted for the test.
 import { FILTERED } from '@forge/observability';
 import { describe, expect, it } from 'vitest';
-import { proposalOf } from './secret-keep.js';
+import { keepScreened, proposalOf } from './secret-keep.js';
 import { filteredValues, screenAlone, scrubChatCredentials } from './secret-screen.js';
 
 const PASS = 'Fake-Pass-0042';
@@ -19,7 +19,8 @@ describe('a password under a short chat label', () => {
     [`mật mã: ${PASS}`, `mật mã: ${FILTERED}`], // i18n-allow: the label under test, ending in a letter outside ASCII
     [`MẬT MÃ là ${PASS}`, `MẬT MÃ là ${FILTERED}`], // i18n-allow: the label under test, capitals
     [`mat ma: ${PASS}`, `mat ma: ${FILTERED}`],
-    [`the password is ${PASS}.`, `the password is ${FILTERED}`],
+    [`the password is ${PASS}.`, `the password is ${FILTERED}.`],
+    [`(mk: ${PASS})`, `(mk: ${FILTERED})`],
   ])('filters the value of %s', (text, kept) => {
     expect(scrubChatCredentials(text, false)).toBe(kept);
   });
@@ -90,9 +91,44 @@ describe('ISS-1372: each filtered value, read back for the vault, and the name i
     expect(screenAlone('my email is tester@example.test').values).toEqual([]);
   });
 
+  // cleanup 10c8cdf9 (debt c586c81f): every read-back value lost a closing `.`, `)` or `]`, so
+  // `P@ss(w0rd)` was kept as `P@ss(w0rd`; the sentence's marks now stay in the text, outside the value
+  it.each([
+    ['password: P@ss(w0rd)', 'P@ss(w0rd)'],
+    ['mk: [Fake-Pass-0042]', '[Fake-Pass-0042]'],
+    [`password: ${PASS}!`, `${PASS}!`],
+    [`the password is ${PASS}.`, PASS],
+    [`(mk: ${PASS})`, PASS],
+    ['mk: P@ss(w0rd)).', 'P@ss(w0rd)'],
+    [`token: ${TOKEN}.`, TOKEN],
+  ])('keeps %s as %s, exactly the run the screen filtered', (text, value) => {
+    const kept = screenAlone(text);
+    expect(kept).toMatchObject({ secret: true, values: [value] });
+    expect(kept.text.split(FILTERED).join(value)).toBe(text);
+  });
+
   it('reads nothing where the kept text does not line up with the original', () => {
     expect(filteredValues('something else entirely', `token: ${FILTERED}`)).toEqual([]);
     expect(filteredValues('no secret here', 'no secret here')).toEqual([]);
+  });
+
+  // cleanup 10c8cdf9 (debt cabd6afd): a value read back from no run was dropped with nothing kept,
+  // and the note then blamed a missing vault key; each is now named as not kept, and why
+  it('names each value it could not read back as not kept, and keeps nothing', async () => {
+    const held = await keepScreened(
+      {} as Parameters<typeof keepScreened>[0],
+      { id: 'm-1', userId: 'u-1' },
+      { text: `token: ${FILTERED}\npassword: ${FILTERED}`, secret: true, values: [] },
+      'chat.example.test',
+    );
+    expect(held).toEqual({
+      text: `token: ${FILTERED}\npassword: ${FILTERED}`,
+      kept: [],
+      missed: [
+        { index: 0, label: 'token', why: 'unreadable' },
+        { index: 1, label: 'password', why: 'unreadable' },
+      ],
+    });
   });
 
   it.each([

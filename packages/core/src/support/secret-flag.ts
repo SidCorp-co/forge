@@ -11,8 +11,9 @@
 // the message is recorded (`secret-keep.ts`), and the note the session is handed names each entry,
 // its project, who can use it and the page where it is revoked or replaced, to say once in the same
 // reply. Nobody is asked to delete the message or rotate what it held: they chose to send it, and the
-// message is theirs. Core posts nothing (ISS-845). Where nothing could be kept, the note says why,
-// and, where the thread asked for a slot (ISS-1348), carries that slot's link and write command.
+// message is theirs. Core posts nothing (ISS-845). Each value not kept is named with why, never by
+// itself; where nothing was kept and the thread asked for a slot (ISS-1348), the note carries that
+// slot's link and write command.
 
 import { SUPPORT_KEPT_SECRET_SCOPE } from '@forge/contracts/support';
 import { and, desc, eq, gte, inArray, or, sql } from 'drizzle-orm';
@@ -21,9 +22,10 @@ import { projects } from '../db/schema-projects.js';
 import { supportActions } from '../db/schema-support.js';
 import type { RocketChatIncomingMessage } from '../integrations/rocketchat/index.js';
 import { webBaseUrl } from '../lib/web-base-url.js';
-import { type KeptEntry, slotKeyOf } from '../project-config/index.js';
+import { type KeptEntry, SECRET_VALUE_MAX, slotKeyOf } from '../project-config/index.js';
 import { threadOf } from './rules.js';
 import { againOf, openAskIn, recordAsk } from './secret-asks.js';
+import type { KeptHere, NotKept, NotKeptWhy } from './secret-keep.js';
 import { secretWriteOf } from './secret-link.js';
 import { anchorOf } from './secret-page-slots.js';
 import { slotLabelOf } from './secret-receipts.js';
@@ -193,30 +195,51 @@ function keptLine(e: KeptEntry, project: { id: string; slug: string }, who: stri
   return `"${e.label}" (${e.kind}) kept in ${project.slug}'s vault as ${e.ref}: ${use}; it is revoked or replaced on its page${page ? ` ${page}` : ` (the Secrets page of ${project.slug})`}.`;
 }
 
+/** Why a value was not kept, as the note says it. */
+const NOT_KEPT_WHY: Record<NotKeptWhy, string> = {
+  no_vault: 'this core has no vault key',
+  too_long: `it is longer than the ${SECRET_VALUE_MAX} characters a secret holds`,
+  unreadable: 'it could not be read back exactly from the message',
+  failed: 'keeping it failed',
+};
+
+/** Each value not kept, by its words and its place among the filtered ones, never by itself. */
+const missedOf = (missed: readonly NotKept[]) =>
+  missed
+    .map((n) => `"${n.label}" (filtered value ${n.index + 1}): ${NOT_KEPT_WHY[n.why]}`)
+    .join('; ');
+
 /**
  * The note on a thread's secret: what was kept, said once in this reply, and nothing asked of its
- * sender, not even a slot the thread asked for; or, where nothing was kept, why, with the door.
+ * sender, not even a slot the thread asked for; each value not kept, with why, so nobody is told Forge
+ * holds it; where nothing was kept, the door.
  */
 export function secretNote(input: {
   messageId: string;
   who: string;
-  kept: KeptEntry[];
+  held: Pick<KeptHere, 'kept' | 'missed'>;
   project: { id: string; slug: string };
   again: boolean;
   door: string | null;
 }): string {
-  const { messageId, who, kept, project, again, door } = input;
+  const { messageId, who, project, again, door } = input;
+  const { kept, missed } = input.held;
   if (kept.length > 0) {
     return [
       `Message ${messageId} from ${who} in this thread held ${kept.length === 1 ? 'a credential' : `${kept.length} credentials`}, and Forge kept ${kept.length === 1 ? 'it' : 'them'} before the message was recorded; the room's record and transcript read [Secret kept: <name>] where each stood.`,
       ...kept.map((e) => keptLine(e, project, who)),
-      'Tell the room once, in this same reply and in your own words: what was kept, under which name, for which project, who can use it, and the page where it is revoked or replaced. Then go on with what they sent it for.',
+      ...(missed.length > 0
+        ? [
+            `Not kept, so the record reads [Filtered] there and no vault holds it: ${missedOf(missed)}.`,
+          ]
+        : []),
+      `Tell the room once, in this same reply and in your own words: what was kept, under which name, for which project, who can use it, and the page where it is revoked or replaced${missed.length > 0 ? ', and what was not kept and why' : ''}. Then go on with what they sent it for.`,
       `The project's master reads it the same way; where the person wants the master to act with it, ask the master with support.ask_master naming its secret:// name, never the value.`,
       NOTHING_ASKED,
     ].join(' ');
   }
   return [
-    `Message ${messageId} from ${who} in this thread held a secret, and this core could not keep it (no vault key is set), so the room's record reads [Filtered] and nothing of it was kept.`,
+    `Message ${messageId} from ${who} in this thread held a secret, and Forge could not keep it, so the room's record reads [Filtered] and no vault holds it${missed.length > 0 ? `: ${missedOf(missed)}` : ''}.`,
     again
       ? 'This thread was already told once: say nothing more of it, and answer what the person asked.'
       : 'Say so once in this thread, in your own words.',
@@ -237,8 +260,9 @@ export async function flagSecret(
   thread: string,
   messageId: string,
   author: { key: string; label: string | null },
-  kept: KeptEntry[] = [],
+  held: Pick<KeptHere, 'kept' | 'missed'>,
 ): Promise<void> {
+  const { kept } = held;
   const who = author.label ? `@${author.label}` : `account ${author.key}`;
   const again = await toldBefore(room.id, thread, messageId, author.key);
   // once a value is kept nothing more is asked of its sender (owner, 2026-11-20): the slot's door
@@ -252,7 +276,7 @@ export async function flagSecret(
   const note = secretNote({
     messageId,
     who,
-    kept,
+    held,
     project: project ?? { id: room.projectId, slug: room.projectId },
     again,
     door,
@@ -280,6 +304,7 @@ export async function flagSecret(
       posted: false,
       told: again ? 'again' : 'first',
       kept: kept.map((e) => ({ ref: e.ref, state: e.state })),
+      missed: held.missed.map((n) => ({ index: n.index, why: n.why })),
     },
   });
 }

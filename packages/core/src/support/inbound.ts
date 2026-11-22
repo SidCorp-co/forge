@@ -27,7 +27,7 @@ import { noteRoomMessage } from './room-replies.js';
 import { ensureSupportRoom } from './rooms.js';
 import { clipMessage, limitsOf, threadOf } from './rules.js';
 import { flagSecret } from './secret-flag.js';
-import { type KeptHere, keepScreened } from './secret-keep.js';
+import { type KeptHere, keepScreened, noneKept } from './secret-keep.js';
 import { type Screened, screenAlone, screenMessage } from './secret-screen.js';
 import { addressedInGroup, groupSharers, threadHeldByAnother } from './shared-group.js';
 import {
@@ -150,8 +150,8 @@ export async function handleSupportMessage(input: {
 
 /**
  * What the screen caught, kept in the vault before anything is recorded (`secret-keep.ts`). A keep
- * that fails leaves the value filtered and kept nowhere, logged by the failure's kind alone, so no
- * line can carry what it held; the session is told it was not kept.
+ * that fails leaves each value filtered and kept nowhere, logged by the failure's kind alone, so no
+ * line can carry what it held; the session is told each was not kept because keeping it failed.
  */
 async function keepHandedOver(
   room: RoomRow,
@@ -166,7 +166,7 @@ async function keepHandedOver(
       { roomId: room.id, msgId: m.id, failure: err instanceof Error ? err.name : typeof err },
       'support: a credential handed over in a room was not kept; it stays filtered',
     );
-    return { text: screened.text, kept: [] };
+    return noneKept(screened, 'failed');
   }
 }
 
@@ -240,7 +240,7 @@ async function takeIntoRoom(
     opts: { deliver: boolean; maxChars?: number; addressed?: Addressed },
   ): Promise<boolean> => {
     const fresh = await recordInbound(room, conversation.id, thread, message, by, opts);
-    if (fresh && held) await flagSecret(room, conversation.id, thread, m.id, by, held.kept);
+    if (fresh && held) await flagSecret(room, conversation.id, thread, m.id, by, held);
     return fresh;
   };
 

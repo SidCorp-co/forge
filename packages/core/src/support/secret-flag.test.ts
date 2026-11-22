@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import type { KeptEntry } from '../project-config/index.js';
 import { secretNote } from './secret-flag.js';
+import type { NotKept } from './secret-keep.js';
 
 const PROJECT = { id: '00000000-0000-4000-8000-000000000001', slug: 'order-desk' };
 const DOOR =
@@ -27,8 +28,15 @@ const ENTRY: KeptEntry = {
   decidedAt: null,
 };
 
-const note = (kept: KeptEntry[], door: string | null) =>
-  secretNote({ messageId: 'm-1', who: '@alice', kept, project: PROJECT, again: false, door });
+const note = (kept: KeptEntry[], door: string | null, missed: NotKept[] = []) =>
+  secretNote({
+    messageId: 'm-1',
+    who: '@alice',
+    held: { kept, missed },
+    project: PROJECT,
+    again: false,
+    door,
+  });
 
 describe('the note on a secret a member sent', () => {
   it('names what was kept and asks nothing more, not even the slot the thread asked for', () => {
@@ -48,5 +56,27 @@ describe('the note on a secret a member sent', () => {
     expect(said).toContain(DOOR);
     expect(said).not.toMatch(/You may ask .* to delete|delete that message from/);
     expect(note([], null)).toContain('support.secret_link');
+  });
+
+  // cleanup 10c8cdf9 (debt cabd6afd): the note said "no vault key is set" whenever
+  // nothing was kept, though a value can be too long, unread or failed with the vault key set
+  it.each([
+    ['too_long', 'it is longer than the 16384 characters a secret holds'],
+    ['unreadable', 'it could not be read back exactly from the message'],
+    ['failed', 'keeping it failed'],
+    ['no_vault', 'this core has no vault key'],
+  ] as const)('says why a value was not kept: %s', (why, said) => {
+    const text = note([], null, [{ index: 0, label: 'password', why }]);
+    expect(text).toContain(`"password" (filtered value 1): ${said}`);
+    if (why !== 'no_vault') expect(text).not.toMatch(/vault key/);
+  });
+
+  it('names each value not kept beside the ones kept, by its words, never its value', () => {
+    const text = note([ENTRY], null, [{ index: 1, label: 'staging password', why: 'too_long' }]);
+    expect(text).toContain('"Stripe key" (key) kept in');
+    expect(text).toContain('Not kept, so the record reads [Filtered] there and no vault holds it');
+    expect(text).toContain('"staging password" (filtered value 2): it is longer than');
+    expect(text).toContain('and what was not kept and why');
+    expect(note([ENTRY], null)).not.toMatch(/Not kept|what was not kept/);
   });
 });

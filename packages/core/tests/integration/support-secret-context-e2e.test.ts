@@ -424,6 +424,15 @@ describe('ISS-1372: a credential handed over in a bound room is kept, not droppe
     expect(await entryOf(late.message)).toMatchObject({ state: 'expired' });
   });
 
+  // cleanup 10c8cdf9 (debt cabd6afd): a value too long to keep was told as "no vault key is set"
+  it('names a value too long to keep as not kept, and why (c4)', async () => {
+    w.box.model = async () => undefined;
+    const id = await say(erin, `mk: ${'Fake-Long-0042'.repeat(1200)}`);
+    await expect.poll(() => notesIn(id).length, { timeout: 15_000 }).toBe(1);
+    expect(notesIn(id)[0]?.text).toContain('"password" (filtered value 1): it is longer than');
+    expect(await flagsOf(id)).toMatchObject([{ kept: [], missed: [{ why: 'too_long' }] }]);
+  });
+
   it('holds the planted values in no row of any table, no log line and no prompt (c5)', async () => {
     const planted = [ADMIN_TOKEN, MEMBER_TOKEN, OTHER_TOKEN];
     const tables = await rows<{ t: string }>(sql`

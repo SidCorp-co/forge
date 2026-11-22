@@ -288,7 +288,7 @@ function splitClosing(value: string): { body: string; marks: string } {
  * they are the symbols a password most often ends in; a bracket closing one the value opened is the
  * value's (`[Filtered]` is scrubbed whole, so scrubbing twice changes nothing).
  */
-function closingKept(value: string): string {
+export function closingKept(value: string): string {
 	const { body, marks } = splitClosing(value);
 	// a value of closing marks alone is scrubbed whole, as a label cut off before its value is read
 	if (body === "") return "";

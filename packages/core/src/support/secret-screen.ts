@@ -9,7 +9,13 @@
 // - a key sent alone where its thread says so (ISS-1326, `secret-flag.ts:bareKeyInContext`).
 // What is filtered is the value alone: the email or the user name stays, so the thread still reads.
 
-import { containsSecret, escapeRegExp, FILTERED, scrubLogText } from '@forge/observability';
+import {
+  closingKept,
+  containsSecret,
+  escapeRegExp,
+  FILTERED,
+  scrubLogText,
+} from '@forge/observability';
 import { and, desc, eq, gte, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { supportActions } from '../db/schema-support.js';
@@ -68,16 +74,18 @@ function passwordShaped(value: string, min: number): boolean {
 
 /**
  * `text` with every chat-written credential's value filtered: a password under a short label, and,
- * where `asksLogin`, the password an email or user name is paired with. Pure: the thread's words are
- * read by the caller.
+ * where `asksLogin`, the password an email or user name is paired with. The marks closing its
+ * sentence or a bracket around it stay after `[Filtered]`, by the shared scrubber's rule
+ * (`@forge/observability:closingKept`), so the filtered run is the value exactly and a bracket it
+ * opened, as in `P@ss(w0rd)`, is the value's. Pure: the thread's words are read by the caller.
  */
 export function scrubChatCredentials(text: string, asksLogin: boolean): string {
   let out = text.replace(LABELLED, (whole, head: string, value: string) =>
-    passwordShaped(value, 4) ? `${head}${FILTERED}` : whole,
+    passwordShaped(value, 4) ? `${head}${FILTERED}${closingKept(value)}` : whole,
   );
   if (asksLogin) {
     out = out.replace(PAIR, (whole, who: string, sep: string, value: string) =>
-      passwordShaped(value, 6) ? `${who}${sep}${FILTERED}` : whole,
+      passwordShaped(value, 6) ? `${who}${sep}${FILTERED}${closingKept(value)}` : whole,
     );
   }
   return out;
@@ -138,8 +146,8 @@ export function filteredValues(original: string, kept: string): string[] {
   const re = new RegExp(`^${parts.map(escapeRegExp).join('([\\s\\S]+?)')}$`);
   const found = re.exec(original);
   if (!found) return [];
-  // a sentence's closing marks the screen took with the value are the sentence's (`passwordShaped`)
-  return found.slice(1).map((v) => v.trim().replace(/[.)\]]+$/, ''));
+  // each run is kept exactly as the screen filtered it: its closing marks stayed in the text
+  return found.slice(1).map((v) => v.trim());
 }
 
 /** A message read without its thread: the scrubber's labels, and a chat credential its own words show. */

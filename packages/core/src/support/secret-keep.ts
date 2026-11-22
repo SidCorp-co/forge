@@ -9,6 +9,7 @@ import { createHash } from 'node:crypto';
 import { SUPPORT_KEPT_SECRET_SCOPE } from '@forge/contracts/support';
 import { FILTERED } from '@forge/observability';
 import type { RocketChatIncomingMessage } from '../integrations/rocketchat/index.js';
+import { logger } from '../lib/logger.js';
 import { actorFor, can, projectResource } from '../permissions/index.js';
 import { type KeptEntry, keepChatSecret, SECRET_VALUE_MAX } from '../project-config/index.js';
 import { threadOf } from './rules.js';
@@ -89,15 +90,44 @@ export function proposalOf(
 const nameOf = (slug: string, messageId: string, index: number) =>
   `${slug}-${createHash('sha256').update(`${messageId}:${index}`).digest('hex').slice(0, 6)}`;
 
+/** Why a value the screen caught was not kept, which the note words (`secret-flag.ts:secretNote`). */
+export type NotKeptWhy = 'no_vault' | 'too_long' | 'unreadable' | 'failed';
+
+/** A value not kept, named by its place in the message and the words before it, never by itself. */
+export interface NotKept {
+  index: number;
+  label: string;
+  why: NotKeptWhy;
+}
+
 export interface KeptHere {
   text: string;
   kept: KeptEntry[];
+  /** Each value the screen caught that no vault holds, and why. */
+  missed: NotKept[];
+}
+
+const notKept = (text: string, index: number, why: NotKeptWhy): NotKept => ({
+  index,
+  label: proposalOf(text, index).label,
+  why,
+});
+
+/** Every value the screen caught, kept nowhere for `why`: the text stays `[Filtered]` where each stood. */
+export function noneKept(screened: Pick<Screened, 'text'>, why: NotKeptWhy): KeptHere {
+  const marks = screened.text.split(FILTERED).length - 1;
+  return {
+    text: screened.text,
+    kept: [],
+    missed: Array.from({ length: marks }, (_, i) => notKept(screened.text, i, why)),
+  };
 }
 
 /**
  * Each value the screen caught in `m`, kept in the room's project's vault, and the message's text with
- * `[Secret kept: <name>]` where each kept value stood. A value this core cannot keep (no vault key,
- * past the length a secret holds) stays `[Filtered]`, and the session is told it was not kept.
+ * `[Secret kept: <name>]` where each kept value stood. A value this core cannot keep stays
+ * `[Filtered]` and is named in `missed` with why: no vault key, past the length a secret holds, not
+ * read back from the message, or a keep that failed.
  */
 export async function keepScreened(
   room: RoomRow,
@@ -105,7 +135,10 @@ export async function keepScreened(
   screened: Screened,
   namespace: string,
 ): Promise<KeptHere> {
-  if (!screened.secret || screened.values.length === 0) return { text: screened.text, kept: [] };
+  const parts = screened.text.split(FILTERED);
+  if (!screened.secret || parts.length < 2) return { text: screened.text, kept: [], missed: [] };
+  // the screen read no run back for its marks (`filteredValues`): nothing is kept that is not the value
+  if (screened.values.length !== parts.length - 1) return noneKept(screened, 'unreadable');
   const sender = await senderAccount(
     { source: 'rocketchat', namespace, externalId: m.userId, label: m.username ?? null },
     room.kind === 'operations' ? undefined : room.projectId,
@@ -116,34 +149,58 @@ export async function keepScreened(
     : false;
   const label = m.username ?? null;
   const at = new Date().toISOString();
-  const parts = screened.text.split(FILTERED);
   const marks = screened.values.map(() => FILTERED);
   const kept: KeptEntry[] = [];
+  const missed: NotKept[] = [];
   for (const [index, value] of screened.values.entries()) {
-    if (value.length === 0 || value.length > SECRET_VALUE_MAX) continue;
+    const unfit: NotKeptWhy | null =
+      value.length === 0 ? 'unreadable' : value.length > SECRET_VALUE_MAX ? 'too_long' : null;
+    if (unfit) {
+      missed.push(notKept(screened.text, index, unfit));
+      continue;
+    }
     const proposal = proposalOf(screened.text, index);
-    const entry = await keepChatSecret({
-      projectId: room.projectId,
-      value,
-      record: {
-        name: nameOf(proposal.slug, m.id, index),
-        label: proposal.label,
-        kind: proposal.kind,
-        from: { chatKey: m.userId, label, userId, admin },
-        room: room.id,
-        thread: threadOf(m),
-        message: m.id,
-        at,
-        actsAs: label ? `@${label}` : `account ${m.userId}`,
-      },
-    });
-    if (!entry) continue;
+    let entry: KeptEntry | null;
+    try {
+      entry = await keepChatSecret({
+        projectId: room.projectId,
+        value,
+        record: {
+          name: nameOf(proposal.slug, m.id, index),
+          label: proposal.label,
+          kind: proposal.kind,
+          from: { chatKey: m.userId, label, userId, admin },
+          room: room.id,
+          thread: threadOf(m),
+          message: m.id,
+          at,
+          actsAs: label ? `@${label}` : `account ${m.userId}`,
+        },
+      });
+    } catch (err) {
+      // logged by the failure's kind alone, so no line can carry what it held
+      logger.error(
+        {
+          roomId: room.id,
+          msgId: m.id,
+          index,
+          failure: err instanceof Error ? err.name : typeof err,
+        },
+        'support: a credential handed over in a room was not kept; it stays filtered',
+      );
+      missed.push(notKept(screened.text, index, 'failed'));
+      continue;
+    }
+    if (!entry) {
+      missed.push(notKept(screened.text, index, 'no_vault'));
+      continue;
+    }
     kept.push(entry);
     // the value's place in the text names what it became
     marks[index] = `[Secret kept: ${entry.name}]`;
   }
   const text = parts.map((p, i) => (i === 0 ? p : `${marks[i - 1] ?? FILTERED}${p}`)).join('');
-  return { text, kept };
+  return { text, kept, missed };
 }
 
 /** The ref a kept entry is read at, as the note says it. */
