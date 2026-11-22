@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.790] - 2026-11-22
+
+Release retries no longer deadlock behind an earlier attempt's standing pane
+
+### Fixed
+
+- **Releases ship again on a box whose runner marks live jobs failed.** An attempt stops only on a cancel, and a retry ends the earlier attempt's standing session instead of waiting on it.
+
 ## [0.4.0-dev.789] - 2026-11-22
 
 Runner holds jobs whose pane still runs; cross-project findings taught the handoff door
