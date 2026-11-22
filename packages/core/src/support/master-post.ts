@@ -139,7 +139,7 @@ async function followedRoomsOf(projectId: string): Promise<Postable[]> {
 }
 
 /** An operations room every project of its home's organization shares, one thread each. */
-const isShared = (room: RoomRow) => room.kind === 'operations' && room.scope === 'forge';
+export const isShared = (room: RoomRow) => room.kind === 'operations' && room.scope === 'forge';
 
 const doorOf = (p: Postable): SessionDoor => (p.team ? 'operations-reply' : 'support-reply');
 const ridsOf = (ps: readonly Postable[]) => ps.map((p) => p.room.rid).join(', ');
@@ -161,23 +161,24 @@ async function whyUnbound(room: RoomRow): Promise<string> {
 }
 
 /** The refusal for a named room no binding of the project answers now: one it never bound, or one switched off. */
-async function roomRefusal(
+export async function roomRefusal(
   projectId: string,
   rid: string,
   rooms: readonly Postable[],
+  nothing = 'Nothing was posted.',
 ): Promise<Outcome<never>> {
   const held = (await roomsOfProject(projectId)).find((r) => r.rid === rid);
   if (held) {
     return no(
       'SUPPORT_ROOM_SWITCHED_OFF',
       '/rid',
-      `${rid} was bound to this project, but ${await whyUnbound(held)}. Nothing was posted.`,
+      `${rid} was bound to this project, but ${await whyUnbound(held)}. ${nothing}`,
     );
   }
   return no(
     'SUPPORT_ROOM_UNKNOWN',
     '/rid',
-    `${rid} is no room a binding of this project names, nor one whose binding names this project in agent.projects, nor an operations room its organization shares${rooms.length ? `; its rooms are ${ridsOf(rooms)}` : ''}. Nothing was posted.`,
+    `${rid} is no room a binding of this project names, nor one whose binding names this project in agent.projects, nor an operations room its organization shares${rooms.length ? `; its rooms are ${ridsOf(rooms)}` : ''}. ${nothing}`,
   );
 }
 
@@ -461,7 +462,7 @@ async function postAtTop(
 }
 
 /** The room of the named ones recording `thread` as the project's own thread, or null. */
-async function roomRecording(
+export async function roomRecording(
   projectId: string,
   rooms: readonly Postable[],
   rid: string | undefined,
@@ -489,6 +490,22 @@ async function sharedThreadRefusal(actor: Actor, at: Postable, thread: string): 
 }
 
 /**
+ * Every room a master's post reaches, its project's own first, and of them the rooms it only
+ * follows: a channel agent's naming it in `agent.projects` (ISS-1230), or an operations room its
+ * organization shares (ISS-1242). The thread read beside the post reaches the same (ISS-1406).
+ */
+export async function masterReach(
+  projectId: string,
+  rid: string | undefined,
+): Promise<{ rooms: Postable[]; own: Postable[]; followed: Postable[] }> {
+  const own = await postableRoomsNaming(projectId, rid);
+  const followed = (await followedRoomsOf(projectId)).filter(
+    (f) => !own.some((o) => o.room.rid === f.room.rid),
+  );
+  return { rooms: [...own, ...followed], own, followed };
+}
+
+/**
  * Posts the master's text in a room its project binds, as that room's bot: in the thread it names,
  * its project's own thread of an operations room recording one, or in the report thread of the team
  * room it names or the project's one team room, never at a top level; recorded as the master's.
@@ -497,12 +514,8 @@ export async function postAsMaster(actor: Actor, input: SupportMasterPostRequest
   await requireCan(actorFor(actor.userId), 'project.write', projectResource(actor.projectId));
   const images = await checkPostImages(actor.userId, actor.projectId, input.attachments);
   if (!images.ok) return images;
-  const own = await postableRoomsNaming(actor.projectId, input.rid);
   // a room whose binding names this project in agent.projects takes its master's posts too (ISS-1230)
-  const followed = (await followedRoomsOf(actor.projectId)).filter(
-    (f) => !own.some((o) => o.room.rid === f.room.rid),
-  );
-  const rooms = [...own, ...followed];
+  const { rooms, own, followed } = await masterReach(actor.projectId, input.rid);
   if (input.rid && !rooms.some((r) => r.room.rid === input.rid)) {
     return roomRefusal(actor.projectId, input.rid, rooms);
   }

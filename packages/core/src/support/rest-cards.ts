@@ -28,7 +28,8 @@ export const SUPPORT_REST_CARDS = {
       },
     ],
     practice: [
-      'Read the room’s open threads first, so you neither repeat nor contradict its agent.',
+      'Read the thread first (`GET …/master-posts/threads/:thread`): post only on its own matter, and nothing the room agent or another master already said.',
+      'A matter for the whole room goes in the room’s report thread, never in an asker’s thread.',
       'Attach the file to the issue first, then name its id in `attachments`.',
     ],
     example: {

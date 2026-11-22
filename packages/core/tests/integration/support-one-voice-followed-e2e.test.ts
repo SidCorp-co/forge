@@ -127,3 +127,45 @@ describe('ISS-1406: one voice in a followed channel agent group', () => {
     expect(lines(thread)).toEqual([TOLD, FOLLOWED]);
   });
 });
+
+describe('ISS-1406: a master reads the thread before it posts', () => {
+  const read = (projectId: string, thread: string, rid?: string, token = w.owner) =>
+    api(
+      token,
+      'GET',
+      `/api/projects/${projectId}/support/master-posts/threads/${thread}${rid ? `?rid=${rid}` : ''}`,
+    );
+
+  it('shows who posted what and when, the replaced answer as the post that stands, and no secret', async () => {
+    const thread = await answered('Biểu mẫu báo lỗi đã gửi đi chưa?', TOLD);
+    const posted = await post(feId, FOLLOWED, thread);
+    expect(posted.body, JSON.stringify(posted.body)).toMatchObject({ replaced: 'agent' });
+    // a member pastes the bot's own credential: the read never hands it back
+    await chat.say(chat.bob, `mã của mình là ${chat.bot.authToken}`, thread);
+    await expect
+      .poll(async () => ((await read(feId, thread)).body.posts as unknown[] | undefined)?.length)
+      .toBe(3);
+    const got = await read(feId, thread, chat.rid);
+    expect(got.status, JSON.stringify(got.body)).toBe(200);
+    expect(got.body).toMatchObject({ rid: chat.rid, thread, readers: 'users' });
+    const posts = got.body.posts as { by: string; project?: string; name?: string; text: string }[];
+    expect(posts.map((p) => [p.by, p.project ?? p.name])).toEqual([
+      ['member', expect.any(String)],
+      ['master', FE],
+      ['member', expect.any(String)],
+    ]);
+    expect(posts[1]?.text).toBe(FOLLOWED);
+    expect(JSON.stringify(got.body)).not.toContain(chat.bot.authToken);
+  });
+
+  it('refuses a room its post does not reach, and a caller who cannot post', async () => {
+    const thread = await answered('Còn trường địa chỉ?', TOLD);
+    const elsewhere = await read(feId, thread, 'not-a-room');
+    expect([elsewhere.status, JSON.stringify(elsewhere.body)]).toEqual([
+      404,
+      expect.stringContaining('Nothing was read.'),
+    ]);
+    const stranger = await read(feId, thread, chat.rid, w.stranger);
+    expect(stranger.status).toBe(403);
+  });
+});

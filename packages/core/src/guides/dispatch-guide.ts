@@ -198,6 +198,11 @@ screens the words for the room's readers and records the post as the master's.
   room every project shares, in the project's own thread its binding records. A person's own report
   thread is named with \`PUT /api/projects/:id/support/rooms/:roomId/report-thread { thread }\`.
   \`forge-runner api -i\` prints the HTTP status, to tell a 201 from a 200.
+- **Read the thread first.** \`GET /api/projects/:id/support/master-posts/threads/:thread?rid=\`
+  shows its recent posts: who (a member, the room agent, a project's master, core), when, what.
+  Post only on that thread's own matter; a matter for the whole room goes to the room's report
+  thread, never into an asker's thread. Say nothing when the room agent or another master already
+  said it. Your post replaces the bot's answer to the current request, so the thread reads one voice.
 - **Once per result.** A users' thread already told an item's result takes a post only as a
   follow-up naming the message that told it, \`followsUp\`, as the refusal
   \`SUPPORT_MASTER_POST_ALREADY_TOLD\` names it: say there only what it did not.
