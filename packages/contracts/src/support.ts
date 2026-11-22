@@ -1997,6 +1997,11 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_POST_DELETED",
 	/** The chat server would not edit or delete a master's post (ISS-1238). */
 	"SUPPORT_POST_UNCHANGED",
+	/**
+	 * An edit of a bot message whose record is not the editor's own: a report updating a room agent's
+	 * reply or a master's post, or any edit of a message core holds no record of (ISS-1417).
+	 */
+	"SUPPORT_EDIT_NOT_ITS_OWN",
 	/** A master's post was deleted, and the chat server kept one of its image or PDF messages (ISS-1238). */
 	"SUPPORT_POST_FILES_LEFT",
 	/** A promise naming an issue of a project the room does not follow (ISS-1012). */
@@ -2228,6 +2233,7 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_POST_EDIT_WINDOW_PASSED: 409,
 	SUPPORT_POST_DELETED: 409,
 	SUPPORT_POST_UNCHANGED: 503,
+	SUPPORT_EDIT_NOT_ITS_OWN: 403,
 	SUPPORT_POST_FILES_LEFT: 503,
 	SUPPORT_PROMISE_NOT_FOLLOWED: 403,
 	SUPPORT_PROMISE_ISSUE_UNKNOWN: 404,

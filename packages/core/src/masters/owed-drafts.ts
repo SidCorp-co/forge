@@ -11,11 +11,17 @@ export function carriersLine(carriers: { key: string }[]): string {
   return ` ${keys.length} draft issue${agrees(keys.length, '', 's')} ${agrees(keys.length, 'carries', 'carry')} triaged feedback and ${agrees(keys.length, 'waits', 'wait')} to be taken on (${keys.join(', ')}): nothing takes a draft on by itself, so admit each to open (\`forge-runner api issues/<id>/transition -X POST -d '{"toStatus":"open","reason":"<why>"}'\`) and work it, or drop it saying why; ${method('issue-flow')} (Take it) is how.`;
 }
 
-/** Member messages a room could not take in the last day, per room and cause (ISS-1046). */
+/**
+ * Member messages a room could not take in the last day, per room and cause (ISS-1046), and those it
+ * dropped with no turn taking them, named by thread until one is answered there (ISS-1417).
+ */
 export function unhandledRoomLine(unhandled: readonly UnhandledRoomMessages[] | undefined): string {
   if (!unhandled || unhandled.length === 0) return '';
-  const causes = unhandled.map((u) => `${u.count} in room ${u.rid}, ${u.code}`);
-  return ` A room of this project could not take member messages in the last day (${causes.join('; ')}): nothing answered them. Read each room's refused message_unhandled actions (\`forge-runner api projects/<projectId>/support/rooms/<roomId>/actions\`), fix or route the cause, and answer the people they came from in their threads.`;
+  const causes = unhandled.map(
+    (u) =>
+      `${u.count} in room ${u.rid}, ${u.code}${u.threads?.length ? ` (thread ${u.threads.join(', ')})` : ''}`,
+  );
+  return ` A room of this project could not take member messages in the last day (${causes.join('; ')}): nothing answered them. Read each room's refused message_unhandled and held_too_long actions (\`forge-runner api projects/<projectId>/support/rooms/<roomId>/actions\`), fix or route the cause, and answer the people they came from in their threads.`;
 }
 
 /** Draft requirements the intake assistant could not draft (ISS-772): the master drafts each, or drops it. */

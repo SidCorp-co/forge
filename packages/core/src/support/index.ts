@@ -48,6 +48,7 @@ export { forgeAuditTool } from './audit-tool.js';
 export { classifyCommand } from './command-class.js';
 export { projectReadBox, secretEnvOf, withoutSecrets } from './declared-read.js';
 export { mountSupportDoors } from './doors.js';
+export { droppedUnansweredOf } from './dropped-unanswered.js';
 export { forgetMemberships } from './health.js';
 export { masterAsksOf } from './master-ask.js';
 export { roomWriterUserId } from './ops-asker.js';

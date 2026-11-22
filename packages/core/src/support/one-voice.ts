@@ -21,20 +21,27 @@
 // whichever room recorded it (ISS-1406: before, a mention-only project's master posting in a thread
 // the group's own agent answered stood beside that answer).
 // Images still follow as their own messages: the chat server attaches no file to an edited post.
+// A report (a post naming `report`, such as a release check) answers no one's request: it is never
+// read as the answer to replace, never replaces one, and updates only its own earlier post
+// (ISS-1417, `report-post.ts`); every replacement goes through the edit door (`post-edit-door.ts`).
 
 import type { ProvenMessage } from '@forge/contracts/messaging';
 import { SUPPORT_MASTER_POST_EDIT_WINDOW_MS } from '@forge/contracts/support';
-import { and, desc, eq, gte, inArray, or } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, or, sql } from 'drizzle-orm';
 import { replaceSentContent } from '../conversations/index.js';
 import { db } from '../db/client.js';
 import { supportActions } from '../db/schema-support.js';
-import { editProvenReply } from '../integrations/rocketchat/index.js';
 import { no, type Outcome } from './outcome.js';
+import { type EditOutcome, editBotPost } from './post-edit-door.js';
+import { placeReport, type Report } from './report-post.js';
 import { type RoomRow, roomsOnRid } from './store.js';
-import { postInThread, roomAuth } from './thread.js';
+import { postInThread } from './thread.js';
 
 /** The tool a master's post is recorded under (`master-post.ts:TOOL`). */
 const MASTER_POST = 'master_post';
+
+/** A record that is no report: a report answers no one's request (ISS-1417). */
+export const notAReport = isNull(sql`${supportActions.input}->>'report'`);
 
 /** The bot's answer a master's post replaces, and the room whose record holds it. */
 export interface Answer {
@@ -75,7 +82,7 @@ export async function answeredSince(room: RoomRow, thread: string, since: Date):
         gte(supportActions.createdAt, since),
         or(
           and(eq(supportActions.kind, 'reply'), eq(supportActions.actorKind, 'session')),
-          and(eq(supportActions.kind, 'routed'), eq(supportActions.tool, MASTER_POST)),
+          and(eq(supportActions.kind, 'routed'), eq(supportActions.tool, MASTER_POST), notAReport),
         ),
       ),
     )
@@ -104,6 +111,8 @@ export async function answerToReplace(room: RoomRow, thread: string): Promise<An
         ),
         eq(supportActions.thread, thread),
         inArray(supportActions.kind, ['message_in', 'reply', 'routed']),
+        // a report is no answer to the current request, so one voice reads past it (ISS-1417)
+        notAReport,
       ),
     )
     .orderBy(desc(supportActions.createdAt))
@@ -130,16 +139,21 @@ export async function answerToReplace(room: RoomRow, thread: string): Promise<An
 /**
  * Replace the bot's answer with the master's screened text, in the chat and in the thread's stored
  * line, so a cold replay or a lookup by message reads what the asker reads; why it could not, where
- * it could not. Edited through the bot of the room that posted it.
+ * it could not. Edited through the bot of the room that posted it, by the edit door, which refuses
+ * by name a message that is no answer one voice replaces (ISS-1417).
  */
 export async function replaceAnswer(
   answer: Pick<Answer, 'messageId' | 'conversationId' | 'room'>,
   text: string,
   proof: ProvenMessage,
-): Promise<{ ok: true } | { ok: false; why: string }> {
-  const room = answer.room;
-  const { auth } = await roomAuth(room);
-  const out = await editProvenReply(auth, room.rid, answer.messageId, text, proof);
+): Promise<EditOutcome> {
+  const out = await editBotPost({
+    room: answer.room,
+    messageId: answer.messageId,
+    text,
+    proof,
+    editor: { kind: 'one-voice' },
+  });
   if (out.ok && answer.conversationId) {
     await replaceSentContent({
       conversationId: answer.conversationId,
@@ -154,7 +168,15 @@ type Placed = {
   messageId: string | null;
   conversationId: string | null;
   replaced: 'agent' | 'master' | null;
+  /** A report that updated its own earlier post in place, never anyone's answer (ISS-1417). */
+  updated?: true;
 };
+
+/** What a post's answer says of where it went: whose answer it replaced, or its own post updated. */
+export const placedAs = (p: Placed) => ({
+  ...(p.replaced ? { replaced: p.replaced } : {}),
+  ...(p.updated ? { updated: true as const } : {}),
+});
 
 /**
  * A master's screened post into an asker's thread, in one voice: replacing the bot's answer to the
@@ -169,7 +191,10 @@ export async function postInOneVoice(input: {
   proof: ProvenMessage;
   /** A post naming the told result it follows up on adds to it, never erasing it (ISS-872). */
   followsUp?: string | undefined;
+  /** A report replaces no one's answer: it updates only its own earlier post (ISS-1417). */
+  report?: Report | undefined;
 }): Promise<Outcome<Placed>> {
+  if (input.report) return placeReport({ ...input, report: input.report });
   const latest = await answerToReplace(input.room, input.thread);
   const answer = latest && latest.messageId !== input.followsUp ? latest : null;
   if (!answer) {
@@ -180,6 +205,11 @@ export async function postInOneVoice(input: {
   const own = answer.room.id === input.room.id ? input.conversationId : null;
   const stored = { ...answer, conversationId: answer.conversationId ?? own };
   const out = await replaceAnswer(stored, input.text, input.proof);
+  // the door refused the message as no answer of the thread's: the post stands as its next line
+  if (!out.ok && 'refused' in out) {
+    const posted = await postInThread(input);
+    return { ok: true, value: { ...posted, replaced: null } };
+  }
   if (!out.ok) {
     return no(
       'SUPPORT_POST_UNCHANGED',

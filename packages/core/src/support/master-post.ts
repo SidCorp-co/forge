@@ -36,7 +36,7 @@ import {
   postImagesAfter,
   stagePostImages,
 } from './master-post-images.js';
-import { postInOneVoice } from './one-voice.js';
+import { placedAs, postInOneVoice } from './one-voice.js';
 import { agentProjectSlugs } from './ops-scope.js';
 import { no, type Outcome } from './outcome.js';
 import { reportThreadFor } from './report-thread.js';
@@ -70,6 +70,7 @@ type Posted = Outcome<{
   attachments?: { attachmentId: string; messageId: string | null }[];
   /** Whose answer the post replaced in place, so one voice stands in the thread (ISS-1243). */
   replaced?: 'agent' | 'master';
+  updated?: true; // a report updated its own earlier post in place (ISS-1417)
 }>;
 
 /** The project a post was made for, recorded where the room is another project's (ISS-1230). */
@@ -370,6 +371,7 @@ async function postInNamedThread(
     conversationId,
     ...admitted.value,
     followsUp: input.followsUp,
+    report: input.report ? { key: input.report, projectId: actor.projectId } : undefined,
   });
   if (!placed.ok) return placed;
   const posted = placed.value;
@@ -388,6 +390,7 @@ async function postInNamedThread(
       ...forOf(actor, room),
       ...recordedImages(shown.posted),
       ...(posted.replaced ? { replaced: posted.replaced } : {}),
+      ...(input.report ? { report: input.report } : {}),
     },
     externalId: posted.messageId,
   });
@@ -398,7 +401,7 @@ async function postInNamedThread(
       rid: room.rid,
       messageId: posted.messageId,
       thread: input.thread,
-      ...(posted.replaced ? { replaced: posted.replaced } : {}),
+      ...placedAs(posted),
       ...answeredImages(shown.posted),
     },
   };

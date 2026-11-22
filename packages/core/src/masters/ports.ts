@@ -7,12 +7,16 @@ import type { ReleaseEndedRunHold } from '@forge/contracts/releases';
 import type { StandingSubject, StandingSubjectKind } from '@forge/contracts/steward';
 import { portSlot } from '../lib/port-slot.js';
 
-/** Member messages one room could not take, for one cause (ISS-1046). */
+/**
+ * Member messages one room could not take, for one cause (ISS-1046), or dropped with no turn taking
+ * them (`HELD_TOO_LONG`, ISS-1417), with the threads they wait in where known.
+ */
 export interface UnhandledRoomMessages {
   rid: string;
   code: string;
   count: number;
   lastAt: string;
+  threads?: string[];
 }
 
 /** A room agent's ask waiting on this master (ISS-1243): its wait, and whether past the bound. */

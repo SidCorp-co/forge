@@ -15,7 +15,7 @@ import { z } from 'zod';
 import { replaceSentContent } from '../conversations/index.js';
 import { db } from '../db/client.js';
 import { supportActions } from '../db/schema-support.js';
-import { deleteRoomMessage, editProvenReply } from '../integrations/rocketchat/index.js';
+import { deleteRoomMessage } from '../integrations/rocketchat/index.js';
 import { refused } from '../lib/refusal.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { invalid, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
@@ -24,6 +24,7 @@ import { askerOf, mentionRefusal } from './channel.js';
 import { readersOf } from './grants.js';
 import { TOOL } from './master-post.js';
 import { no, type Outcome } from './outcome.js';
+import { editBotPost } from './post-edit-door.js';
 import { roomIsBound } from './rooms.js';
 import { screenForThread } from './screen.js';
 import { type ActionRow, insertAction, type RoomRow, roomById } from './store.js';
@@ -206,15 +207,15 @@ export async function editMasterPost(
     top ? post.thread : null,
   );
   if (!admitted.ok) return admitted;
-  const { auth } = await roomAuth(room);
-  const out = await editProvenReply(
-    auth,
-    room.rid,
+  // the edit door reads the message's record again: a post another voice has since replaced is not its own
+  const out = await editBotPost({
+    room,
     messageId,
-    admitted.value.text,
-    admitted.value.proof,
-  );
-  if (!out.ok) return unchanged(messageId, room, 'edit', out.why);
+    text: admitted.value.text,
+    proof: admitted.value.proof,
+    editor: { kind: 'own-post', projectId: actor.projectId, by: actor.userId },
+  });
+  if (!out.ok) return 'refused' in out ? out.refused : unchanged(messageId, room, 'edit', out.why);
   // the thread's stored line reads as the room does, so a replay reads the edited words
   if (post.conversationId) {
     await replaceSentContent({

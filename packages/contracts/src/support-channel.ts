@@ -501,6 +501,13 @@ export const supportMasterPostRequestSchema = z.strictObject({
 	 * so a post repeating what the asker was told is never sent by default.
 	 */
 	followsUp: z.string().trim().min(1).max(100).optional(),
+	/**
+	 * The report this post is, such as the release it checks (`release 0.310.0`), ISS-1417. A report
+	 * answers no one's request, so it never replaces a room agent's reply or a master's post: it
+	 * updates in place only this project's own earlier post of the same report in the same thread,
+	 * within the edit window, and otherwise posts a new message.
+	 */
+	report: z.string().trim().min(1).max(100).optional(),
 });
 export type SupportMasterPostRequest = z.infer<
 	typeof supportMasterPostRequestSchema

@@ -207,6 +207,10 @@ screens the words for the room's readers and records the post as the master's.
 - **Once per result.** A users' thread already told an item's result takes a post only as a
   follow-up naming the message that told it, \`followsUp\`, as the refusal
   \`SUPPORT_MASTER_POST_ALREADY_TOLD\` names it: say there only what it did not.
+- **A report is not an answer.** A post in a thread replaces the bot's answer to the asker's current
+  request, so one voice stands. A release check or any other report names itself, \`report\`
+  (\`"report":"release 0.310.0"\`): it replaces nobody's answer, updates in place only your own
+  earlier post of that report in that thread within 30 minutes, and otherwise posts a new message.
 - **Images or a PDF.** \`attachments\` names up to four Forge uploads as \`{ target: issue | comment |
   session, attachmentId }\`: attach the file to the issue first
   (\`POST /api/issues/:id/attachments\`), then name the id it answers. Each is a png, jpeg, gif or

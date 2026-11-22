@@ -60,8 +60,9 @@ clip's still or a shot), the three leading lines, the criteria count, up to thre
 page's link, and \`visualsOwed\` (developer view) the screen lines no judge marked: each is a
 screen nobody showed in a box (${guideRef('boxes')}), so fix the brief or guide its builder and
 judge read, never refuse the work. Post it in the
-project's thread with \`support/master-posts\`, \`attachments: card.attachments\`, in your own words and
-the owner's language: the cover's line first, the three lines, the count, the link.
+project's thread with \`support/master-posts\`, \`attachments: card.attachments\` and
+\`report: "release <version>"\`, in your own words and the owner's language: the cover's line first,
+the three lines, the count, the link. Without \`report\` the post replaces the agent's latest answer.
 
 **An outside call proven only against a simulation is not ready for the approval ask.** A release
 page line reading Simulated ran its send against a mock. First ask for the provider's test or

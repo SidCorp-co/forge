@@ -19,8 +19,13 @@ export const SUPPORT_REST_CARDS = {
       },
       {
         when: 'a release you watched go live is to be told in the project’s thread',
-        do: 'post its page’s `card`: your own words in the owner’s language, `attachments: card.attachments`',
+        do: 'post its page’s `card`: your own words in the owner’s language, `attachments: card.attachments`, `report: "release <version>"`',
         watch: 'the cover and shots are the judges’ marks; pick no file of your own',
+      },
+      {
+        when: 'a release check or other report goes in a thread',
+        do: 'name it with `report`: it updates only your own earlier post of that report',
+        watch: 'without `report` the post replaces the agent’s latest answer there',
       },
       {
         when: 'that thread was already told the item’s result',

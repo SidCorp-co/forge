@@ -155,6 +155,7 @@ import {
 import { acceptGateOf } from './suggestions/index.js';
 import {
   classifyCommand,
+  droppedUnansweredOf,
   masterAsksOf,
   projectReadBox,
   secretEnvOf,
@@ -290,9 +291,17 @@ async function liveChecksOwed(projectId: string) {
   return { checks, judging: project ? judgingEnvironmentOf(project.document) : null, questioned };
 }
 
-/** Member messages a room could not take in the last day (ISS-1046). */
-const unhandledRoomMessagesOwed = (projectId: string) =>
-  unhandledMessagesOf(projectId, new Date(Date.now() - 24 * 60 * 60_000));
+/**
+ * Member messages a room could not take in the last day (ISS-1046), and the owner's or bot-named
+ * messages it dropped with no turn taking them and nobody answering since (ISS-1417).
+ */
+const unhandledRoomMessagesOwed = async (projectId: string) => {
+  const since = new Date(Date.now() - 24 * 60 * 60_000);
+  return [
+    ...(await unhandledMessagesOf(projectId, since)),
+    ...(await droppedUnansweredOf(projectId, since)),
+  ];
+};
 
 /** The questions a box asks for its master. */
 const deviceQuestions = {

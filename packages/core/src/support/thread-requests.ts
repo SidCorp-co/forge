@@ -1,6 +1,6 @@
 // What a channel agent's thread owes: whether a request in it has no result yet (REQ-77 BC-8).
 
-import { and, desc, eq, or, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { supportActions } from '../db/schema-support.js';
 
@@ -26,13 +26,18 @@ export async function unansweredInThread(roomId: string, thread: string): Promis
     .select({ at: supportActions.createdAt })
     .from(supportActions)
     // a master's post in the thread is its result too: one voice per thread (ISS-1243, `one-voice.ts`),
-    // and so is a reply in another thread that named this thread's request (ISS-1314)
+    // and so is a reply in another thread that named this thread's request (ISS-1314); a report
+    // (a release check) answers no request, so the room agent still owes its result (ISS-1417)
     .where(
       and(
         inThread,
         or(
           eq(supportActions.kind, 'reply'),
-          and(eq(supportActions.kind, 'routed'), eq(supportActions.tool, 'master_post')),
+          and(
+            eq(supportActions.kind, 'routed'),
+            eq(supportActions.tool, 'master_post'),
+            isNull(sql`${supportActions.input}->>'report'`),
+          ),
           and(eq(supportActions.kind, 'routed'), eq(supportActions.tool, ANSWERED_ELSEWHERE)),
         ),
       ),
