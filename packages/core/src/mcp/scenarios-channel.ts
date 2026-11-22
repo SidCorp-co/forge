@@ -22,6 +22,13 @@ const EPOD = 'epod FB-774, 2026-11-19 08:48Z (ISS-1360)';
 const EPOD_BAD =
   'could not address it: channel.draft took `to` only as a project uuid, projects.list showed only epod, and GET /api/ecosystems/<id> was refused PAT_ACCOUNT_ROUTE';
 
+/** adminhub-api's agent, FB-818 (2026-11-22 07:13Z), the source of ISS-1409. */
+export const NO_CONTRACT = 'adminhub-api FB-818, 2026-11-22 07:13Z (ISS-1409)';
+export const NO_CONTRACT_SITUATION =
+  'An agent working adminhub-api ISS-262 finds eco-catalog-api-mysql-1 on the shared box still running with binlog on: another project’s part, under no contract';
+export const NO_CONTRACT_BAD =
+  'change-request requires body.contract as project/contract and rfi references[{contract, element}], so there is no valid way to send infrastructure work with no contract; sending it means inventing a contract name';
+
 export const CHANNEL_SCENARIOS: readonly CardScenario[] = [
   {
     name: 'a pass nudged with channel documents owed, each worked before it ends',
@@ -77,6 +84,19 @@ export const CHANNEL_SCENARIOS: readonly CardScenario[] = [
     bad: EPOD_BAD,
     good: 'read members, and draft to the project by its slug',
     teaches: [/read members, and put its slug in to/i, /CHANNEL_TO_NOT_MEMBER/],
+  },
+  {
+    name: 'a defect in another project’s part outside any contract, handed off, never a contract invented: FB-818',
+    card: 'channel.draft',
+    source: NO_CONTRACT,
+    situation: NO_CONTRACT_SITUATION,
+    bad: NO_CONTRACT_BAD,
+    good: 'hand the finding to that project’s intake through the handoff door; no change request, no invented contract',
+    teaches: [
+      /as a handoff \(POST \/api\/projects\/:id\/channel\/handoffs\)/i,
+      /never under an invented contract/i,
+      /DOCUMENT_CONTRACT_MISSING/,
+    ],
   },
   {
     name: 'a first change request addressed by the member’s slug, read from members: ISS-1360',

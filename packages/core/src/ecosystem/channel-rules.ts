@@ -281,5 +281,5 @@ export function parseChannelDocument(raw: unknown): Checked<ChannelDocument> {
   const parsed = parseVersionedDocument(documentSchema, raw, 'channel');
   return parsed.ok
     ? { ok: true, value: parsed.value }
-    : { ok: false, refusals: renameDocumentParseRefusals(parsed.refusals) };
+    : { ok: false, refusals: renameDocumentParseRefusals(parsed.refusals, raw) };
 }

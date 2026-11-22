@@ -192,7 +192,9 @@ describe('the texts an agent reads give each finding its place', () => {
       // ISS-1248 (epod L-25, L-30): confirm a missing capability, then one change request per capability
       '| A capability the product lacks, met mid-task',
       'confirm the need first (the task needs it and nothing that exists does it)',
-      'one change request per capability to the project that builds it (`channel.draft`), naming each interface missing it (admin, MCP, CLI), or the CLI alone where only the CLI lacks it',
+      'one request per capability to the project that builds it, a change request (`channel.draft`) under a contract the two share, else a handoff (`channel/handoffs`), naming each interface missing it (admin, MCP, CLI), or the CLI alone where only the CLI lacks it',
+      // ISS-1409 (FB-818): a change request needs a contract; a finding outside every contract is a handoff
+      'in another project’s part, a finding goes as a handoff (`channel/handoffs`) and a part to build under a contract the two share as a change request (`channel.draft`)',
       'a workaround around the product (a raw API call, an outside rule) before the need is confirmed and requested',
     ]) {
       expect(affordances).toContain(row);

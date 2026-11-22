@@ -257,6 +257,13 @@ export const CARDS = {
         watch:
           'a name outside members is refused CHANNEL_TO_NOT_MEMBER, which lists who you may address',
       },
+      // FB-818 (ISS-1409): a change request and an RFI need a contract; a finding under none is a handoff
+      {
+        when: 'you found something in another project’s part that no contract covers (a defect, shared test infrastructure, ops)',
+        do: 'hand it to that project’s intake as a handoff (POST /api/projects/:id/channel/handoffs), never under an invented contract',
+        watch:
+          'a change request or RFI naming no contract is refused DOCUMENT_CONTRACT_MISSING, which names that door',
+      },
     ],
     practice: [
       'An answer to a document is reply, not draft: it carries inReplyTo.',
@@ -278,6 +285,7 @@ export const CARDS = {
       'an RFI answered with reply, a new draft kept for a new document',
       "an API issue's UI part sent to its sibling as a change request, never left to a person: ISS-1279",
       'a first change request drafted to the member’s slug, never a guessed uuid: ISS-1360',
+      'a defect in another project’s part outside any contract, handed off, never a contract invented: FB-818',
     ],
   },
   members: {

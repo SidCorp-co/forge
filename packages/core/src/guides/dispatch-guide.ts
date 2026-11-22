@@ -73,8 +73,9 @@ a priority, a \`complexity\` (\`PATCH /api/issues/:id\`), a reading as a comment
 An issue is one verifiable outcome and its size is no reason to split it: the run splits and groups
 the work inside it. A part becomes an issue of its own only for priority, a handoff or independent
 tracking, filed with a \`blocks\` edge in its create. A part another project builds is handed to it
-as a change request through the ecosystem channel, never filed there and never handed to a person
-(the \`forge-master\` guide, *A part another project builds*).
+as a change request through the ecosystem channel under a contract the two share, and a finding in
+its part outside any contract as a handoff (\`…/channel/handoffs\`), never filed there and never
+handed to a person (the \`forge-master\` guide, *A part another project builds*).
 
 ### 4. Batch by files
 A wave takes every issue it may, and an issue that arrives while it runs joins it; the records catch

@@ -356,7 +356,7 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
       // ISS-1248: epod L-25, L-30 — agents reported or worked around a store capability before confirming the need
       {
         when: 'A capability the product lacks, met mid-task (a command, page or tool that is not there)',
-        do: 'confirm the need first (the task needs it and nothing that exists does it); then one change request per capability to the project that builds it (`channel.draft`), naming each interface missing it (admin, MCP, CLI), or the CLI alone where only the CLI lacks it',
+        do: 'confirm the need first (the task needs it and nothing that exists does it); then one request per capability to the project that builds it, a change request (`channel.draft`) under a contract the two share, else a handoff (`channel/handoffs`), naming each interface missing it (admin, MCP, CLI), or the CLI alone where only the CLI lacks it',
         watch:
           'a workaround around the product (a raw API call, an outside rule) before the need is confirmed and requested',
         for: ['master', 'run', 'bot'],
@@ -435,7 +435,7 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     situations: [
       {
         when: 'A defect your fix needs, to bound its impact or prove itself',
-        do: 'fix it there, and say so under `Extra fixes:`; out of reach, a comment on the issue that owns it, a `blocks` edge or `needs_info`; a part another project builds, a change request to it through the ecosystem channel (`channel.draft`), never a person carrying it',
+        do: 'fix it there, and say so under `Extra fixes:`; out of reach, a comment on the issue that owns it, a `blocks` edge or `needs_info`; in another project’s part, a finding goes as a handoff (`channel/handoffs`) and a part to build under a contract the two share as a change request (`channel.draft`), never a person carrying it',
         watch: 'a defect nobody owns',
       },
     ],
@@ -454,6 +454,7 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     scenarios: [
       'a standalone defect left in an issue comment, recorded nowhere',
       "another project's part handed to a person while a channel links the two: ISS-1279",
+      'a defect in another project’s part outside any contract, sent as a change request: FB-818',
     ],
   }),
 ];

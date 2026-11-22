@@ -34,6 +34,8 @@ export type LinkRefusalCode = (typeof LINK_REFUSAL_CODES)[number];
 
 export const CHANNEL_REFUSAL_CODES = [
 	"DOCUMENT_TYPE_UNKNOWN",
+	/** A change request or an RFI names no contract; the refusal names the handoff door for work outside any contract (ISS-1409). */
+	"DOCUMENT_CONTRACT_MISSING",
 	"DOCUMENT_TYPE_IMMUTABLE",
 	"DOCUMENT_STATE_NOT_ALLOWED",
 	"MEMBERSHIP_NOT_ACTIVE",

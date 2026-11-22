@@ -4,7 +4,13 @@
 // names it. Times are UTC.
 
 import type { CardScenario } from '../lessons/index.js';
-import { SIBLING, SIBLING_BAD } from './scenarios-channel.js';
+import {
+  NO_CONTRACT,
+  NO_CONTRACT_BAD,
+  NO_CONTRACT_SITUATION,
+  SIBLING,
+  SIBLING_BAD,
+} from './scenarios-channel.js';
 
 const WINDOW = 'forge door use, 2026-10-17..11-16';
 
@@ -27,9 +33,18 @@ export const DELIVERY_SCENARIOS: readonly CardScenario[] = [
     bad: SIBLING_BAD,
     good: 'send that project a change request through the ecosystem channel; no person carries it',
     teaches: [
-      /a change request to it through the ecosystem channel/i,
+      /a part to build under a contract the two share as a change request \(`channel\.draft`\)/i,
       /never a person carrying it/i,
     ],
+  },
+  {
+    name: 'a defect in another project’s part outside any contract, sent as a change request: FB-818',
+    card: 'POST /api/issues/:id/comments',
+    source: NO_CONTRACT,
+    situation: NO_CONTRACT_SITUATION,
+    bad: NO_CONTRACT_BAD,
+    good: 'hand the finding to that project’s intake as a handoff; a change request only for a part under a shared contract',
+    teaches: [/a finding goes as a handoff \(`channel\/handoffs`\)/i],
   },
   {
     name: 'a steward note saying more than the item’s standing: STEWARD_NOTE_CONTRADICTS',

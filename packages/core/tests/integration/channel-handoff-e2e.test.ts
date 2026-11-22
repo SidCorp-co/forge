@@ -10,6 +10,7 @@
  * @direct-test-of packages/core/src/ecosystem/channel-handoff.ts
  * @direct-test-of packages/core/src/ecosystem/channel-routes.ts
  * @direct-test-of packages/core/src/feedback/handoff.ts
+ * @direct-test-of packages/core/src/ecosystem/refusals.ts
  */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -246,5 +247,98 @@ describe('a handoff no channel carries is refused by name, with nothing written'
     expect(slug.json.detail).toContain(`GET /api/projects/${w.project.forge}/ecosystems lists`);
     expect(slug.json.detail).toContain('`peers[].project.id`');
     expect(await pluginFeedbackCount()).toBe(before);
+  });
+});
+
+// ISS-1409 (FB-818): adminhub-api's agent found a defect in another project's part that no contract
+// covers (a shared MySQL left with binlog on) and was taught channel.draft, whose change request and
+// RFI need a contract; the schema's refusal named no other door, so it read "invent a contract".
+describe('a change request or RFI naming no contract is refused naming the handoff door, and that call is taken', () => {
+  const ask = {
+    need: 'Turn binlog off on the shared test MySQL the drive jobs write to.',
+    rationale: 'Its binlog fills the shared box’s disk.',
+    impactIfDeclined: 'The shared box runs out of disk and every test there fails.',
+    urgency: 'normal',
+  };
+  const draft = (type: string, body: Record<string, unknown>) =>
+    say('masterForge', 'POST', `/api/projects/${w.project.forge}/channel/drafts`, {
+      ecosystem: w.eco,
+      type,
+      to: [w.project.plugin],
+      subject: 'The shared test MySQL runs with binlog on',
+      body,
+    });
+  const refusalsOf = (r: Reply) => {
+    expect(r.status, JSON.stringify(r.json)).toBeGreaterThanOrEqual(400);
+    return r.json.error.refusals as { code: string; path: string; detail: string }[];
+  };
+  it('refuses a change request with no contract, or a blank one, by name, naming the handoff door', async () => {
+    for (const body of [ask, { ...ask, contract: '' }, { ...ask, contract: '  ' }]) {
+      const [refusal] = refusalsOf(await draft('change-request', body));
+      expect([refusal?.code, refusal?.path], JSON.stringify(body)).toEqual([
+        'DOCUMENT_CONTRACT_MISSING',
+        '/body/contract',
+      ]);
+      expect(refusal?.detail).toContain(`POST /api/projects/${w.project.forge}/channel/handoffs`);
+      expect(refusal?.detail).toContain('outside any contract');
+    }
+  });
+
+  it('refuses an RFI with no reference, or a reference naming no contract, the same way', async () => {
+    const question = { question: 'Is binlog on for a reason?', reason: 'It fills the disk.' };
+    for (const [references, path] of [
+      [undefined, '/body/references'],
+      [[], '/body/references'],
+      [[{ element: 'binlog' }], '/body/references/0/contract'],
+    ] as const) {
+      const [refusal] = refusalsOf(await draft('rfi', { ...question, references }));
+      expect([refusal?.code, refusal?.path]).toEqual(['DOCUMENT_CONTRACT_MISSING', path]);
+      expect(refusal?.detail).toContain(`/api/projects/${w.project.forge}/channel/handoffs`);
+    }
+  });
+
+  it('keeps a malformed contract a schema refusal, and a change notice naming none is no handoff case', async () => {
+    const [malformed] = refusalsOf(await draft('change-request', { ...ask, contract: 'binlog' }));
+    expect(malformed?.code).toBe('SCHEMA_VIOLATION');
+    const notice = refusalsOf(
+      await draft('change-notice', { summary: 'binlog', changes: [], migration: 'none' }),
+    );
+    expect(notice.map((r) => r.code)).not.toContain('DOCUMENT_CONTRACT_MISSING');
+  });
+
+  it('following the refusal’s advice, the handoff with the sending item and no contract files feedback in the receiving project', async () => {
+    const [refusal] = refusalsOf(await draft('change-request', ask));
+    const advised = /POST (\/api\/projects\/[0-9a-f-]{36}\/channel\/handoffs)/.exec(
+      refusal?.detail ?? '',
+    )?.[1];
+    expect(advised, refusal?.detail).toBe(`/api/projects/${w.project.forge}/channel/handoffs`);
+    const issue = status(
+      await say('masterForge', 'POST', `/api/projects/${w.project.forge}/issues`, {
+        title: 'The drive job tests write to the shared MySQL',
+        description: 'The integration tests of the drive job use the shared test MySQL.',
+      }),
+      201,
+    );
+    const before = await pluginFeedbackCount();
+    const found = {
+      kind: 'bug',
+      title: 'The shared test MySQL runs with binlog on',
+      whereSeen: 'shared box, MySQL eco-catalog-api-mysql-1',
+    };
+    const handed = status(
+      await say('masterForge', 'POST', advised as string, {
+        to: w.project.plugin,
+        item: issue.displayId,
+        ...found,
+      }),
+      201,
+    ).handoff;
+    expect(await pluginFeedbackCount()).toBe(before + 1);
+    const fb = await pluginFeedback(handed.to.feedback.key);
+    expect(fb).toMatchObject({ kind: 'bug', title: found.title });
+    expect(fb.origin).toMatchObject({
+      project: { id: w.project.forge, slug: 'forge' },
+      issue: { id: issue.id, key: issue.displayId },
+    });
   });
 });
