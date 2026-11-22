@@ -11,8 +11,9 @@
  * the product. The answer names the item and the reporter.
  *
  * Reading (ISS-1287) answers where an item the product filed stands, its phase and its row's chip,
- * read by `read.ts:summaryOfFiled`, the reader the project's own feedback page reads it with. An item
- * another reporter filed is refused `FEEDBACK_SERVER_KEY_NOT_ITS_FILING`; nothing else is read back.
+ * read by `read.ts:filedReadOf`, the reader the project's own feedback page reads it with, and on a
+ * declined item the reason its decline wrote for the reporter (ISS-1412). An item another reporter
+ * filed is refused `FEEDBACK_SERVER_KEY_NOT_ITS_FILING`; nothing else is read back.
  */
 
 import {
@@ -25,16 +26,18 @@ import {
   FEEDBACK_SERVER_KEY_FILINGS_PER_HOUR,
   type FeedbackServerKeyFiledResponse,
   type FeedbackServerKeyReadResponse,
+  feedbackServerKeyReadResponseSchema,
 } from '@forge/contracts/feedback-server-keys';
-import { type Context, Hono } from 'hono';
+import { type Context, Hono, type MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { refused } from '../lib/refusal.js';
 import { readServerKeyBearer, serverKeyScopeRefusal } from '../middleware/bearer.js';
+import { declareResponse } from '../middleware/declared-response.js';
 import { consumeRateLimit } from '../middleware/rate-limit.js';
 import { strictBody } from '../middleware/zod-validator.js';
-import { rowIn, summaryOfFiled } from './read.js';
+import { filedReadOf, rowIn } from './read.js';
 import { filedFeedbackKey, serverKeyClosed, serverKeyOf, touchServerKey } from './server-keys.js';
 import { fileFeedback } from './service.js';
 
@@ -127,10 +130,13 @@ async function readWithServerKey(c: Context, token: string, ref: string): Promis
       `${feedbackKey(row.fbSeq)} was filed by another reporter; server key ${key.prefix}… reads only the items ${key.product} filed`,
     );
   }
-  const summary = await summaryOfFiled({ userId: key.accountId, agency: 'agent' }, row);
+  const { summary, declineReason } = await filedReadOf(
+    { userId: key.accountId, agency: 'agent' },
+    row,
+  );
   await touchServerKey(key.id, now);
   const body: FeedbackServerKeyReadResponse = {
-    feedback: { key: summary.key, phase: summary.phase, chip: summary.chip },
+    feedback: { key: summary.key, phase: summary.phase, chip: summary.chip, declineReason },
   };
   return c.json(body);
 }
@@ -148,7 +154,7 @@ feedbackServerKeyDoor.use('/:id/feedback', async (c, next) => {
 });
 
 // one segment only: `…/feedback/:fb/similar` and the like pass on, and `bearer.ts` refuses them
-feedbackServerKeyDoor.use('/:id/feedback/:fb', async (c, next) => {
+const readDoor: MiddlewareHandler = async (c, next) => {
   const token = readServerKeyBearer(c);
   if (token === null) return next();
   const ref = c.req.param('fb') ?? '';
@@ -158,4 +164,17 @@ feedbackServerKeyDoor.use('/:id/feedback/:fb', async (c, next) => {
     );
   }
   return readWithServerKey(c, token, ref);
-});
+};
+
+// the published contract carries this answer, so a product can pin the version that has its fields
+feedbackServerKeyDoor.use(
+  '/:id/feedback/:fb',
+  declareResponse(readDoor, {
+    method: 'GET',
+    status: 200,
+    under: 'a feedback server key (Authorization: Bearer fsk_…), on an item its product filed',
+    description:
+      'where the item stands, its phase and its row chip as the project feedback page reads them, and on a declined item the reason its decline wrote for the reporter (ISS-1287, ISS-1412).',
+    schema: feedbackServerKeyReadResponseSchema,
+  }),
+);

@@ -2,10 +2,11 @@
 // `project.admin` mints it, person or agent; the secret is shown once and kept as its SHA-256. The key
 // admits `POST /api/projects/:id/feedback` on that project, rate-limited per key, and every item it
 // files names the product as its reporter. It reads back where an item its product filed stands
-// (`GET /api/projects/:id/feedback/:fb`, ISS-1287) and nothing else.
+// (`GET /api/projects/:id/feedback/:fb`, ISS-1287), with a declined item's reason (ISS-1412), and
+// nothing else.
 
 import { z } from "zod";
-import type { FeedbackPhase, FeedbackRowChip } from "./feedback.js";
+import { FEEDBACK_PHASES, FEEDBACK_ROW_CHIPS } from "./feedback.js";
 import type { RefusalStatuses } from "./refusal.js";
 
 /** The secret: this prefix and 43 base64url characters (256 random bits). */
@@ -71,11 +72,26 @@ export interface FeedbackServerKeyFiledResponse {
 
 /**
  * `GET …/feedback/:fb` under a server key, on an item its product filed: where it stands, read by the
- * reader the project's own feedback page reads it with: its phase and the one word its row's chip says.
+ * reader the project's own feedback page reads it with: its phase and the one word its row's chip says,
+ * and on a declined item the reason its decline wrote for the reporter (ISS-1412). Nothing else of the
+ * item: no other decision, note, message or who decided.
  */
-export interface FeedbackServerKeyReadResponse {
-	feedback: { key: string; phase: FeedbackPhase; chip: FeedbackRowChip };
-}
+export const feedbackServerKeyReadResponseSchema = z.strictObject({
+	feedback: z.strictObject({
+		key: z.string().describe("The item's key, FB-n."),
+		phase: z.enum(FEEDBACK_PHASES),
+		chip: z.enum(FEEDBACK_ROW_CHIPS),
+		declineReason: z
+			.string()
+			.nullable()
+			.describe(
+				"Where phase is declined, the reason the decline wrote for its reporter (a duplicate reads its original's); null in every other phase, and where the project's data policy (no_egress) keeps decision reasons from every agent.",
+			),
+	}),
+});
+export type FeedbackServerKeyReadResponse = z.infer<
+	typeof feedbackServerKeyReadResponseSchema
+>;
 
 export const FEEDBACK_SERVER_KEY_REFUSAL_CODES = [
 	"FEEDBACK_SERVER_KEY_REFUSED",

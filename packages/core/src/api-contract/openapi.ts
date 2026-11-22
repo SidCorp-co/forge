@@ -2,6 +2,7 @@ import { COMPOSED_HANDLER } from 'hono/utils/constants';
 import { z } from 'zod';
 import { AUTH_GATES, type AuthGate, declaredGates } from '../middleware/declared-gate.js';
 import { type DeclaredPermission, declaredPermissions } from '../middleware/declared-permission.js';
+import { type DeclaredResponse, declaredResponses } from '../middleware/declared-response.js';
 import {
   type DeclaredInput,
   type DeclaredRawBody,
@@ -9,6 +10,7 @@ import {
   declaredRawBodies,
 } from '../middleware/zod-validator.js';
 import { COMPONENTS } from './components.js';
+import { answeredAt, declaredAnswers, UNDECLARED_RESPONSE } from './declared-answers.js';
 import { permissionField, undeclaredPermission } from './declared-permission-field.js';
 import {
   OPEN_QUERY_READS,
@@ -25,8 +27,7 @@ type Operation = Record<string, unknown>;
 
 type ApiContract = { document: JsonSchema; operations: number; refusals: string[] };
 
-export const UNDECLARED_RESPONSE =
-  'Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers.';
+export { UNDECLARED_RESPONSE };
 
 const INPUT_TARGETS = ['json', 'form', 'param', 'query'] as const;
 
@@ -156,12 +157,15 @@ function refinementsOf(checks: unknown[] | undefined): string[] {
 // zod describes a coerced input by the type it coerces to (z.coerce.number() is
 // `number`), so a coerced date is the string form JSON and a URL can carry; every other type
 // z.toJSONSchema cannot represent is refused rather than widened to `{}`.
-function jsonSchemaOf(input: DeclaredInput): JsonSchema | string {
+function jsonSchemaOf(
+  input: Pick<DeclaredInput, 'schema'>,
+  io: 'input' | 'output' = 'input',
+): JsonSchema | string {
   if (!('_zod' in input.schema))
     return 'a schema that is not zod 4, which z.toJSONSchema cannot read';
   const unrepresentable = new Set<string>();
   const { $schema: _dialect, ...schema } = z.toJSONSchema(input.schema, {
-    io: 'input',
+    io,
     unrepresentable: 'any',
     override: (ctx) => {
       const def = ctx.zodSchema._zod.def as { type: string; coerce?: boolean; checks?: unknown[] };
@@ -300,6 +304,7 @@ function describe(shape: PathShape, endpoint: Endpoint): Described {
     ...permission.field,
     'x-forge-validated': INPUT_TARGETS.filter((t) => schemas.has(t)),
     responses: {
+      ...declaredAnswers(endpoint.responses, refusals, (r) => jsonSchemaOf(r, 'output')),
       '4XX': { $ref: '#/components/responses/Problem' },
       '5XX': { $ref: '#/components/responses/Problem' },
       default: { description: UNDECLARED_RESPONSE },
@@ -331,6 +336,7 @@ function describe(shape: PathShape, endpoint: Endpoint): Described {
 type Endpoint = {
   method: string;
   path: string;
+  responses: DeclaredResponse[];
   inputs: DeclaredInput[];
   raws: DeclaredRawBody[];
   gates: AuthGate[];
@@ -358,6 +364,7 @@ function endpointsOf(routes: MountedRoute[], refusals: string[]): Endpoint[] {
     const endpoint = byKey.get(key) ?? {
       method: route.method,
       path: route.path,
+      responses: [],
       inputs: [],
       raws: [],
       gates: [],
@@ -370,6 +377,12 @@ function endpointsOf(routes: MountedRoute[], refusals: string[]): Endpoint[] {
   });
   const endpoints = [...byKey.values()];
   routes.forEach((route, index) => {
+    const answered = answeredAt(declaredResponses.get(unwrap(route.handler) as object), route.path);
+    if (answered !== null) {
+      const endpoint = byKey.get(answered.key);
+      if (endpoint === undefined) refusals.push(answered.unmounted);
+      else endpoint.responses.push(answered.response);
+    }
     const declaration = declarationOf(route.handler);
     if (route.method !== 'ALL') {
       const endpoint = byKey.get(`${route.method} ${route.path}`);

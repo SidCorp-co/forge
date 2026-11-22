@@ -11,7 +11,7 @@ import {
 import type { ActorAgency, ProjectPermission } from '@forge/contracts/permissions';
 import { requirementKey } from '@forge/contracts/requirements';
 import { type Said, say, verbatim } from '@forge/contracts/said';
-import { and, asc, count, eq, inArray } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import {
   feedback,
@@ -231,18 +231,53 @@ function verifiedViewOf(
 }
 
 /**
- * One item's summary as `viewer` reads it, by the reader the project's feedback page reads it with,
- * for a door that settled who may read the item itself: a product's server key, on an item its product
- * filed (`server-key-door.ts`, ISS-1287). No `project.read` floor, so no other caller takes it.
+ * The reason the decline holding an item `declined` wrote for its reporter (ISS-1412): the reason of
+ * its own last declined decision, or, for a duplicate reading its root's phase, the root's, which every
+ * reporter merged into the root was told. Declined is terminal, so the last one is the one standing;
+ * null in every other phase. Only the decision's reason is read: no note, message, decider or route.
  */
-export async function summaryOfFiled(viewer: FeedbackActor, row: Row): Promise<FeedbackSummary> {
+async function declineReasonOf(row: Row, phase: FeedbackPhase): Promise<string | null> {
+  if (phase !== 'declined') return null;
+  const decidedOn = row.status === 'declined' ? row.id : row.duplicateOf;
+  if (decidedOn === null) {
+    throw new Error(
+      `${feedbackKey(row.fbSeq)} reads declined, and neither it nor a root is declined`,
+    );
+  }
+  const [d] = await db
+    .select({ reason: feedbackDecisions.reason })
+    .from(feedbackDecisions)
+    .where(
+      and(eq(feedbackDecisions.feedbackId, decidedOn), eq(feedbackDecisions.decision, 'declined')),
+    )
+    .orderBy(desc(feedbackDecisions.decidedAt))
+    .limit(1);
+  if (!d) {
+    throw new Error(`${feedbackKey(row.fbSeq)} reads declined, and no declined decision holds it`);
+  }
+  return d.reason;
+}
+
+/**
+ * One item as `viewer` reads it, by the reader the project's feedback page reads it with, for a door
+ * that settled who may read the item itself: a product's server key, on an item its product filed
+ * (`server-key-door.ts`, ISS-1287). No `project.read` floor, so no other caller takes it. Beside the
+ * summary, the reason its decline wrote for its reporter (ISS-1412), withheld as every decision reason
+ * is from an agent where the project's data policy keeps the item's text in.
+ */
+export async function filedReadOf(
+  viewer: FeedbackActor,
+  row: Row,
+): Promise<{ summary: FeedbackSummary; declineReason: string | null }> {
   const [level, linked, can] = await Promise.all([
     dataPolicyOf(row.projectId),
     linkedOf(row.projectId, [row]),
     viewerCanIn(viewer, row.projectId),
   ]);
   const { withhold } = feedbackEgress(level, viewer.agency, {});
-  return summaryOf(row, linked, viewer, withhold, can);
+  const summary = summaryOf(row, linked, viewer, withhold, can);
+  const declineReason = withhold ? null : await declineReasonOf(row, summary.phase);
+  return { summary, declineReason };
 }
 
 export async function detailAs(

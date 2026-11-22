@@ -5,7 +5,8 @@
  * and is refused by name on every other route and project, after revoke, after expiry and over its
  * hourly limit, filing nothing. An actor without the permission cannot mint. It reads back the phase
  * and chip of an item its product filed, the same the project's feedback page reads (ISS-1287), and is
- * refused by name on an item another reporter filed. Through the app, against real Postgres.
+ * refused by name on an item another reporter filed. A declined item's read names the reason its decline
+ * wrote for the reporter, and nothing else of the item (ISS-1412). Through the app, against real Postgres.
  *
  * @direct-test-of packages/core/src/feedback/server-keys.ts
  * @direct-test-of packages/core/src/feedback/server-key-door.ts
@@ -26,6 +27,7 @@ import { db } from '../../src/db/client.js';
 import { consumeRateLimit } from '../../src/middleware/rate-limit.js';
 import { api, type Body, patToken, userToken } from '../helpers/api.js';
 import { addProjectMember, createTestProject, createTestUser, rows } from '../helpers/factories.js';
+import { TRIAGE_ANSWERS } from '../helpers/triage-answers.js';
 
 const HOUR_MS = 60 * 60_000;
 
@@ -286,7 +288,7 @@ describe('a feedback server key reading back (ISS-1287)', () => {
     };
     const read = await api(secret, 'GET', at(fbKey));
     expect(read.status, JSON.stringify(read.body)).toBe(200);
-    expect(read.body).toEqual({ feedback: await asPage() });
+    expect(read.body).toEqual({ feedback: { ...(await asPage()), declineReason: null } });
     expect(read.body.feedback).toMatchObject({ phase: 'new', chip: 'new' });
 
     const declined = await api(adminJwt, 'POST', `${at(fbKey)}/triage`, {
@@ -295,7 +297,9 @@ describe('a feedback server key reading back (ISS-1287)', () => {
     });
     expect(declined.status, JSON.stringify(declined.body)).toBe(200);
     const after = await api(secret, 'GET', at(fbKey));
-    expect(after.body).toEqual({ feedback: await asPage() });
+    expect(after.body).toEqual({
+      feedback: { ...(await asPage()), declineReason: 'Stock is counted nightly.' },
+    });
     expect(after.body.feedback).toMatchObject({ phase: 'declined', chip: 'declined' });
 
     // every key of the product names one reporter, so a re-minted key reads what the old one filed
@@ -335,5 +339,81 @@ describe('a feedback server key reading back (ISS-1287)', () => {
       expect(out.status, `${method} ${path}`).toBe(403);
       expect(codeOf(out.body), `${method} ${path}`).toBe('FEEDBACK_SERVER_KEY_SCOPE');
     }
+  });
+});
+
+describe('a feedback server key reading a decline (ISS-1412)', () => {
+  it('(g) names the reason the decline holding the item wrote for its reporter, null in every other phase, and the full read is unchanged', async () => {
+    const secret = (await mint(adminJwt, { product: 'epod' })).body.secret as string;
+    const at = (key: string) => `/api/projects/${projectId}/feedback/${key}`;
+    const file = async (title: string) => {
+      const filed = await api(secret, 'POST', `/api/projects/${projectId}/feedback`, item(title));
+      expect(filed.status, JSON.stringify(filed.body)).toBe(201);
+      return (filed.body.feedback as Body).key as string;
+    };
+    const asKey = async (key: string) => {
+      const read = await api(secret, 'GET', at(key));
+      expect(read.status, JSON.stringify(read.body)).toBe(200);
+      return read.body;
+    };
+    const say = async (path: string, body: Body, status = 200) => {
+      const out = await api(adminJwt, 'POST', path, body);
+      expect(out.status, JSON.stringify(out.body)).toBe(status);
+    };
+
+    const root = await file('Labels print blank');
+    const twin = await file('Labels come out empty');
+    const routed = await file('Price rounds down');
+    await say(`${at(twin)}/triage`, {
+      answers: TRIAGE_ANSWERS,
+      route: 'duplicate',
+      duplicateOf: root,
+    });
+    await say(`${at(routed)}/triage`, { answers: TRIAGE_ANSWERS, route: 'issue', createIssue: {} });
+    // an internal note and a triager's message are on the item too; neither reaches the key
+    await say(
+      `${at(root)}/messages`,
+      { audience: 'internal', text: 'Printer driver, not us.' },
+      201,
+    );
+
+    // not declined yet: every phase but declined reads null
+    for (const key of [root, twin, routed]) {
+      const body = await asKey(key);
+      expect((body.feedback as Body).phase, key).not.toBe('declined');
+      expect((body.feedback as Body).declineReason, key).toBeNull();
+    }
+
+    const fullBefore = await api(adminJwt, 'GET', at(root));
+    expect(fullBefore.status).toBe(200);
+    await say(`${at(root)}/triage`, { route: 'decline', note: 'The printer driver prints blank.' });
+
+    const declined = await asKey(root);
+    expect(declined).toEqual({
+      feedback: {
+        key: root,
+        phase: 'declined',
+        chip: 'declined',
+        declineReason: 'The printer driver prints blank.',
+      },
+    });
+    expect(JSON.stringify(declined)).not.toContain('Printer driver, not us.');
+
+    // the duplicate reads its root's phase, and its reporter was told the root's reason
+    const merged = await asKey(twin);
+    expect(merged.feedback).toMatchObject({
+      phase: 'declined',
+      declineReason: 'The printer driver prints blank.',
+    });
+    expect((await asKey(routed)).feedback).toMatchObject({ declineReason: null });
+
+    // a person's full read gains no field and still holds the reason in its decisions
+    const full = await api(adminJwt, 'GET', at(root));
+    expect(full.status).toBe(200);
+    const view = full.body.feedback as Body;
+    expect(view).not.toHaveProperty('declineReason');
+    expect(Object.keys(view).sort()).toEqual(Object.keys(fullBefore.body.feedback as Body).sort());
+    const reasons = (view.decisions as Body[]).filter((d) => d.decision === 'declined');
+    expect(reasons.map((d) => d.reason)).toEqual(['The printer driver prints blank.']);
   });
 });
