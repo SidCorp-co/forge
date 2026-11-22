@@ -67,6 +67,9 @@ function urlOf(text: string | undefined): URL | null {
 /** The driver verbs that move the page to an address, and those that run script in it. */
 const NAVIGATES = new Set(['open', 'goto', 'navigate', 'tab', 'window']);
 const SCRIPTS = new Set(['eval', 'evaluate', 'addscript', 'addinitscript']);
+// the session core places in a signed-in look (look-session.ts:sessionSteps) is shown nowhere;
+// a step reading it back would store it in the box's act feed
+const SESSION_READS = new Set(['cookies', 'storage', 'state']);
 
 /**
  * Why a look's step may not run, or null where it may: it runs script, which reaches any address,
@@ -77,6 +80,9 @@ export function stepRefusal(step: readonly string[], origins: ReadonlySet<string
   const verb = (step[0] ?? '').toLowerCase();
   if (SCRIPTS.has(verb)) {
     return `${verb} runs script in the page, which reaches any address: a look clicks, fills and opens addresses on its own project's environments only`;
+  }
+  if (SESSION_READS.has(verb)) {
+    return `${verb} reads the signed-in session core placed, which no feed or answer may show: a look clicks, fills and opens its project's screens only`;
   }
   for (const arg of step.slice(1)) {
     if (arg.startsWith('-')) continue;

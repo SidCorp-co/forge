@@ -42,6 +42,17 @@ describe("a look's step stays on its project's environments", () => {
       /^eval runs script/,
     );
   });
+
+  it('refuses a step that reads back the signed-in session, whose values no feed may show', () => {
+    for (const step of [
+      ['cookies'],
+      ['cookies', 'get'],
+      ['storage', 'local'],
+      ['state', 'save', 'x.json'],
+    ]) {
+      expect(stepRefusal(step, OURS), step.join(' ')).toMatch(/reads the signed-in session/);
+    }
+  });
 });
 
 // ISS-1386: a first look signs in as the profile's least privileged actor unless the agent names
