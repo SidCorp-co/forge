@@ -5,6 +5,7 @@ import type { StewardRunView } from '@forge/contracts/steward';
 import type { StewardActsResponse, StewardRunsResponse } from '@forge/contracts/steward-runtime';
 import { requireDeclaredOn } from '../permissions/index.js';
 import { actsOfRuns, actsOfSubject } from './acts-store.js';
+import { placementView, stewardJobPlacementOf } from './pane-loss.js';
 import { type RunRow, runsOfSubject } from './runs-store.js';
 
 export function runViewOf(run: RunRow, acts: StewardRunView['acts']): StewardRunView {
@@ -37,7 +38,18 @@ export async function readStewardRuns(args: {
   await requireDeclaredOn(args.projectId, args.userId, 'project.read');
   const runs = await runsOfSubject(args.projectId, args.subjectKey);
   const acts = await actsOfRuns(runs.map((r) => r.id));
-  return { runs: runs.map((r) => runViewOf(r, acts.get(r.id) ?? [])) };
+  // whether its next job may be placed after its box lost the last ones' panes (ISS-1415)
+  const [newest] = runs;
+  const { streak, placement } = newest
+    ? await stewardJobPlacementOf({ kind: newest.subjectKind, id: newest.subjectId })
+    : {
+        streak: { losses: 0, lastAt: null, lastFailure: null },
+        placement: { kind: 'place' as const },
+      };
+  return {
+    runs: runs.map((r) => runViewOf(r, acts.get(r.id) ?? [])),
+    placement: placementView(streak, placement),
+  };
 }
 
 /** Every act the steward took on the item, as `userId` may read it: a project reader reads every one. */

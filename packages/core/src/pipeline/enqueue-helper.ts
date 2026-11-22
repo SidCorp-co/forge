@@ -20,12 +20,16 @@ interface InsertAndEnqueueArgs {
   payloadExtras: Record<string, unknown>;
   /** Caller queries an existing active job in case of unique-violation so the error includes the racing jobId. */
   resolveRacingJobId?: () => Promise<string | null>;
+  /** The earliest the pool offers it: a job placed to wait out its item's last failures (ISS-1415). */
+  retryAfterAt?: Date;
+  /** Placed held, for a person's resume, naming why: the pool offers it to no box until then. */
+  heldFor?: string;
 }
 
 /**
- * Insert a queued `jobs` row the pool will offer, link its `currentStep` on the
- * run, and wake the project's masters. A unique-violation on (issueId, type)
- * is refused `ACTIVE_JOB_CONFLICT`.
+ * Insert a queued `jobs` row the pool will offer (from `retryAfterAt`, or held for a person where
+ * `heldFor` names why), link its `currentStep` on the run, and wake the project's masters. A
+ * unique-violation on (issueId, type) is refused `ACTIVE_JOB_CONFLICT`.
  */
 export async function insertAndEnqueueJob(args: InsertAndEnqueueArgs): Promise<{ jobId: string }> {
   let insertedId: string | null = null;
@@ -42,7 +46,9 @@ export async function insertAndEnqueueJob(args: InsertAndEnqueueArgs): Promise<{
           promptString: args.promptString,
           ...args.payloadExtras,
         },
-        status: 'queued',
+        status: args.heldFor ? 'held' : 'queued',
+        ...(args.heldFor ? { failureReason: args.heldFor } : {}),
+        ...(args.retryAfterAt ? { retryAfterAt: args.retryAfterAt } : {}),
       }),
     );
     insertedId = inserted.id;

@@ -7,22 +7,30 @@
 
 import type { PoolClaimRefusalCode } from '@forge/contracts/devices';
 import { OCCUPYING_JOB_STATUSES } from '@forge/contracts/job-machine';
+import { HOLD_PAYLOAD_KEY, type HoldState } from '@forge/contracts/jobs';
 import { STEWARD_ACTS, type StewardAct, type StewardRefusalCode } from '@forge/contracts/steward';
 import { and, eq, like, or, sql } from 'drizzle-orm';
 import { lockPatName, revokeLiveTokens } from '../credentials/pat.js';
 import { turnAuthorityRefusalOf } from '../credentials/turn-credential.js';
 import { db, type Tx } from '../db/client.js';
 import { jobs, personalAccessTokens, runners } from '../db/schema.js';
-import { finalizeJobDone } from '../jobs/index.js';
+import { finalizeJobDone, PANE_LOST_REPEATEDLY } from '../jobs/index.js';
 import { env } from '../lib/env.js';
 import { RefusalError, refuser } from '../lib/refusal.js';
 import { requireDeclaredOn } from '../permissions/index.js';
-import { insertAndEnqueueJob, openOneShotRun } from '../pipeline/index.js';
+import { emitPipelineWedge, insertAndEnqueueJob, openOneShotRun } from '../pipeline/index.js';
 import { stewardAccountOf } from './account.js';
 import { mintStewardCredential } from './credential.js';
 import { type StewardSelfAudit, stewardPorts } from './ports.js';
 import { actContext, actPrompt } from './prompts.js';
 import { endRun, type RunRow, runOfProject } from './runs-store.js';
+
+/** The hold a job placed for a person's ask carries: it never releases itself. */
+const heldState = (): HoldState => ({
+  reason: PANE_LOST_REPEATEDLY,
+  heldAt: new Date().toISOString(),
+  autoRelease: false,
+});
 
 /** The job's own limit, and its token's life past it. */
 const JOB_TIMEOUT_SECONDS = 3600;
@@ -66,10 +74,38 @@ async function brief(run: RunRow, acts: readonly StewardAct[]): Promise<string> 
   ].join('\n\n');
 }
 
+/**
+ * How the job is placed after its item's box lost the last jobs' panes (ISS-1415,
+ * `pane-loss.ts`): at once, after the wait, or held for a person's resume, which is their ask.
+ */
+export type JobPlacing =
+  | { kind: 'now' }
+  | { kind: 'after'; at: Date; paneLosses: number }
+  | { kind: 'held'; paneLosses: number; said: string };
+
+/** Tell a person the item's job waits on their resume: the item, the failure and the count. */
+async function tellHeld(run: RunRow, jobId: string, said: string): Promise<void> {
+  await emitPipelineWedge({
+    projectId: run.projectId,
+    issueId: run.subjectKind === 'issue' ? run.subjectId : null,
+    hop: 'dispatch',
+    entity: 'job',
+    entityId: jobId,
+    reason: PANE_LOST_REPEATEDLY,
+    action:
+      'Resume the held job (POST /api/jobs/:id/resume) once its box keeps its panes, or cancel it.',
+    title: `Steward work on ${run.subjectKey} held: its box keeps losing the job's pane`,
+    summary: said,
+    nextStep:
+      'Once the box keeps its panes (update its runner), resume the held job: that is the ask that places it again.',
+  });
+}
+
 /** Queue the run's runner acts as one steward job, or say why none can run. */
 export async function enqueueStewardJob(
   run: RunRow,
   acts: readonly StewardAct[],
+  placing: JobPlacing = { kind: 'now' },
 ): Promise<JobStart> {
   if ((await boxesOf(run.projectId)).length === 0) {
     return {
@@ -95,8 +131,13 @@ export async function enqueueStewardJob(
       stewardRunId: run.id,
       stewardActs: [...acts],
       timeoutSeconds: JOB_TIMEOUT_SECONDS,
+      ...(placing.kind === 'now' ? {} : { paneLosses: placing.paneLosses }),
+      ...(placing.kind === 'held' ? { [HOLD_PAYLOAD_KEY]: heldState() } : {}),
     },
+    ...(placing.kind === 'after' ? { retryAfterAt: placing.at } : {}),
+    ...(placing.kind === 'held' ? { heldFor: PANE_LOST_REPEATEDLY } : {}),
   });
+  if (placing.kind === 'held') await tellHeld(run, jobId, placing.said);
   return { ok: true, jobId };
 }
 

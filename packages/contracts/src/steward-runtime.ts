@@ -169,9 +169,26 @@ export const stewardPolicySchema = z.strictObject({
 });
 export type StewardPolicy = z.infer<typeof stewardPolicySchema>;
 
+/**
+ * Whether the item's next steward job may be placed (ISS-1415): after a job of it ended on its box
+ * losing the job's pane, the next waits a growing interval, and past a cap none is placed until a job
+ * for it succeeds or a person asks for it again (resumes the job held for that ask).
+ */
+export interface StewardJobPlacement {
+	/** Its newest steward jobs in a row that ended on their box losing the job's pane. */
+	paneLosses: number;
+	/** What the box said of the newest of them; null where there is none. */
+	lastFailure: string | null;
+	/** The earliest its next job is placed; null where nothing holds it back, or where it is stopped. */
+	nextAt: string | null;
+	/** Past the cap: core places no job of it until one succeeds or a person asks for it again. */
+	stopped: boolean;
+}
+
 /** `GET /api/projects/:id/steward-runs?subject=<REQ-n|FB-n|ISS-n>`: newest first. */
 export interface StewardRunsResponse {
 	runs: StewardRunView[];
+	placement: StewardJobPlacement;
 }
 
 /** `GET /api/projects/:id/steward-acts?subject=KEY`: every act the steward took on one item, newest first, uncapped. */

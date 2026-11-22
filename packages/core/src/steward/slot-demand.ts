@@ -4,14 +4,19 @@
 // issues, and `devices/run-slots.ts:slotsFor` alone decides whether it may start. Nothing here
 // decides a count: the steward only says what it holds and what it waits on.
 
-import { LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
+import { UNHELD_LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';
 import { RUNNER_ACTS } from './runs-store.js';
 
 export interface StewardSlotDemand {
-  /** Its steward jobs live for a live run: out with this box, or queued for one of its boxes. */
+  /**
+   * Its steward jobs live for a live run: out with this box, or queued for one of its boxes and due.
+   * A job placed to wait out its item's lost panes holds no slot until its time, nor one held for a
+   * person's resume (ISS-1415): one item whose box keeps losing its panes never holds the project's
+   * steward work behind it; when its time comes the pool hands it out beside what started meanwhile.
+   */
   live: number;
   /** Its live runs owing a runner act that no job has been started for yet, a run tried again for a slot included. */
   waiting: number;
@@ -27,7 +32,7 @@ export async function stewardSlotDemand(
   deviceId: string,
 ): Promise<Map<string, StewardSlotDemand>> {
   const runner = sql.raw(`ARRAY[${RUNNER_ACTS.map((a) => `'${a}'`).join(', ')}]::text[]`);
-  const live = sql.raw(LIVE_JOB_STATUSES.map((s) => `'${s}'`).join(', '));
+  const live = sql.raw(UNHELD_LIVE_JOB_STATUSES.map((s) => `'${s}'`).join(', '));
   const rows = rowsOf<{ project_id: string; live: number; waiting: number; urgent: boolean }>(
     await executor.execute(sql`
       WITH bound AS (SELECT DISTINCT project_id FROM runners WHERE device_id = ${deviceId})
@@ -36,6 +41,7 @@ export async function stewardSlotDemand(
                 JOIN steward_runs s ON s.id::text = j.payload ->> 'stewardRunId'
                WHERE j.project_id = b.project_id AND j.type = 'steward'
                  AND j.status IN (${live}) AND s.state IN ('queued', 'running')
+                 AND (j.retry_after_at IS NULL OR j.retry_after_at <= now())
                  AND (j.device_id IS NULL OR j.device_id = ${deviceId}))::int AS live,
              count(r.id)::int AS waiting,
              coalesce(bool_or(r.acts_to_run && ARRAY['release_followthrough']::text[]), false) AS urgent

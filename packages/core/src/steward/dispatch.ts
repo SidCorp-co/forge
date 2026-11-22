@@ -17,17 +17,20 @@ import {
   type StewardFailureKind,
 } from '@forge/contracts/steward';
 import { refuseRunWithoutSlot } from '../devices/index.js';
+import { paneLossStopSentence } from '../jobs/index.js';
 import { logger } from '../lib/logger.js';
 import { RefusalError } from '../lib/refusal.js';
 import { stewardAccountOf } from './account.js';
 import {
   boxesOf,
   enqueueStewardJob,
+  type JobPlacing,
   type JobStart,
   jobEndFailure,
   revokeJobCredential,
 } from './job.js';
 import { repeatedNote } from './note.js';
+import { stewardJobPlacementOf } from './pane-loss.js';
 import { admitRun, repeatedRefusal } from './policy.js';
 import { openStandings } from './ports.js';
 import {
@@ -160,6 +163,29 @@ function throughSlotGate<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 /**
+ * How the item's next job is placed (ISS-1415, `pane-loss.ts`): at once, after the wait its last
+ * jobs' lost panes earned, or, past the cap, held for a person's resume, naming the item, the failure
+ * and the count. Read at the one place every steward job starts, whatever queued its run.
+ */
+async function placingOf(run: RunRow, acts: readonly StewardAct[]): Promise<JobPlacing> {
+  const { streak, placement } = await stewardJobPlacementOf({
+    kind: run.subjectKind,
+    id: run.subjectId,
+  });
+  if (placement.kind === 'place') return { kind: 'now' };
+  if (placement.kind === 'wait') {
+    return { kind: 'after', at: placement.at, paneLosses: placement.losses };
+  }
+  const said = paneLossStopSentence({
+    what: `The steward's ${acts.join(' and ')}`,
+    item: run.subjectKey,
+    losses: placement.losses,
+    failure: streak.lastFailure,
+  });
+  return { kind: 'held', paneLosses: placement.losses, said };
+}
+
+/**
  * Start the run's job where its project has a free slot and the run is the head of its project's job
  * line (`runs-store.ts:nextInJobLine`); null otherwise. `slotsFor` alone says whether the project may
  * start a run; the line says which of its runs takes it, whatever order the tick took them up in or
@@ -174,7 +200,7 @@ const startJobInSlot = (run: RunRow, runner: readonly StewardAct[], tick: Tick) 
       if (head.state === 'queued') await callToFront(head.id);
       return null;
     }
-    return enqueueStewardJob(run, runner);
+    return enqueueStewardJob(run, runner, await placingOf(run, runner));
   });
 
 /** Take one claimed run as far as it goes now; a `slot_wait` run is put back by the caller to retry. */
