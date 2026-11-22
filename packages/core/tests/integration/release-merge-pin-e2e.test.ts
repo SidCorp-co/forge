@@ -14,6 +14,9 @@
  * caller's `runId` is now read: an ended run, or one that is not the release holding the request,
  * merges nothing and names the run that holds it.
  *
+ * ISS-1410 c4 (FB-821 carried the same correction again): a release run that finished is refused
+ * naming its state as a cancelled one is, and merges nothing.
+ *
  * @direct-test-of packages/core/src/integrations/source-host/merge.ts
  * @direct-test-of packages/core/src/integrations/source-host/merge-landed.ts
  * @direct-test-of packages/core/src/integration-door/issue-merge-routes.ts
@@ -268,6 +271,20 @@ describe('a merge naming a run is held to the release that holds the request (IS
     expect(refusal?.detail).toContain(`${cancelled} names a run that is cancelled`);
     expect(refusal?.detail).toContain(`Release run ${runId} holds this request`);
     expect(planted.merges, 'nothing merged for an ended run').toEqual([]);
+  });
+
+  it('refuses a release run that finished, naming its state, and merges nothing', async () => {
+    const { ids, runId } = await approvedRelease();
+    const finished = await sideRun('system', 'completed');
+
+    const res = await mergeOf(ids[0] as string, { runId: finished });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    const refusal = refusalOf(res.body);
+    expect(refusal?.code).toBe('MERGE_RUN_NOT_OPEN');
+    expect(refusal?.detail).toContain(`${finished} names a run that is completed`);
+    expect(refusal?.detail).toContain(`Release run ${runId} holds this request`);
+    expect(planted.merges, 'nothing merged for a finished run').toEqual([]);
   });
 
   it('refuses an open run that is not the release holding the request', async () => {
