@@ -5,7 +5,8 @@
  * same run, so two sessions could push, tag and deploy one release while core refused nothing.
  * Planted through the app's own doors: a cut, its job failed and retried, and each attempt's acts.
  * ISS-1418: only a retry that has started on a box supersedes; dev.791's run 978499ba had its live
- * attempt 2 refused in favour of attempt 3, which was queued and cancelled without ever starting.
+ * attempt 2 refused in favour of attempt 3, which was queued and cancelled without ever starting;
+ * and attempt 1's refusal there said no attempt held the run while attempt 2, failed after starting, did.
  *
  * @direct-test-of packages/core/src/release-batch/attempt-holds.ts
  * @direct-test-of packages/core/src/release-batch/routes.ts
@@ -187,6 +188,9 @@ describe('a release act names the attempt making it', () => {
     const older = await method(runId, first);
     expect(codeOf(older.body), JSON.stringify(older.body)).toBe('RELEASE_ATTEMPT_SUPERSEDED');
     expect(detailOf(older.body)).toContain(second);
+    // failed after starting, attempt 2 still holds the run: the refusal says so, as the guard reads it
+    expect(detailOf(older.body)).toContain('which holds the run now');
+    expect(detailOf(older.body)).not.toContain('no attempt holds');
   });
 
   it('a retry that has started on a box supersedes the earlier attempt, naming the retry', async () => {
@@ -240,6 +244,8 @@ describe('a release act names the attempt making it', () => {
     expect(codeOf(elsewhere.body), JSON.stringify(elsewhere.body)).toBe(
       'RELEASE_ATTEMPT_NOT_ON_RUN',
     );
+    // the attempt whose cancel was requested holds nothing, and the refusal names no holder
+    expect(detailOf(elsewhere.body)).toContain('no release job of its own holds');
   });
 
   it('refuses a job header that is no job id, or names no job, by name', async () => {

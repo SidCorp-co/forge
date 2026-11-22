@@ -1,0 +1,1 @@
+**A superseded release attempt's refusal names who holds the run.** A later attempt that failed after starting is named as holding it, as the guard reads it, never "no attempt holds the run" (ISS-1418).

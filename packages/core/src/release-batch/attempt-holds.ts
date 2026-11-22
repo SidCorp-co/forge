@@ -50,6 +50,13 @@ export type AttemptReading =
  */
 const CANCELLED = 'cancelled';
 
+/**
+ * Whether a started attempt that is its run's holder still holds it: only a cancel ends one, never
+ * `failed` alone. Every text naming a holder reads this, so none tells a reader that nothing works a
+ * run the guard still lets an attempt act on (ISS-1418).
+ */
+const holds = (a: ReleaseAttempt): boolean => a.status !== CANCELLED && !a.cancellationRequested;
+
 function named(a: ReleaseAttempt): string {
   return `job ${a.id} (attempt ${a.attempts}, ${a.status}${a.cancellationRequested ? ', cancel requested' : ''})`;
 }
@@ -80,18 +87,17 @@ export function attemptHolding(
     const holder = attempts.find(started);
     return {
       code: 'RELEASE_ATTEMPT_NOT_ON_RUN',
-      detail: `This call names job ${job.id} in ${JOB_ACT_HEADER}, a ${job.type} job on run ${job.pipelineRunId}, and acts on release run ${runId}, which ${holder ? `${named(holder)} holds` : 'no release job of its own holds'}. A job acts only on its own run. ${STOP}`,
+      detail: `This call names job ${job.id} in ${JOB_ACT_HEADER}, a ${job.type} job on run ${job.pipelineRunId}, and acts on release run ${runId}, which ${holder && holds(holder) ? `${named(holder)} holds` : 'no release job of its own holds'}. A job acts only on its own run. ${STOP}`,
     };
   }
   const holder = attempts.find((a) => a.id === job.id || started(a));
   if (holder && holder.id !== job.id) {
-    const holds = !['failed', CANCELLED].includes(holder.status) && !holder.cancellationRequested;
     return {
       code: 'RELEASE_ATTEMPT_SUPERSEDED',
-      detail: `Release run ${runId} is no longer this attempt's: ${named(job)} was superseded by ${named(holder)}, ${holds ? 'which holds the run now' : 'the latest attempt a box took, so no attempt holds the run now'}. ${STOP}`,
+      detail: `Release run ${runId} is no longer this attempt's: ${named(job)} was superseded by ${named(holder)}, ${holds(holder) ? 'which holds the run now and may still be working it' : 'the latest attempt a box took, so no attempt holds the run now'}. ${STOP}`,
     };
   }
-  if (job.status === CANCELLED || job.cancellationRequested) {
+  if (!holds(job)) {
     return {
       code: 'RELEASE_ATTEMPT_ENDED',
       detail: `Release run ${runId} is no longer this attempt's: ${named(job)} was cancelled, and no later attempt holds the run. ${STOP}`,
