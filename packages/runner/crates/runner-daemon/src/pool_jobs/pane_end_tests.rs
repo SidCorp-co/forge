@@ -152,6 +152,11 @@ async fn a_pane_read_gone_once_that_answers_again_is_not_failed_and_keeps_its_sl
     );
 }
 
+/// Unix only: the pane's process is read alive by signalling its pid, and off unix
+/// `runner_platform::proc::pid_alive` answers false for every pid (debt b65f093e), so there this
+/// test's own pid reads as a process that ended. What that leaves unproven on windows: a job whose
+/// pane reads gone while its agent still runs is failed there, and its next attempt handed out.
+#[cfg(unix)]
 #[tokio::test]
 async fn a_pane_read_gone_on_two_sweeps_whose_process_still_runs_is_not_failed() {
     let log: Log = Arc::default();
