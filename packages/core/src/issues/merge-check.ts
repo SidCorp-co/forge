@@ -192,3 +192,13 @@ export async function uncheckedMergeRefusal(args: {
   const said = missingCheckDetail({ issueRef, owedBy, commit: args.commit, ranges });
   return owed.gate ? `${said} ${gateSays(owed.gate)}` : said;
 }
+
+/**
+ * The base of the passing merge check whose range holds `commit`, or null where none does: what a
+ * landing changed is read from there, so an issue's earlier commits in the batch count (ISS-1419).
+ */
+export async function checkedBaseOf(issueId: string, commit: string): Promise<string | null> {
+  const records = await listRecordEvents(issueId, { kinds: ['verification'], kernelOnly: true });
+  const range = passingRanges(records).find((r) => rangeCovers([r], commit));
+  return range?.base ? range.base : null;
+}

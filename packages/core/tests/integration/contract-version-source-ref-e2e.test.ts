@@ -7,8 +7,14 @@
  * refusal says so. The host is planted through the project's ancestry source, as the release-hold
  * ancestry test plants it. Through the app's own routes, against real Postgres.
  *
+ * ISS-1419: forge-api stood at 2.0.0 while every landing moved `forge-api.openapi.json`, since no
+ * landing recorded a version. A merge mark at a commit whose change carries a contract's source file
+ * is now refused by name until a decided version holds that file as the commit left it.
+ *
  * @direct-test-of packages/core/src/ecosystem/contract/source-ref.ts
  * @direct-test-of packages/core/src/ecosystem/contract/publish.ts
+ * @direct-test-of packages/core/src/ecosystem/contract/landing-lag.ts
+ * @direct-test-of packages/core/src/issues/mark-preconditions.ts
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -22,6 +28,7 @@ import {
   refusal,
   sender,
 } from '../helpers/ecosystem-world.js';
+import { createTestIssue } from '../helpers/factories.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
 
 /** a2c403e4, where catalog-api's schema landed on main. */
@@ -49,6 +56,8 @@ const host = {
   kind: 'host' as 'host' | 'none' | 'throws',
   onMain: new Set<string>(),
   files: new Map<string, string>(),
+  /** The files each commit changed against its parent. */
+  commits: new Map<string, string[]>(),
 };
 const branchesAsked: string[] = [];
 
@@ -69,6 +78,14 @@ vi.mock('../../src/release-batch/ancestry-source.js', async (importOriginal) => 
       },
       async readFile(path: string, ref: string) {
         return host.files.get(`${path}@${ref}`) ?? { missing: `no blob at ${path}` };
+      },
+      async commitFiles(sha: string) {
+        const files = host.commits.get(sha);
+        if (!files) return { why: `no commit ${sha}` };
+        return { files, changes: files.map((path) => ({ path, change: 'changed' })) };
+      },
+      async compareFiles() {
+        return { why: 'no merge check base is planted' };
       },
     } as unknown as SourceHost;
     return {
@@ -138,6 +155,7 @@ beforeEach(() => {
     [`${PATH}@${LANDED}`, V1],
     [`${PATH}@${NEVER_LANDED}`, V2],
   ]);
+  host.commits = new Map();
   branchesAsked.length = 0;
 });
 
@@ -198,5 +216,67 @@ describe('ISS-981 a contract version is recorded only from a file the landing ho
   it('records a version naming no sourceRef as before, asking no host', async () => {
     ok(await upload(V2), 201);
     expect(branchesAsked).toEqual([]);
+  });
+});
+
+/** A landing on main after the versions above: the schema gains `by`. */
+const MOVED = '1419aaaa'.repeat(5);
+/** A landing on main changing no contract file. */
+const UNRELATED = '1419bbbb'.repeat(5);
+const V3 = schemaOf({ site: { type: 'string' }, at: { type: 'string' }, by: { type: 'string' } });
+
+describe('ISS-1419 a landing that changes a contract file leaves a decided version holding it', () => {
+  const mark = (issueId: string, commit: string) =>
+    say('platform', 'POST', `/api/issues/${issueId}/merge`, { commit, target: 'main' });
+  const issueAt = async (seq: number) =>
+    (
+      await createTestIssue(w.project.internal, w.user.platform, seq, {
+        status: 'in_progress',
+        createdAt: new Date(),
+      })
+    ).id;
+
+  beforeEach(() => {
+    host.onMain = new Set([LANDED, MOVED, UNRELATED]);
+    host.files.set(`${PATH}@${MOVED}`, V3);
+    host.commits = new Map([
+      [MOVED, [PATH, 'src/routes.ts']],
+      [UNRELATED, ['README.md']],
+    ]);
+  });
+
+  it('marks a landing that changes no contract file, asking nothing of the registry', async () => {
+    ok(await mark(await issueAt(14191), UNRELATED));
+  });
+
+  it('refuses the mark while no version holds the file, then while it is proposed, then marks it', async () => {
+    const issue = await issueAt(14192);
+
+    const unrecorded = await mark(issue, MOVED);
+    expect(refusal(unrecorded)).toEqual(['CONTRACT_VERSION_UNRECORDED /commit']);
+    expect(detailOf(unrecorded)).toContain(`sourceRef: "${PATH}@${MOVED}"`);
+
+    const recorded = ok(await upload(V3, `${PATH}@${MOVED}`), 201);
+    const undecided = await mark(issue, MOVED);
+    expect(refusal(undecided)).toEqual(['CONTRACT_VERSION_UNDECIDED /commit']);
+    expect(detailOf(undecided)).toContain(
+      `site-sync-events@${recorded.version.contractVersion} holds ${PATH}`,
+    );
+
+    ok(
+      await say(
+        'platform',
+        'POST',
+        `/api/projects/${w.project.internal}/contracts/site-sync-events/versions/${recorded.version.contractVersion}/decision`,
+        { decision: 'approve' },
+      ),
+    );
+    ok(await mark(issue, MOVED));
+
+    // a later landing that carries the same bytes is held by the version holding them
+    const again = '1419cccc'.repeat(5);
+    host.files.set(`${PATH}@${again}`, V3);
+    host.commits.set(again, [PATH]);
+    ok(await mark(await issueAt(14193), again));
   });
 });

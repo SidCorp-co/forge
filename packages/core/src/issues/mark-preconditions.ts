@@ -7,13 +7,14 @@
 import type { MergeRefusalCode } from '@forge/contracts/issues';
 import type { FileChange, LandingArtifact } from '@forge/contracts/landing-artifacts';
 import { gateRefusal } from '../lib/gated.js';
-import { refuser } from '../lib/refusal.js';
+import { RefusalError, refuser } from '../lib/refusal.js';
 import { resolveCarriage } from './carriage.js';
 import { issueGateOf } from './gates.js';
 import type { LandingShape } from './landing-evidence.js';
 import { lastUnmarkedAt } from './mark-trail.js';
-import { uncheckedMergeRefusal } from './merge-check.js';
+import { checkedBaseOf, uncheckedMergeRefusal } from './merge-check.js';
 import { markEntryRefusal } from './pattern-entry.js';
+import { contractLag } from './ports.js';
 import type { IssueRow } from './read-service.js';
 import { unreviewedMergeRefusal } from './review.js';
 import { latestHandoffCommit } from './work-evidence.js';
@@ -44,6 +45,8 @@ export async function resolveRecordedCommit(issueId: string): Promise<string | n
  * is enforced, each approved new pattern's catalog page must be in the change at that commit
  * (`pattern-entry.ts`): a check that ran while the pattern waited on its reviewer did not ask for it. After it, a project that declares the
  * merge check asks a passing review at that commit by another than the building run (`review.ts`).
+ * Last, a landing that changed a published contract's source file is marked only once a decided
+ * version holds that file as the commit left it (`ecosystem/contract/landing-lag.ts`, ISS-1419).
  */
 export async function refuseUncheckedMerge(
   args: {
@@ -84,6 +87,11 @@ export async function refuseUncheckedMerge(
     commit,
   });
   if (review) throw refuse('MERGE_REVIEW_MISSING', review, '/commit');
+  if (!commit) return;
+  // a landing that changed a published contract's file leaves a decided version holding it (ISS-1419)
+  const base = await checkedBaseOf(prior.id, commit);
+  const lag = await contractLag(prior.projectId, commit, base);
+  if (lag) throw new RefusalError([lag], 'MERGE_MARK_REFUSED');
 }
 
 /** The mark's artifacts with each `carriedBy` resolved to its carrier's key, or the refusal naming it. */

@@ -454,6 +454,12 @@ landing and moved, its key in its own commit subject so the mark reads the commi
    Where a merge check is owed, its card beneath this guide says what the mark waits on.
    Where the project declares the merge check, it is then refused \`MERGE_REVIEW_MISSING\` until a
    passing review by a reviewer other than the building run stands at that commit.
+   Where the landing changes the file a published contract was last recorded from, record that
+   file as its next version before the mark,
+   \`POST /api/projects/:projectId/contracts/:contract/versions\`
+   \`{ artifact, sourceRef: "<path>@<commit>" }\`, and decide it at \`…/versions/:version/decision\`;
+   until a decided version holds the file the mark is refused \`CONTRACT_VERSION_UNRECORDED\` or
+   \`CONTRACT_VERSION_UNDECIDED\`.
    On the fast lane the deploy that follows is web only:
    \`POST /api/projects/:projectId/integrations/coolify/deploy\` \`{ issueId, targets }\`, the labels
    \`fastLane.deployTargets\` declares. It is

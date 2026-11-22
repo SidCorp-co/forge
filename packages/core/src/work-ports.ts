@@ -39,6 +39,7 @@ import {
   decideChannelGate,
   doorOf,
   landingDriftRefusal,
+  landingLagRefusal,
   landingWorld,
   readAdoptionRecord,
   settlingContractVersion,
@@ -371,6 +372,7 @@ export function provideWorkPorts(): void {
     policyGapsOf,
     contractDrift: async (issue, landed) =>
       landingDriftRefusal(landed, await landingWorld(issue, landed)),
+    contractLag: landingLagRefusal,
     contractAboutRefusal,
     adoptionRecord: (projectId, refs) => readAdoptionRecord(projectId, refs),
     guideRef,

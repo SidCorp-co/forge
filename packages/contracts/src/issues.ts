@@ -146,6 +146,10 @@ export const MERGE_REFUSAL_CODES = [
 	"MERGE_CHECK_MISSING",
 	"MERGE_REVIEW_MISSING",
 	"PATTERN_ENTRY_MISSING",
+	/** A landing changed a published contract's source file and no version holds that file (ISS-1419). */
+	"CONTRACT_VERSION_UNRECORDED",
+	/** The version holding a landing's contract file is still proposed, so not current (ISS-1419). */
+	"CONTRACT_VERSION_UNDECIDED",
 	/** A change request of a change-request release merged before the release is approved (REQ-63 BC-2). */
 	"RELEASE_MERGE_NOT_APPROVED",
 	/** A change request merged before one its release declares ahead of it (REQ-63 BC-2). */

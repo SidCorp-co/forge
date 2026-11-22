@@ -354,6 +354,7 @@ interface IssuePorts {
     },
     landed: readonly string[],
   ) => Promise<{ code: 'CONTRACT_DRIFT' | 'CONTRACT_LANDING_UNNAMED'; detail: string } | null>;
+  contractLag: (projectId: string, commit: string, base: string | null) => Promise<Refusal | null>;
   /** Why `contract` (`<project>/<contract>`) is no contract the project publishes or consumes, or null. */
   contractAboutRefusal: (projectId: string, contract: string) => Promise<string | null>;
   /** The adoption record each named version is, read off the project's interface and links (REQ-5 BC-17). */
@@ -490,6 +491,7 @@ export const plannedRevisionFor = port('plannedRevisionFor');
 export const approvalRequired = port('approvalRequired');
 export const policyGapsOf = port('policyGapsOf');
 export const contractDrift = port('contractDrift');
+export const contractLag = port('contractLag');
 export const contractAboutRefusal = port('contractAboutRefusal');
 export const adoptionRecord = port('adoptionRecord');
 

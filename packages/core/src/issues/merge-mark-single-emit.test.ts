@@ -43,12 +43,16 @@ vi.mock('./read-service.js', () => ({ findIssueById: async () => prior }));
 // a stale round's stamp is integration-tested (run-close-keeps-landed-e2e); this mocked db answers rows to any query
 vi.mock('./stale-round-merge.js', () => ({ supersedeStaleRoundMerge: async () => false }));
 // the project declares no merge check and the issue no approved new pattern, so none is owed
-vi.mock('./merge-check.js', () => ({ uncheckedMergeRefusal: async () => null }));
+vi.mock('./merge-check.js', () => ({
+  uncheckedMergeRefusal: async () => null,
+  checkedBaseOf: async () => null,
+}));
 vi.mock('./review.js', () => ({ unreviewedMergeRefusal: async () => null }));
 vi.mock('./pattern-entry.js', () => ({ markEntryRefusal: async () => null }));
 vi.mock('./ports.js', () => ({
   answerMergeQuestions: async () => [],
   contractDrift: async () => null,
+  contractLag: async () => null,
   readProjectDocument: async () => null,
   postIssueNotice: async (args: { body: string }) => ({
     id: 'c1',

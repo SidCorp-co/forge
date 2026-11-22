@@ -37,6 +37,7 @@ vi.mock('./stale-round-merge.js', () => ({ supersedeStaleRoundMerge: async () =>
 vi.mock('./ports.js', () => ({
   answerMergeQuestions: async () => [],
   contractDrift: async () => null,
+  contractLag: async () => null,
   readProjectDocument: async () => null,
   postIssueNotice: async (args: { body: string }) => ({
     id: 'c1',
@@ -57,7 +58,10 @@ vi.mock('./commit-landing.js', async (importOriginal) => ({
   vouchedCommit,
 }));
 // the project declares no merge check and the issue no approved new pattern, so none is owed
-vi.mock('./merge-check.js', () => ({ uncheckedMergeRefusal: async () => null }));
+vi.mock('./merge-check.js', () => ({
+  uncheckedMergeRefusal: async () => null,
+  checkedBaseOf: async () => null,
+}));
 vi.mock('./review.js', () => ({ unreviewedMergeRefusal: async () => null }));
 vi.mock('./pattern-entry.js', () => ({ markEntryRefusal: async () => null }));
 vi.mock('./work-evidence.js', () => ({
