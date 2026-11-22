@@ -9,6 +9,16 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.786] - 2026-11-22
+
+Drizzle journal at drizzle/meta, similar-feedback roots, and a master's grant route
+
+### Fixed
+
+- **A similar-feedback hit names where a duplicate routes.** Each hit says the root it duplicates, where it is one, and the issues carrying that root's route, so a triage names the root and its carrier first time.
+- **A release range reads drizzle's default journal layout.** A range changing a drizzle journal kept in a meta folder beside its migrations, with no migrations folder, lists the migrations it gains, as forge's own layout always did.
+- **A master raises a grant it needs at a door that takes it.** `POST …/support/technical-needs` posts a master's need in its project's technical channel, and a master post's permission-talk refusal names it instead of the room session's door.
+
 ## [0.4.0-dev.785] - 2026-11-22
 
 A question a decision holds no longer wakes the master every pass
