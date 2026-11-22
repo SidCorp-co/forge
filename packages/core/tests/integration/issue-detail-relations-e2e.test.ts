@@ -90,7 +90,7 @@ describe('POST /api/issues/:id/dependencies across projects names the contract w
       kind: 'blocks',
     });
     expect(res.status, JSON.stringify(res.body)).toBe(422);
-    expect(res.body.error.code).toBe('CROSS_PROJECT');
+    expect((res.body as { error: { code: string } }).error.code).toBe('CROSS_PROJECT');
     namesTheWay(res.body);
   });
 
@@ -102,7 +102,7 @@ describe('POST /api/issues/:id/dependencies across projects names the contract w
     expect(res.status, JSON.stringify(res.body)).toBe(400);
     namesTheWay(res.body);
     const read = await api(token, 'GET', `/api/issues/${loose.id}`);
-    expect(read.body.relations.blockedBy).toEqual([]);
+    expect((read.body.relations as Relations).blockedBy).toEqual([]);
   });
 
   it('a same-project blocks edge is written as before', async () => {
