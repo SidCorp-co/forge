@@ -305,12 +305,12 @@ describe('an on/off state and an act taken are held to their own turn (ISS-1416)
     }
   });
 
-  it('fails accurate on a raise reported with no act of its turn landed, and passes it after one landed', () => {
+  it('fails accurate on a raise reported with no act landed behind it, and passes it after one landed', () => {
     const text = "The host step was already raised in AdminHub API's technical thread.";
     const j = judged(text, {}, 'en');
     expect(j.failed).toEqual(['accurate']);
     expect(j.findings[0]).toMatchObject({ line: 'accurate', by: 'code' });
-    expect(j.findings[0]?.why).toContain('no act of this turn landed');
+    expect(j.findings[0]?.why).toContain('no act landed in this turn or earlier in this thread');
     expect(j.findings[0]?.why).toContain('refused or landed and where');
     expect(judged(text, { handedOn: true }, 'en').verdict).toBe('pass');
     expect(judgeReply({ ...reply(text, 'en'), roomKind: 'support' }, []).verdict).toBe('pass');

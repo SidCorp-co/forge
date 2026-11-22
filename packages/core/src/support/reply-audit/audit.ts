@@ -12,7 +12,7 @@ import type {
   SupportAuditRequest,
   SupportAuditView,
 } from '@forge/contracts/support-reply-audit';
-import { and, desc, eq, lte, ne, or, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, lte, ne, or, sql } from 'drizzle-orm';
 import { readMessages } from '../../conversations/index.js';
 import { db } from '../../db/client.js';
 import { conversations } from '../../db/schema-conversations.js';
@@ -36,8 +36,12 @@ const REASON_CHARS = 900;
 
 interface Posted {
   text: string;
+  /** The thread it was posted in. */
+  thread: string;
   /** The request it named, asked in another thread of the room (ISS-1314). */
   request: string | null;
+  /** That request's thread, where it named one. */
+  requestThread: string | null;
   at: Date;
   /** The session and turn that posted it, where a turn's request did (ISS-1029). */
   sessionId: string | null;
@@ -64,14 +68,17 @@ async function replyPosted(room: RoomRow, thread: string, message: string): Prom
     )
     .limit(1);
   const input = row?.input as
-    | { text?: unknown; request?: { message?: unknown } }
+    | { text?: unknown; request?: { message?: unknown; thread?: unknown } }
     | null
     | undefined;
   if (!row || typeof input?.text !== 'string') return null;
   const request = input.request?.message;
+  const requestThread = input.request?.thread;
   return {
     text: input.text,
+    thread,
     request: typeof request === 'string' ? request : null,
+    requestThread: typeof requestThread === 'string' ? requestThread : null,
     at: row.at,
     sessionId: row.sessionId,
     turnId: row.turnId,
@@ -79,11 +86,33 @@ async function replyPosted(room: RoomRow, thread: string, message: string): Prom
 }
 
 /**
- * The acts around a reply its session posted in a turn: whether that turn read live state, looked at
- * a screen or landed an act somewhere else, and when the session last read in an earlier turn.
- * Undefined where the reply names no turn.
+ * Whether an act landed somewhere else (a raise, a route, an ask or a filing) in the reply's thread or
+ * the thread of the request it named, before the reply and in any turn of the conversation (ISS-1423):
+ * "I raised it earlier" told in a later turn reports an act that landed.
  */
-async function readsAround(posted: Posted): Promise<TurnReads | undefined> {
+async function handedOnBefore(roomId: string, posted: Posted): Promise<boolean> {
+  const threads = [posted.thread, ...(posted.requestThread ? [posted.requestThread] : [])];
+  const [row] = await db
+    .select({ id: supportActions.id })
+    .from(supportActions)
+    .where(
+      and(
+        eq(supportActions.roomId, roomId),
+        inArray(supportActions.thread, threads),
+        handedOn,
+        lte(supportActions.createdAt, posted.at),
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
+}
+
+/**
+ * The acts around a reply its session posted in a turn: whether that turn read live state or looked
+ * at a screen, whether an act landed somewhere else in that turn or earlier in the conversation, and
+ * when the session last read in an earlier turn. Undefined where the reply names no turn.
+ */
+async function readsAround(roomId: string, posted: Posted): Promise<TurnReads | undefined> {
   if (!posted.sessionId || !posted.turnId) return undefined;
   const inTurn = and(
     eq(supportActions.sessionId, posted.sessionId),
@@ -94,7 +123,7 @@ async function readsAround(posted: Posted): Promise<TurnReads | undefined> {
     .from(supportActions)
     .where(and(inTurn, or(stateRead, handedOn)));
   const reads = mine.filter((r) => isStateRead(r.kind, r.tool));
-  const acted = reads.length < mine.length;
+  const acted = reads.length < mine.length || (await handedOnBefore(roomId, posted));
   const looked = reads.some((r) => r.tool === 'look');
   if (reads.length > 0) return { thisTurn: true, earlierAt: null, looked, handedOn: acted };
   const [earlier] = await db
@@ -269,7 +298,7 @@ export async function auditReply(
       language: await answeringOf(room, input.thread, conversationId, posted),
       roomKind: room.kind,
       apiHosts: apiHosts(),
-      reads: await readsAround(posted),
+      reads: await readsAround(room.id, posted),
     },
     input.failed,
   );

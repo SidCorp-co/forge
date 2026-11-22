@@ -28,8 +28,8 @@ import {
  * The reads of live state around a reply (ISS-1354): whether its own turn made one, and when the
  * session last made one in an earlier turn (null where none). A declared read, a run, a release or
  * deployment read and a look at a screen each count; `looked` is whether its turn looked at a screen
- * (ISS-1356), and `handedOn` whether an act of its turn landed somewhere else: a raise, a route, an
- * ask or a filing (ISS-1416, `dated-reads.ts:handedOn`).
+ * (ISS-1356), and `handedOn` whether an act landed somewhere else: a raise, a route, an ask or a
+ * filing (ISS-1416, `dated-reads.ts:handedOn`), in its turn or earlier in its thread (ISS-1423).
  */
 export interface TurnReads {
   thisTurn: boolean;
@@ -133,15 +133,15 @@ function unseenScreenClaim(reply: AuditedReply): string | null {
 }
 
 /**
- * Why a reply's report of an act it took (a raise, a post elsewhere) has no result in its turn
+ * Why a reply's report of an act it took (a raise, a post elsewhere) has no result behind it
  * (ISS-1416, FB-824): "raised in AdminHub API's thread" when that raise was refused. Null where it
- * reports none, or an act of its turn landed.
+ * reports none, or an act landed in its turn or earlier in its thread (ISS-1423).
  */
 function unlandedActClaim(reply: AuditedReply): string | null {
   if (!reply.reads || reply.reads.handedOn) return null;
   const claim = actClaimIn(reply.text);
   return claim
-    ? `it says "${claim}" and no act of this turn landed: report an act from its result, refused or landed and where`
+    ? `it says "${claim}" and no act landed in this turn or earlier in this thread: report an act from its result, refused or landed and where`
     : null;
 }
 

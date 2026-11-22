@@ -45,13 +45,14 @@ const w = new SupportWorld();
 let chat: StandInRocketChat;
 type Audit = { status: number; body: Record<string, unknown> };
 
-/** The member asks in a new thread, the session replies `text`, then audits it with `failed`. */
+/** The member asks in a new thread (or `inThread`), the session replies `text`, then audits it with `failed`. */
 async function replyAndAudit(
   ask: string,
   text: string,
   failed: Array<{ line: string; why: string }> | null,
   /** Run after the reply is posted and before it is audited, in the same turn. */
   inTurn?: (message: string) => Promise<void>,
+  inThread?: string,
 ): Promise<{ thread: string; message: string; audit: Audit | null; handed: string }> {
   await w.settleWarm();
   let message = '';
@@ -72,7 +73,8 @@ async function replyAndAudit(
     });
     audit = { status: res.status, body: (await res.json()) as Record<string, unknown> };
   };
-  const thread = await chat.say(chat.bob, ask);
+  const said = await chat.say(chat.bob, ask, inThread);
+  const thread = inThread ?? said;
   await w.untilLines((lines) => lines.some((l) => l.tmid === thread && l.text === text));
   await w.settleWarm();
   w.box.model = async () => {};
@@ -472,20 +474,22 @@ describe('an earlier read is dated as a turn opens, and an act is told from its 
     );
   }, 120_000);
 
-  it('fails accurate on a raise reported with no act of its turn landed, and passes it after a raise landed', async () => {
+  // ISS-1423 (FB-828): a raise that landed in an earlier turn of the thread is reported truthfully later
+  it('fails accurate on a raise reported with no act landed, and passes it after a raise landed in its turn or earlier in its thread', async () => {
     const claim = "The host step was already raised in the project's technical thread.";
     const refused = await replyAndAudit('Did the host step reach the owner?', claim, []);
     expect(refused.audit?.body).toMatchObject({ verdict: 'fail', failed: ['accurate'] });
-    expect(JSON.stringify(refused.audit?.body.findings)).toContain('no act of this turn landed');
-    const landed = await replyAndAudit(
-      'And the database step?',
-      claim,
-      [],
-      actInTurnOf('routed', 'technical'),
+    expect(JSON.stringify(refused.audit?.body.findings)).toContain(
+      'no act landed in this turn or earlier in this thread',
     );
-    expect(landed.audit?.body, JSON.stringify(landed.audit?.body)).toMatchObject({
-      verdict: 'pass',
-      failed: [],
-    });
-  }, 120_000);
+    const pass = { verdict: 'pass', failed: [] };
+    const routed = actInTurnOf('routed', 'technical');
+    const landed = await replyAndAudit('And the database step?', claim, [], routed);
+    expect(landed.audit?.body, JSON.stringify(landed.audit?.body)).toMatchObject(pass);
+    const earlier = "I raised it in the project's technical thread earlier.";
+    const later = await replyAndAudit('Any news?', earlier, [], undefined, landed.thread);
+    expect(later.audit?.body, JSON.stringify(later.audit?.body)).toMatchObject(pass);
+    const elsewhere = await replyAndAudit('And the cache step?', claim, []);
+    expect(elsewhere.audit?.body).toMatchObject({ verdict: 'fail', failed: ['accurate'] });
+  }, 180_000);
 });
