@@ -6,6 +6,8 @@
  * the record. Coverage voided every pass as older than the reopen, so the requirement read
  * `{ criteria: 4, passing: 0, judged: 0 }` while the record that closed the issues counted them: the
  * two read one issue's verdicts by two rules.
+ *
+ * @direct-test-of packages/core/src/release-batch/landed-build.ts
  */
 
 import { sql } from 'drizzle-orm';

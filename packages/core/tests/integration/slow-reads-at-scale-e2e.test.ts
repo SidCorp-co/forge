@@ -23,6 +23,7 @@
 // @direct-test-of packages/core/src/whats-new/serving.ts
 // @direct-test-of packages/core/src/issues/display-ids.ts
 // @direct-test-of packages/core/src/requirements/standing-live-build.ts
+// @direct-test-of packages/core/src/release-batch/landed-build.ts
 
 import { appendFileSync } from 'node:fs';
 import { QueryPromise, sql } from 'drizzle-orm';

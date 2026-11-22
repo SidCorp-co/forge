@@ -63,7 +63,7 @@ import {
 /** The shapes forge-dev's mix sent over twice a warm read (r14's header, 2026-11-08), by the code that sends them. */
 const NAMED: Record<string, string> = {
   '7ec2153a': 'issues/mark-trail.ts:markClaimsRead',
-  '4afdafad': 'release-batch/landed-build.ts:recordedLandingsRead',
+  '40ad1ed3': 'release-batch/landed-build.ts:recordedLandingsRead',
   '97b781a2': 'release-batch/served-ancestry.ts:carriagesOf',
   '7984d841':
     'issues/release-evidence.ts:reopenedMovesOf (a reopened issue’s closes, read with its reopen since r21)',

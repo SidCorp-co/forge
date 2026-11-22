@@ -138,18 +138,24 @@ function recordedLandings(
 async function recordedLandingsRead(
   ids: readonly string[],
 ): Promise<Map<string, { commit: string; at: Date }>> {
+  // the asked issues once, then their projects' landing records once, joined: joined directly, the
+  // plan read each record's metadata again for every asked issue of its project (debt ec717dc8)
   const rows = (await db.execute(sql`
-    SELECT DISTINCT ON (i.id) i.id::text AS id, r.metadata ->> 'commit' AS commit,
-           r.started_at AS at
-      FROM issues i
-      JOIN pipeline_runs r
-        ON r.project_id = i.project_id
-       AND r.metadata ->> 'source' = ${RELEASE_RECORD_SOURCE}
-       AND r.metadata ->> 'verification' = ${LANDED_VERIFICATION}
-       AND r.metadata -> 'issueIds' ? (i.id::text)
-     WHERE i.id = ANY(${uuidArray(ids)})
-       AND i.status = 'closed'
-     ORDER BY i.id, r.started_at DESC
+    WITH asked AS MATERIALIZED (
+      SELECT i.id, i.project_id FROM issues i
+       WHERE i.id = ANY(${uuidArray(ids)}) AND i.status = 'closed'
+    ), landings AS MATERIALIZED (
+      SELECT r.project_id, r.metadata ->> 'commit' AS commit, r.started_at AS at,
+             r.metadata -> 'issueIds' AS issue_ids
+        FROM pipeline_runs r
+       WHERE r.project_id IN (SELECT DISTINCT project_id FROM asked)
+         AND r.metadata ->> 'source' = ${RELEASE_RECORD_SOURCE}
+         AND r.metadata ->> 'verification' = ${LANDED_VERIFICATION}
+    )
+    SELECT DISTINCT ON (a.id) a.id::text AS id, l.commit, l.at
+      FROM asked a
+      JOIN landings l ON l.project_id = a.project_id AND l.issue_ids ? (a.id::text)
+     ORDER BY a.id, l.at DESC
   `)) as unknown as Array<{ id: string; commit: string | null; at: Date | string }>;
   const out = new Map<string, { commit: string; at: Date }>();
   for (const r of rows) {
