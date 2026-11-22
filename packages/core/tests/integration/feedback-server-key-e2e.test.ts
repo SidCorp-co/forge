@@ -416,4 +416,31 @@ describe('a feedback server key reading a decline (ISS-1412)', () => {
     const reasons = (view.decisions as Body[]).filter((d) => d.decision === 'declined');
     expect(reasons.map((d) => d.reason)).toEqual(['The printer driver prints blank.']);
   });
+  it('(h) withholds the reason where the project keeps decision reasons from every agent (no_egress)', async () => {
+    const admin = await createTestUser({ verified: true });
+    const closed = (await createTestProject(admin.id)).id;
+    await addProjectMember(closed, admin.id, 'admin');
+    const { seedProjectDocument } = await import('../helpers/release-world.js');
+    await seedProjectDocument(closed, admin.id, {
+      environments: {},
+      extra: { sensitiveData: 'no_egress' },
+    });
+    const jwt = await userToken(admin.id);
+    const minted = await api(jwt, 'POST', `/api/projects/${closed}/feedback/server-keys`, {
+      product: 'epod',
+    });
+    const secret = minted.body.secret as string;
+    const filed = await api(secret, 'POST', `/api/projects/${closed}/feedback`, item('Kept in'));
+    const key = (filed.body.feedback as Body).key as string;
+    const at = `/api/projects/${closed}/feedback/${key}`;
+    const declined = await api(jwt, 'POST', `${at}/triage`, {
+      route: 'decline',
+      note: 'Patient 4411 asked for it.',
+    });
+    expect(declined.status, JSON.stringify(declined.body)).toBe(200);
+    const read = await api(secret, 'GET', at);
+    expect(read.status, JSON.stringify(read.body)).toBe(200);
+    expect(read.body.feedback).toMatchObject({ phase: 'declined', declineReason: null });
+    expect(JSON.stringify(read.body)).not.toContain('4411');
+  });
 });

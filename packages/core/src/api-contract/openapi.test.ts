@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import { declareResponse } from '../middleware/declared-response.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import {
   requireDeclared,
@@ -11,7 +12,7 @@ import {
   requiresOnResolved,
 } from '../permissions/declared.js';
 import { OPEN_QUERY_READS, type OpenQuery } from './open-queries.js';
-import { buildApiContract } from './openapi.js';
+import { buildApiContract, UNDECLARED_RESPONSE } from './openapi.js';
 import { CONTRACTS_DIR } from './routes.js';
 
 const INFO = { title: 'probe', version: '0.0.0' };
@@ -177,5 +178,51 @@ describe('the committed API contract names a permission on every operation', () 
       .filter(([, op]) => op['x-forge-permission'] === undefined)
       .map(([name]) => name);
     expect(without).toEqual([]);
+  });
+});
+
+describe('a declared answer is written at its own route and nowhere else (ISS-1412)', () => {
+  const body = z.strictObject({ reason: z.string().nullable() });
+  const door = (method = 'GET') =>
+    declareResponse(async (_c: unknown, next: () => Promise<void>) => next(), {
+      method,
+      status: 200,
+      under: 'a probe key',
+      description: 'the probe body.',
+      schema: body,
+    });
+
+  it('writes it under the status of exactly its path and method, beside the undeclared default', () => {
+    const app = new Hono()
+      .use('/items/:ref', door())
+      .get('/items/:ref', NONE, noQuery, answer)
+      .post('/items/:ref', NONE, answer)
+      .get('/items/keys', NONE, noQuery, answer);
+    const { document, refusals } = buildApiContract(app.routes, INFO, {});
+    expect(refusals).toEqual([]);
+    const ops = Object.fromEntries(operationsOf(document));
+    const responses = ops['GET /items/{ref}']?.responses as Record<string, Operation> | undefined;
+    const declared = responses?.['200'];
+    const content = declared?.content as
+      | Record<string, { schema: { anyOf: Operation[] } }>
+      | undefined;
+    const anyOf = content?.['application/json']?.schema.anyOf;
+    expect(anyOf?.[0]).toMatchObject({ title: 'Under a probe key', additionalProperties: false });
+    expect(anyOf?.[1]).toEqual({
+      title: 'Under any other credential',
+      description: UNDECLARED_RESPONSE,
+    });
+    expect(declared?.description).toMatch(/^Under a probe key: the probe body\. Under any other/);
+    for (const other of ['POST /items/{ref}', 'GET /items/keys']) {
+      expect(Object.keys(ops[other]?.responses as Operation), other).not.toContain('200');
+    }
+  });
+
+  it('refuses an answer declared for a method its path does not mount', () => {
+    const app = new Hono().use('/items/:ref', door('PUT')).get('/items/:ref', NONE, answer);
+    const { refusals } = buildApiContract(app.routes, INFO, {});
+    expect(refusals).toContain(
+      'PUT /items/:ref: a declared 200 answer for a route that is not mounted',
+    );
   });
 });

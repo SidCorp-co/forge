@@ -535,9 +535,14 @@ refuses importing the library anywhere else — a validator built past the wrapp
 route looking unvalidated. The environment is replaced, not inherited, so a `FEATURE_*` variable in
 the caller's shell cannot mount a different route set.
 
-**What the contract does not say, it says it does not say.** No route declares a response schema,
-so every operation carries one `default` response whose description reads *Undeclared* — the same
-text everywhere, so a differ sees a response being declared as the change it is. `x-forge-validated`
+**What the contract does not say, it says it does not say.** Every operation carries one `default`
+response whose description reads *Undeclared* — the same text everywhere, so a differ sees a response
+being declared as the change it is. A handler declares a success answer with
+`packages/core/src/middleware/declared-response.ts:declareResponse`, naming its method, status and the
+credential it is given under; the generator writes it at exactly that route
+(`packages/core/src/api-contract/declared-answers.ts:declaredAnswers`), its schema anyOf that body and
+every other caller's, which stays undeclared. The feedback server key's read is the one declared
+(ISS-1412). `x-forge-validated`
 on each operation lists the request parts (`json`, `param`, `query`) a validator holds. A body no
 zod schema can hold — multipart, raw bytes, a payload kept raw for its signature, the MCP transport's
 JSON-RPC — is declared with `rawBody(contentType, description)` from the same module, and the
