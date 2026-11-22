@@ -11,6 +11,7 @@
  * with them as stored history (`storedRuntime`).
  *
  * @direct-test-of packages/core/src/issues/criteria/unobserved-runtime.ts
+ * @direct-test-of packages/core/src/issues/release-close-failing.ts
  */
 
 import { sql } from 'drizzle-orm';
@@ -212,8 +213,10 @@ describe('where none is owed', () => {
     );
   });
 
-  // a fail at a commit the landing holds was never superseded by a pass, so it shipped with it
-  it('closes over a fail judged at an earlier commit the landing holds, and says it shipped failing', async () => {
+  // a fail at a commit the landing holds was never superseded by a pass, so it shipped with it; and
+  // a release closes no issue whose newest verdict on a live criterion fails this round (ISS-1397),
+  // owing no verdict included
+  it('records the landing over a fail judged at an earlier commit the landing holds, says it shipped failing, and leaves its issue at the gate', async () => {
     const issue = await landedIssue(11, F4);
     await ok(judged(issue, 2, { kind: 'commit', sha: D9 }, 'fail'));
 
@@ -221,7 +224,12 @@ describe('where none is owed', () => {
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(readingsOf(res.body)[0]).toBe('Shipped with 1 failing criterion: ISS-11 c2');
-    expect(await statusOf(issue)).toBe('closed');
+    const failed = res.body.failed as Array<{ id: string; reason: string }>;
+    expect(failed).toMatchObject([{ id: issue }]);
+    expect(failed[0]?.reason).toContain(
+      `criterion 2's newest verdict is a fail (judged on \`${D9.slice(0, 12)}\`)`,
+    );
+    expect(await statusOf(issue)).toBe('awaiting_release');
   });
 });
 
