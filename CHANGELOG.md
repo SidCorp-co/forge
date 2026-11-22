@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.793] - 2026-11-22
+
+Lost-pane work backs off, and a queued release retry no longer takes the run
+
+### Fixed
+
+- **Work whose box keeps losing its job's pane is no longer re-placed every few minutes.** Each retry waits 2, 4, then 8 minutes; after four losses Forge holds it, naming the item and count, until a person resumes it.
+- **A queued release retry no longer takes the run from a live attempt.** Only a retry a box has started supersedes the earlier attempt; one still queued, held back or cancelled before starting leaves that attempt's finish accepted.
+
 ## [0.4.0-dev.792] - 2026-11-22
 
 A product learns why its feedback was declined; release retries work under zsh
