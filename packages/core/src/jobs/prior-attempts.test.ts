@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import { JOB_PANE_PREFIX, renderPriorAttemptsBlock } from './prior-attempts.js';
 
@@ -17,8 +18,34 @@ describe('a retry’s brief names the pane of the attempt it retries (ISS-1351)'
   it('names the earlier pane by the name the box runs it under', () => {
     const block = renderPriorAttemptsBlock([earlier], 2);
     expect(block).toContain(`\`${JOB_PANE_PREFIX}job-attempt-1\``);
-    expect(block).toContain(`tmux has-session -t =${JOB_PANE_PREFIX}job-attempt-1`);
+    expect(block).toContain(`tmux has-session -t '=${JOB_PANE_PREFIX}job-attempt-1'`);
   });
+
+  // ISS-1413 (FB-822): a job pane runs zsh, where an unquoted word starting with `=` is filename
+  // expansion: `-t =forge-job-<id>` printed "not found" and exited 1 before tmux ran, so a live
+  // attempt read as ended and kill-session ended nothing. Each taught command quotes its target, and
+  // zsh hands that target to tmux unchanged.
+  const taught = (block: string) =>
+    [...block.matchAll(/`(tmux (?:has|kill)-session -t [^`]+)`/g)].map((m) => m[1] ?? '');
+
+  it('quotes the exact-match target of every tmux command it teaches', () => {
+    const lines = taught(renderPriorAttemptsBlock([earlier], 2));
+    expect(lines).toHaveLength(2);
+    for (const line of lines) expect(line).toMatch(/-t '=forge-job-[^']+'$/);
+  });
+
+  it.skipIf(spawnSync('zsh', ['-fc', 'true']).error !== undefined)(
+    'hands each taught target to tmux unchanged when zsh runs it',
+    () => {
+      for (const line of taught(renderPriorAttemptsBlock([earlier], 2))) {
+        const echoed = spawnSync('zsh', ['-fc', line.replace(/^tmux /, 'print -r -- ')], {
+          encoding: 'utf8',
+        });
+        expect(echoed.stderr).toBe('');
+        expect(echoed.stdout).toContain(`=${JOB_PANE_PREFIX}job-attempt-1`);
+      }
+    },
+  );
 
   // ISS-1411 (FB-819): on a box whose runner never ends a failed attempt's pane, "end your turn
   // while it stands" stopped every retry and deadlocked agenfold's 0.307.0 on attempt 8. The retry
@@ -26,7 +53,7 @@ describe('a retry’s brief names the pane of the attempt it retries (ISS-1351)'
   it('has the new session end a pane that still stands and go on, never stop on it', () => {
     const block = renderPriorAttemptsBlock([earlier], 2);
     expect(block).toContain('Before you push, tag, deploy or call `finish`');
-    expect(block).toContain(`tmux kill-session -t =${JOB_PANE_PREFIX}job-attempt-1`);
+    expect(block).toContain(`tmux kill-session -t '=${JOB_PANE_PREFIX}job-attempt-1'`);
     expect(block).toContain('then go on');
     expect(block).not.toContain('end your turn');
   });

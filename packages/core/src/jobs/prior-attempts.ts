@@ -156,7 +156,7 @@ export function renderPriorAttemptsBlock(attempts: PriorAttempt[], currentAttemp
     '',
   ];
   lines.push(
-    `- Its session may still be acting: a failed attempt is one its box could no longer account for, not one known to have stopped. Its pane was \`${JOB_PANE_PREFIX}${last.jobId}\`. Before you push, tag, deploy or call \`finish\`, check that pane has ended: run from this pane, \`tmux has-session -t =${JOB_PANE_PREFIX}${last.jobId}\` asks the box's own tmux server and exits non-zero once it has. While it stands, end it, \`tmux kill-session -t =${JOB_PANE_PREFIX}${last.jobId}\`, then go on: you hold the run now, ending it keeps two attempts from acting at once, and a box whose runner never ends a failed attempt's pane would otherwise hold every retry.`,
+    `- Its session may still be acting: a failed attempt is one its box could no longer account for, not one known to have stopped. Its pane was \`${JOB_PANE_PREFIX}${last.jobId}\`. Before you push, tag, deploy or call \`finish\`, check that pane has ended: run from this pane, \`tmux has-session -t '=${JOB_PANE_PREFIX}${last.jobId}'\` asks the box's own tmux server and exits non-zero once it has. While it stands, end it, \`tmux kill-session -t '=${JOB_PANE_PREFIX}${last.jobId}'\`, then go on: you hold the run now, ending it keeps two attempts from acting at once, and a box whose runner never ends a failed attempt's pane would otherwise hold every retry.`,
   );
   if (last.sessionId) {
     lines.push(
