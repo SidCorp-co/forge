@@ -5,10 +5,9 @@
  * (`standing.ts`, ISS-1382), both by this one predicate, so the pass and the read cannot disagree.
  */
 
-import { and, asc, eq, inArray, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, type SQL } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { memoizedPerId } from '../db/read-memo.js';
-import { agentQuestions } from '../db/schema-questions.js';
+import { agentQuestions, type QuestionStep } from '../db/schema-questions.js';
 
 /** The questions `on` names that are still open: an answer, or a void, closes one. */
 export const clarificationOpenOn = (on: SQL) => and(on, eq(agentQuestions.status, 'open'));
@@ -20,30 +19,40 @@ export interface OpenClarification {
   askedAt: Date;
 }
 
-/** The open clarification of each of `feedbackIds` that has one, by item id. */
-export function openClarificationsOf(
-  feedbackIds: readonly string[],
-): Promise<Map<string, OpenClarification>> {
-  return memoizedPerId('feedbackOpenClarification', feedbackIds, async (some) => {
-    if (some.length === 0) return new Map();
-    const rows = await db
-      .select({
-        feedbackId: agentQuestions.feedbackId,
-        steps: agentQuestions.steps,
-        createdAt: agentQuestions.createdAt,
-      })
-      .from(agentQuestions)
-      .where(clarificationOpenOn(inArray(agentQuestions.feedbackId, [...some])))
-      .orderBy(asc(agentQuestions.createdAt));
-    const out = new Map<string, OpenClarification>();
-    for (const r of rows) {
-      if (!r.feedbackId || out.has(r.feedbackId)) continue;
-      const step = r.steps.at(-1);
-      out.set(r.feedbackId, {
-        round: step?.round ?? 1,
-        askedAt: step?.askedAt ? new Date(step.askedAt) : r.createdAt,
-      });
-    }
-    return out;
-  });
+/**
+ * The open clarification questions of `feedbackIds`, as one select its caller sends beside its other
+ * per-item reads (`list-standing.ts:triageFactsOf`): each question's item, when it was asked and its
+ * steps, folded by {@link oldestOpenOf}.
+ */
+export function openClarificationRows(feedbackIds: readonly string[]) {
+  return db
+    .select({
+      feedbackId: agentQuestions.feedbackId,
+      at: agentQuestions.createdAt,
+      steps: agentQuestions.steps,
+    })
+    .from(agentQuestions)
+    .where(clarificationOpenOn(inArray(agentQuestions.feedbackId, [...feedbackIds])));
+}
+
+/** Each item's oldest open clarification, by item id, from the rows {@link openClarificationRows} reads. */
+export function oldestOpenOf(
+  rows: readonly { feedbackId: string | null; at: Date | null; steps: QuestionStep[] | null }[],
+): Map<string, OpenClarification> {
+  const oldest = new Map<string, { at: Date; steps: QuestionStep[] }>();
+  for (const r of rows) {
+    if (!r.feedbackId || !r.steps || !r.at) continue;
+    const held = oldest.get(r.feedbackId);
+    if (!held || r.at.getTime() < held.at.getTime())
+      oldest.set(r.feedbackId, { at: r.at, steps: r.steps });
+  }
+  return new Map(
+    [...oldest].map(([id, { at, steps }]) => {
+      const step = steps.at(-1);
+      return [
+        id,
+        { round: step?.round ?? 1, askedAt: step?.askedAt ? new Date(step.askedAt) : at },
+      ] as const;
+    }),
+  );
 }

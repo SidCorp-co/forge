@@ -9,6 +9,7 @@
  * @direct-test-of packages/core/src/feedback/standing.ts
  * @direct-test-of packages/core/src/feedback/forge-reads.ts
  * @direct-test-of packages/core/src/feedback/list-read.ts
+ * @direct-test-of packages/core/src/feedback/list-standing.ts
  */
 
 import { sql } from 'drizzle-orm';
@@ -69,15 +70,16 @@ async function filed(title: string): Promise<string> {
 }
 
 /**
- * Its filing and every decision on it moved `days` back, so each wait it holds is long overdue. A
+ * Its filing and, unless `decisions` is false, every decision on it moved `days` back, so each wait it holds is long overdue. A
  * decision is insert-only by its guard trigger, so the move runs with triggers off for this one
  * transaction: the test ages a record, it never edits what was decided.
  */
-async function aged(fb: string, days: number) {
+async function aged(fb: string, days: number, { decisions = true } = {}) {
   await db.execute(sql`
     UPDATE feedback SET created_at = now() - make_interval(days => ${days})
      WHERE project_id = ${projectId} AND fb_seq = ${seq(fb)}
   `);
+  if (!decisions) return;
   await db.transaction(async (tx) => {
     await tx.execute(sql`SET LOCAL session_replication_role = replica`);
     await tx.execute(sql`
@@ -128,6 +130,22 @@ describe('Feedback reads stuck only what nobody moves (ISS-1072)', () => {
     await reportedFrom(fb, liveId);
     await aged(fb, 30);
     expect((await rowOf(fb)).attentionGroup).toBe('overdue');
+  });
+
+  // its wait stands since its newest decision, not since it was filed (`list-standing.ts:triageFactsOf`)
+  it('an item filed long ago and answered now stands since its answer', async () => {
+    const fb = await filed('Should the ward list sort by bed?');
+    ok(
+      await say('owner', 'POST', at(`/feedback/${fb}/triage`), {
+        answers: TRIAGE_ANSWERS,
+        route: 'answer',
+        answer: 'It sorts by bed already.',
+      }),
+    );
+    await aged(fb, 30, { decisions: false });
+    const row = await rowOf(fb);
+    expect(row.phase).toBe('resolved');
+    expect(Date.now() - Date.parse(row.times.since as string)).toBeLessThan(10 * 60_000);
   });
 
   // D5 (owner 2026-11-08): outside strict the answer settles it, so it is done and owed by nobody

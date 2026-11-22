@@ -7,14 +7,19 @@
 import type { FeedbackPhase } from '@forge/contracts/feedback';
 import type { IssueStanding } from '@forge/contracts/issue-standing';
 import type { MasterServing } from '@forge/contracts/steward';
-import { max, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { uuidArray } from '../db/raw-sql.js';
 import { memoizedPerId } from '../db/read-memo.js';
 import { feedbackDecisions } from '../db/schema-feedback.js';
+import { agentQuestions, type QuestionStep } from '../db/schema-questions.js';
 import { issueWaitsOf } from '../issues/index.js';
 import { masterServingOf } from '../masters/index.js';
-import { type OpenClarification, openClarificationsOf } from './clarification-open.js';
+import {
+  type OpenClarification,
+  oldestOpenOf,
+  openClarificationRows,
+} from './clarification-open.js';
 import type { Row } from './read.js';
 import type { CarrierStanding } from './standing.js';
 
@@ -39,12 +44,17 @@ export async function standingFactsOf(
   const owed = issueRows
     .filter((i) => carrying.has(i.id) && i.status !== 'closed' && i.status !== 'dropped')
     .map((i) => i.id);
-  const [waits, decidedAt, master, clarifications] = await Promise.all([
+  const [waits, triage, master] = await Promise.all([
     issueWaitsOf(projectId, owed),
-    decidedAtOf(rows.map((r) => r.id)),
+    triageFactsOf(rows.map((r) => r.id)),
     masterServingOf(projectId),
-    openClarificationsOf(rows.map((r) => r.id)),
   ]);
+  const decidedAt = new Map<string, Date>();
+  const clarifications = new Map<string, OpenClarification>();
+  for (const [id, t] of triage) {
+    if (t.decidedAt) decidedAt.set(id, t.decidedAt);
+    if (t.clarification) clarifications.set(id, t.clarification);
+  }
   return {
     carrierStandings: new Map([...waits].map(([id, c]) => [id, c.standing])),
     decidedAt,
@@ -68,16 +78,37 @@ export function askedOf(
   return OWES_TRIAGE.includes(phase) && !draft ? l.clarifications.get(id) : undefined;
 }
 
-/** Each item's newest triage decision, by item id. */
-async function decidedAtOf(feedbackIds: readonly string[]): Promise<Map<string, Date>> {
-  // an item's decisions are its own: every project's asks are one read (ISS-1070 r6)
-  return memoizedPerId('feedbackDecidedAt', feedbackIds, async (some) => {
-    const rows = await db
-      .select({ id: feedbackDecisions.feedbackId, at: max(feedbackDecisions.decidedAt) })
-      .from(feedbackDecisions)
-      .where(sql`${feedbackDecisions.feedbackId} = ANY(${uuidArray(some)})`)
-      .groupBy(feedbackDecisions.feedbackId);
-    return new Map(rows.flatMap((r) => (r.at ? [[r.id, new Date(r.at)] as const] : [])));
+interface TriageFacts {
+  decidedAt?: Date;
+  clarification?: OpenClarification;
+}
+
+/**
+ * Each item's newest triage decision and its open clarification, by item id, in one statement: an
+ * item's decisions and questions are its own, so every project's asks are one read (ISS-1070 r6).
+ */
+async function triageFactsOf(feedbackIds: readonly string[]): Promise<Map<string, TriageFacts>> {
+  return memoizedPerId('feedbackTriageFacts', feedbackIds, async (some) => {
+    if (some.length === 0) return new Map();
+    // the decision rows carry no steps: the union is typed as both kinds read
+    const rows: { feedbackId: string | null; at: Date | null; steps: QuestionStep[] | null }[] =
+      await db
+        .select({
+          feedbackId: sql<string | null>`${feedbackDecisions.feedbackId}`,
+          at: sql<Date>`max(${feedbackDecisions.decidedAt})`.mapWith(feedbackDecisions.decidedAt),
+          steps: sql<QuestionStep[] | null>`NULL::jsonb`.mapWith(agentQuestions.steps),
+        })
+        .from(feedbackDecisions)
+        .where(sql`${feedbackDecisions.feedbackId} = ANY(${uuidArray(some)})`)
+        .groupBy(feedbackDecisions.feedbackId)
+        .unionAll(openClarificationRows(some));
+    const out = new Map<string, TriageFacts>();
+    // a clarification row always carries its steps
+    for (const r of rows)
+      if (r.feedbackId && !r.steps && r.at) out.set(r.feedbackId, { decidedAt: new Date(r.at) });
+    for (const [id, clarification] of oldestOpenOf(rows))
+      out.set(id, { ...out.get(id), clarification });
+    return out;
   });
 }
 
