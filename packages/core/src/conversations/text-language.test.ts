@@ -144,22 +144,66 @@ describe('a language is told only where the evidence is strong (ISS-1442 r6)', (
   });
 });
 
-describe("a room's default language for a line core writes (ISS-1451)", () => {
-  it('reads Vietnamese from a room with no strict word', () => {
-    const texts = ['Đơn hàng bị lỗi', 'Báo lỗi đăng nhập trên điện thoại', 'Em cảm ơn']; // i18n-allow: Vietnamese fixtures
-    expect(roomTextsLanguageOf(texts)).toBe('vi');
+describe("a room's default language for a line core writes (ISS-1451 r2)", () => {
+  const VI_SHORT = [
+    'Có ai không?', // i18n-allow: Vietnamese fixture or example
+    'Xong chưa em?', // i18n-allow: Vietnamese fixture or example
+    'Sao rồi anh?', // i18n-allow: Vietnamese fixture or example
+    'Bot ơi', // i18n-allow: Vietnamese fixture or example
+    'Lỗi rồi', // i18n-allow: Vietnamese fixture or example
+    'Dạ vâng', // i18n-allow: Vietnamese fixture or example
+    'Được rồi', // i18n-allow: Vietnamese fixture or example
+    'Ok rồi', // i18n-allow: Vietnamese fixture or example
+    'Đã deploy xong rồi', // i18n-allow: Vietnamese fixture or example
+  ]; // i18n-allow: short Vietnamese lines the old reading read Vietnamese
+  const VI_ROOMS: string[][] = [
+    ...VI_SHORT.map((t) => [t]),
+    ['Đơn hàng bị lỗi'], // i18n-allow: Vietnamese fixture or example
+    ['Báo lỗi đăng nhập trên điện thoại'], // i18n-allow: Vietnamese fixture or example
+    ['Em cảm ơn'], // i18n-allow: Vietnamese fixture or example
+    ['Đơn hàng bị lỗi', 'Báo lỗi đăng nhập trên điện thoại', 'Em cảm ơn'], // i18n-allow: Vietnamese fixture or example
+    VI_SHORT.slice(0, 2),
+    VI_SHORT.slice(2, 5),
+    VI_SHORT.slice(0, 5),
+    ['Đã fix bug login, anh check lại giúp em'], // i18n-allow: Vietnamese fixture or example
+    [...VIETNAMESE_ROWS],
+    [...TOLD_VIETNAMESE_ROWS],
+  ]; // i18n-allow: Vietnamese rooms
+
+  it('reads Vietnamese from every room the old reading or the pooled marks read Vietnamese', () => {
+    for (const room of VI_ROOMS) expect(roomTextsLanguageOf(room), room.join(' | ')).toBe('vi');
   });
 
-  it('keeps an English room English beside names and loanwords', () => {
-    const texts = [
-      'Hi Nguyễn Văn Đức, the café order is late', // i18n-allow: a Vietnamese name in English
-      'Please check the order from @Trần and the crème brûlée stall', // i18n-allow: names and loanwords
-    ];
-    expect(roomTextsLanguageOf(texts)).toBe('en');
-  });
+  // a bare list of lowercase names carries no English word to outweigh its marks, so it is not asserted en
+  const BARE_NAMES = new Set(['phương, đức']); // i18n-allow: lowercase Vietnamese names
 
-  it('is English for an empty room and for one lone marked word', () => {
-    expect(roomTextsLanguageOf([])).toBe('en');
-    expect(roomTextsLanguageOf(['the đơn is late'])).toBe('en'); // i18n-allow: one stray word
+  const EN_ROOMS: string[][] = [
+    [],
+    ['the đơn is late'], // i18n-allow: Vietnamese fixture or example
+    [
+      'Hi Nguyễn Văn Đức, the café order is late', // i18n-allow: Vietnamese fixture or example
+      'Please check the order from @Trần and the crème brûlée stall', // i18n-allow: Vietnamese fixture or example
+    ],
+    ['Minh, Phương and Nhung are on the call'], // i18n-allow: Vietnamese fixture or example
+    ['The deploy to Đà Nẵng is live'], // i18n-allow: Vietnamese fixture or example
+    ['café', 'résumé', 'crème brûlée'], // i18n-allow: loanwords
+    [
+      'Please check the order',
+      'Is the deploy done?',
+      'We will look at it after lunch',
+      'Thanks, that works',
+      'Why is it still failing?',
+      'Báo lỗi đăng nhập', // i18n-allow: Vietnamese fixture or example
+    ],
+    ['tell đức the phở is ready'], // i18n-allow: Vietnamese fixture or example
+    ['ask phương and đức about it'], // i18n-allow: Vietnamese fixture or example
+    ['did phương, đức and tuyền sign off?'], // i18n-allow: Vietnamese fixture or example
+    ...ENGLISH_ROWS.filter((t) => !BARE_NAMES.has(t)).map((t) => [t]),
+    // unaccented Vietnamese ('don hang bi loi') is left English: it has no mark to read, and its words are English or names
+    ['don hang bi loi'],
+  ]; // i18n-allow: English rooms holding Vietnamese names, places and loanwords
+
+  it('keeps every English room English, whatever Vietnamese names and loanwords it holds', () => {
+    for (const room of EN_ROOMS) expect(roomTextsLanguageOf(room), room.join(' | ')).toBe('en');
   });
 });

@@ -225,25 +225,44 @@ export function confidentLanguageOf(text: string | null | undefined): ReplyLangu
   return english / tokens.length >= ENGLISH_SHARE ? 'en' : null;
 }
 
-/** The share of a room's non-name words that are Vietnamese-marked at which its default reads Vietnamese. */
-const ROOM_VIETNAMESE_SHARE = 0.3;
-/** Marked words a room needs at least, so one stray loanword or typed name never flips it. */
+/** Marked words a pooled room needs at least, so one stray loanword or typed name never flips it. */
 const ROOM_MIN_MARKED = 2;
+/** Marked words a pooled room needs per English word, so English talk holding Vietnamese names stays English. */
+const ROOM_MARKED_PER_ENGLISH = 2;
+// English function words and verbs that only count in the pooled room reading, where the Vietnamese
+// marks decide and these only outweigh them. They stay out of `ENGLISH_EVIDENCE`, which can veto a
+// single message: unmarked Vietnamese spells some of them ("the" for "thế"). // i18n-allow: Vietnamese fixture or example
+const ROOM_ENGLISH_EXTRA: ReadonlySet<string> = new Set(
+  'the a an to it in on at be can he she i tell ask'.split(' '),
+);
+
+// English prepositions after which a place or name follows even typed lowercase ("in đà nẵng"); a marked // i18n-allow: Vietnamese fixture or example
+// word right after one is no signal in the pooled room reading
+const PLACE_PREPOSITIONS: ReadonlySet<string> = new Set(
+  'in to at from with for of near'.split(' '),
+);
 
 /**
- * The room's default language for a line core writes, never a ground to fail a reply: Vietnamese where,
- * counted over ALL of the room's texts pooled, at least two non-name words spell a Vietnamese-only letter
- * or a strict word and they make 30% of the non-name words, else English. No strict word is needed
- * ("a Vietnamese line with no particle"); names (`wordsWithNames`) and a lone loanword stay out, so an English room holding
- * Vietnamese names stays English.
+ * The room's default language for a line core writes, never a ground to fail a reply. Vietnamese where
+ * EITHER any single text reads Vietnamese by `confidentLanguageOf` (the reading a short line such as
+ * "Có ai không?" has always had, kept whole), OR, pooled over all the texts, at least two non-name words // i18n-allow: Vietnamese fixture or example
+ * spell a Vietnamese-only letter or a strict word and they are at least twice the English words
+ * (`ENGLISH_EVIDENCE` plus `ROOM_ENGLISH_EXTRA`, over every token). A marked word right after a preposition
+ * (`PLACE_PREPOSITIONS`) and names (`wordsWithNames`) never
+ * count as marked, so an English room holding Vietnamese names stays English; else English.
  */
 export function roomTextsLanguageOf(texts: readonly string[]): ReplyLanguage {
-  const open = texts
-    .flatMap((t) => wordsWithNames((t ?? '').normalize('NFC')))
-    .filter((t) => !t.name)
-    .map((t) => t.word.toLowerCase());
-  const marked = open.filter(
-    (w) => VIETNAMESE_STRICT.has(w) || VIETNAMESE_ONLY_LETTER.test(w),
+  if (texts.some((t) => confidentLanguageOf(t) === 'vi')) return 'vi';
+  const tokens = texts.flatMap((t) => wordsWithNames((t ?? '').normalize('NFC')));
+  const marked = tokens.filter(
+    (t, i) =>
+      !t.name &&
+      !PLACE_PREPOSITIONS.has(tokens[i - 1]?.word.toLowerCase() ?? '') &&
+      (VIETNAMESE_STRICT.has(t.word.toLowerCase()) || VIETNAMESE_ONLY_LETTER.test(t.word)),
   ).length;
-  return marked >= ROOM_MIN_MARKED && marked / open.length >= ROOM_VIETNAMESE_SHARE ? 'vi' : 'en';
+  const english = tokens.filter((t) => {
+    const w = t.word.toLowerCase();
+    return ENGLISH_EVIDENCE.has(w) || ROOM_ENGLISH_EXTRA.has(w);
+  }).length;
+  return marked >= ROOM_MIN_MARKED && marked >= ROOM_MARKED_PER_ENGLISH * english ? 'vi' : 'en';
 }
