@@ -159,7 +159,7 @@ export const WORK_ACT_CARDS = {
     situations: [
       {
         when: 'you would say done, fixed, live or released',
-        do: 'say it only once it is live and you checked each thing asked on the running product in this turn (support.releases, support.deployment, a read or a diagnose); name each one not done yet',
+        do: 'say it only once it is live (support.releases, support.deployment) and each thing asked works (a look, read or run this turn; a release as shipped is neither); name each not done or not confirmed',
       },
       {
         when: 'someone asks why a release has not shipped',

@@ -319,8 +319,40 @@ describe('every room agent brief carries the room conduct', () => {
     expect(note).toContain('a refused act was not made');
     expect(note).not.toContain('say it is done');
     expect(note).toContain(
-      'A state he reports is his read, not yours: say it as his check and when he made it',
+      'A state or behaviour he reports is his read, not yours: say it as his check and when he made it',
     );
+  });
+
+  // ISS-1440: the guide and the cards served beneath it carry the same teaching as the opening
+  it('teaches in the guide what the brief and the audit say: read the thing, his check as his, else not confirmed', () => {
+    const prose = GUIDE.split(/\s+/).join(' ');
+    expect(prose).toContain(
+      'What a deployment serves (the version, which sites run it) is read in this turn with support.releases or support.deployment; how the product behaves ("it works", a count) with support.look, support.read or a run: an issue read tells neither.',
+    );
+    expect(prose).toContain(
+      'A master\'s answer of this turn counts only said as his ("the master checked at 02:05 …"), never in your own voice as your read of a product',
+    );
+    expect(prose).toContain('a release as shipped is neither');
+  });
+
+  // ISS-1440 (FB-837, L-185): the channel agent's opening says what the guide, the cards and the audit say
+  it('says a served version is read, behaviour looked at, a master’s answer his own, else not confirmed now', () => {
+    const opening = agentOpening({
+      projectName: 'P',
+      product: null,
+      channels: ['g1'],
+      ownerMode: false,
+    }).join('\n');
+    expect(opening).toContain(
+      'or which version a site serves, you say only from a read of the same turn',
+    );
+    expect(opening).toContain(
+      'how the product behaves now, from a look, a read or a run of the same turn',
+    );
+    expect(opening).toContain(
+      'A master’s answer is his report: say it as his, with when; never as your own read.',
+    );
+    expect(opening).toContain('What none of these reached, say plainly is not confirmed now.');
   });
 
   // ISS-1430 (FB-831, L-167): the turn's opening line offered no way but restating an earlier read of

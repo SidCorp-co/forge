@@ -391,7 +391,7 @@ describe('a room agent states a live setting from a read of its own turn, and na
 
   it("support.reply's card, served beneath the guide, carries the same line", () => {
     expect(prose).toContain(
-      'A live setting, account, or an issue’s or release’s status is stated from a read made in this turn, or said plainly not checked now, never from an earlier read. An issue is closed only once its release has deployed. Each step names who does it, never “em”',
+      'A live setting, served version, behaviour (“it works”) or issue or release status is stated from a read of it this turn, or as the master’s check, or said plainly not confirmed now. An issue is closed only once its release has deployed. Each step names who does it, never “em”',
     );
   });
 
@@ -403,7 +403,7 @@ describe('a room agent states a live setting from a read of its own turn, and na
       'Where you cannot read it again, say plainly that you have not checked it now, and never restate the earlier value, dated or not.',
     );
     expect(prose).toContain(
-      'A live setting, account or record status stated with no read of it this turn, yours or a master’s answer handed in it, fails accurate, dated or not; “not checked now”, said plainly, does not.',
+      'A live state (setting, served version, behaviour, record status) stated with no read of that thing this turn fails accurate, dated or not; said as the master’s check, or “not confirmed now”, it does not.',
     );
   });
 

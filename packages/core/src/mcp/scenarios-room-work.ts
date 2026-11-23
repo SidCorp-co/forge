@@ -125,7 +125,10 @@ export const ROOM_WORK_SCENARIOS: readonly CardScenario[] = [
     situation: 'The owner asks what the two MangoTee line fields are for',
     bad: '…nên lên production không đổi hành vi cho tới khi có người bật.', // i18n-allow: a recorded room turn
     good: 'say live only once support.releases or support.deployment read it in the turn, quoting the version',
-    teaches: [/support\.releases/, /only once it is live and you checked/i],
+    teaches: [
+      /support\.releases/,
+      /only once it is live \(support\.releases, support\.deployment\)/i,
+    ],
   },
   {
     name: 'a fix on the production branch, its deploy unread',

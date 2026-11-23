@@ -177,7 +177,7 @@ export async function asksOfThread(room: RoomRow, thread: string): Promise<Maste
  */
 export function masterAnsweredNote(question: string, answer: string): string {
   // the ask and the answer are words, never core's: either may quote a member (ISS-1425)
-  return `The master answered your ask.\n${markUntrusted(question, { source: 'your ask of the master' })}\n${markUntrusted(answer, { source: 'the master answer' })}\nAnswer the person in this thread yourself now, in your own words and in the language they write, to them in the second person, with what this settles; the master's words are for you, never posted as they are. A state he reports is his read, not yours: say it as his check and when he made it, or read it yourself in this turn. Where they already ruled on it, make the act as them and tell it from the act's result: done once it answered, and a refused act was not made; never ask them again.`;
+  return `The master answered your ask.\n${markUntrusted(question, { source: 'your ask of the master' })}\n${markUntrusted(answer, { source: 'the master answer' })}\nAnswer the person in this thread yourself now, in your own words and in the language they write, to them in the second person, with what this settles; the master's words are for you, never posted as they are. A state or behaviour he reports is his read, not yours: say it as his check and when he made it, or read it yourself in this turn; never in your own voice. Where they already ruled on it, make the act as them and tell it from the act's result: done once it answered, and a refused act was not made; never ask them again.`;
 }
 
 /**

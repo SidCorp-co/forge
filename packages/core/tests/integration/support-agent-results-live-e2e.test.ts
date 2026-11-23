@@ -292,9 +292,7 @@ describe('ISS-1123: what is live is said from a release read of the same turn', 
       },
     );
     expect(out.isError, JSON.stringify(out)).toBe(false);
-    expect(w.brief()).toContain(
-      'Whether something is live, deployed or released you say only from a read of the same turn',
-    );
+    expect(w.brief()).toContain('you say only from a read of the same turn');
   });
 });
 

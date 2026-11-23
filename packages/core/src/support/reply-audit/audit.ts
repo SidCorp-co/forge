@@ -23,6 +23,7 @@ import { auditCorrectionRef, recordCorrection } from '../../lessons/index.js';
 import { doorCatalog } from '../../lib/door-catalog.js';
 import { handedOn, isStateRead, stateRead } from '../dated-reads.js';
 import { supportConfigOf } from '../grants.js';
+import { RELEASE_READS, releaseReadInTurn } from '../live-claims.js';
 import { roleOfRoom } from '../ops-role.js';
 import { knownThread, no, type Outcome, threadUnknown } from '../outcome.js';
 import { sessionTurnSpan } from '../session-turns.js';
@@ -143,8 +144,9 @@ async function masterAnsweredInTurn(roomId: string, posted: Posted, turnId: stri
  * whether a master's answer was handed in it, and when the session last read in an earlier turn.
  * Undefined where the reply names no turn.
  */
-async function readsAround(roomId: string, posted: Posted): Promise<TurnReads | undefined> {
+async function readsAround(room: RoomRow, posted: Posted): Promise<TurnReads | undefined> {
   if (!posted.sessionId || !posted.turnId) return undefined;
+  const roomId = room.id;
   const inTurn = and(
     eq(supportActions.sessionId, posted.sessionId),
     eq(supportActions.turnId, posted.turnId),
@@ -156,7 +158,14 @@ async function readsAround(roomId: string, posted: Posted): Promise<TurnReads | 
   const reads = mine.filter((r) => isStateRead(r.kind, r.tool));
   const acted = reads.length < mine.length || (await handedOnBefore(roomId, posted));
   const looked = reads.some((r) => r.tool === 'look');
-  if (reads.length > 0) return { thisTurn: true, earlierAt: null, looked, handedOn: acted };
+  // ISS-1440: a read of the turn is a read of the thing it read; an issue read says nothing of what is served
+  const servedRead =
+    reads.some((r) => r.tool !== null && RELEASE_READS.has(r.tool)) ||
+    (await releaseReadInTurn(room, posted.turnId));
+  const behaviourRead = reads.some((r) => r.kind === 'diagnose' || r.tool === 'look');
+  if (reads.length > 0) {
+    return { thisTurn: true, earlierAt: null, looked, handedOn: acted, servedRead, behaviourRead };
+  }
   const masterAnswered = await masterAnsweredInTurn(roomId, posted, posted.turnId);
   const [earlier] = await db
     .select({
@@ -179,6 +188,8 @@ async function readsAround(roomId: string, posted: Posted): Promise<TurnReads | 
     looked: false,
     handedOn: acted,
     masterAnswered,
+    servedRead,
+    behaviourRead: false,
   };
 }
 
@@ -336,7 +347,7 @@ export async function auditReply(
       language: await answeringOf(room, input.thread, conversationId, posted),
       roomKind: room.kind,
       apiHosts: apiHosts(),
-      reads: await readsAround(room.id, posted),
+      reads: await readsAround(room, posted),
     },
     input.failed,
   );

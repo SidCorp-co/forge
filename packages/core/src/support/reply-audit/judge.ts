@@ -18,8 +18,11 @@ import {
   actClaimIn,
   apiHostLinkIn,
   assertedStateClaimIn,
+  behaviourClaimIn,
   grantTalkIn,
+  namesMaster,
   screenClaimIn,
+  servedClaimIn,
   uiDirectionIn,
   workaroundIn,
 } from './code-lines.js';
@@ -39,6 +42,13 @@ export interface TurnReads {
   looked: boolean;
   handedOn: boolean;
   masterAnswered?: boolean;
+  /**
+   * Whether its turn read what a deployment serves (a release or deployment read, or a note core
+   * handed in after reading one), and whether it read the product itself (a look, a read or a run)
+   * (ISS-1440). Unset, the turn's own read stands for both, as before.
+   */
+  servedRead?: boolean;
+  behaviourRead?: boolean;
 }
 
 export interface AuditedReply {
@@ -114,20 +124,43 @@ const RECORD_READ =
 const STATE_READ =
   ': read it again in this turn (support.read) before stating it, or say plainly it is not checked now';
 
+/** What the turn read of the one thing a claim is about; a reply with no turn on the record is not judged. */
+const readOf = (reads: TurnReads, kind: 'served' | 'behaviour'): boolean =>
+  (kind === 'served' ? reads.servedRead : reads.behaviourRead) ?? reads.thisTurn;
+
+const SERVED_READ =
+  ': what a deployment serves is read in this turn with support.releases or support.deployment, quoting the version it returns, or said plainly not confirmed now';
+const BEHAVIOUR_READ =
+  ': how the product behaves is read in this turn (support.look, support.read or a run), or said plainly not confirmed now; a master’s answer is his report, said as his and when he made it, never as your own read';
+
 /**
- * Why a reply's statement of a live setting, account or release rests on no read of this turn
- * (ISS-1354): one made in an earlier turn, or none, whether or not the reply dates it (ISS-1430). A
- * state the reply says plainly it has not checked now is no statement of it. Null where it states
- * none, or this turn read: its own read, or a master's answer handed in it (ISS-1430).
+ * Why a reply's statement of a live setting, account, release, served version or product behaviour
+ * rests on no read of this turn (ISS-1354, ISS-1440): one made in an earlier turn, or none, whether or
+ * not the reply dates it. A state the reply says plainly it has not checked now is no statement of it.
+ * A master's answer handed in the turn is his check, so it covers a claim only where the reply says
+ * it as his (`namesMaster`); it is never the agent's read of a product. Null where it states none.
  */
 function staleStateClaim(reply: AuditedReply): string | null {
-  if (!reply.reads || reply.reads.thisTurn || reply.reads.masterAnswered) return null;
-  const claim = assertedStateClaimIn(reply.text, [LIVE_CLAIM_RE]);
-  if (!claim) return null;
-  const read = RECORD_HINT.test(claim) ? RECORD_READ : STATE_READ;
-  return reply.reads.earlierAt
-    ? `it states "${claim}" from a read made in an earlier turn (${reply.reads.earlierAt.toISOString()}), not one made in this turn${read}`
-    : `it states "${claim}" with no read of it made in this turn${read}`;
+  const reads = reply.reads;
+  if (!reads) return null;
+  const hisCheck = Boolean(reads.masterAnswered) && namesMaster(reply.text);
+  const why = (claim: string, read: string) =>
+    reads.earlierAt
+      ? `it states "${claim}" from a read made in an earlier turn (${reads.earlierAt.toISOString()}), not one made in this turn${read}`
+      : `it states "${claim}" with no read of it made in this turn${read}`;
+  if (!reads.thisTurn && !hisCheck) {
+    const claim = assertedStateClaimIn(reply.text, [LIVE_CLAIM_RE]);
+    if (claim) return why(claim, RECORD_HINT.test(claim) ? RECORD_READ : STATE_READ);
+  }
+  if (!readOf(reads, 'served') && !hisCheck) {
+    const claim = servedClaimIn(reply.text, [LIVE_CLAIM_RE]);
+    if (claim) return why(claim, SERVED_READ);
+  }
+  if (!readOf(reads, 'behaviour') && !hisCheck) {
+    const claim = behaviourClaimIn(reply.text);
+    if (claim) return why(claim, BEHAVIOUR_READ);
+  }
+  return null;
 }
 
 /**

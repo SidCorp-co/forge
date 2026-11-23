@@ -169,6 +169,52 @@ export function assertedStateClaimIn(text: string, extra: readonly RegExp[] = []
 }
 
 /**
+ * A statement of what a deployment serves: which sites or environments run a version ("no site runs
+ * this version", a Vietnamese twin). ISS-1440 (FB-837): stated with no read of what is
+ * served, since neither `LIVE_CLAIM_RE` nor the setting forms had a word of it.
+ */
+const SERVED_CLAIMS: readonly RegExp[] = [
+  new RegExp(
+    `${START}(?:site|trang|website|server|máy\\s+chủ|môi\\s+trường|staging|production|prod)\\s+(?:nào\\s+)?(?:đang\\s+|đã\\s+|chưa\\s+|vẫn\\s+)?(?:chạy|dùng)\\s+(?:bản|phiên\\s+bản|version)(?![\\p{L}\\p{N}_])`, // i18n-allow: the Vietnamese phrasing being recorded
+    'iu',
+  ),
+  new RegExp(
+    `${START}(?:đang|vẫn)\\s+chạy\\s+(?:bản|phiên\\s+bản|version)(?![\\p{L}\\p{N}_])`, // i18n-allow: the Vietnamese phrasing being recorded
+    'iu',
+  ),
+  /\b(?:no|every|all|any|none\s+of\s+the)\s+(?:sites?|servers?|environments?|stagings?|productions?)\s+(?:is\s+|are\s+|has\s+|have\s+)?(?:now\s+|yet\s+)?(?:running|serving|runs?|serves?|on)\s+(?:this\s+|the\s+|that\s+)?(?:version|build|release|v?\d)/i,
+  /\b(?:is|are|was|were|still|now)\s+(?:running|serving)\s+(?:version|build|v?\d+\.\d+)/i,
+];
+
+/**
+ * A statement of how a product behaves now (ISS-1440): "Force Update works", "the cleanup removed 12
+ * rows". Said from a master's report or a release as shipped, it is not a read of the product.
+ */
+const BEHAVIOUR_CLAIMS: readonly RegExp[] = [
+  /\b(?:(?:is|are|now|already|still)\s+(?:working|fixed)|(?:now|already|still)\s+works|works\s+(?:correctly|fine|well|properly|as\s+expected|now)|(?:does\s+not|doesn['’]t)\s+work|not\s+working)\b/i,
+  /\b(?:cleaned\s+up|removed|deleted|purged)\s+\d+\b/i,
+  new RegExp(
+    `${START}(?:(?:đã|đang|vẫn|chưa|không)\\s+hoạt\\s+động|hoạt\\s+động\\s+(?:tốt|đúng|bình\\s+thường|ổn)|chạy\\s+(?:đúng|tốt|ổn))(?![\\p{L}\\p{N}_])`, // i18n-allow: the Vietnamese phrasing being recorded
+    'iu',
+  ),
+  new RegExp(`${START}(?:đã\\s+)?(?:dọn|xóa|xoá)\\s+(?:sạch\\s+)?\\d+`, 'iu'), // i18n-allow: the Vietnamese phrasing being recorded
+];
+
+/** The words of the first statement of what a deployment serves a reply asserts, or null. */
+export function servedClaimIn(text: string, extra: readonly RegExp[] = []): string | null {
+  return firstAssertedIn(text, [...SERVED_CLAIMS, ...extra]);
+}
+
+/** The words of the first statement of how a product behaves now a reply asserts, or null. */
+export function behaviourClaimIn(text: string): string | null {
+  return firstAssertedIn(text, BEHAVIOUR_CLAIMS);
+}
+
+/** A reply that names the master as the one who checked: a state said as his, never as the agent's read. */
+const MASTER_NAMED = /(?<![\p{L}\p{N}_])(?:the\s+)?(?:master|đội|team|owner)(?![\p{L}\p{N}_])/iu; // i18n-allow: the Vietnamese "team" a master's check is told as
+export const namesMaster = (text: string): boolean => MASTER_NAMED.test(text);
+
+/**
  * A report that an act was taken somewhere else (ISS-1416, FB-824): a need raised, posted, passed or
  * asked in another thread, channel, or of a team, master or owner. "The host step was already raised
  * in AdminHub API's technical thread" was told when that raise had been refused. Never a plan ("I

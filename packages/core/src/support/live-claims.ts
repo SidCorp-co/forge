@@ -58,7 +58,7 @@ export async function noteReleaseRead(
 }
 
 /** Whether the session read a release in this turn, or core handed it a note that read one. */
-async function releaseReadInTurn(room: RoomRow, turn: string): Promise<boolean> {
+export async function releaseReadInTurn(room: RoomRow, turn: string): Promise<boolean> {
   const rooms = room.sessionId ? await roomsOfSession(room.sessionId) : [room];
   const ids = rooms.map((r) => r.id);
   const [read] = await db
