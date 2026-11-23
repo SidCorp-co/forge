@@ -2,6 +2,7 @@
 // edge master.declared; REQ-15 BC-6, ISS-106): the runner declares its slots and opens and closes each pass,
 // core stores them, and `GET /api/projects/:id/masters/standing` serves them so no screen guesses.
 
+import type { MasterWork } from "./master-verdict.js";
 import { type Said, say, sayEn } from "./said.js";
 import { z } from "zod";
 
@@ -427,4 +428,21 @@ export function slotsNoteSaid(standing: Pick<MasterStanding, "slots">): Said | n
 export function slotsNoteOf(standing: Pick<MasterStanding, "slots">): string | null {
 	const s = slotsNoteSaid(standing);
 	return s ? sayEn(s) : null;
+}
+
+/**
+ * What `GET /api/projects/:id/masters/owed` answers (ISS-1421): the work and owed line the project's
+ * master would be shown now, composed by the verdict's own read and writing nothing, so a judge reads
+ * what a master owes without making the box's verdict call, which records state on the master.
+ */
+export interface MasterOwedRead {
+	generatedAt: string;
+	projectId: string;
+	/** The box the line is composed for: the live master's, else the project's runner box seen last. */
+	device: { id: string; name: string | null };
+	/** The live master session on the project, null where none is live. */
+	sessionId: string | null;
+	work: MasterWork;
+	/** Each act a release or an item waits on the master for, named by what it stands on. */
+	waits: { on: string; act: string }[];
 }

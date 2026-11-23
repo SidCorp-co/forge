@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { requiresOnParam } from '../permissions/index.js';
+import { readMasterOwedNow } from './owed-read.js';
 import { listMasterPasses, readMasterStandingWithSlots } from './read.js';
 
 const projectParam = z.object({ id: z.uuid() });
@@ -17,6 +18,7 @@ const passQuery = z.strictObject({
 export const masterStandingRoutes = new Hono<{ Variables: AuthVars }>();
 masterStandingRoutes.use('/:id/masters/standing', requireAuth(), assertEmailVerified());
 masterStandingRoutes.use('/:id/masters/passes', requireAuth(), assertEmailVerified());
+masterStandingRoutes.use('/:id/masters/owed', requireAuth(), assertEmailVerified());
 
 masterStandingRoutes.get(
   '/:id/masters/standing',
@@ -52,6 +54,23 @@ masterStandingRoutes.get(
         sessionId: q.sessionId ?? null,
       }),
     );
+  },
+);
+
+// the owed line the master would be shown now, composed as the box's verdict composes it and writing
+// nothing (ISS-1421): a judge, which may write nothing, reads what a master owes here
+masterStandingRoutes.get(
+  '/:id/masters/owed',
+  zValidator(
+    'param',
+    projectParam,
+    invalid('invalid path: /api/projects/<project uuid>/masters/owed'),
+  ),
+  requiresOnParam('project.read', 'id'),
+  zValidator('query', noQuery),
+  async (c) => {
+    const { id: projectId } = c.req.valid('param');
+    return c.json(await readMasterOwedNow(projectId));
   },
 );
 

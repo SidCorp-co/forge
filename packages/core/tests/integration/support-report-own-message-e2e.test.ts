@@ -1,3 +1,4 @@
+import { MASTER_SESSION_KIND } from '@forge/contracts/agent-sessions';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -6,12 +7,15 @@ vi.hoisted(() => {
   process.env.INTEGRATION_MASTER_KEY ??= Buffer.alloc(32, 5).toString('base64');
 });
 
+import { newQueryTiming, withQueryTiming } from '../../src/db/query-timing.js';
+import { issueWorkspaceCredential } from '../../src/devices/workspace-credential.js';
+import { readMasterOwedNow } from '../../src/masters/owed-read.js';
 import { mastersPorts } from '../../src/masters/ports.js';
 import { editBotPost } from '../../src/support/post-edit-door.js';
 import { roomById } from '../../src/support/store.js';
 import { dropHeldTooLong, HELD_MESSAGE_MAX_AGE_MS } from '../../src/support/turn-retry.js';
 import { api } from '../helpers/api.js';
-import { rows } from '../helpers/factories.js';
+import { addProjectMember, createTestUser, rows } from '../helpers/factories.js';
 import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 import { SupportWorld, type Turn } from '../helpers/support-world.js';
 
@@ -21,6 +25,8 @@ import { SupportWorld, type Turn } from '../helpers/support-world.js';
 // @direct-test-of packages/core/src/support/thread-answer.ts
 // @direct-test-of packages/core/src/support/one-voice.ts
 // @direct-test-of packages/core/src/support/master-post.ts
+// @direct-test-of packages/core/src/masters/owed-read.ts
+// @direct-test-of packages/core/src/masters/routes.ts
 //
 // ISS-1417, agenfold's owner group 2026-11-22: the room agent answered the owner at 09:38, and at
 // 10:08 the master's 0.310.0 release-check post took that answer as the thread's one voice and
@@ -141,6 +147,61 @@ describe("ISS-1417: a release-check report never takes the room agent's answer",
   });
 });
 
+/** Every statement text `fn` sent, its own and each named part's. */
+async function statementsOf(fn: () => Promise<unknown>): Promise<string[]> {
+  const t = newQueryTiming();
+  await withQueryTiming(t, fn);
+  return [...t.sent.keys(), ...[...t.legs.values()].flatMap((l) => [...l.sent.keys()])];
+}
+
+const WRITES =
+  /\b(insert\s+into|update\s+"?\w+"?\s+set|delete\s+from|truncate|for\s+update|pg_advisory_(?:xact_)?lock)\b/i;
+
+/** What the project's master holds, which a read must leave as it found it: its session and its passes. */
+const masterStateOf = () =>
+  rows<{ id: string }>(sql`
+    SELECT s.id, s.status, s.metadata, s.updated_at,
+           (SELECT count(*) FROM master_passes p WHERE p.master_session_id = s.id) AS passes
+      FROM agent_sessions s
+     WHERE s.project_id = ${w.projectId} AND s.kind = ${MASTER_SESSION_KIND}`);
+
+/**
+ * The owed line a judge reads (ISS-1421): `GET masters/owed` on the credential a checkout on the
+ * project's box carries, which is what a declared `--role qa` run's pane sends; the read changes
+ * nothing its master holds, and the composer under it sends no write statement.
+ */
+async function owedLineAsAJudge(): Promise<{ owedLine: string }> {
+  const agent = await createTestUser({ kind: 'agent' });
+  await addProjectMember(w.projectId, agent.id, 'member');
+  const judge = await issueWorkspaceCredential({
+    deviceId: w.box.deviceId,
+    projectId: w.projectId,
+    holderUserId: agent.id,
+  });
+  // the project's master, live on the box the line is composed for
+  const master = await api(w.box.token, 'POST', '/api/devices/me/master-session', {
+    projectId: w.projectId,
+    name: 'forge-master-order-desk',
+    maxJobPanes: 1,
+  });
+  expect(master.status, JSON.stringify(master.body)).toBe(200);
+  const before = await masterStateOf();
+  expect(before).toHaveLength(1);
+  const read = await api(judge, 'GET', `/api/projects/${w.projectId}/masters/owed`);
+  expect(read.status, JSON.stringify(read.body)).toBe(200);
+  expect(await masterStateOf()).toEqual(before);
+  const sent = await statementsOf(() => readMasterOwedNow(w.projectId));
+  expect(sent.length).toBeGreaterThan(0);
+  expect(sent.filter((text) => WRITES.test(text))).toEqual([]);
+  const body = read.body as {
+    device: { id: string };
+    sessionId: string | null;
+    work: { owedLine: string };
+  };
+  expect(body).toMatchObject({ device: { id: w.box.deviceId }, sessionId: before[0]?.id });
+  return body.work;
+}
+
 describe("ISS-1417: an owner's message no turn took is listed for the master", () => {
   it('lists his dropped message until his thread is answered, and leaves chatter out', async () => {
     const id = await roomId();
@@ -167,6 +228,13 @@ describe("ISS-1417: an owner's message no turn took is listed for the master", (
         threads: expect.arrayContaining(['owner-thread-1417', 'owner-elsewhere-1422']),
       }),
     ]);
+    // ISS-1421: a judge reads the same owed line with its checkout's credential, with no master
+    // verdict call and writing nothing; [OWED_UNREADABLE] before the fix: no such read answered
+    const judged = await owedLineAsAJudge();
+    expect(judged.owedLine).toContain(`room ${chat.rid}, HELD_TOO_LONG`);
+    expect(judged.owedLine).toContain('owner-thread-1417');
+    expect(judged.owedLine).toContain('owner-elsewhere-1422');
+    expect(judged.owedLine).not.toContain('chatter-thread-1417');
     // ISS-1422: a reply in another thread naming his message answers it, as support.reply records one;
     // [ANSWERED_ELSEWHERE_STILL_OWED] before the fix: it stayed on the owed line
     await rows(sql`

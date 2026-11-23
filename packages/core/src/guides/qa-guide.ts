@@ -72,6 +72,9 @@ Read these before judging anything, while whoever sent you can still equip you.
   \`served.why\`.
 - \`GET /api/projects/:id/config\` answers the project document: each environment's address and the
   testing profile its testers get in through, whose \`limits\` say what that environment does not have.
+- \`GET /api/projects/:id/masters/owed\` is where a judge reads what a master owes: the line the
+  project's master would be shown now (\`work.owedLine\`), an owner's message a bound room left
+  without a turn included, composed as its box's verdict composes it. It writes nothing.
 - To act as an actor of the testing profile, run \`forge-runner judge-login <profile> <actor> --run <run>\`
   on the box: it reads that actor's secret and signs in itself at the deployment you judge, and
   writes only a session, a header file for \`curl -H @<file>\` and a Playwright storage state, whose
