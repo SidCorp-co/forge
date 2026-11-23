@@ -579,7 +579,7 @@ is such a project and lands every change in git.
 An observed stamp names its target with its commit, read where the commit was: the merged request's
 base branch, or the branch the repository holds the commit on. A mark's `target` fills
 `merged_target` only where no observed commit stands; beside one it is recorded as the mark's claim
-(`packages/core/src/issues/merge-record.ts:recordMergeTarget`; catalog-fe ISS-11..19 held
+(`packages/core/src/issues/merge-paths.ts:recordMergeTarget`; catalog-fe ISS-11..19 held
 `release/stg` for merges into `dev` before this). A host merge also records the request's head in
 `merged_head`, with whether Forge read from the host at the merge that the head's tree is the merge
 commit's; a verdict judged at that head counts for the landing only where it did
