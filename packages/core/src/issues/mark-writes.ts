@@ -14,12 +14,8 @@ import type { CommitLanding } from './commit-landing.js';
 import { CLEAR_THE_MARK, type markReadPaths, standingObservedRefusal } from './landing-evidence.js';
 import type { AmendedAsserted } from './mark-detail.js';
 import { currentMarkClaims } from './mark-trail.js';
-import {
-  clearIssueMerge,
-  type MergeRecord,
-  recordIssueMerge,
-  recordReadPaths,
-} from './merge-record.js';
+import { recordReadPaths } from './merge-paths.js';
+import { clearIssueMerge, type MergeRecord, recordIssueMerge } from './merge-record.js';
 import { refuseUnmarkOnClosed } from './merged-at.js';
 import { findIssueById } from './read-service.js';
 

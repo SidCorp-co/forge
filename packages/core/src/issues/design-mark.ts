@@ -13,7 +13,8 @@ import { approvedDesignsDrawn } from './design-delivery.js';
 import { designsLandingOf } from './design-landing.js';
 import type { LandingShape } from './landing-evidence.js';
 import { designOnlyStamp } from './merge-mark-kind.js';
-import { type MergeRecord, recordDesignLanding, recordMergeTarget } from './merge-record.js';
+import { recordMergeTarget } from './merge-paths.js';
+import { type MergeRecord, recordDesignLanding } from './merge-record.js';
 import type { IssueRow } from './read-service.js';
 
 export interface DesignMark {

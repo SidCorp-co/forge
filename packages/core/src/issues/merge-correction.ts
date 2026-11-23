@@ -13,14 +13,13 @@
 
 import type { MergeRefusalCode } from '@forge/contracts/issues';
 import type { OutboxActor } from '@forge/contracts/outbox-events';
-import { and, eq, isNotNull, sql } from 'drizzle-orm';
-import { db, type Tx } from '../db/client.js';
+import { eq } from 'drizzle-orm';
+import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
-import { sqlTimestamp } from '../db/sql-timestamp.js';
 import { refuser } from '../lib/refusal.js';
 import { notFound } from '../middleware/route-errors.js';
-import { emitEvent } from '../outbox/index.js';
 import { insertActivityRow } from './activity-log.js';
+import { replaceClosedLanding } from './merge-record.js';
 
 const refuse = refuser<MergeRefusalCode>('MERGE_MARK_REFUSED');
 
@@ -157,28 +156,4 @@ export async function correctClosedMerge(args: {
       misread: valid.misread,
     };
   });
-}
-
-/**
- * A closed issue's landing commit replaced by its real one (ISS-1027, gated and recorded by
- * `correctClosedMerge`): the misread head cleared, the status never touched.
- */
-async function replaceClosedLanding(
-  executor: Tx,
-  args: { issueId: string; projectId: string; actor: OutboxActor; before: Record<string, unknown> },
-  to: { commitSha: string; mergedAt: Date | null },
-): Promise<Date> {
-  const time = to.mergedAt ? { mergedAt: sqlTimestamp(to.mergedAt) } : {};
-  const [wrote] = await executor
-    .update(issues)
-    .set({ mergedCommitSha: to.commitSha, mergedHead: null, ...time, updatedAt: sql`now()` })
-    .where(
-      and(eq(issues.id, args.issueId), eq(issues.status, 'closed'), isNotNull(issues.mergedAt)),
-    )
-    .returning({ mergedAt: issues.mergedAt });
-  if (!wrote?.mergedAt) throw new Error(`replaceClosedLanding: ${args.issueId} is no closed mark`);
-  const after = { mergedCommitSha: to.commitSha, mergedAt: wrote.mergedAt, mergedHead: null };
-  const fields = Object.keys(after);
-  await emitEvent(executor, 'issue.updated', { ...args, fields, via: 'correction', after });
-  return wrote.mergedAt;
 }

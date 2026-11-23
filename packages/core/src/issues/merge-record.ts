@@ -416,40 +416,6 @@ export async function recordDesignLanding(
   };
 }
 
-/**
- * The paths a box read for the landing commit from its own checkout, written onto a stamped row that
- * holds none: the first reading stands, as the first stamp does. Called in the mark's transaction
- * after the stamp, so a mark refused later drops it too: docs/modules/issues/merge-mark.md.
- */
-export async function recordReadPaths(
-  executor: Tx,
-  args: { issueId: string; paths: ReadPaths; actor: OutboxActor },
-): Promise<{ wrote: boolean; held: ReadPaths | null }> {
-  const [wrote] = await executor
-    .update(issues)
-    .set({ mergedPaths: args.paths, updatedAt: sql`now()` })
-    .where(and(eq(issues.id, args.issueId), isNotNull(issues.mergedAt), isNull(issues.mergedPaths)))
-    .returning({ projectId: issues.projectId });
-  if (wrote) {
-    await emitEvent(executor, 'issue.updated', {
-      issueId: args.issueId,
-      projectId: wrote.projectId,
-      actor: args.actor,
-      fields: ['mergedPaths'],
-      via: 'mark',
-      before: { mergedPaths: null },
-      after: { mergedPaths: args.paths },
-    });
-    return { wrote: true, held: args.paths };
-  }
-  const [row] = await executor
-    .select({ mergedPaths: issues.mergedPaths })
-    .from(issues)
-    .where(eq(issues.id, args.issueId))
-    .limit(1);
-  return { wrote: false, held: row?.mergedPaths ?? null };
-}
-
 /** Clear the claim, and report whether the row took it. It re-blocks nothing (ISS-1100). The
  *  `closed` guard is IN the statement: a read then a write leaves a window where the row is closed
  *  by somebody else, and what arrives then is the trigger's raw exception (ISS-1108). */
@@ -517,25 +483,26 @@ export async function supersedeMergeOnReopen(
   return true;
 }
 
-// the first target named on a standing mark that Forge did not observe is the branch the work
-// landed on; a later mark with another target does not move it, as a later stamp does not move
-// merged_at. A row holding an observed commit holds the target that observation read
-// (`recordIssueMerge`), and a mark's word never stands in for it (catalog-fe ISS-11..19, 2026-10-26:
-// `release/stg` written by a mark beside merges GitLab made into `dev`).
-export async function recordMergeTarget(
-  executor: MergeRecordExecutor,
-  issueId: string,
-  target: string,
-): Promise<void> {
-  await executor
+/**
+ * A closed issue's landing commit replaced by its real one (ISS-1027, gated and recorded by
+ * `correctClosedMerge`): the misread head cleared, the status never touched.
+ */
+export async function replaceClosedLanding(
+  executor: Tx,
+  args: { issueId: string; projectId: string; actor: OutboxActor; before: Record<string, unknown> },
+  to: { commitSha: string; mergedAt: Date | null },
+): Promise<Date> {
+  const time = to.mergedAt ? { mergedAt: sqlTimestamp(to.mergedAt) } : {};
+  const [wrote] = await executor
     .update(issues)
-    .set({ mergedTarget: target })
+    .set({ mergedCommitSha: to.commitSha, mergedHead: null, ...time, updatedAt: sql`now()` })
     .where(
-      and(
-        eq(issues.id, issueId),
-        isNotNull(issues.mergedAt),
-        isNull(issues.mergedTarget),
-        sql`coalesce(trim(${issues.mergedCommitSha}), '') = ''`,
-      ),
-    );
+      and(eq(issues.id, args.issueId), eq(issues.status, 'closed'), isNotNull(issues.mergedAt)),
+    )
+    .returning({ mergedAt: issues.mergedAt });
+  if (!wrote?.mergedAt) throw new Error(`replaceClosedLanding: ${args.issueId} is no closed mark`);
+  const after = { mergedCommitSha: to.commitSha, mergedAt: wrote.mergedAt, mergedHead: null };
+  const fields = Object.keys(after);
+  await emitEvent(executor, 'issue.updated', { ...args, fields, via: 'correction', after });
+  return wrote.mergedAt;
 }
