@@ -1,4 +1,4 @@
-import type { LandingArtifact, MergedHead, ReadPaths } from '@forge/contracts/landing-artifacts';
+import type { LandingArtifact, MergedHead } from '@forge/contracts/landing-artifacts';
 import type { MergeStampVia, OutboxActor } from '@forge/contracts/outbox-events';
 import { and, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import type { Db, Tx } from '../db/client.js';
