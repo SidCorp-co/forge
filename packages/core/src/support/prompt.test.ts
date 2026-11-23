@@ -4,6 +4,7 @@ import { ROOM_AGENT_GUIDE } from '../guides/room-agent-guide.js';
 import { provideDoorCatalog } from '../lib/door-catalog.js';
 import { servedDoorCatalog } from '../mcp/door-catalog.js';
 import { actCard, mapLine } from './act-cards.js';
+import { earlierReadLine } from './dated-reads.js';
 import { masterAnsweredNote } from './master-ask.js';
 import { operationsBrief } from './ops-prompt.js';
 import { agentOpening, grantsLine, SUPPORT_MAP_ACTS, supportBrief, toolsLine } from './prompt.js';
@@ -298,8 +299,26 @@ describe('every room agent brief carries the room conduct', () => {
     expect(note).toContain("tell it from the act's result: done once it answered");
     expect(note).toContain('a refused act was not made');
     expect(note).not.toContain('say it is done');
+    expect(note).toContain('A state he reports is his read, not yours');
+  });
+
+  // ISS-1430 (FB-831, L-167): "say it as his check and when he made it" and the turn's opening line
+  // offered a dated earlier read, which the reply audit fails: each says read again, or not checked now
+  it('offers no dated earlier read: the master note and the turn opening say read again or not checked now', () => {
+    const note = masterAnsweredNote('Is the drive back?', 'Still read-only at 17:05.');
+    expect(note).not.toContain('when he made it');
     expect(note).toContain(
-      'A state he reports is his read, not yours: say it as his check and when he made it',
+      'read it yourself in this turn before you state it, and where you cannot, say you have not checked it now rather than restate his',
+    );
+    const opening = earlierReadLine(
+      new Date('2026-11-22T06:51:00Z'),
+      new Date('2026-11-23T02:08:00Z'),
+    );
+    expect(opening).toContain(
+      'it is not current. Read again before you say a setting is on or off',
+    );
+    expect(opening).toContain(
+      'where you cannot, say you have not checked it now, never the earlier value',
     );
   });
 

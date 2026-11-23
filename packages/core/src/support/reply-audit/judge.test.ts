@@ -316,3 +316,81 @@ describe('an on/off state and an act taken are held to their own turn (ISS-1416)
     expect(judgeReply({ ...reply(text, 'en'), roomKind: 'support' }, []).verdict).toBe('pass');
   });
 });
+
+// ISS-1430 (FB-831, L-167): the brief offered "or say it is from an earlier read and when", the audit
+// failed every claim with no read of its turn, so a reply that followed its brief failed accurate. One
+// rule now: read it again this turn, or say plainly it is not checked now and restate nothing.
+describe('a live state is read again this turn, or said not checked now (ISS-1430)', () => {
+  const earlier = new Date('2026-11-22T06:51:00Z');
+  const judged = (text: string, reads: Partial<TurnReads> = {}, language: 'vi' | 'en' = 'en') =>
+    judgeReply(
+      {
+        ...reply(text, language),
+        roomKind: 'support',
+        reads: { thisTurn: false, earlierAt: earlier, looked: false, handedOn: false, ...reads },
+      },
+      [],
+    );
+  // synthetic replies, each the shape of a restated earlier read: dated, past tense, or an "as of"
+  const RESTATED: readonly [string, 'vi' | 'en'][] = [
+    ['As of 11:02 UTC the worker limit was off.', 'en'],
+    ['The nightly sync was disabled when I read it at 06:51.', 'en'],
+    ['The export flag is still off.', 'en'],
+    ['From my last read, the mail flag was turned off.', 'en'],
+    ['Lúc 06:51 cờ gửi mail vẫn tắt ạ.', 'vi'], // i18n-allow: a synthetic reply
+    ['Tính đến 11:02, giới hạn worker đang tắt ạ.', 'vi'], // i18n-allow: a synthetic reply
+  ];
+  // synthetic replies that say plainly the state is not checked now, and restate no value
+  const NOT_CHECKED: readonly [string, 'vi' | 'en'][] = [
+    [
+      'I have not checked whether the nightly sync is enabled now; I will read it and tell you.',
+      'en',
+    ],
+    ["I haven't read it again this turn, so I can't say if the export flag is turned off.", 'en'],
+    ['Em chưa kiểm tra lại lúc này nên chưa biết cờ gửi mail đã bật hay chưa ạ.', 'vi'], // i18n-allow: a synthetic reply
+    ["I couldn't check now whether ISS-21 is deployed.", 'en'],
+  ];
+
+  it('passes a reply that read the state this turn, dated or not', () => {
+    for (const [text, language] of RESTATED) {
+      expect(judged(text, { thisTurn: true }, language).verdict, text).toBe('pass');
+    }
+  });
+
+  it('fails accurate on a restated earlier-read value, dated or not, naming the read to make', () => {
+    for (const [text, language] of RESTATED) {
+      const j = judged(text, {}, language);
+      expect(j.failed, text).toEqual(['accurate']);
+      const why = j.findings.find((f) => f.line === 'accurate')?.why ?? '';
+      expect(why, text).toContain(
+        'from a read made in an earlier turn (2026-11-22T06:51:00.000Z), not one made in this turn',
+      );
+      expect(why, text).toContain('read it again in this turn (support.read)');
+      expect(judged(text, { earlierAt: null }, language).findings[0]?.why, text).toContain(
+        'with no read of it made in this turn',
+      );
+    }
+  });
+
+  it('passes a reply that says plainly it has not checked the state now', () => {
+    for (const [text, language] of NOT_CHECKED) {
+      expect(judged(text, {}, language).verdict, text).toBe('pass');
+    }
+  });
+
+  it('fails a "not checked now" that still restates the earlier value', () => {
+    for (const [text, language] of [
+      ['I have not checked it now, but at 06:51 the export flag was off.', 'en'],
+      ['The export flag was off at 06:51; I have not checked it again now.', 'en'],
+      ['I have not checked it now; as of 06:51 the worker limit was disabled.', 'en'],
+      ['Em chưa kiểm tra lại, nhưng lúc 06:51 cờ gửi mail vẫn tắt ạ.', 'vi'], // i18n-allow: a synthetic reply
+    ] as const) {
+      expect(judged(text, {}, language).failed, text).toEqual(['accurate']);
+    }
+  });
+
+  it('keeps a truthful "I raised it earlier" passing beside it (ISS-1423)', () => {
+    const text = 'I raised it earlier in the technical thread; I have not checked the flag now.';
+    expect(judged(text, { handedOn: true }).verdict).toBe('pass');
+  });
+});

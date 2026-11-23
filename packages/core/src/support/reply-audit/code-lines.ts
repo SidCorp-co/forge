@@ -127,7 +127,9 @@ const STATE_CLAIMS: readonly RegExp[] = [
   ),
   /\b(?:has|have|had)\s+no\s+(?:[\w-]+\s+){0,3}?(?:account|field|setting|key|credential|service|supplier)s?\b/i,
   /\bthere\s+(?:is|are)\s+(?:no|already\s+an?|an?)\s+(?:[\w-]+\s+){0,3}?(?:account|field|setting|key|service|supplier)s?\b/i,
-  /\b(?:is|are)\s+(?:now\s+|already\s+|still\s+)?(?:not\s+)?(?:enabled|disabled|turned\s+on|turned\s+off|configured|set\s+up)\b/i,
+  // ISS-1430: a restated earlier read is said in the past tense ("was off"), and on or off stands bare
+  /\b(?:is|are|was|were|isn['’]t|aren['’]t|wasn['’]t|weren['’]t)\s+(?:now\s+|already\s+|still\s+)?(?:not\s+)?(?:enabled|disabled|turned\s+on|turned\s+off|configured|set\s+up)\b/i,
+  /\b(?:is|are|was|were|isn['’]t|aren['’]t|wasn['’]t|weren['’]t)\s+(?:now\s+|already\s+|still\s+)?(?:not\s+)?(?:on|off)\b(?=\s*(?:[.,;:!?)\n]|$)|\s+(?:as\s+of|at|since|now|again|yet)\b)/i,
   /\b(?:issues?|tickets?|release|ISS-\d+|v?\d+\.\d+\.\d+)\b[^.!?\n]{0,60}?\b(?:is|are|was|were|has\s+been|have\s+been)\s+(?:all\s+|now\s+|already\s+|still\s+)?(?:not\s+)?(?:closed|open|shipped|deployed|released|live|merged)\b/i,
   new RegExp(
     `${RECORD_NOUN_VI}\\b(?:[^.!?\\n]|\\d\\.\\d){0,60}?(?:đã|đang|chưa|vẫn)\\s+(?:được\\s+)?(?:đóng|mở|deploy|release|merge|phát\\s+hành)(?![\\p{L}\\p{N}_])`, // i18n-allow: the Vietnamese phrasing being recorded
@@ -135,11 +137,90 @@ const STATE_CLAIMS: readonly RegExp[] = [
   ),
 ];
 
+/**
+ * A state said from a dated read (ISS-1430, L-167's "worker limit as of 11:02 UTC"): "as of" a time or
+ * a last read, in English or Vietnamese. With no read of its turn, it is an earlier read restated.
+ */
+const DATED_CLAIMS: readonly RegExp[] = [
+  /\b(?:as\s+of|(?:per|from|at)\s+(?:my|the)\s+(?:last|earlier|previous))\s+(?:\d{1,2}[:h]\d{2}(?:\s*UTC)?|\d{4}-\d{2}-\d{2}|read|check)\b[^.!?\n]{0,60}/i,
+  new RegExp(
+    `${START}(?:tính\\s+đến|theo\\s+lần\\s+(?:đọc|kiểm\\s+tra)\\s+(?:trước|gần\\s+nhất|lúc))(?![\\p{L}\\p{N}_])[^.!?\\n]{0,60}`, // i18n-allow: the Vietnamese "as of" being recorded
+    'iu',
+  ),
+];
+
 /** The words of the first statement of a live setting's, account's or Forge record's state a reply makes, or null. */
 export function liveStateClaimIn(text: string): string | null {
-  for (const form of STATE_CLAIMS) {
+  for (const form of [...STATE_CLAIMS, ...DATED_CLAIMS]) {
     const found = form.exec(text);
     if (found) return found[0].trim();
+  }
+  return null;
+}
+
+/**
+ * A reply saying plainly it has not checked a state now (ISS-1430): "I have not checked whether…",
+ * "I can't say if…", and the Vietnamese "not checked again". What it frames as unchecked is no claim
+ * of the state.
+ */
+const NOT_CHECKED: readonly RegExp[] = [
+  /\b(?:I|we)\s+(?:have\s+not|haven['’]t|did\s+not|didn['’]t|could\s+not|couldn['’]t|cannot|can['’]t|can\s+not)\s+(?:yet\s+)?(?:checked|check|read|re-?read|verified|verify|confirmed|confirm|looked|look|say|tell)\b/i,
+  /\b(?:has|have)\s+not\s+been\s+(?:checked|read|verified|confirmed)\b|\bnot\s+(?:yet\s+)?(?:checked|re-?read|verified)\s+(?:now|this\s+turn|yet)\b/i,
+  new RegExp(
+    `${START}(?:chưa|không)\\s+(?:thể\\s+|kịp\\s+)?(?:kiểm\\s+tra|đọc|xem|xác\\s+minh|check|nói|biết)(?![\\p{L}\\p{N}_])`, // i18n-allow: the Vietnamese "not checked" being recorded
+    'iu',
+  ),
+];
+/** The words that turn what follows into a question: "whether", "if", and their Vietnamese twins. */
+const ASKED_BEFORE = /(?<![\p{L}\p{N}_])(?:whether|if|liệu|xem)(?![\p{L}\p{N}_])/iu; // i18n-allow: the Vietnamese question words
+/** The tag that leaves a state open after it: "or not", and its Vietnamese forms. */
+const ASKED_AFTER = /^\s*(?:or\s+not|hay\s+(?:chưa|không))(?![\p{L}\p{N}_])/iu; // i18n-allow: the Vietnamese question tags
+/** Where a clause ends: a sentence's end (never a version's dot), a semicolon, a line, or "but". */
+const CLAUSE_END =
+  /(?<!\d)[.!?…](?!\d)|[;\n]|,\s*(?=(?:but|nhưng|tuy\s+nhiên)(?![\p{L}\p{N}_]))/giu; // i18n-allow: the Vietnamese "but"
+
+/** The clause of `text` around `[from, to)`. */
+function clauseAround(text: string, from: number, to: number): { start: number; text: string } {
+  let start = 0;
+  let end = text.length;
+  for (const m of text.matchAll(CLAUSE_END)) {
+    if (m.index + m[0].length <= from) start = m.index + m[0].length;
+    else if (m.index >= to) {
+      end = m.index;
+      break;
+    }
+  }
+  return { start, text: text.slice(start, end) };
+}
+
+/**
+ * Whether the state found at `[from, to)` is only asked about, under a plain "not checked now" in its
+ * clause: a question word between that line and it ("I have not checked whether it is on"), or an
+ * "or not" after it ("…is it on or not").
+ */
+function askedNotClaimed(text: string, from: number, to: number): boolean {
+  const clause = clauseAround(text, from, to);
+  const at = from - clause.start;
+  const notChecked = NOT_CHECKED.map((form) => form.exec(clause.text)).find((m) => m !== null);
+  if (!notChecked) return false;
+  if (ASKED_AFTER.test(text.slice(to))) return true;
+  const said = notChecked.index + notChecked[0].length;
+  const before = said <= at ? clause.text.slice(said, at) : clause.text.slice(0, at);
+  return ASKED_BEFORE.test(before);
+}
+
+/**
+ * The words of the first live state a reply asserts (ISS-1430): its setting, account and record
+ * states, and the `extra` forms (`live-claims.ts:LIVE_CLAIM_RE`), each skipped where a plain "not
+ * checked now" only asks after it. Null where it asserts none.
+ */
+export function assertedStateClaimIn(text: string, extra: readonly RegExp[] = []): string | null {
+  for (const form of [...STATE_CLAIMS, ...DATED_CLAIMS, ...extra]) {
+    const every = new RegExp(form.source, form.flags.includes('g') ? form.flags : `${form.flags}g`);
+    for (const found of text.matchAll(every)) {
+      if (!askedNotClaimed(text, found.index, found.index + found[0].length))
+        return found[0].trim();
+    }
   }
   return null;
 }

@@ -387,7 +387,19 @@ describe('a room agent states a live setting from a read of its own turn, and na
 
   it("support.reply's card, served beneath the guide, carries the same line", () => {
     expect(prose).toContain(
-      'A live setting, account, or an issue’s or release’s status is stated from a read made in this turn; an earlier read, dated as the turn opens, is read again first. An issue is closed only once its release has deployed. Each step names who does it, never “em”',
+      'A live setting, account, or an issue’s or release’s status is stated from a read made in this turn, or said plainly not checked now, never from an earlier read. An issue is closed only once its release has deployed. Each step names who does it, never “em”',
+    );
+  });
+
+  // ISS-1430 (FB-831, L-167): "say when the earlier read was made" let a dated earlier read be stated,
+  // which the reply audit fails; the guide, the reply card and the audit card now say one thing
+  it('offers no dated earlier read: read again, or say plainly it is not checked now', () => {
+    expect(answering).not.toContain('say when the earlier read was made');
+    expect(answering).toContain(
+      'Where you cannot read it again, say plainly that you have not checked it now, and never restate the earlier value, dated or not.',
+    );
+    expect(prose).toContain(
+      'A live setting, account or record status stated with no read of it this turn fails accurate, dated or not; “not checked now”, said plainly, does not.',
     );
   });
 

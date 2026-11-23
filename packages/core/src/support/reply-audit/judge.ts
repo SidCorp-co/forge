@@ -12,13 +12,13 @@ import type {
   SupportAuditRequest,
 } from '@forge/contracts/support-reply-audit';
 import { confidentLanguageOf } from '../../conversations/index.js';
-import { liveClaimIn } from '../live-claims.js';
+import { LIVE_CLAIM_RE } from '../live-claims.js';
 import type { AnsweringFrom, AnsweringLanguage } from './answering-language.js';
 import {
   actClaimIn,
   apiHostLinkIn,
+  assertedStateClaimIn,
   grantTalkIn,
-  liveStateClaimIn,
   screenClaimIn,
   uiDirectionIn,
   workaroundIn,
@@ -108,18 +108,23 @@ export function codeFindings(reply: AuditedReply): ReplyFinding[] {
 const RECORD_HINT = /\b(?:issues?|tickets?|release|ISS-\d+|v?\d+\.\d+\.\d+)\b|phát\s+hành/iu; // i18n-allow: the Vietnamese noun of a release
 const RECORD_READ =
   ": a Forge issue's or release's status needs a read of it now (support.issues or support.releases)";
+const STATE_READ =
+  ': read it again in this turn (support.read) before stating it, or say plainly it is not checked now';
 
 /**
  * Why a reply's statement of a live setting, account or release rests on no read of this turn
- * (ISS-1354): one made in an earlier turn, or none. Null where it states none, or this turn read.
+ * (ISS-1354): one made in an earlier turn, or none, whether or not the reply dates it (ISS-1430). A
+ * state the reply says plainly it has not checked now is no statement of it. Null where it states
+ * none, or this turn read.
  */
 function staleStateClaim(reply: AuditedReply): string | null {
   if (!reply.reads || reply.reads.thisTurn) return null;
-  const claim = liveStateClaimIn(reply.text) ?? liveClaimIn(reply.text);
+  const claim = assertedStateClaimIn(reply.text, [LIVE_CLAIM_RE]);
   if (!claim) return null;
+  const read = RECORD_HINT.test(claim) ? RECORD_READ : STATE_READ;
   return reply.reads.earlierAt
-    ? `it states "${claim}" from a read made in an earlier turn (${reply.reads.earlierAt.toISOString()}), not one made in this turn${RECORD_HINT.test(claim) ? RECORD_READ : ''}`
-    : `it states "${claim}" with no read of it made in this turn${RECORD_HINT.test(claim) ? RECORD_READ : ''}`;
+    ? `it states "${claim}" from a read made in an earlier turn (${reply.reads.earlierAt.toISOString()}), not one made in this turn${read}`
+    : `it states "${claim}" with no read of it made in this turn${read}`;
 }
 
 /**

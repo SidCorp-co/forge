@@ -37,7 +37,7 @@ export const handedOn = or(
 
 /** The line a turn opens with where the session read live state in an earlier turn. */
 export function earlierReadLine(lastAt: Date, now: Date): string {
-  return `This turn opened at ${now.toISOString()}. Your last read of live state (a read, run, issue, release, deployment or look) was at ${lastAt.toISOString()}, in an earlier turn: it is not current. Read again before you say a setting is on or off, or state an account's or a record's status.`;
+  return `This turn opened at ${now.toISOString()}. Your last read of live state (a read, run, issue, release, deployment or look) was at ${lastAt.toISOString()}, in an earlier turn: it is not current. Read again before you say a setting is on or off, or state an account's or a record's status; where you cannot, say you have not checked it now, never the earlier value.`;
 }
 
 /** That line for the session's next turn, or null where it never read live state. */
