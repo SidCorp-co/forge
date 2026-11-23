@@ -134,6 +134,8 @@ export {
 export {
   askerLanguageOf,
   confidentLanguageOf,
+  hasEnglishEvidence,
+  hasVietnameseEvidence,
   hasVietnameseOnlyLetter,
   hasVietnameseOnlyWord,
   type ReplyLanguage,

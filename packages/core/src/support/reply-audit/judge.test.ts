@@ -1,5 +1,7 @@
 import { REPLY_RUBRIC_LINES, type ReplyRubricLine } from '@forge/contracts/support-reply-audit';
 import { describe, expect, it } from 'vitest';
+import { hasEnglishEvidence } from '../../conversations/index.js';
+import { ENGLISH_ROWS } from '../../conversations/language-rows.fixture.js';
 import { mapLine } from '../act-cards.js';
 import { answeringLanguageOf, personaLanguageOf } from './answering-language.js';
 import { actClaimIn, liveStateClaimIn } from './code-lines.js';
@@ -178,15 +180,15 @@ describe('support.audit keeps the verdict on a reply the agent posted (ISS-1250)
     expect(wrong.findings[0]?.why).toBe(
       'it is in English, and the person it answers wrote in Vietnamese',
     );
-    // an untold asker with a Vietnamese-only letter among many English words: the reply matching it is passed
+    // r5: a Vietnamese-only letter among English words is no Vietnamese message: English evidence vetoes it
     const mixed = answeringLanguageOf({
       asked: 'please tell me how the thế is going on today ok', // i18n-allow: a mixed message
       persona: null,
       texts: room,
     });
-    expect(mixed.from).toBe('room');
+    expect(mixed.askedAs).toBe('en');
     expect(
-      judgeReply({ ...reply(vi, mixed.language, mixed.from), language: mixed }, []).verdict,
+      judgeReply({ ...reply(en, mixed.language, mixed.from), language: mixed }, []).verdict,
     ).toBe('pass');
   });
 
@@ -326,6 +328,19 @@ describe('the language of an asker too short to tell (ISS-1442)', () => {
       expect(judgeReply({ ...reply(en, a.language, a.from), language: a }, []).verdict, asked).toBe(
         'pass',
       );
+    }
+    // r5: every English row passes an English reply in a Vietnamese-reading room, bar a bare name or an
+    // "ok <name>" that carries no English word and so is left untold
+    for (const asked of ENGLISH_ROWS) {
+      const a = answeringLanguageOf({ asked, persona: null, texts: viRoom });
+      expect(a.language === 'vi' && a.from === 'asker', asked).toBe(false);
+      if (hasEnglishEvidence(asked)) {
+        expect(a.askedAs ?? (a.from === 'asker' ? a.language : undefined), asked).toBe('en');
+        expect(
+          judgeReply({ ...reply(en, a.language, a.from), language: a }, []).verdict,
+          asked,
+        ).toBe('pass');
+      }
     }
     // a clearly told message still holds the reply, naming the message
     const told = answeringLanguageOf({

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { askerLanguageOf, hasVietnameseOnlyWord, replyLanguageOf } from './text-language.js';
+import { ENGLISH_ROWS, VIETNAMESE_ROWS } from './language-rows.fixture.js';
+import { askerLanguageOf, hasVietnameseEvidence, replyLanguageOf } from './text-language.js';
 
 const OWNER_REQUEST =
   "Owner request: please draw Catalog API's workflow designs from its code and from REQ-1 (Catalog triển khai sản phẩm và thiết kế lên cửa hàng ePOD). Leave every design proposed for my review."; // i18n-allow: a Vietnamese message the detector is tested on
@@ -75,12 +76,26 @@ describe('the language a message is written in', () => {
     ];
     for (const text of NOT_VIETNAMESE) {
       expect(askerLanguageOf(text), text).not.toBe('vi'); // i18n-allow: English messages carrying a Vietnamese name or place; untold or English, never Vietnamese
-      expect(hasVietnameseOnlyWord(text), text).toBe(false);
+      expect(hasVietnameseEvidence(text), text).toBe(false);
     }
     // a message that is Vietnamese beside a name is still read
     expect(askerLanguageOf('Phương ơi, ok nhe')).toBe('vi'); // i18n-allow: Vietnamese beside a name
     expect(askerLanguageOf('@Tuyền ok nhe')).toBe('vi'); // i18n-allow: Vietnamese beside a mention
     expect(askerLanguageOf('Nha Trang thế nào')).toBe('vi'); // i18n-allow: Vietnamese beside a place
     expect(askerLanguageOf('Alo sao thế')).toBe('vi'); // i18n-allow: lowercase marked word decides
+  });
+
+  // ISS-1442 r5: English evidence vetoes a Vietnamese reading, so no position of a name matters
+  it('never reads as Vietnamese an English message holding a name, place, food or loanword, wherever it sits', () => {
+    for (const text of ENGLISH_ROWS) {
+      expect(askerLanguageOf(text), text).not.toBe('vi'); // i18n-allow: English rows carrying marked words
+      expect(hasVietnameseEvidence(text), text).toBe(false);
+    }
+  });
+
+  it('keeps reading Vietnamese the messages that carry no English word', () => {
+    for (const text of VIETNAMESE_ROWS) {
+      expect(askerLanguageOf(text), text).toBe('vi'); // i18n-allow: Vietnamese rows
+    }
   });
 });

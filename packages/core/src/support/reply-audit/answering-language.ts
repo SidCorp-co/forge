@@ -5,7 +5,8 @@
 
 import {
   askerLanguageOf,
-  hasVietnameseOnlyWord,
+  hasEnglishEvidence,
+  hasVietnameseEvidence,
   type ReplyLanguage,
   readsVietnameseBesideNames,
   roomTextsLanguageOf,
@@ -41,7 +42,9 @@ export function personaLanguageOf(persona: string | null | undefined): ReplyLang
 /** English where the message has two words or more and none carries a Vietnamese mark; "ok" alone reads as either. */
 function englishAsked(asked: string | null): ReplyLanguage | undefined {
   const words = (asked ?? '').match(/\p{L}+/gu) ?? [];
-  return words.length >= 2 && !readsVietnameseBesideNames(asked) ? 'en' : undefined;
+  return words.length >= 2 && (hasEnglishEvidence(asked) || !readsVietnameseBesideNames(asked))
+    ? 'en'
+    : undefined;
 }
 
 /**
@@ -56,7 +59,7 @@ export function answeringLanguageOf(input: {
 }): AnsweringLanguage {
   const asker = askerLanguageOf(input.asked);
   if (asker) return { language: asker, from: 'asker' };
-  const askedAs: ReplyLanguage | undefined = hasVietnameseOnlyWord(input.asked)
+  const askedAs: ReplyLanguage | undefined = hasVietnameseEvidence(input.asked)
     ? 'vi'
     : englishAsked(input.asked);
   const persona = personaLanguageOf(input.persona);

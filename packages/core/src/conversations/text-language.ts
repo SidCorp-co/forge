@@ -71,6 +71,7 @@ const VIETNAMESE_BARE: ReadonlySet<string> = new Set([
   'chua',
   'nay',
   'cua',
+  'sao',
 ]); // i18n-allow: unmarked Vietnamese function words
 // the few of them no name and no English word spells, so that ONE of them decides a short message:
 // "minh", "toi", "kia", "nay", "cho", "thi", "xin", "roi", "vay" and "chua" are also given names, surnames or English words,
@@ -162,6 +163,94 @@ export function hasVietnameseOnlyWord(text: string | null | undefined): boolean 
   );
 }
 
+// Words English spells and Vietnamese does not, typed with or without marks. Words a Vietnamese phrase
+// also spells once its marks are dropped are left out on purpose: a, an, it, do, can, the, be, to, no, me,
+// on, in, at, so, he, la. "ok" is shared and decides nothing.
+const ENGLISH_EVIDENCE: ReadonlySet<string> = new Set([
+  'is',
+  'are',
+  'was',
+  'were',
+  'will',
+  'would',
+  'could',
+  'should',
+  'does',
+  'did',
+  'have',
+  'has',
+  'you',
+  'we',
+  'my',
+  'our',
+  'this',
+  'that',
+  'any',
+  'what',
+  'how',
+  'why',
+  'when',
+  'where',
+  'which',
+  'update',
+  'check',
+  'please',
+  'thanks',
+  'thank',
+  'thx',
+  'for',
+  'of',
+  'and',
+  'or',
+  'not',
+  'but',
+  'if',
+  'with',
+  'today',
+  'done',
+  'down',
+  'out',
+  'up',
+  'live',
+  'hello',
+  'hey',
+]);
+
+/**
+ * Whether a text carries a word only English spells. English evidence vetoes a Vietnamese reading:
+ * a name, place or loanword keeps its marks inside an English message, so no marked letter can tell
+ * the two apart, while a Vietnamese message holds none of these words.
+ */
+export function hasEnglishEvidence(text: string | null | undefined): boolean {
+  return (text ?? '').match(WORD)?.some((w) => ENGLISH_EVIDENCE.has(w.toLowerCase())) ?? false;
+}
+
+/**
+ * Vietnamese evidence a short message can be told by: a marked letter or an unmarked function word,
+ * names left out, and no English evidence. Beside another word a lone marked token ("ok" beside a lone marked name) is
+ * a lowercase name, so it counts only where every other word is itself a Vietnamese-list word.
+ */
+export function hasVietnameseEvidence(text: string | null | undefined): boolean {
+  if (hasEnglishEvidence(text)) return false;
+  const tokens = wordsWithNames(text).filter((t) => !t.name);
+  if (
+    !tokens.some((t) => VIETNAMESE_ONLY_LETTER.test(t.word) || VIETNAMESE_ONLY_BARE.has(t.word))
+  ) {
+    return false;
+  }
+  const strict = tokens.some((t) => VIETNAMESE_ONLY_BARE.has(t.word));
+  const marked = tokens.filter((t) => VIETNAMESE_LETTER.test(t.word)).length;
+  const total = wordsWithNames(text).length;
+  if (strict || total < 2 || marked > 1) return true;
+  // an ALL-CAPS word ("ISS" of "ISS-365") is an identifier, a symbol beside the message
+  return wordsWithNames(text).every(
+    (t) =>
+      VIETNAMESE_LETTER.test(t.word) ||
+      VIETNAMESE_BARE.has(t.word) ||
+      (t.word.length >= 2 && t.word === t.word.toUpperCase()),
+  );
+}
+
 /** Whether most of a text's words, names left out, carry a Vietnamese mark: the other side of `replyLanguageOf` for a text with names. */
 export function readsVietnameseBesideNames(text: string | null | undefined): boolean {
   const tokens = wordsWithNames(text);
@@ -180,9 +269,16 @@ const SHORT_MESSAGE_WORDS = 5;
  */
 export function askerLanguageOf(text: string | null | undefined): ReplyLanguage | null {
   const confident = confidentLanguageOf(text);
+  // English evidence vetoes a Vietnamese reading unless three words are Vietnamese beside it
+  if (confident === 'vi' && hasEnglishEvidence(text)) {
+    const vi = wordsWithNames(text).filter(
+      (t) => !t.name && (VIETNAMESE_LETTER.test(t.word) || VIETNAMESE_BARE.has(t.word)),
+    ).length;
+    return vi >= 3 ? 'vi' : null;
+  }
   if (confident) return confident;
   const words = (text ?? '').match(WORD) ?? [];
-  return words.length > 0 && words.length <= SHORT_MESSAGE_WORDS && hasVietnameseOnlyWord(text)
+  return words.length > 0 && words.length <= SHORT_MESSAGE_WORDS && hasVietnameseEvidence(text)
     ? 'vi'
     : null;
 }
