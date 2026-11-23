@@ -85,7 +85,7 @@ export function DecisionLine({
   );
 }
 
-function WithdrawForm({ issueId, eventId, onDone }: { issueId: string; eventId: string; onDone: () => void }) {
+export function WithdrawForm({ issueId, eventId, onDone }: { issueId: string; eventId: string; onDone: () => void }) {
   const t = useCopy();
   const [reason, setReason] = useState("");
   const withdraw = useWithdrawDecision(issueId);

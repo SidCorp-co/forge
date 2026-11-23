@@ -1,6 +1,6 @@
 
-// Issue-detail properties rail (REQ-43): Properties (the requirement it delivers, priority, size,
-// kind, owner, when it was opened), then what it Waits for and what it Holds up. The developer view
+// kind, owner, when it was opened), then what it Waits for and what it Holds up, and to a project admin
+// on an open issue the production ruling (ISS-1431). The developer view
 // adds the rest: modules, labels, branch, the merge mark (its date, and whether Forge observed the
 // merge or only recorded somebody's claim of it — ISS-1126), what it carries, production, cost, and
 // every other kind of relation.
@@ -15,6 +15,7 @@ import { Avatar, enumLabel, FactsGroup, MonoTag, type SelectOption } from "@/des
 import { useComplexityOptions, usePriorityOptions } from "./issue-table-row";
 import { IssueRefBadge } from "./issue-ref-badge";
 import { DeveloperProperties } from "./developer-properties";
+import { ProductionRuling } from "./production-ruling";
 import { RailTraceRows, Row } from "./rail-trace";
 import { IssueRequirementProperty } from "./requirement-property";
 import { type EditRefusal, InlineSelect } from "./inline-edit-cell";
@@ -248,6 +249,8 @@ export function PropertiesRail({
       </FactsGroup>
       <EdgeRows edges={blockedBy} self={issue.id} slug={slug} label={t("issues.rail.waitsFor")} testId="rail-waits-for" edit={edit} />
       <EdgeRows edges={blocks} self={issue.id} slug={slug} label={t("issues.rail.holdsUp")} testId="rail-holds-up" />
+      {/* a project admin's ruling for a production act on this open issue (ISS-1431); nobody else sees it */}
+      <ProductionRuling issue={issue} />
       {developer ? (
         <>
           <EdgeRows edges={parents} self={issue.id} slug={slug} label={t("issues.rail.parent")} />

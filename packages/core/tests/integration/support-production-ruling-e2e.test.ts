@@ -272,6 +272,16 @@ describe("ISS-1431: a project admin's ruling for a production act, given in a ro
     expect(audit[0]?.detail).toMatchObject({
       ruling: { id: ruling?.id, issue: w.issueKey, by: chuong },
     });
+    // withdrawn on the issue's page (its session's withdraw call), the run is refused the key again
+    const withdrawn = await api(
+      await userToken(chuong),
+      'POST',
+      `/api/issues/${w.issueId}/events/${ruling?.id}/withdraw`,
+      { reason: 'The supplier key is set by hand instead.' },
+    );
+    expect(withdrawn.status, JSON.stringify(withdrawn.body)).toBe(201);
+    const again = await readKey(run);
+    expect([again.status, code(again.body)]).toEqual([403, 'VARIABLE_PROTECTED_WITHHELD']);
     // the act and each refusal are on the room's record beside his message
     const acts = await rows<{ kind: string }>(sql`
       SELECT kind FROM support_actions

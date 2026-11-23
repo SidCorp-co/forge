@@ -1,4 +1,5 @@
 
+import { RULING_ENVIRONMENT_FIELD } from "@forge/contracts/record-events";
 import { apiClient, apiClientCursorAll, apiMultipart } from "@/lib/api/client";
 import type {
   ActivityItem,
@@ -8,6 +9,22 @@ import type {
   IssueDetail,
   IssueParkResponse,
 } from "./types";
+
+/** One standing record as `GET /api/issues/:id/events` serves it. */
+export interface DecisionRecord {
+  id: string;
+  kind: string;
+  fields: { key: string; value: string }[];
+  actorType: string;
+  actorId: string;
+  createdAt: string;
+}
+
+/** A project admin's ruling for a production act (REQ-80 BC-11): what to do, and on which environment. */
+export interface ProductionRulingDraft {
+  act: string;
+  environment: string;
+}
 
 interface ActivityEnvelope {
   items: ActivityItem[];
@@ -59,6 +76,28 @@ export const issueDetailApi = {
     apiClient<CommentNode>(`/comments/${commentId}`, {
       method: "PATCH",
       body: JSON.stringify({ intent }),
+    }),
+
+  /** `GET /api/issues/:id/events?kind=decision` — the decisions standing on the issue, withdrawn ones left out. */
+  listDecisions: (id: string) =>
+    apiClient<{ items: DecisionRecord[] }>(`/issues/${id}/events?kind=decision`),
+
+  /**
+   * `POST /api/issues/:id/events` — a production ruling, the issue's decision naming the act and the
+   * production-tier environment in `production`; a run working the open issue then reads that
+   * environment's protected variables (ISS-1431).
+   */
+  giveRuling: (id: string, ruling: ProductionRulingDraft) =>
+    apiClient<DecisionRecord>(`/issues/${id}/events`, {
+      method: "POST",
+      body: JSON.stringify({
+        kind: "decision",
+        contract: 1,
+        fields: [
+          { key: "decision", value: ruling.act },
+          { key: RULING_ENVIRONMENT_FIELD, value: ruling.environment },
+        ],
+      }),
     }),
 
   /** `POST /api/issues/:id/events/:eventId/withdraw` — a decision kept on record, no longer standing. */

@@ -6,7 +6,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useToast } from "@/providers/toast-provider";
-import { issueDetailApi } from "./detail-api";
+import { RULING_ENVIRONMENT_FIELD } from "@forge/contracts/record-events";
+import { type DecisionRecord, issueDetailApi, type ProductionRulingDraft } from "./detail-api";
 import { canonicalIssueId, issueQueryKey } from "./derive";
 
 // ISS-1160 — `id` is the display key as often as the row uuid; `projectId` is
@@ -103,6 +104,44 @@ export function useWithdrawDecision(issueId: string) {
     mutationFn: (args: { eventId: string; reason: string }) =>
       issueDetailApi.withdrawDecision(issueId, args.eventId, args.reason),
     onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["activities", issueId] });
+      void qc.invalidateQueries({ queryKey: rulingsKey(issueId) });
+    },
+  });
+}
+
+const rulingsKey = (issueId: string) => ["production-rulings", issueId] as const;
+
+/** A standing production ruling on the issue: its record, the act and the environment it names. */
+export interface StandingRuling {
+  id: string;
+  act: string;
+  environment: string;
+}
+
+function rulingOf(record: DecisionRecord): StandingRuling | null {
+  const value = (key: string) => record.fields.find((f) => f.key === key)?.value?.trim() ?? "";
+  const environment = value(RULING_ENVIRONMENT_FIELD);
+  return environment ? { id: record.id, act: value("decision"), environment } : null;
+}
+
+/** The issue's standing production rulings (REQ-80 BC-11), read only where `enabled`. */
+export function useProductionRulings(issueId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: rulingsKey(issueId),
+    queryFn: () => issueDetailApi.listDecisions(issueId),
+    select: (read) => read.items.flatMap((r) => rulingOf(r) ?? []),
+    enabled,
+  });
+}
+
+/** Give a production ruling on the issue through its decision door (ISS-1431). */
+export function useGiveRuling(issueId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ruling: ProductionRulingDraft) => issueDetailApi.giveRuling(issueId, ruling),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: rulingsKey(issueId) });
       void qc.invalidateQueries({ queryKey: ["activities", issueId] });
     },
   });
