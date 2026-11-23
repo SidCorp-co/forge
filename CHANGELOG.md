@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.809] - 2026-11-23
+
+Reply audit reads short Vietnamese and credits the master's answer beside a read
+
+### Fixed
+
+- **A room reply that read the release and then got the master's answer is no longer failed for saying his check as his.** A turn's opening line also names deploys, served versions and behaviour as stale.
+- **A short Vietnamese message typed without marks ("ok nhe") reads as Vietnamese, and an English reply to an English message is no longer failed on language** in a room whose texts read Vietnamese.
+
 ## [0.4.0-dev.808] - 2026-11-23
 
 Room replies: shared-room master posts, short Vietnamese language read, live-state claims from reads
