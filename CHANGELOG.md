@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.803] - 2026-11-23
+
+API contracts kept in YAML record, and batch issues share one contract version
+
+### Fixed
+
+- **An openapi contract kept in YAML is recorded from its landed file.** The version door reads YAML as JSON, oasdiff measures it, and malformed YAML is refused with its line and column; a JSON conversion is named as one.
+- **A batch issue's merge mark is held by the version recorded from its batch head.** A decided version at the head of the passing merge check covering the commit holds its contract file; the refusal asks for the head's file.
+
 ## [0.4.0-dev.802] - 2026-11-23
 
 Admins give production rulings from rooms or issues; chat deciders decide without accounts
