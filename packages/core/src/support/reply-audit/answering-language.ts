@@ -7,7 +7,7 @@ import {
   askerLanguageOf,
   hasVietnameseOnlyWord,
   type ReplyLanguage,
-  replyLanguageOf,
+  readsVietnameseBesideNames,
   roomTextsLanguageOf,
 } from '../../conversations/index.js';
 
@@ -41,7 +41,7 @@ export function personaLanguageOf(persona: string | null | undefined): ReplyLang
 /** English where the message has two words or more and none carries a Vietnamese mark; "ok" alone reads as either. */
 function englishAsked(asked: string | null): ReplyLanguage | undefined {
   const words = (asked ?? '').match(/\p{L}+/gu) ?? [];
-  return words.length >= 2 && replyLanguageOf(asked) === 'en' ? 'en' : undefined;
+  return words.length >= 2 && !readsVietnameseBesideNames(asked) ? 'en' : undefined;
 }
 
 /**

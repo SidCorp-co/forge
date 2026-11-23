@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { askerLanguageOf, replyLanguageOf } from './text-language.js';
+import { askerLanguageOf, hasVietnameseOnlyWord, replyLanguageOf } from './text-language.js';
 
 const OWNER_REQUEST =
   "Owner request: please draw Catalog API's workflow designs from its code and from REQ-1 (Catalog triển khai sản phẩm và thiết kế lên cửa hàng ePOD). Leave every design proposed for my review."; // i18n-allow: a Vietnamese message the detector is tested on
@@ -32,10 +32,55 @@ describe('the language a message is written in', () => {
       'toi nay',
       'Minh, can you check ISS-5?',
     ]) {
-      expect(askerLanguageOf(english), english).toBeNull(); // i18n-allow: English messages carrying a name
+      expect(askerLanguageOf(english), english).not.toBe('vi'); // i18n-allow: English messages carrying a name; a confident English reading is fine
     }
     for (const loan of ['café', 'naïve', 'résumé', 'send me the résumé']) {
       expect(askerLanguageOf(loan)).not.toBe('vi');
     }
+  });
+
+  // ISS-1442 r4: the class, not the instance. A short English message can carry a Vietnamese mark
+  // without being Vietnamese; where the language is in doubt the message is left untold.
+  it('leaves untold every short English message whose only Vietnamese mark is a name, place, mention or loanword', () => {
+    const NOT_VIETNAMESE = [
+      // given names and surnames, with and without accents
+      'Nhung, any update?',
+      'thanks Nhung',
+      'hi Nhung',
+      'Phương, any update?', // i18n-allow: an English message carrying a Vietnamese name
+      'Hi Đức, is it live?', // i18n-allow: an English message carrying a Vietnamese name or place
+      'Thanks Nguyễn', // i18n-allow: an English message carrying a Vietnamese name or place
+      'Phương Đức Tuyền', // i18n-allow: an English message carrying a Vietnamese name or place
+      'Tuyền, Phương, can you check?', // i18n-allow: an English message carrying a Vietnamese name or place
+      'any news from Nguyễn Văn Ba?', // i18n-allow: an English message carrying a Vietnamese name or place
+      // mentions, and the word after one
+      '@Tuyền can you check?', // i18n-allow: an English message carrying a Vietnamese name or place
+      '@tuyền can you check?', // i18n-allow: an English message carrying a Vietnamese name or place
+      '@tuyen nguyễn is it live?', // i18n-allow: an English message carrying a Vietnamese name or place
+      // places
+      'Nha Trang deploy done?',
+      'Đà Nẵng is live?', // i18n-allow: an English message carrying a Vietnamese name or place
+      'deploy to Đà Nẵng done?', // i18n-allow: an English message carrying a Vietnamese name or place
+      // a greeting followed by a lowercase name
+      'hi đức is it live', // i18n-allow: an English message carrying a Vietnamese name or place
+      'thanks phương', // i18n-allow: an English message carrying a Vietnamese name
+      // loanwords
+      'café',
+      'naïve',
+      'résumé',
+      'send me the résumé',
+      // words that are names or English
+      'Minh, any update?',
+      'toi nay',
+    ];
+    for (const text of NOT_VIETNAMESE) {
+      expect(askerLanguageOf(text), text).not.toBe('vi'); // i18n-allow: English messages carrying a Vietnamese name or place; untold or English, never Vietnamese
+      expect(hasVietnameseOnlyWord(text), text).toBe(false);
+    }
+    // a message that is Vietnamese beside a name is still read
+    expect(askerLanguageOf('Phương ơi, ok nhe')).toBe('vi'); // i18n-allow: Vietnamese beside a name
+    expect(askerLanguageOf('@Tuyền ok nhe')).toBe('vi'); // i18n-allow: Vietnamese beside a mention
+    expect(askerLanguageOf('Nha Trang thế nào')).toBe('vi'); // i18n-allow: Vietnamese beside a place
+    expect(askerLanguageOf('Alo sao thế')).toBe('vi'); // i18n-allow: lowercase marked word decides
   });
 });

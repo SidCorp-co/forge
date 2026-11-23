@@ -137,6 +137,7 @@ export {
   hasVietnameseOnlyLetter,
   hasVietnameseOnlyWord,
   type ReplyLanguage,
+  readsVietnameseBesideNames,
   replyLanguageOf,
   roomTextsLanguageOf,
 } from './text-language.js';

@@ -312,6 +312,21 @@ describe('the language of an asker too short to tell (ISS-1442)', () => {
     expect(
       judgeReply({ ...reply(en, named.language, named.from), language: named }, []).verdict,
     ).toBe('pass');
+    // r4: a name, mention or place that keeps its accents does not make the message Vietnamese
+    for (const asked of [
+      'Nhung, any update?',
+      'Phương, any update?', // i18n-allow: an English message carrying a Vietnamese name
+      '@Tuyền can you check?', // i18n-allow: an English message carrying a Vietnamese name or place
+      'Hi Đức, is it live?', // i18n-allow: an English message carrying a Vietnamese name or place
+      'Nha Trang deploy done?',
+      'Phương Đức Tuyền', // i18n-allow: an English message carrying a Vietnamese name or place
+    ]) {
+      const a = answeringLanguageOf({ asked, persona: null, texts: viRoom });
+      expect(a.askedAs, asked).not.toBe('vi');
+      expect(judgeReply({ ...reply(en, a.language, a.from), language: a }, []).verdict, asked).toBe(
+        'pass',
+      );
+    }
     // a clearly told message still holds the reply, naming the message
     const told = answeringLanguageOf({
       asked: 'Has my order been delivered yet?',

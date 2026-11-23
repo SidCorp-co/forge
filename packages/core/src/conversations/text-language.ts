@@ -7,6 +7,38 @@ import { VIETNAMESE_LETTER } from '@forge/contracts/content-language';
 export type ReplyLanguage = 'en' | 'vi';
 
 const WORD = /\p{L}+/gu;
+const MENTIONED_WORD = /(@?)(\p{L}+)/gu;
+
+// words after which a name follows, even where it is typed lowercase
+const ADDRESSING: ReadonlySet<string> = new Set([
+  'hi',
+  'hello',
+  'hey',
+  'dear',
+  'thanks',
+  'thank',
+  'cc',
+  'ping',
+]);
+
+/**
+ * The words of a text with the ones that may be a NAME marked: a capitalised word, an @mention, the
+ * word after a mention or after a greeting ("hi", "thanks"). A name keeps its accents whatever
+ * language the message is in (a name typed with its Vietnamese marks in an English message), so what a
+ * name spells says nothing of the message's language. Where the language is in doubt a message is
+ * left untold, never told Vietnamese: a false "vi" fails a correct English reply, a missed one fails nothing.
+ */
+export function wordsWithNames(text: string | null | undefined): { word: string; name: boolean }[] {
+  const out: { word: string; name: boolean }[] = [];
+  let after = false;
+  for (const m of (text ?? '').matchAll(MENTIONED_WORD)) {
+    const word = m[2] ?? '';
+    const name = m[1] === '@' || after || word !== word.toLowerCase();
+    out.push({ word, name });
+    after = m[1] === '@' || (!after && ADDRESSING.has(word.toLowerCase()));
+  }
+  return out;
+}
 
 /** A message's share of Vietnamese-marked words at which it reads as Vietnamese, not as English quoting a name. */
 const VIETNAMESE_SHARE = 0.4;
@@ -41,11 +73,10 @@ const VIETNAMESE_BARE: ReadonlySet<string> = new Set([
   'cua',
 ]); // i18n-allow: unmarked Vietnamese function words
 // the few of them no name and no English word spells, so that ONE of them decides a short message:
-// "minh", "toi", "kia", "nay", "cho", "thi", "xin", "roi", "vay" and "chua" are also given names, surnames or English words
+// "minh", "toi", "kia", "nay", "cho", "thi", "xin", "roi", "vay" and "chua" are also given names, surnames or English words,
+// and "nhung" is a given name and "nha" a place name ("Nha Trang") typed without accents
 const VIETNAMESE_ONLY_BARE: ReadonlySet<string> = new Set([
-  'nha',
   'nhe',
-  'nhung',
   'luon',
   'giup',
   'duoc',
@@ -98,9 +129,12 @@ const ENGLISH_FUNCTION: ReadonlySet<string> = new Set([
  * reply's language is held to judges only what it can tell, so a short or mixed text is passed.
  */
 export function confidentLanguageOf(text: string | null | undefined): ReplyLanguage | null {
-  const words = ((text ?? '').match(WORD) ?? []).map((w) => w.toLowerCase());
+  const tokens = wordsWithNames(text);
+  const words = tokens.map((t) => t.word.toLowerCase());
   if (words.length < 3) return null;
-  const vi = words.filter((w) => VIETNAMESE_LETTER.test(w) || VIETNAMESE_BARE.has(w)).length;
+  const vi = tokens.filter(
+    (t) => !t.name && (VIETNAMESE_LETTER.test(t.word) || VIETNAMESE_BARE.has(t.word)),
+  ).length;
   if (vi / words.length >= VIETNAMESE_SHARE) return 'vi';
   if (vi / words.length > 0.05) return null;
   const en = words.filter((w) => ENGLISH_FUNCTION.has(w)).length;
@@ -118,17 +152,21 @@ const VIETNAMESE_ONLY_LETTER = /[ảãạăằắẳẵặâầấẩẫậẻ�
 
 /** Whether a text spells any word with a letter only Vietnamese uses. */
 export function hasVietnameseOnlyLetter(text: string | null | undefined): boolean {
-  return (text ?? '').match(WORD)?.some((w) => VIETNAMESE_ONLY_LETTER.test(w)) ?? false;
+  return wordsWithNames(text).some((t) => !t.name && VIETNAMESE_ONLY_LETTER.test(t.word));
 }
 
-/** Whether a text spells any word with a letter only Vietnamese uses, or is one of its unmarked function words. */
+/** Whether a text, names left out, spells any word with a letter only Vietnamese uses, or is one of its unmarked function words. */
 export function hasVietnameseOnlyWord(text: string | null | undefined): boolean {
-  return (
-    (text ?? '')
-      .match(WORD)
-      ?.some((w) => VIETNAMESE_ONLY_LETTER.test(w) || VIETNAMESE_ONLY_BARE.has(w.toLowerCase())) ??
-    false
+  return wordsWithNames(text).some(
+    (t) => !t.name && (VIETNAMESE_ONLY_LETTER.test(t.word) || VIETNAMESE_ONLY_BARE.has(t.word)),
   );
+}
+
+/** Whether most of a text's words, names left out, carry a Vietnamese mark: the other side of `replyLanguageOf` for a text with names. */
+export function readsVietnameseBesideNames(text: string | null | undefined): boolean {
+  const tokens = wordsWithNames(text);
+  const marked = tokens.filter((t) => !t.name && VIETNAMESE_LETTER.test(t.word)).length;
+  return tokens.length > 0 && marked / tokens.length >= VIETNAMESE_SHARE;
 }
 
 /** A message up to this many words is short enough for one Vietnamese-only letter or word to decide it. */
