@@ -368,7 +368,11 @@ describe('a room agent states a live setting from a read of its own turn, and na
       "A live setting, account, field, or an issue's or release's status is stated from a read made in this turn",
     );
     expect(answering).toContain(
-      'never from a release plan, release note, what a master said or a read already in your context',
+      "never from a release plan, release note, a master's earlier post or a read already in your context",
+    );
+    // ISS-1430: "what a master said" contradicted the master's answer note: his answer of this turn is his check
+    expect(answering).toContain(
+      "or as the master's check, with when he made it, where he answered your ask in this turn",
     );
   });
 
