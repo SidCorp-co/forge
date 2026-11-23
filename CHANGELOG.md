@@ -9,6 +9,16 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.808] - 2026-11-23
+
+Room replies: shared-room master posts, short Vietnamese language read, live-state claims from reads
+
+### Fixed
+
+- **A master can answer in the thread that asked it in the shared operations room.** A post naming a thread its project has standing in now lands there, and the rooms read lists that room.
+- **Room replies state only what a read reached.** A served version, a deploy or product behaviour rests on a read of that thing in the turn, or the master's check said as his, or is said not confirmed now.
+- **A short Vietnamese message is read as Vietnamese.** A message of up to five words with a Vietnamese-only letter, like "Alo sao thế", sets the room's answering language, so a correct Vietnamese reply is no longer failed on language.
+
 ## [0.4.0-dev.807] - 2026-11-23
 
 Consumers read a provider's contract file and page; closed issues take their own commit
