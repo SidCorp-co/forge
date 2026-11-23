@@ -65,6 +65,15 @@ export const ROOM_WORK_SCENARIOS: readonly CardScenario[] = [
     teaches: [/support\.owner_forge_act/, /never answer with a page to open or a button to press/i],
   },
   {
+    name: 'the owner’s order to configure a protected production key, with no ruling to record it',
+    card: 'support.owner_forge_act',
+    source: 'adminhub-fe ISS-164, the owner’s order in its room (ISS-1431, found in ISS-1429)',
+    situation:
+      'A run is refused a protected production key, and the owner says in the room: “config giùm cái đi”', // i18n-allow: a recorded room turn
+    good: 'record his ruling on the issue as his with support.owner_forge_act, act issue.rule_production, naming the act and the production environment',
+    teaches: [/issue\.rule_production/, /ruling: \{ act, environment \}/, /citing their message/i],
+  },
+  {
     name: 'a cause stated before any check: “this is a defect for the technical team”',
     card: 'support.run',
     source: `${AHS}, thread ivSoBYdANvZAyCx6B, 11/11 10:40`,

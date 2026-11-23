@@ -2050,6 +2050,10 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_FORGE_ACT_NO_CONSENT_PATH",
 	/** An act the owner's Needs you can owe that no door from chat makes yet, naming the page that makes it (ISS-1299). */
 	"SUPPORT_FORGE_ACT_NO_DOOR",
+	/** A production ruling naming an environment the project declares as no production-tier one (ISS-1431). */
+	"SUPPORT_RULING_NOT_PRODUCTION",
+	/** A production ruling on an issue that is closed or dropped, where no ruling holds (ISS-1431). */
+	"SUPPORT_RULING_ISSUE_CLOSED",
 	/** A raise into a technical thread where a person spoke within the turn, naming no answer to his message (ISS-1299). */
 	"SUPPORT_RAISE_THREAD_UNREAD",
 	/** A raise whose words are not in the language the technical thread's reader writes (ISS-1299). */
@@ -2258,6 +2262,8 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_FORGE_ACT_SHAPE: 400,
 	SUPPORT_FORGE_ACT_NO_CONSENT_PATH: 409,
 	SUPPORT_FORGE_ACT_NO_DOOR: 409,
+	SUPPORT_RULING_NOT_PRODUCTION: 400,
+	SUPPORT_RULING_ISSUE_CLOSED: 409,
 	SUPPORT_RAISE_THREAD_UNREAD: 409,
 	SUPPORT_RAISE_NOT_IN_THREAD_LANGUAGE: 400,
 	SUPPORT_OWNER_PRODUCT_UNKNOWN: 404,

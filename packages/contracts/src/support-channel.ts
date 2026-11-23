@@ -288,6 +288,8 @@ export const SUPPORT_FORGE_ACTS = [
 	"binding.write",
 	// a project rule he rules in the room, written or amended in his name (ISS-1357)
 	"rule.write",
+	// a project admin's ruling for a production act, recorded on the issue as his (REQ-80 BC-11, ISS-1431)
+	"issue.rule_production",
 	// the steward's invite into an ecosystem and the member project's answer or leave (ISS-1299)
 	"membership.invite",
 	"membership.accept",
@@ -390,6 +392,15 @@ export const supportForgeActRequestSchema = z.strictObject({
 		.optional()
 		.describe(
 			"rule.write only: the rule as he ruled it, { title, body, module?, injection?, scope?, recheckWhen? }; an amend keeps each field you leave out, a new rule needs title, scope and recheckWhen. His own account writes it under project.write: one that may not write the project is refused PERMISSION_FORBIDDEN, nothing written",
+		),
+	ruling: z
+		.strictObject({
+			act: z.string().trim().min(3).max(300),
+			environment: z.string().trim().min(1).max(64),
+		})
+		.optional()
+		.describe(
+			"issue.rule_production only, item the issue: his ruling for a production act, { act: what the run is to do there, in his words; environment: the project's production-tier environment it is done on }. It is recorded on the issue as his decision, and a run working that open issue then reads that environment's protected variables. His own account needs project.admin: one without it is refused PERMISSION_FORBIDDEN, nothing recorded",
 		),
 });
 export type SupportForgeActRequest = z.infer<

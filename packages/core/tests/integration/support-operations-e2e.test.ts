@@ -2,6 +2,7 @@
 // @direct-test-of packages/core/src/support/ops-feedback-read.ts
 // @direct-test-of packages/core/src/support/ops-acts.ts
 // @direct-test-of packages/core/src/support/ops-types.ts
+// @direct-test-of packages/core/src/support/owner-ruling-act.ts
 //
 // REQ-75 r4 BC-20..BC-24, end to end: two bot accounts on one chat server, each with its role on
 // its rocketchat connection — babo (read, deliver) in an organization-wide operations room and in
@@ -40,6 +41,7 @@ import {
   type RoomName,
 } from '../helpers/ops-chat-server.js';
 import { boxToken, type Served, serveCore } from '../helpers/preview-world.js';
+import { seedProjectDocument } from '../helpers/release-world.js';
 import { SessionBox } from '../helpers/support-world.js';
 
 vi.setConfig({ testTimeout: 90_000, hookTimeout: 120_000 });
@@ -65,9 +67,10 @@ const THREADED = new Set([
   'research',
   'record',
   'decide',
+  'owner_forge_act',
 ]);
 /** The acts that run as the member whose message asked for them, naming it (ISS-716). */
-const ASKED = new Set(['move', 'draft_requirement', 'draft_feedback']);
+const ASKED = new Set(['move', 'draft_requirement', 'draft_feedback', 'owner_forge_act']);
 /** What a member writes into a thread while a turn works on another member's command there. */
 const INTERJECTION = 'hmm, wait';
 
@@ -485,5 +488,40 @@ describe('REQ-75 r4: operations rooms answer under their bot’s role (BC-20..BC
     const inside = await ask('alice', 'social', { action: 'research', url: 'https://127.0.0.1/' });
     expect(refusal(inside)?.code, JSON.stringify(inside)).toBe('OPS_RESEARCH_REFUSED');
     expect(refusal(inside)?.detail).toContain('not a public address');
+  });
+
+  // ISS-1431 (REQ-80 BC-11): a project admin's ruling for a production act, given in the team's room,
+  // is recorded on the issue as that admin's, a person's; a member without project.admin and one
+  // Forge cannot name are refused by name, nothing recorded
+  it('records a project admin’s production ruling as theirs, and refuses anyone else by name', async () => {
+    await seedProjectDocument(home.catalog, ids.alice, {
+      environments: {
+        production: { tier: 'production', deploysFrom: 'main', deployment: { mode: 'external' } },
+      },
+    });
+    const ruling = {
+      action: 'owner_forge_act',
+      project: slug.catalog,
+      act: 'issue.rule_production',
+      item: 'ISS-5',
+      ruling: { act: 'Set supplier PGPrints on production', environment: 'production' },
+    };
+    const rulings = () =>
+      rows<{ actor_id: string; actor_agency: string; why: string | null }>(sql`
+        SELECT a.actor_id, a.actor_agency,
+               (SELECT f->>'value' FROM jsonb_array_elements(a.payload->'fields') f WHERE f->>'key' = 'why') AS why
+          FROM activity_log a JOIN issues i ON i.id = a.issue_id
+         WHERE i.project_id = ${home.catalog}::uuid AND i.iss_seq = 5 AND a.action = 'record.decision'`);
+    const viewer = await ask('bob', 'group', ruling);
+    expect(refusal(viewer)?.code, JSON.stringify(viewer)).toBe('PERMISSION_FORBIDDEN');
+    expect(refusal(viewer)?.detail).toContain('project.admin');
+    const unmapped = await ask('carol', 'group', ruling);
+    expect(refusal(unmapped)?.code, JSON.stringify(unmapped)).toBe('OPS_ASKER_UNMAPPED');
+    expect(await rulings()).toEqual([]);
+    const admin = await ask('alice', 'group', ruling);
+    expect(admin, JSON.stringify(admin)).toMatchObject({ act: 'issue.rule_production', key: 'ISS-5' });
+    const [held] = await rulings();
+    expect(held).toMatchObject({ actor_id: ids.alice, actor_agency: 'human' });
+    expect(held?.why).toContain('@alice');
   });
 });

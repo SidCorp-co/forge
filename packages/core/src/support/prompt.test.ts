@@ -219,6 +219,25 @@ describe('every room brief decides each message from its meaning and records it'
     expect(operations).toContain(mapLine('decide'));
     expect(brief).toContain(mapLine('decide'));
   });
+
+  // ISS-1431: a project admin's ruling for a production act had no act in the room, so an order to
+  // set a protected key could not become the ruling a run reads; every brief the owner speaks in maps
+  // it, and the operations brief names it with the writes that run as their asker
+  it('the operations and channel briefs name the production ruling act', () => {
+    const operations = operationsBrief({
+      role: { name: 'ops', persona: 'You are ops.', grants: ['read'] } as unknown as Parameters<
+        typeof operationsBrief
+      >[0]['role'],
+      scope: 'org',
+      reach: [],
+    });
+    expect(operations).toContain('owner_forge_act, act issue.rule_production');
+    expect(operations).toContain(mapLine('owner_forge_act'));
+    expect(mapLine('owner_forge_act')).toContain('a ruling that lets a run do a production act');
+    expect(JSON.stringify(actCard('owner_forge_act'))).toContain(
+      'ruling: { act, environment } } citing their message',
+    );
+  });
 });
 
 // ISS-1243 (owner 2026-11-15, AdminHub-Support): every room agent keeps permission talk out of a work

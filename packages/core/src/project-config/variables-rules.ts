@@ -65,6 +65,10 @@ export function effectiveVariables<V extends HeldVariable>(
   return { effective, withheld };
 }
 
+/** Where a person gives a ruling (ISS-1431): the issue page's control, by its label, and the room's act. */
+export const RULING_ON_PAGE = 'Production ruling';
+export const RULING_ROOM_ACT = 'support.owner_forge_act, act issue.rule_production, citing their message';
+
 /** The ruling a protected variable is opened by (BC-11), in the words every reader of it is told. */
 const rulingReaders = (environment: DeclaredEnvironment): string =>
   `a run working an open issue that carries a project admin's ruling for a production act on \`${environment.name}\``;
@@ -191,7 +195,7 @@ export function withheldWhy(environment: DeclaredEnvironment, ask: RulingAsk | n
   }
   const lacks = ask ? ` ${ask.lacks}.` : '';
   const who = ask?.who ?? 'a person holding project.admin on this project';
-  return `environment \`${environment.name}\` is production-tier: ${protectedReaders(environment)}.${lacks} Ask ${who} once, in plain words, for a ruling on the act this run is to do, naming that act and \`${environment.name}\`; they record it on the issue as a decision whose \`${RULING_ENVIRONMENT_FIELD}\` field is \`${environment.name}\`, and the variable stays protected`;
+  return `environment \`${environment.name}\` is production-tier: ${protectedReaders(environment)}.${lacks} Ask ${who} once, in plain words, for a ruling on the act this run is to do, naming that act and \`${environment.name}\`; they give it on the issue's page (${RULING_ON_PAGE}), or by saying so in a Forge room, whose agent records it as theirs (${RULING_ROOM_ACT}); it is the issue's decision whose \`${RULING_ENVIRONMENT_FIELD}\` field is \`${environment.name}\`, and the variable stays protected`;
 }
 
 /** The keys a run asked for that nothing effective holds, refused naming each (BC-8). */

@@ -65,4 +65,11 @@ describe('a withheld variable is taught as a ruling to ask for, never protection
       expect(text).not.toMatch(/protection off|protected: false|unprotect|turn[^.]*protection/i);
     });
   }
+
+  // ISS-1431: the room was told to have the ruling asked for, and nowhere it is given
+  it("the room's note on a protected slot names where a project admin gives the ruling", () => {
+    const note = slotSays(false, false, 'only a run … reads it');
+    expect(note).toContain("on the issue's page (Production ruling)");
+    expect(note).toContain('support.owner_forge_act, act issue.rule_production, citing their message');
+  });
 });

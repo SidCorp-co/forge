@@ -211,6 +211,13 @@ describe('a refused protected variable asks for the ruling, never for protection
     expect(why).toContain('`production` field is `canawan`');
   });
 
+  // ISS-1431: the person asked had nowhere to give it but their own API call; the refusal names both
+  // places they give it, the issue's page and a room whose agent records it as theirs
+  it('names where the person gives it: the issue page, or a room act recording it as theirs', () => {
+    expect(why).toContain("they give it on the issue's page (Production ruling)");
+    expect(why).toContain('support.owner_forge_act, act issue.rule_production');
+  });
+
   it('never tells an agent to have protection turned off', () => {
     for (const text of [
       why,

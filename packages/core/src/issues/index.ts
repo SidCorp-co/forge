@@ -265,6 +265,7 @@ export {
   writeCoreRecord,
   writeRecordEvent,
 } from './record-events/store.js';
+export { writeScreenedRecordEvent } from './record-events/write.js';
 export { writeIssueRelations } from './relations-service.js';
 export {
   claimIssuesForRelease,

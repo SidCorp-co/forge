@@ -13,6 +13,7 @@ import { randomUUID } from 'node:crypto';
 import type { SupportSecretLinkRequest } from '@forge/contracts/support';
 import { containsSecret } from '@forge/observability';
 import { webBaseUrl } from '../lib/web-base-url.js';
+import { RULING_ON_PAGE, RULING_ROOM_ACT } from '../project-config/index.js';
 import { askerOf } from './channel.js';
 import { namedProject } from './ops-scope.js';
 import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
@@ -72,7 +73,7 @@ export function slotSays(write: boolean, held: boolean, readBy: string | undefin
   return [
     ...(readBy
       ? [
-          `${readBy}. Any other master or run reads it as withheld: say so to the one it is for, and that it asks a person holding project.admin for a ruling once, in plain words, naming the act and the environment.`,
+          `${readBy}. Any other master or run reads it as withheld: say so to the one it is for, and that it asks a person holding project.admin for a ruling once, in plain words, naming the act and the environment. A project admin gives it on the issue's page (${RULING_ON_PAGE}), or here: record their word as theirs with ${RULING_ROOM_ACT}.`,
         ]
       : []),
     held

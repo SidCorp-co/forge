@@ -55381,7 +55381,7 @@
                 "additionalProperties": false,
                 "properties": {
                   "act": {
-                    "description": "the act, as the item's page names it: requirement.propose, requirement.agree, requirement.accept, requirement.return, requirement.defer, requirement.undefer, requirement.drop, requirement.accept_delivery, workflow.propose, workflow.approve, workflow.return, release.cut, release.approve, release.return, issue.merge, config.write, binding.write, rule.write, membership.invite, membership.accept, membership.decline, membership.leave, feedback.verify, feedback.reopen, suggestion.accept, suggestion.reject, mockup.accept, mockup.return; any other is refused by name, saying where it is made",
+                    "description": "the act, as the item's page names it: requirement.propose, requirement.agree, requirement.accept, requirement.return, requirement.defer, requirement.undefer, requirement.drop, requirement.accept_delivery, workflow.propose, workflow.approve, workflow.return, release.cut, release.approve, release.return, issue.merge, config.write, binding.write, rule.write, issue.rule_production, membership.invite, membership.accept, membership.decline, membership.leave, feedback.verify, feedback.reopen, suggestion.accept, suggestion.reject, mockup.accept, mockup.return; any other is refused by name, saying where it is made",
                     "maxLength": 64,
                     "minLength": 1,
                     "type": "string"
@@ -55528,6 +55528,27 @@
                     },
                     "required": [
                       "body"
+                    ],
+                    "type": "object"
+                  },
+                  "ruling": {
+                    "additionalProperties": false,
+                    "description": "issue.rule_production only, item the issue: his ruling for a production act, { act: what the run is to do there, in his words; environment: the project's production-tier environment it is done on }. It is recorded on the issue as his decision, and a run working that open issue then reads that environment's protected variables. His own account needs project.admin: one without it is refused PERMISSION_FORBIDDEN, nothing recorded",
+                    "properties": {
+                      "act": {
+                        "maxLength": 300,
+                        "minLength": 3,
+                        "type": "string"
+                      },
+                      "environment": {
+                        "maxLength": 64,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "act",
+                      "environment"
                     ],
                     "type": "object"
                   },

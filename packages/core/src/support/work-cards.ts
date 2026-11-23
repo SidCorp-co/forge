@@ -300,11 +300,16 @@ export const WORK_ACT_CARDS = {
   },
   owner_forge_act: {
     purpose:
-      'Makes the Forge act the owner asks for in chat (accept, approve, cut, mark merged, change config or a rule, link into an ecosystem) as him, citing his message.',
+      'Makes the Forge act the owner asks for in chat (accept, approve, cut, mark merged, change config or a rule, a production ruling) as him, citing his message.',
     situations: [
       {
-        when: 'the owner asks you, in any words, for a Forge act, or settles one you put to him',
+        when: 'the owner asks you, in any words, for a Forge act, a ruling that lets a run do a production act among them, or settles one you put to him',
         do: 'make it at once with support.owner_forge_act { thread, message, project, act, item } as him; never answer with a page to open or a button to press',
+      },
+      {
+        when: 'a project admin says a run may do a production act, such as setting a supplier key on production',
+        do: 'record it as theirs with support.owner_forge_act { act: issue.rule_production, item: the issue the run works, ruling: { act, environment } } citing their message; the run then reads that environment’s protected key, and the key stays protected',
+        watch: 'it takes project.admin on their own account (else PERMISSION_FORBIDDEN, nothing recorded), a production-tier environment and an open issue, and is withdrawn on the issue’s page; never ask anyone to turn a key’s protection off',
       },
     ],
     practice: [
@@ -327,6 +332,9 @@ export const WORK_ACT_CARDS = {
       'Telling the owner to press a button to settle something he just decided, or that an act is being done with no door to make it: on 18/11 the bot promised him an ecosystem link it could not make.',
     family: 'room.owner',
     audience: ['bot'],
-    scenarios: ['a question the owner owes sent to him to click, after the work settled it'],
+    scenarios: [
+      'a question the owner owes sent to him to click, after the work settled it',
+      'the owner’s order to configure a protected production key, with no ruling to record it',
+    ],
   },
 } satisfies Partial<Record<SupportAction, CapabilityCardBody>>;
