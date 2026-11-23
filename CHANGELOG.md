@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.810] - 2026-11-23
+
+Records the reply-audit fixes dev.809 served after its run ended without an outcome
+
+### Fixed
+
+- **The reply-audit fixes first served as 0.4.0-dev.809 are recorded under this release,** since that release's run ended without recording them: a short unmarked Vietnamese message reads as Vietnamese, and the master's answer counts beside a read.
+
 ## [0.4.0-dev.809] - 2026-11-23
 
 Reply audit reads short Vietnamese and credits the master's answer beside a read
