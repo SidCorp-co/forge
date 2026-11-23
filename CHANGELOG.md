@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.801] - 2026-11-23
+
+Room replies and their check agree on stating a live status
+
+### Fixed
+
+- **A room agent no longer states a live status from an earlier read.** Its brief says read it again this turn or say plainly it is not checked now, and the reply audit judges the same way.
+
 ## [0.4.0-dev.800] - 2026-11-23
 
 Admin-ordered production acts can read protected keys, with each read audited
