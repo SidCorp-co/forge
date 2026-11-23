@@ -147,14 +147,33 @@ const MAX_OUTPUT = 64 * 1024 * 1024;
 // the specs are another project's bytes, so external $refs are never followed: a ref to a URL would be a request core makes on the provider's say-so
 const SAFE = ['--allow-external-refs=false', '-f', 'json'];
 
+/** The form an openapi text is written in: JSON where it parses as JSON, else YAML (ISS-1435). */
+export function openApiFormOf(text: string): 'json' | 'yaml' {
+  try {
+    JSON.parse(text);
+    return 'json';
+  } catch {
+    return 'yaml';
+  }
+}
+
+/** A temporary file for `text`, named for its form so oasdiff's messages say which it read. */
+const specFile = (dir: string, name: string, text: string) =>
+  join(dir, `${name}.${openApiFormOf(text)}`);
+
 // execFile's own message leads with the command line and the temporary paths; what a reader needs is oasdiff's stderr, with each file named for its role
 function oasdiffFailure(err: unknown, files: Readonly<Record<string, string>>): Error {
   const e = err as { stderr?: unknown; message?: unknown };
   let text = typeof e.stderr === 'string' && e.stderr.trim() ? e.stderr : String(e.message ?? err);
+  const failing = Object.keys(files).find((path) => text.includes(path));
   for (const [path, role] of Object.entries(files))
     text = text.split(`"${path}"`).join(role).split(path).join(role);
-  // oasdiff tries JSON and then YAML; on a JSON artifact the YAML attempt repeats the JSON error
-  if (text.includes('json error:')) text = text.replace(/, yaml error: [\s\S]*$/, '');
+  // oasdiff tries JSON and then YAML and prints both errors; only the one for the form the failing
+  // file is written in says what is wrong: on JSON the YAML attempt repeats it, and on YAML the JSON
+  // attempt fails at the first character
+  if (failing?.endsWith('.yaml'))
+    text = text.replace(/json error: [\s\S]*?, yaml error: /, 'yaml error: ');
+  else if (text.includes('json error:')) text = text.replace(/, yaml error: [\s\S]*$/, '');
   return new Error(text.replace(/^Error:\s*/, '').trim());
 }
 
@@ -165,7 +184,7 @@ export async function runOasdiff(
   const bin = await requireOasdiff();
   const work = await mkdtemp(join(tmpdir(), 'oasdiff-run-'));
   try {
-    const [a, b] = [join(work, 'base.json'), join(work, 'revision.json')];
+    const [a, b] = [specFile(work, 'base', base), specFile(work, 'revision', revision)];
     await writeFile(a, base);
     await writeFile(b, revision);
     const opts = { timeout: 120_000, maxBuffer: MAX_OUTPUT };
@@ -187,7 +206,7 @@ export async function runOasdiff(
 export async function oasdiffLoadError(text: string): Promise<string | null> {
   const bin = await requireOasdiff();
   const work = await mkdtemp(join(tmpdir(), 'oasdiff-load-'));
-  const file = join(work, 'artifact.json');
+  const file = specFile(work, 'artifact', text);
   try {
     await writeFile(file, text);
     try {

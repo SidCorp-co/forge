@@ -10,6 +10,7 @@ import { readDeclaredSource } from '../../project-config/index.js';
 import { type AncestrySource, ancestrySourceFor } from '../../release-batch/index.js';
 import type { EcosystemRefusal } from '../refusals.js';
 import { MAX_ARTIFACT_BYTES, sha256 } from './measure.js';
+import { openApiFormOf } from './oasdiff.js';
 
 const short = (digest: string) => digest.slice(0, 12);
 
@@ -32,6 +33,15 @@ async function hostOf(projectId: string): Promise<AncestrySource | { kind: 'erro
   } catch (err) {
     return { kind: 'error', why: err instanceof Error ? err.message : String(err) };
   }
+}
+
+/** Where an openapi artifact is in the other form than its file, the words saying so (ISS-1435). */
+function converted(kind: string, sourceRef: string, file: string, artifact: string): string {
+  if (kind !== 'openapi') return '';
+  const [held, sent] = [openApiFormOf(file), openApiFormOf(artifact)];
+  if (held === sent) return '';
+  const name = { json: 'JSON', yaml: 'YAML' };
+  return ` The file at ${sourceRef} is ${name[held]} and this artifact is ${name[sent]}: send the file's own ${name[held]} text as it stands, never a conversion of it; an openapi version is taken in either form.`;
 }
 
 /** Why `sourceRef`, and the artifact uploaded beside it, may not be recorded; empty where both hold. */
@@ -86,7 +96,7 @@ export async function sourceRefRefusals(
         {
           code: 'CONTRACT_SOURCE_DIGEST_MISMATCH',
           path: '/artifact',
-          detail: `the artifact uploaded (sha256 ${short(sent)}) is not the file at ${sourceRef} (sha256 ${short(held)}): a version is recorded from the file as it stands at the commit it names. Upload that file's text, or name the commit whose file this is.`,
+          detail: `the artifact uploaded (sha256 ${short(sent)}) is not the file at ${sourceRef} (sha256 ${short(held)}): a version is recorded from the file as it stands at the commit it names. Upload that file's text, or name the commit whose file this is.${converted(kind, sourceRef, file, artifact)}`,
         },
       ];
     }

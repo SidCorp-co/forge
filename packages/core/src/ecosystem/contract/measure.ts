@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { withArticle } from '@forge/contracts/articles';
+import { parse as parseYaml, YAMLParseError } from 'yaml';
 import { refuseEcosystem } from '../refusals.js';
 import { CLI_RULES_VERSION, CLI_SHAPE, diffCli, readCli } from './cli-diff.js';
 import { type MeasuredChange, type MeasuredDiff, measured } from './diff.js';
@@ -32,9 +33,13 @@ export function parseArtifact(type: string, text: string): unknown {
   try {
     doc = JSON.parse(text);
   } catch (err) {
-    throw unreadable(
-      `${withArticle(type)} artifact is JSON, and this one does not parse (${err instanceof Error ? err.message : String(err)})`,
-    );
+    const why = err instanceof Error ? err.message : String(err);
+    if (type !== 'openapi') {
+      throw unreadable(
+        `${withArticle(type)} artifact is JSON, and this one does not parse (${why})`,
+      );
+    }
+    doc = readOpenApiYaml(text, why);
   }
   if (type === 'mcp-tools' && !toolsOf(doc)) {
     throw unreadable(
@@ -49,6 +54,30 @@ export function parseArtifact(type: string, text: string): unknown {
     throw unreadable('an openapi artifact names its openapi version, and this one names none');
   }
   return doc;
+}
+
+// YAML is OpenAPI's other standard form (ISS-1435, catalog-api FB-834); YAML 1.2 reads every JSON
+// document as JSON does, so a text JSON refuses is read as YAML, and one neither reads is refused
+// with the error of the form it looks like: a text opening `{` or `[` is broken JSON
+function readOpenApiYaml(text: string, jsonError: string): unknown {
+  try {
+    return parseYaml(text);
+  } catch (err) {
+    if (/^\s*[{[]/.test(text)) {
+      throw unreadable(
+        `an openapi artifact is JSON or YAML, and this one reads as JSON and does not parse (${jsonError})`,
+      );
+    }
+    const said =
+      err instanceof YAMLParseError
+        ? `${err.code}: ${(err.message.split('\n')[0] ?? '').replace(/:$/, '')}`
+        : err instanceof Error
+          ? err.message
+          : String(err);
+    throw unreadable(
+      `an openapi artifact is JSON or YAML, and this one does not parse as YAML (${said})`,
+    );
+  }
 }
 
 // an openapi artifact the pinned oasdiff cannot load is one no later version can be measured against, so it is refused here, naming oasdiff's error and, where it can be found, the place holding a non-schema where a schema belongs

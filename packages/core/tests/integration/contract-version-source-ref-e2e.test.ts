@@ -17,12 +17,19 @@
  * registry's latest. A decided version recorded from the head of the passing merge check covering
  * the commit now holds it; with none, the refusal asks for the batch head's file.
  *
+ * ISS-1435 (catalog-api FB-834): an openapi contract kept in YAML was refused ARTIFACT_UNREADABLE,
+ * and its JSON conversion CONTRACT_SOURCE_DIGEST_MISMATCH against the YAML file, so its versions
+ * were recorded with no sourceRef. YAML is now read as JSON is, and the digest is the bytes sent.
+ * oasdiff is stubbed here: this suite's subject is the door, and `oasdiff-yaml.test.ts` runs the
+ * pinned binary itself on YAML.
+ *
  * @direct-test-of packages/core/src/ecosystem/contract/source-ref.ts
  * @direct-test-of packages/core/src/ecosystem/contract/publish.ts
  * @direct-test-of packages/core/src/ecosystem/contract/landing-lag.ts
  * @direct-test-of packages/core/src/issues/mark-preconditions.ts
  */
 
+import { createHash } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
 import type { SourceHost } from '../../src/integrations/source-host/index.js';
@@ -38,6 +45,11 @@ import {
 import { createTestIssue } from '../helpers/factories.js';
 import { passingReport } from '../helpers/merge-check-report.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
+
+vi.mock('../../src/ecosystem/contract/oasdiff.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../src/ecosystem/contract/oasdiff.js')>();
+  return { ...real, requireOasdiff: async () => 'stub', oasdiffLoadError: async () => null };
+});
 
 /** a2c403e4, where catalog-api's schema landed on main. */
 const LANDED = 'a2c403e4b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6';
@@ -132,6 +144,14 @@ beforeAll(async () => {
         version: 1,
         project: w.project.internal,
         publishes: {
+          'catalog-admin': {
+            title: 'Catalog admin',
+            summary: 'The admin REST API.',
+            type: 'openapi',
+            artifact: { upload: true },
+            lifecycle: 'production',
+            ecosystems: [],
+          },
           'site-sync-events': {
             title: 'Site sync events',
             summary: 'The events a site sync emits.',
@@ -390,5 +410,86 @@ describe('ISS-1437 a batch issue is marked on the version recorded from its batc
     const unrecorded = await mark(issue, OWN);
     expect(refusal(unrecorded)).toEqual(['CONTRACT_VERSION_UNRECORDED /commit']);
     expect(detailOf(unrecorded)).toContain(`sourceRef: "${PATH}@${OWN}"`);
+  });
+});
+
+const OPENAPI_PATH = 'docs/contracts/admin-rest-v1/openapi.yaml';
+const OPENAPI_YAML = `openapi: 3.1.0
+info:
+  title: catalog admin
+  version: 11.1.0
+paths:
+  /products:
+    get:
+      responses:
+        "200":
+          description: the products
+`;
+const OPENAPI_JSON_PATH = 'docs/contracts/admin-rest-v1/openapi.json';
+const OPENAPI_JSON = `${JSON.stringify(
+  {
+    openapi: '3.1.0',
+    info: { title: 'catalog admin', version: '11.1.0' },
+    paths: { '/products': { get: { responses: { 200: { description: 'the products' } } } } },
+  },
+  null,
+  2,
+)}\n`;
+
+describe('ISS-1435 an openapi contract kept in YAML is recorded from its landed file', () => {
+  let openapiVersion = 10;
+  const publish = (artifact: string, sourceRef?: string) =>
+    say(
+      'platform',
+      'POST',
+      `/api/projects/${w.project.internal}/contracts/catalog-admin/versions`,
+      {
+        kind: 'openapi',
+        artifact,
+        version: `${++openapiVersion}.0.0`,
+        ...(sourceRef ? { sourceRef } : {}),
+      },
+    );
+
+  beforeEach(() => {
+    host.files.set(`${OPENAPI_PATH}@${LANDED}`, OPENAPI_YAML);
+    host.files.set(`${OPENAPI_JSON_PATH}@${LANDED}`, OPENAPI_JSON);
+  });
+
+  it("refuses YAML that does not parse, naming the parser's error and its line and column", async () => {
+    const r = await publish('openapi: 3.1.0\ninfo:\n  title: [catalog\n');
+
+    expect(refusal(r)).toEqual(['ARTIFACT_UNREADABLE /artifact']);
+    expect(detailOf(r)).toContain('an openapi artifact is JSON or YAML');
+    expect(detailOf(r)).toMatch(/YAML \(BAD_INDENT: .* at line 4, column 1\)/);
+  });
+
+  it('refuses the JSON converted from a YAML file, saying the file is YAML and its own text is sent', async () => {
+    const converted = `${JSON.stringify({
+      openapi: '3.1.0',
+      info: { title: 'catalog admin', version: '11.1.0' },
+      paths: { '/products': { get: { responses: { 200: { description: 'the products' } } } } },
+    })}`;
+    const r = await publish(converted, `${OPENAPI_PATH}@${LANDED}`);
+
+    expect(refusal(r)).toEqual(['CONTRACT_SOURCE_DIGEST_MISMATCH /artifact']);
+    expect(detailOf(r)).toContain(`The file at ${OPENAPI_PATH}@${LANDED} is YAML`);
+    expect(detailOf(r)).toContain("send the file's own YAML text");
+  });
+
+  it('records the landed YAML file at its landed commit', async () => {
+    const r = ok(await publish(OPENAPI_YAML, `${OPENAPI_PATH}@${LANDED}`), 201);
+
+    expect(r.version.artifact).toMatchObject({ sourceRef: `${OPENAPI_PATH}@${LANDED}` });
+    expect(r.version.artifact.sha256).toBe(createHash('sha256').update(OPENAPI_YAML).digest('hex'));
+  });
+
+  it('records a JSON openapi file as before, and refuses JSON that does not parse as JSON', async () => {
+    const r = ok(await publish(OPENAPI_JSON, `${OPENAPI_JSON_PATH}@${LANDED}`), 201);
+    expect(r.version.artifact).toMatchObject({ sourceRef: `${OPENAPI_JSON_PATH}@${LANDED}` });
+
+    const broken = await publish('{"openapi": "3.1.0", "info": ');
+    expect(refusal(broken)).toEqual(['ARTIFACT_UNREADABLE /artifact']);
+    expect(detailOf(broken)).toContain('reads as JSON and does not parse');
   });
 });

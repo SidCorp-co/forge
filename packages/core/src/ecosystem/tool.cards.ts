@@ -318,7 +318,7 @@ export const CARDS = {
       },
       {
         when: 'you send the artifact',
-        do: 'send a graphql, openapi or json-schema file as it stands at sourceRef, byte for byte; describe a cli or mcp-tools contract from the source sourceRef names; leave sourceRef out where you read the artifact from no commit',
+        do: 'send a graphql, openapi or json-schema file as it stands at sourceRef, byte for byte, an openapi file in JSON or YAML as it is kept, never converted; describe a cli or mcp-tools contract from the source sourceRef names; leave sourceRef out where you read the artifact from no commit',
         watch:
           'refused CONTRACT_SOURCE_FILE_MISSING, CONTRACT_SOURCE_DIGEST_MISMATCH, or CONTRACT_SOURCE_UNREAD where the source host cannot be read',
       },
@@ -328,7 +328,7 @@ export const CARDS = {
       },
     ],
     practice: [
-      'kind is the publication’s type: graphql takes the SDL text, openapi and json-schema their JSON, mcp-tools { tools: [{ name, description, inputSchema }] }, cli { program, commands: [{ name, description?, options? }] }, a command’s name the words after the program.',
+      'kind is the publication’s type: graphql takes the SDL text, openapi its JSON or YAML, json-schema its JSON, mcp-tools { tools: [{ name, description, inputSchema }] }, cli { program, commands: [{ name, description?, options? }] }, a command’s name the words after the program.',
       'A recorded version is proposed; it is current only once contract_version_decide approves it, which outside strict the provider’s own master does.',
       'Writing takes contracts.write on this project (member or above); without it the write is refused PERMISSION_FORBIDDEN.',
     ],
