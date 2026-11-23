@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.814] - 2026-11-23
+
+Reply audit fails a reply on language only when the asker's language is clear
+
+### Fixed
+
+- **The reply audit fails a reply on language only where the asker is confidently told.** A weak, mixed or one-word message is untold and raises no finding; the room and persona never decide it.
+
 ## [0.4.0-dev.813] - 2026-11-23
 
 Short messages with English words are no longer read as Vietnamese
