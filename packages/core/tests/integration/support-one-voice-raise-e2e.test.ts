@@ -271,16 +271,17 @@ describe('ISS-1299: the technical thread speaks to the owner in one voice, his l
   });
 
   it('refuses by name an act his Needs you can owe that no door from chat makes, naming where', async () => {
-    const said = await aliceSays('Em xác nhận deploy production giúp anh luôn nhé');
+    // a production deploy's confirm has its room act since ISS-1441; a preview's approval has none yet
+    const said = await aliceSays('Em duyệt bản preview giúp anh luôn nhé');
     const out = await ownerForgeAct(room, {
       thread: THREAD,
       message: said,
       project: slug,
-      act: 'release.confirmDeploy',
-      item: '0.19.0',
+      act: 'preview.approve',
+      item: 'pr-12',
     });
     expect(codeOf(out), JSON.stringify(out)).toBe('SUPPORT_FORGE_ACT_NO_DOOR');
-    expect(detailOf(out)).toContain("the release's page");
+    expect(detailOf(out)).toContain("the preview's page");
     expect(detailOf(out)).toContain('never that it is being done');
   });
 });
