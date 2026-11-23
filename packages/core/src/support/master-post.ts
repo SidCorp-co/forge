@@ -43,6 +43,7 @@ import { reportThreadFor } from './report-thread.js';
 import { repeatRefusal } from './room-reads.js';
 import { boundButUndeclared, declareSupportRooms, heldElsewhere, roomIsBound } from './rooms.js';
 import { type SessionDoor, screenForThread } from './screen.js';
+import { sharedThreadRefusal, standingIn } from './shared-thread.js';
 import { insertAction, type RoomRow, roomsOfProject, threadMembers } from './store.js';
 import {
   postInThread,
@@ -142,6 +143,11 @@ async function followedRoomsOf(projectId: string): Promise<Postable[]> {
 
 /** An operations room every project of its home's organization shares, one thread each. */
 export const isShared = (room: RoomRow) => room.kind === 'operations' && room.scope === 'forge';
+
+/** The shared operations rooms another project of the organization binds, which this project posts in too (ISS-1439). */
+export async function sharedRoomsOf(projectId: string): Promise<RoomRow[]> {
+  return (await followedRoomsOf(projectId)).filter((f) => isShared(f.room)).map((f) => f.room);
+}
 
 const doorOf = (p: Postable): SessionDoor => (p.team ? 'operations-reply' : 'support-reply');
 const ridsOf = (ps: readonly Postable[]) => ps.map((p) => p.room.rid).join(', ');
@@ -460,20 +466,6 @@ export async function roomRecording(
 }
 
 /**
- * Why a shared operations room another project binds takes no post in `thread`: a project posts
- * there only in its own recorded thread (ISS-1242), so the others' threads stay theirs.
- */
-async function sharedThreadRefusal(actor: Actor, at: Postable, thread: string): Promise<Posted> {
-  const own = await topLevelThreadOf(at.room, actor.projectId);
-  if (!own.ok) return own;
-  return no(
-    'SUPPORT_THREAD_UNKNOWN',
-    '/thread',
-    `${at.room.rid} is an operations room every project of the organization shares, one thread per project, and this project's own there is ${own.value}, not ${thread}: name it as \`thread\`, or name none. Nothing was posted.`,
-  );
-}
-
-/**
  * Every room a master's post reaches, its project's own first, and of them the rooms it only
  * follows: a channel agent's naming it in `agent.projects` (ISS-1230), or an operations room its
  * organization shares (ISS-1242). The thread read beside the post reaches the same (ISS-1406).
@@ -508,8 +500,15 @@ export async function postAsMaster(actor: Actor, input: SupportMasterPostRequest
     if (recording) return postAtTop(actor, recording, input.text, input.thread, images.value);
     // another project's shared operations room takes this project's posts in its own thread alone
     const shared = followed.filter((f) => isShared(f.room));
+    // ... but also in a thread it has standing in there (ISS-1439)
+    for (const at of shared) {
+      if (input.rid && at.room.rid !== input.rid) continue;
+      if (await standingIn(actor.projectId, at.room, input.thread)) {
+        return postInNamedThread(actor, [at], { ...input, thread: input.thread }, images.value);
+      }
+    }
     const named = input.rid ? shared.find((f) => f.room.rid === input.rid) : undefined;
-    if (named) return sharedThreadRefusal(actor, named, input.thread);
+    if (named) return sharedThreadRefusal(actor.projectId, named.room, input.thread);
     const open = rooms.filter((r) => !shared.includes(r));
     return postInNamedThread(actor, open, { ...input, thread: input.thread }, images.value);
   }
@@ -517,7 +516,7 @@ export async function postAsMaster(actor: Actor, input: SupportMasterPostRequest
   const chosen = topLevelRoomOf(input.rid ? rooms : own, input.rid);
   if (!chosen.ok) return chosen;
   // a shared operations room takes it in the project's own thread; any other in its report thread
-  const to = await topLevelThreadOf(chosen.value.room, actor.projectId);
+  const to = await topLevelThreadOf(chosen.value.room, actor.projectId, true);
   if (!to.ok) return to;
   return postAtTop(actor, chosen.value, input.text, to.value, images.value);
 }

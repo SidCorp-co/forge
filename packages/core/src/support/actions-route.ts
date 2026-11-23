@@ -14,7 +14,9 @@ import { roomById } from './store.js';
 const roomParam = zValidator(
   'param',
   z.object({ id: z.uuid(), roomId: z.uuid() }),
-  invalid('invalid path: a project uuid and a support room uuid'),
+  invalid(
+    'invalid path: a project uuid and a support room uuid (its `id` in GET /api/projects/:id/support/rooms, never its `rid`)',
+  ),
 );
 
 // `since` inclusive, `until` exclusive, each an ISO timestamp with its offset; one before the other.

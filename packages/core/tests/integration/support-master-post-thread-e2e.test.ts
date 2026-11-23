@@ -6,6 +6,8 @@ vi.hoisted(() => {
   process.env.INTEGRATION_MASTER_KEY ??= Buffer.alloc(32, 5).toString('base64');
 });
 
+import { openConversation } from '../../src/conversations/index.js';
+import { insertAction, roomsOfProject } from '../../src/support/store.js';
 import { api } from '../helpers/api.js';
 import { settleOutbox } from '../helpers/ecosystem-world.js';
 import { addProjectMember, createTestProject, rows } from '../helpers/factories.js';
@@ -228,6 +230,109 @@ describe("a sibling project's master in the shared operations room (ISS-1242)", 
     expect(refusal?.code, JSON.stringify(res.body)).toBe('SUPPORT_THREAD_UNKNOWN');
     expect(refusal?.detail).toContain(`this project's own there is ${SIBLING_THREAD}`);
     expect(chat.linesIn(chat.rid).length).toBe(before);
+  });
+
+  // ISS-1439 (FB-836, FB-839): the room records no thread for the sibling, and its master answers a
+  // master-ask of the room agent: the thread that asked is one it has standing in, and the refusal's
+  // advice (name a thread) is one the door honours.
+  describe('where the room records no thread for it (ISS-1439)', () => {
+    const ASK_THREAD = 'askThreadOfSibling1';
+    const MEMBER_THREAD = 'memberThreadOfSib1';
+    const FOREIGN_THREAD = 'nobodysThreadHere1';
+    let roomUuid = '';
+
+    /** One action of the room's thread recorded on a fresh conversation, as the room agent's acts are. */
+    async function seedThread(thread: string, member: boolean) {
+      const conversation = await openConversation({
+        adapter: 'rocketchat',
+        externalId: `seed-${thread}`,
+        shape: 'group',
+        projectId: w.projectId,
+        title: 'Support thread',
+      });
+      await insertAction({
+        roomId: roomUuid,
+        projectId: w.projectId,
+        conversationId: conversation.id,
+        thread,
+        kind: member ? 'message_in' : 'operation',
+        actorKind: member ? 'member' : 'session',
+        actorKey: member ? 'someone' : null,
+        tool: member ? null : 'ask_master',
+        input: member ? { text: 'synthetic' } : { question: 'synthetic' },
+      });
+      return conversation.id;
+    }
+
+    beforeAll(async () => {
+      const put = await writeOperations({
+        scope: 'forge',
+        threads: { [chat.rid]: { [slug]: THREAD } },
+      });
+      expect(put.status, JSON.stringify(put.body)).toBe(200);
+      await settleOutbox();
+      const [home] = await roomsOfProject(w.projectId);
+      roomUuid = String(home?.id);
+      const conversationId = await seedThread(ASK_THREAD, false);
+      await rows(sql`
+        INSERT INTO support_master_asks (room_id, thread, project_id, question)
+        VALUES (${roomUuid}::uuid, ${ASK_THREAD}, ${siblingId}::uuid, 'synthetic')`);
+      expect(conversationId).toBeTruthy();
+      await seedThread(MEMBER_THREAD, true);
+    });
+
+    it('posts into the thread a master-ask of the project came from, and into one its members wrote in', async () => {
+      const before = chat.linesIn(chat.rid).length;
+      const asked = await postAs({ text: REVIEW, rid: chat.rid, thread: ASK_THREAD });
+      expect(asked.status, JSON.stringify(asked.body)).toBe(201);
+      expect(asked.body).toMatchObject({ rid: chat.rid, thread: ASK_THREAD });
+      const named = await postAs({ text: REVIEW, thread: MEMBER_THREAD });
+      expect(named.status, JSON.stringify(named.body)).toBe(201);
+      expect(
+        chat
+          .linesIn(chat.rid)
+          .slice(before)
+          .map((l) => l.tmid),
+      ).toEqual([ASK_THREAD, MEMBER_THREAD]);
+    });
+
+    it('refuses a thread it has no standing in, naming how to get one, and posts nothing', async () => {
+      const before = chat.linesIn(chat.rid).length;
+      const res = await postAs({ text: REVIEW, rid: chat.rid, thread: FOREIGN_THREAD });
+      const refusal = refusalOf(res);
+      expect(refusal?.code, JSON.stringify(res.body)).toBe('SUPPORT_THREAD_UNKNOWN');
+      expect(refusal?.detail).toContain('no standing');
+      expect(refusal?.detail).toContain(`document.target.operations.threads["${chat.rid}"]`);
+      expect(chat.linesIn(chat.rid).length).toBe(before);
+    });
+
+    it('refuses naming no thread, and the advice it gives is the call that now posts', async () => {
+      const res = await postAs({ text: REVIEW, rid: chat.rid });
+      const refusal = refusalOf(res);
+      expect(refusal?.code, JSON.stringify(res.body)).toBe('SUPPORT_PROJECT_THREAD_UNRECORDED');
+      expect(refusal?.detail).toContain('a master-ask of this project came from');
+      // another door, which names no thread, does not advise one
+      const { topLevelThreadOf } = await import('../../src/support/thread.js');
+      const [home] = await roomsOfProject(w.projectId);
+      const other = await topLevelThreadOf(home as never, siblingId);
+      expect(other.ok ? '' : other.refusals[0]?.detail).not.toContain('Name the project');
+    });
+
+    it('lists the shared room in the rooms read of the project that posts there, and says which read maps a rid', async () => {
+      const list = await api(w.owner, 'GET', `/api/projects/${siblingId}/support/rooms`);
+      expect(list.status, JSON.stringify(list.body)).toBe(200);
+      const listed = (list.body.rooms as { id: string; rid: string; scope: string }[]).filter(
+        (r) => r.rid === chat.rid,
+      );
+      expect(listed).toEqual([expect.objectContaining({ id: roomUuid, scope: 'forge' })]);
+      const byRid = await api(
+        w.owner,
+        'GET',
+        `/api/projects/${siblingId}/support/rooms/${chat.rid}/turns`,
+      );
+      expect(byRid.status).toBe(400);
+      expect(JSON.stringify(byRid.body)).toContain('GET /api/projects/:id/support/rooms');
+    });
   });
 
   it('is refused a project-scope operations room, which stays its home project’s', async () => {

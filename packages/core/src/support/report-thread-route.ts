@@ -18,7 +18,9 @@ import { nameReportThread } from './report-thread.js';
 const roomParam = zValidator(
   'param',
   z.object({ id: z.uuid(), roomId: z.uuid() }),
-  invalid('invalid path: a project uuid and a support room uuid'),
+  invalid(
+    'invalid path: a project uuid and a support room uuid (its `id` in GET /api/projects/:id/support/rooms, never its `rid`)',
+  ),
 );
 
 type Named = { roomId: string; rid: string; reportThread: string; reportThreadBy: 'person' };

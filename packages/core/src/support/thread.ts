@@ -207,15 +207,20 @@ export async function projectThreadOfRoom(
 export async function topLevelThreadOf(
   room: RoomRow,
   projectId: string = room.projectId,
+  /** Whether the caller's door takes a thread named by the caller: only a master's post does (ISS-1439). */
+  namesThread = false,
 ): Promise<Outcome<string | null>> {
   const thread = await projectThreadOfRoom(room, projectId);
   if (thread) return { ok: true, value: thread };
   if (room.kind !== 'operations' || room.scope !== 'forge') return { ok: true, value: null };
   const slug = (await findProjectSlugs([projectId])).get(projectId) ?? projectId;
+  const naming = namesThread
+    ? "Name the project's thread in `thread` to post there now, one its members wrote in or a master-ask of this project came from; a project admin records it"
+    : 'A project admin records it';
   return no(
     'SUPPORT_PROJECT_THREAD_UNRECORDED',
     '/thread',
-    `${room.rid} is an operations room every project of the organization shares, one thread per project, and its binding records no thread for ${slug}, so the post would land at its top level. Name the project's thread in \`thread\` to post there now, one its members wrote in; a project admin records it as \`document.target.operations.threads["${room.rid}"]["${slug}"]\` on binding ${room.bindingId} (PUT /api/projects/${room.projectId}/bindings/${room.bindingId} with { baseRevision, document }). Nothing was posted.`,
+    `${room.rid} is an operations room every project of the organization shares, one thread per project, and its binding records no thread for ${slug}, so the post would land at its top level. ${naming} as \`document.target.operations.threads["${room.rid}"]["${slug}"]\` on binding ${room.bindingId} (PUT /api/projects/${room.projectId}/bindings/${room.bindingId} with { baseRevision, document }). Nothing was posted.`,
   );
 }
 

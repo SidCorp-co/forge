@@ -64,8 +64,19 @@ const ANSWER_SHOWN = 4_000;
 const roomParam = zValidator(
   'param',
   z.object({ id: z.uuid(), roomId: z.uuid() }),
-  invalid('invalid path: a project uuid and a support room uuid'),
+  invalid(
+    'invalid path: a project uuid and a support room uuid (its `id` in GET /api/projects/:id/support/rooms, never its `rid`)',
+  ),
 );
+
+/** Why a room's turns cannot be read here: none held, or a shared one its home project holds (ISS-1439). */
+async function unknownRoomDetail(projectId: string, roomId: string): Promise<string> {
+  const room = await roomById(roomId);
+  if (room && room.projectId !== projectId) {
+    return `room ${roomId} is an operations room project ${room.projectId} holds and this project only posts in; read its turns under that project (GET /api/projects/${room.projectId}/support/rooms/${roomId}/turns)`;
+  }
+  return `this project holds no support room ${roomId}`;
+}
 
 /** At most this many turns are listed, newest first. */
 const TURNS_LISTED = 50;
@@ -79,7 +90,9 @@ const turnsQuery = zValidator(
 const turnParam = zValidator(
   'param',
   z.object({ id: z.uuid(), roomId: z.uuid(), turnId: z.uuid() }),
-  invalid('invalid path: a project uuid, a support room uuid and a turn uuid'),
+  invalid(
+    'invalid path: a project uuid, a support room uuid (its `id` in GET /api/projects/:id/support/rooms, never its `rid`) and a turn uuid',
+  ),
 );
 
 const cut = (text: string, at: number) =>
@@ -415,7 +428,7 @@ export function mountTurnRecordRoutes(routes: Hono<{ Variables: AuthVars }>): vo
             {
               code: 'SUPPORT_ROOM_UNKNOWN',
               path: '/roomId',
-              detail: `this project holds no support room ${roomId}`,
+              detail: await unknownRoomDetail(id, roomId),
             },
           ],
           'SUPPORT_REFUSED',

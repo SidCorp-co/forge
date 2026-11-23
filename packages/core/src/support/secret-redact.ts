@@ -116,7 +116,9 @@ export function mountRedactRoute(routes: Hono<{ Variables: AuthVars }>): void {
     zValidator(
       'param',
       z.object({ id: z.uuid(), roomId: z.uuid(), actionId: z.uuid() }),
-      invalid('invalid path: a project uuid, a support room uuid and an action uuid'),
+      invalid(
+        'invalid path: a project uuid, a support room uuid (its `id` in GET /api/projects/:id/support/rooms, never its `rid`) and an action uuid',
+      ),
     ),
     requiresOnParam('project.admin', 'id'),
     strictBody(supportRedactRequestSchema, '{ reason }'),

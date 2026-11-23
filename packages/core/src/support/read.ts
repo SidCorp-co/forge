@@ -17,6 +17,7 @@ import { requireDeclaredOn } from '../permissions/index.js';
 import { latencySamples } from './delivery.js';
 import { answersOfConfig, grantsOf, readersOfConfig, supportConfigOf } from './grants.js';
 import { roomHealth } from './health.js';
+import { sharedRoomsOf } from './master-post.js';
 import { roleOfRoom } from './ops-role.js';
 import { recentThreadsNamed } from './room-reads.js';
 import { heldRoomsOfProject } from './rooms.js';
@@ -32,7 +33,8 @@ export async function supportRoomsOf(
 ): Promise<SupportRoomView[]> {
   await requireDeclaredOn(projectId, viewer, 'project.read');
   // a released room is no room the project holds (ISS-933)
-  const rooms = await heldRoomsOfProject(projectId);
+  // with the shared operations rooms another project binds, where this project posts in its own thread (ISS-1439)
+  const rooms = [...(await heldRoomsOfProject(projectId)), ...(await sharedRoomsOf(projectId))];
   if (rooms.length === 0) return [];
   const statusOf = await sessionStatusesByIds(
     rooms.flatMap((r) => (r.sessionId ? [r.sessionId] : [])),
@@ -67,7 +69,7 @@ export async function supportRoomsOf(
           ...t,
           lastAt: t.lastAt.toISOString(),
         })),
-        projectThread: await projectThreadOfRoom(r),
+        projectThread: await projectThreadOfRoom(r, projectId),
         reportThread: r.reportThread,
         reportThreadBy: r.reportThreadBy,
         latency: latencyOf(await latencySamples(r.id, SUPPORT_LATENCY_WINDOW)),
