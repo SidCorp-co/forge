@@ -7,9 +7,9 @@
 
 import { describe, expect, it } from 'vitest';
 import { QA_GUIDE } from '../../guides/qa-guide.js';
-import { PROJECT_CONFIG_REST_CARDS } from '../../project-config/cards.js';
 import type { ProjectDocument } from '../../project-config/index.js';
 import { slotSays } from '../../support/secret-link.js';
+import { AFFORDANCE_CARDS } from './affordance-cards.js';
 import { renderTestCreds } from './environment-keys.js';
 
 const document = {
@@ -52,9 +52,11 @@ describe('a judge is told to sign in through judge-login and handed only a sessi
 describe('a withheld variable is taught as a ruling to ask for, never protection to drop', () => {
   const taught = {
     'the variables fact': renderTestCreds('p1', document) ?? '',
-    'the proposals card': JSON.stringify(
-      PROJECT_CONFIG_REST_CARDS['POST /api/projects/:id/variables/proposals'],
-    ),
+    // ISS-1429 reopen: the situation left the proposals card, whose door could turn protection off
+    'the transition card':
+      AFFORDANCE_CARDS.find((c) => c.id === 'POST /api/issues/:id/transition')?.situations.find(
+        (s) => /comes back withheld/.test(s.when),
+      )?.do ?? '',
     "the room's note on a protected slot": slotSays(false, false, 'only a run … reads it'),
   };
   for (const [where, text] of Object.entries(taught)) {

@@ -286,7 +286,7 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
       },
       {
         when: 'a key you read comes back withheld: it is protected',
-        do: 'park it `needs_info`, `needs` written as one plain ask to the project admin its `withheldWhy` names: a ruling on the act, naming the act and the environment, which they record on the issue as a decision; the key stays protected',
+        do: 'park it `needs_info`, `needs` asking the project admin its `withheldWhy` names once, in plain words, for a ruling on the act, naming the act and the environment; they record it on the issue as a decision, and the key stays protected',
         watch:
           'a variable proposal is no way to it: no proposal turns protection off (`VARIABLE_PROPOSAL_UNPROTECTS`)',
         for: ['run'],
