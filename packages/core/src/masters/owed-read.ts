@@ -7,14 +7,16 @@
  * writes nothing.
  */
 
+import type { DeviceRefusalCode } from '@forge/contracts/devices';
 import type { MasterOwedRead } from '@forge/contracts/master-standing';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { refuseDevice } from '../devices/refusals.js';
+import { refuser } from '../lib/refusal.js';
 import { liveMaster } from './live-master.js';
 import { readMasterWork } from './owed.js';
 
 export const MASTER_OWED_NO_BOX = 'MASTER_OWED_NO_BOX' as const;
+const refuseOwedRead = refuser<DeviceRefusalCode>(MASTER_OWED_NO_BOX);
 
 type Box = { id: string; name: string | null };
 
@@ -42,7 +44,7 @@ export async function readMasterOwedNow(projectId: string): Promise<MasterOwedRe
     ? { id: master.device_id, name: master.device_name }
     : await runnerBox(projectId);
   if (!box) {
-    throw refuseDevice(
+    throw refuseOwedRead(
       MASTER_OWED_NO_BOX,
       `project ${projectId} has no live master and no runner box, so no master is shown an owed line here; bind a box to the project (\`forge-runner bind\`) and read again`,
     );
