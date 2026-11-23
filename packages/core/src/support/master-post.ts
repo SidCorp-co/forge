@@ -40,7 +40,7 @@ import { placedAs, postInOneVoice } from './one-voice.js';
 import { agentProjectSlugs } from './ops-scope.js';
 import { no, type Outcome } from './outcome.js';
 import { reportThreadFor } from './report-thread.js';
-import { toldResultOfThread } from './room-reads.js';
+import { repeatRefusal } from './room-reads.js';
 import { boundButUndeclared, declareSupportRooms, heldElsewhere, roomIsBound } from './rooms.js';
 import { type SessionDoor, screenForThread } from './screen.js';
 import { insertAction, type RoomRow, roomsOfProject, threadMembers } from './store.js';
@@ -71,8 +71,7 @@ type Posted = Outcome<{
   /** Whose answer the post replaced in place, so one voice stands in the thread (ISS-1243). */
   replaced?: 'agent' | 'master';
   updated?: true; // a report updated its own earlier post in place (ISS-1417)
-  /** Which thread a post a room's top level would take landed in, as its answer says (ISS-1433). */
-  landedIn?: 'project-thread' | 'report-thread';
+  landedIn?: 'project-thread' | 'report-thread'; // where a post bound for a top level went (ISS-1433)
 }>;
 
 /** The project a post was made for, recorded where the room is another project's (ISS-1230). */
@@ -311,26 +310,6 @@ export async function roomOfThread(
   );
 }
 
-/**
- * A users' thread already told a recorded item's result takes a master's post only as a follow-up
- * naming the message that told it (ISS-969, FB-498: the 0.9.0 notice reached an asker told the same
- * change seventeen hours before). A refusal, not a warning: a warning heard after the post is sent
- * does not stop the repeat, and a genuine follow-up has its one named way through.
- */
-async function repeatRefusal(
-  roomId: string,
-  thread: string,
-  followsUp: string | undefined,
-): Promise<Posted | null> {
-  const told = await toldResultOfThread(roomId, thread);
-  if (!told || followsUp === told.message) return null;
-  return no(
-    'SUPPORT_MASTER_POST_ALREADY_TOLD',
-    followsUp === undefined ? '/thread' : '/followsUp',
-    `thread ${thread} was already told ${told.feedbackKey ?? 'a recorded item'}'s result at ${told.at.toISOString()}, in message ${told.message}, so a post there repeats it to the person who asked. Post only what that message did not say, as a follow-up naming it: \`followsUp: "${told.message}"\`. Nothing was posted.`,
-  );
-}
-
 /** The master's post in a named thread of its room, screened for the room's readers and recorded as the master's. */
 async function postInNamedThread(
   actor: Actor,
@@ -413,10 +392,8 @@ async function postInNamedThread(
  * The master's post where a room's top level would take it (`thread.ts:topLevelThreadOf`, `to`):
  * its project's own thread of an operations room recording one, else (`thread` null) the report
  * thread of a room the team reads, opened once the post is screened and its images taken, so a
- * refused post opens nothing (ISS-1224); never
- * its top level. Screened as a top-level post is, since everyone in the room reads it, and recorded
- * as the master's. Its answer names which of the two it landed in (`landedIn`, ISS-1433, FB-832: a
- * master naming no thread could not tell it had landed in its project's thread beside an ask).
+ * refused post opens nothing (ISS-1224); never its top level. Screened as a top-level post is, as
+ * everyone reads it, recorded as the master's and answered with which it went in (`landedIn`).
  */
 async function postAtTop(
   actor: Actor,
@@ -431,7 +408,6 @@ async function postAtTop(
   if (!admitted.ok) return admitted;
   const staged = await stagePostImages(room, images);
   if (!staged.ok) return staged;
-  const landedIn = thread ? 'project-thread' : 'report-thread';
   let to = thread;
   if (!to) {
     const report = await reportThreadFor(room, [text]);
@@ -463,7 +439,7 @@ async function postAtTop(
       rid: room.rid,
       messageId: posted.messageId,
       thread: to,
-      landedIn,
+      landedIn: thread ? 'project-thread' : 'report-thread',
       ...answeredImages(shown.posted),
     },
   };
