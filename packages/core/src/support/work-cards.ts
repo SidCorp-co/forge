@@ -309,7 +309,8 @@ export const WORK_ACT_CARDS = {
       {
         when: 'a project admin says a run may do a production act, such as setting a supplier key on production',
         do: 'record it as theirs with support.owner_forge_act { act: issue.rule_production, item: the issue the run works, ruling: { act, environment } } citing their message; the run then reads that environment’s protected key, and the key stays protected',
-        watch: 'it takes project.admin on their own account (else PERMISSION_FORBIDDEN, nothing recorded), a production-tier environment and an open issue, and is withdrawn on the issue’s page; never ask anyone to turn a key’s protection off',
+        watch:
+          'it takes project.admin on their own account (else PERMISSION_FORBIDDEN, nothing recorded), a production-tier environment and an open issue, and is withdrawn on the issue’s page; never ask anyone to turn a key’s protection off',
       },
     ],
     practice: [

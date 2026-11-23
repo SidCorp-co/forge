@@ -24,7 +24,8 @@ export async function recordProductionRuling(
   at: { projectId: string; userId: string },
 ): Promise<OpsOutcome<{ key: string; recorded: string }>> {
   const ruling = input.ruling;
-  if (!ruling) throw new Error('owner-ruling-act: issue.rule_production reached its write with no ruling');
+  if (!ruling)
+    throw new Error('owner-ruling-act: issue.rule_production reached its write with no ruling');
   const refused = await permissionRefusalFor(
     actorFor(at.userId),
     'project.admin',
@@ -46,7 +47,7 @@ export async function recordProductionRuling(
   const environments = await declaredEnvironments(at.projectId);
   const production = environments.filter((e) => e.tier === 'production').map((e) => e.name);
   const named = environments.find((e) => e.name === ruling.environment);
-  if (!named || named.tier !== 'production') {
+  if (named?.tier !== 'production') {
     return no(
       'SUPPORT_RULING_NOT_PRODUCTION',
       '/ruling/environment',
@@ -59,11 +60,19 @@ export async function recordProductionRuling(
     { sort: 'updatedAt:desc', limit: 1, offset: 0 },
   );
   if (!listed.ok) {
-    return no('OPS_ISSUE_UNKNOWN', '/item', `${listed.message.replace(/\.?$/, '.')} Nothing was recorded`);
+    return no(
+      'OPS_ISSUE_UNKNOWN',
+      '/item',
+      `${listed.message.replace(/\.?$/, '.')} Nothing was recorded`,
+    );
   }
   const issue = listed.rows[0];
   if (!issue) {
-    return no('OPS_ISSUE_UNKNOWN', '/item', `this project holds no issue ${input.item}. Nothing was recorded`);
+    return no(
+      'OPS_ISSUE_UNKNOWN',
+      '/item',
+      `this project holds no issue ${input.item}. Nothing was recorded`,
+    );
   }
   if ((ISSUE_TERMINAL_STATUSES as readonly string[]).includes(issue.status)) {
     return no(

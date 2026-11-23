@@ -70,6 +70,8 @@ describe('a withheld variable is taught as a ruling to ask for, never protection
   it("the room's note on a protected slot names where a project admin gives the ruling", () => {
     const note = slotSays(false, false, 'only a run … reads it');
     expect(note).toContain("on the issue's page (Production ruling)");
-    expect(note).toContain('support.owner_forge_act, act issue.rule_production, citing their message');
+    expect(note).toContain(
+      'support.owner_forge_act, act issue.rule_production, citing their message',
+    );
   });
 });

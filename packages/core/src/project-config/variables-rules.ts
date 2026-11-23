@@ -67,7 +67,8 @@ export function effectiveVariables<V extends HeldVariable>(
 
 /** Where a person gives a ruling (ISS-1431): the issue page's control, by its label, and the room's act. */
 export const RULING_ON_PAGE = 'Production ruling';
-export const RULING_ROOM_ACT = 'support.owner_forge_act, act issue.rule_production, citing their message';
+export const RULING_ROOM_ACT =
+  'support.owner_forge_act, act issue.rule_production, citing their message';
 
 /** The ruling a protected variable is opened by (BC-11), in the words every reader of it is told. */
 const rulingReaders = (environment: DeclaredEnvironment): string =>

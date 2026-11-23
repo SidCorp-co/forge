@@ -36,8 +36,11 @@ function issue(over: Partial<IssueDetail>): IssueDetail {
   } as IssueDetail;
 }
 
+/** Core as the rail reads it: the reader's projects are a list (the production ruling asks who admins them), the rest an empty answer. */
+const railCore = (c: { path: string }) => ({ body: c.path.startsWith("/projects") ? [] : {} });
+
 function rail(detail: IssueDetail, readOnly = false, onPatch: (body: object) => void = () => {}, developer = false) {
-  fakeCore(() => ({ body: {} }));
+  fakeCore(railCore);
   renderWithQuery(
     <PropertiesRail
       issue={detail}
@@ -82,7 +85,7 @@ describe("the issue's editable fields name the refusal that disables them", () =
   });
 
   it("holds the peek's Priority under the same rule, naming it", () => {
-    fakeCore(() => ({ body: {} }));
+    fakeCore(railCore);
     renderWithQuery(
       <IssueQuickActions issueId="i-52" status="in_progress" moves={[]} agentStatus="running" priority="medium" />,
     );
@@ -156,7 +159,7 @@ describe("an artifact carried between issues is said on both issues, flat", () =
 // an issue an agent account filed from no box, it reads Unassigned, never the agent that filed it.
 describe("the issue's owner", () => {
   it("reads Unassigned where the standing names none, never the filing agent's handle", () => {
-    fakeCore(() => ({ body: {} }));
+    fakeCore(railCore);
     renderWithQuery(
       <PropertiesRail
         issue={issue({ creatorLabel: "forge", creatorIsAgent: true })}
@@ -179,7 +182,7 @@ describe("the issue's owner", () => {
   });
 
   it("draws a named owner with their avatar", () => {
-    fakeCore(() => ({ body: {} }));
+    fakeCore(railCore);
     renderWithQuery(
       <PropertiesRail
         issue={issue({})}
