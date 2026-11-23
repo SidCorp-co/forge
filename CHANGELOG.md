@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.817] - 2026-11-23
+
+A Vietnamese room's default language reads Vietnamese again
+
+### Fixed
+
+- **A Vietnamese room's default language reads Vietnamese again.** The room default counts Vietnamese-marked words over all its texts, needing no strict word, so report threads and core's lines come back in Vietnamese; an English room with Vietnamese names stays English.
+
 ## [0.4.0-dev.815] - 2026-11-23
 
 Records the reply-audit language fix served since dev.814
