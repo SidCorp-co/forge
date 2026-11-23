@@ -371,6 +371,17 @@ describe('every room agent brief carries the room conduct', () => {
     );
   });
 
+  // ISS-1440 (FB-837): the line named only a setting, an account or a record, so "a deploy is running"
+  // was restated from the 07:57 read of an earlier turn; it now names a deploy, a served version and behaviour
+  it('names a deploy, a served version and the product’s behaviour among what an earlier read no longer covers', () => {
+    const opening = earlierReadLine(
+      new Date('2026-11-23T07:57:04Z'),
+      new Date('2026-11-23T07:59:26Z'),
+    );
+    expect(opening).toContain('that a deploy is running or done, which version a site serves');
+    expect(opening).toContain("A master's answer handed in this turn is his check");
+  });
+
   // ISS-1425: the ask and the answer sat in core's own sentence, so a member line the ask quoted read
   // with core's authority; each now stands in its own untrusted frame, only core's teaching outside
   it("hands the master's question and answer inside the untrusted frame, core's teaching outside", () => {

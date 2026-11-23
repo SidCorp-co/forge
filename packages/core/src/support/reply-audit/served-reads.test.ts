@@ -1,5 +1,7 @@
 // @direct-test-of packages/core/src/support/reply-audit/judge.ts
+// @direct-test-of packages/core/src/support/reply-audit/audit.ts
 import { describe, expect, it } from 'vitest';
+import { turnReadsOf } from './audit.js';
 import { type AuditedReply, judgeReply, type TurnReads } from './judge.js';
 
 const reply = (text: string, language: 'vi' | 'en' = 'vi'): AuditedReply => ({
@@ -63,5 +65,43 @@ describe('a served version, a deploy and a product’s behaviour are held to a r
     expect(
       judged('Em chưa kiểm tra xem site nào chạy bản này, em chưa xác nhận lúc này ạ.').verdict, // i18n-allow: not confirmed now
     ).toBe('pass');
+  });
+});
+
+// ISS-1440 r2 c2: readsAround kept a master's answer only for a turn that made no other read, so a turn
+// that read the release and then got the master's answer failed on `accurate` for a reply saying it as his.
+describe('a read and a master’s answer in one turn (ISS-1440)', () => {
+  const releaseRead = [{ kind: 'read', tool: 'releases' }];
+  const reads = (masterAnswered: boolean) =>
+    turnReadsOf({
+      reads: releaseRead,
+      acted: false,
+      servedRead: true,
+      masterAnswered,
+      earlierAt: null,
+    });
+  const judged = (text: string, masterAnswered: boolean) =>
+    judgeReply({ ...reply(text, 'vi'), roomKind: 'agent', reads: reads(masterAnswered) }, []);
+  const AS_HIS = 'Theo master lúc 02:05, Force Update hoạt động tốt ạ.'; // i18n-allow: his check said as his
+  const OWN_VOICE = 'Dạ Force Update hoạt động tốt ạ.'; // i18n-allow: the same claim in the reply's own voice
+
+  it('keeps the master’s answer beside the read, so his check passes a behaviour claim said as his', () => {
+    expect(reads(true).masterAnswered).toBe(true);
+    expect(judged(AS_HIS, true).verdict).toBe('pass');
+  });
+
+  it('still fails a behaviour claim with no read of it and no master’s check, or one in the reply’s own voice', () => {
+    expect(judged(AS_HIS, false).failed).toEqual(['accurate']);
+    expect(judged(OWN_VOICE, true).failed).toEqual(['accurate']);
+    const none = turnReadsOf({
+      reads: [],
+      acted: false,
+      servedRead: false,
+      masterAnswered: false,
+      earlierAt: null,
+    });
+    expect(
+      judgeReply({ ...reply(OWN_VOICE, 'vi'), roomKind: 'agent', reads: none }, []).failed,
+    ).toEqual(['accurate']);
   });
 });

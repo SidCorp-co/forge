@@ -157,39 +157,60 @@ async function readsAround(room: RoomRow, posted: Posted): Promise<TurnReads | u
     .where(and(inTurn, or(stateRead, handedOn)));
   const reads = mine.filter((r) => isStateRead(r.kind, r.tool));
   const acted = reads.length < mine.length || (await handedOnBefore(roomId, posted));
-  const looked = reads.some((r) => r.tool === 'look');
   // ISS-1440: a read of the turn is a read of the thing it read; an issue read says nothing of what is served
   const servedRead =
     reads.some((r) => r.tool !== null && RELEASE_READS.has(r.tool)) ||
     (await releaseReadInTurn(room, posted.turnId));
-  const behaviourRead = reads.some((r) => r.kind === 'diagnose' || r.tool === 'look');
-  if (reads.length > 0) {
-    return { thisTurn: true, earlierAt: null, looked, handedOn: acted, servedRead, behaviourRead };
-  }
   const masterAnswered = await masterAnsweredInTurn(roomId, posted, posted.turnId);
-  const [earlier] = await db
-    .select({
-      at: sql<Date | null>`max(${supportActions.createdAt})`.mapWith((v) =>
-        v ? new Date(v) : null,
-      ),
-    })
-    .from(supportActions)
-    .where(
-      and(
-        eq(supportActions.sessionId, posted.sessionId),
-        stateRead,
-        ne(supportActions.turnId, posted.turnId),
-        lte(supportActions.createdAt, posted.at),
-      ),
-    );
-  return {
-    thisTurn: false,
+  const [earlier] =
+    reads.length > 0
+      ? []
+      : await db
+          .select({
+            at: sql<Date | null>`max(${supportActions.createdAt})`.mapWith((v) =>
+              v ? new Date(v) : null,
+            ),
+          })
+          .from(supportActions)
+          .where(
+            and(
+              eq(supportActions.sessionId, posted.sessionId),
+              stateRead,
+              ne(supportActions.turnId, posted.turnId),
+              lte(supportActions.createdAt, posted.at),
+            ),
+          );
+  return turnReadsOf({
+    reads,
+    acted,
+    servedRead,
+    masterAnswered,
     earlierAt: earlier?.at ?? null,
-    looked: false,
+  });
+}
+
+/**
+ * The reads around a reply from what its turn did (ISS-1440): a master's answer handed in the turn is
+ * kept whether or not the turn also read something, because his check covers a claim the turn's own
+ * read did not reach ("the release says shipped" read, "it works" said as his).
+ */
+export function turnReadsOf(input: {
+  reads: readonly { kind: string; tool: string | null }[];
+  acted: boolean;
+  servedRead: boolean;
+  masterAnswered: boolean;
+  earlierAt: Date | null;
+}): TurnReads {
+  const { reads, acted, servedRead, masterAnswered } = input;
+  const read = reads.length > 0;
+  return {
+    thisTurn: read,
+    earlierAt: read ? null : input.earlierAt,
+    looked: reads.some((r) => r.tool === 'look'),
     handedOn: acted,
     masterAnswered,
     servedRead,
-    behaviourRead: false,
+    behaviourRead: reads.some((r) => r.kind === 'diagnose' || r.tool === 'look'),
   };
 }
 
