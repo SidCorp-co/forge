@@ -6,6 +6,7 @@ import {
   effectiveVariables,
   type HeldVariable,
   protectedReaders,
+  proposedProtection,
   type RulingAsk,
   rulingRead,
   withheldWhy,
@@ -227,6 +228,35 @@ describe('a refused protected variable asks for the ruling, never for protection
       expect(text).not.toMatch(/protection off|protected: false|unprotect|turn[^.]*protection/i);
     }
     expect(protectedReaders(prod)).toContain("carries a project admin's ruling");
+  });
+
+  // ISS-1429 reopen: a set proposal left without `protected` turned a protected variable unprotected
+  describe('a proposal never turns protection off', () => {
+    const held = { key: 'STRIPE_KEY', environment: 'canawan', protected: true };
+
+    it('keeps a protected variable protected where the proposal leaves `protected` out', () => {
+      expect(proposedProtection(undefined, held)).toEqual({ protected: true, refusals: [] });
+      expect(proposedProtection(true, held)).toEqual({ protected: true, refusals: [] });
+    });
+
+    it('refuses `protected: false` on a protected variable by name, pointing at the ruling', () => {
+      const { refusals } = proposedProtection(false, held);
+      expect(refusals.map((r) => r.code)).toEqual(['VARIABLE_PROPOSAL_UNPROTECTS']);
+      expect(refusals[0]?.path).toBe('/protected');
+      expect(refusals[0]?.detail).toContain('STRIPE_KEY is protected on `canawan`');
+      expect(refusals[0]?.detail).toContain('a person holding project.admin for a ruling once');
+      expect(
+        proposedProtection(false, { ...held, environment: null }).refusals[0]?.detail,
+      ).toContain('protected on every environment');
+    });
+
+    it('leaves a new key and an unprotected one as asked, unprotected by default', () => {
+      expect(proposedProtection(undefined, null)).toEqual({ protected: false, refusals: [] });
+      expect(proposedProtection(true, null)).toEqual({ protected: true, refusals: [] });
+      const plain = { ...held, protected: false };
+      expect(proposedProtection(undefined, plain)).toEqual({ protected: false, refusals: [] });
+      expect(proposedProtection(false, plain)).toEqual({ protected: false, refusals: [] });
+    });
   });
 });
 

@@ -92,6 +92,16 @@ export const DELIVERY_SCENARIOS: readonly CardScenario[] = [
     teaches: [/`blocks` edge/, /a park is only for an act a person owes/i],
   },
   {
+    name: 'a withheld protected key sent to a variable proposal',
+    card: 'POST /api/issues/:id/transition',
+    source:
+      'ISS-1429 live judge run dfde25f1 on dev.800, verdict a594b583: the served doors map sent a withheld key to variables/proposals',
+    situation: 'A run’s read of a production key comes back withheld: it is protected',
+    bad: 'it proposed a set of that key, which on approval turned its protection off',
+    good: 'park the issue asking the project admin withheldWhy names for a ruling on the act, naming the act and the environment',
+    teaches: [/ruling on the act, naming the act and the environment/i, /no proposal turns protection off/i],
+  },
+  {
     name: 'a builder run step marked succeeded that did not run',
     card: 'ecosystem.builder_run_update',
     source: `${WINDOW}: 9 of 1,571 updates refused`,

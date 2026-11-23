@@ -71,6 +71,8 @@ export const VARIABLE_REFUSAL_CODES = [
 	"VARIABLE_PROPOSAL_NOT_FOUND",
 	/** The proposal was already approved or rejected. */
 	"VARIABLE_PROPOSAL_DECIDED",
+	/** A proposal would turn a protected variable's protection off, which no proposal does (BC-12). */
+	"VARIABLE_PROPOSAL_UNPROTECTS",
 ] as const;
 export type VariableRefusalCode = (typeof VARIABLE_REFUSAL_CODES)[number];
 
@@ -120,6 +122,7 @@ export const proposeVariableRequestSchema = z.strictObject({
 	key,
 	environment,
 	type: z.enum(VARIABLE_TYPES).optional(),
+	/** Left out, a set keeps the protection of the variable it changes; false on a protected one is refused. */
 	protected: z.boolean().optional(),
 	value: value.optional(),
 	reason: z.string().trim().min(1).max(REASON_TEXT_MAX),

@@ -245,6 +245,26 @@ describe('a door is taught on its card, and every page that names it renders tha
     expect(card).toContain('The same act over REST: `POST /api/forge/feedback/doors`');
   });
 
+  // ISS-1429 reopen (REQ-80 BC-12): the map sent a withheld key to a variable proposal, whose
+  // approval turned the key's protection off
+  it('sends a withheld protected key to the ask for a ruling, never to a variable proposal', async () => {
+    const page = await (await guideRoutes.request('/guides/doors.md')).text();
+    const withheld = page.split('\n').filter((l) => /comes back withheld/.test(l));
+    expect(withheld.length).toBeGreaterThan(0);
+    for (const line of withheld) {
+      expect(line).toContain('→ `POST /api/issues/:id/transition`');
+      expect(line).not.toContain('variables/proposals');
+    }
+    const one = async (door: string) =>
+      (await guideRoutes.request(`/guides/doors.md?door=${encodeURIComponent(door)}`)).text();
+    const proposals = await one('POST /api/projects/:id/variables/proposals');
+    expect(proposals).not.toMatch(/withheld/i);
+    expect(proposals).toContain('no proposal turns protection off');
+    const transition = (await one('POST /api/issues/:id/transition')).replace(/\s+/g, ' ');
+    expect(transition).toContain('comes back withheld');
+    expect(transition).toContain('a ruling on the act, naming the act and the environment');
+  });
+
   it('refuses a door it does not serve by name, saying how a door is named', async () => {
     const res = await guideRoutes.request(
       `/guides/doors.md?door=${encodeURIComponent('POST /api/nowhere')}`,

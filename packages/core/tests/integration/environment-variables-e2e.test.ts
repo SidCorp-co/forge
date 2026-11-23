@@ -388,6 +388,105 @@ describe('an agent proposes and a person decides (BC-6)', () => {
   });
 });
 
+// ISS-1429 reopen (REQ-80 BC-12): a set proposal left without `protected` was stored and applied
+// unprotected, so approving the change an agent was sent to propose turned protection off
+describe('no proposal turns a variable’s protection off (BC-12)', () => {
+  const propose = (body: Record<string, unknown>) =>
+    api(world.agent, 'POST', `${base()}/proposals`, {
+      issue: 'ISS-14',
+      act: 'set',
+      environment: 'production',
+      type: 'secret',
+      reason: 'ISS-14 rotates the production keys',
+      ...body,
+    });
+  const approve = (id: string) =>
+    api(world.owner, 'POST', `${base()}/proposals/${id}/decision`, {
+      decision: 'approve',
+      reason: 'rotation is due',
+    });
+  const variable = async (key: string) =>
+    (
+      await ok<{ variables: { id: string; key: string; protected: boolean; version: number }[] }>(
+        api(world.owner, 'GET', base()),
+      )
+    ).variables.find((v) => v.key === key);
+
+  beforeEach(async () => {
+    await createTestIssue(world.projectId, world.ownerId, 14, {
+      status: 'in_progress',
+      createdAt: new Date(),
+    });
+    await ok(
+      add(world.owner, {
+        key: 'STRIPE_KEY',
+        value: STRIPE,
+        environment: 'production',
+        protected: true,
+      }),
+    );
+  });
+
+  it('keeps a protected variable protected where the proposal leaves `protected` out, stored and applied', async () => {
+    const kept = await ok<{ id: string; protected: boolean | null }>(
+      propose({ key: 'STRIPE_KEY', value: 'sk_live_rotated_Pr0duction_key' }),
+    );
+    expect(kept.protected).toBe(true);
+    await ok(approve(kept.id));
+    expect(await variable('STRIPE_KEY')).toMatchObject({ protected: true, version: 2 });
+  });
+
+  it('refuses a proposal asking protection off by name, pointing at the ruling, and stores nothing', async () => {
+    const off = await propose({
+      key: 'STRIPE_KEY',
+      value: 'sk_live_third_Pr0duction_key',
+      protected: false,
+    });
+    expect(off.status).toBe(422);
+    expect(codeOf(off.body)).toBe('VARIABLE_PROPOSAL_UNPROTECTS');
+    expect(JSON.stringify(off.body)).toContain('a proposal never turns protection off');
+    expect(JSON.stringify(off.body)).toContain('a person holding project.admin for a ruling');
+    const listed = await ok<{ proposals: unknown[] }>(
+      api(world.owner, 'GET', `${base()}/proposals`),
+    );
+    expect(listed.proposals).toEqual([]);
+    expect(await variable('STRIPE_KEY')).toMatchObject({ protected: true, version: 1 });
+  });
+
+  it('refuses approving a proposal made unprotected on a key a person protected since', async () => {
+    const late = await ok<{ id: string }>(
+      propose({ key: 'WEBHOOK_SECRET', value: 'whsec_later_Pr0duction_value', protected: false }),
+    );
+    await ok(
+      add(world.owner, {
+        key: 'WEBHOOK_SECRET',
+        value: 'whsec_first_Pr0duction_value',
+        environment: 'production',
+        protected: true,
+      }),
+    );
+    const refused = await approve(late.id);
+    expect(refused.status).toBe(422);
+    expect(codeOf(refused.body)).toBe('VARIABLE_PROPOSAL_UNPROTECTS');
+    expect(await variable('WEBHOOK_SECRET')).toMatchObject({ protected: true, version: 1 });
+  });
+
+  it('leaves a new key unprotected by default, and a holder of env.manage changing the flag directly (BC-2)', async () => {
+    const fresh = await ok<{ id: string; protected: boolean | null }>(
+      propose({ key: 'WEBHOOK_SECRET', value: 'whsec_new_Pr0duction_value' }),
+    );
+    expect(fresh.protected).toBe(false);
+    await ok(approve(fresh.id));
+    expect(await variable('WEBHOOK_SECRET')).toMatchObject({ protected: false });
+
+    const stripe = await variable('STRIPE_KEY');
+    await ok(
+      api(world.owner, 'PUT', `${base()}/${stripe?.id}`, { baseVersion: 1, protected: false }),
+    );
+    expect(await variable('STRIPE_KEY')).toMatchObject({ protected: false, version: 2 });
+  });
+});
+
 describe('a declared run receives the effective variables of the environment it targets (BC-8)', () => {
   beforeEach(async () => {
     await ok(add(world.owner, { key: 'DATABASE_URL', value: ALL_DB }));

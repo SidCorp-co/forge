@@ -273,3 +273,28 @@ export function writeRefusals(
   }
   return out;
 }
+
+/**
+ * The protection a proposal to set a variable carries (BC-12). Left out, it keeps what the variable
+ * it changes holds, so a protected one stays protected and a new one takes the default, unprotected;
+ * `protected: false` on a protected variable is refused, since no proposal turns protection off. A
+ * run that needs a protected value asks for a ruling instead (BC-11).
+ */
+export function proposedProtection(
+  asked: boolean | undefined,
+  held: { key: string; environment: string | null; protected: boolean } | null,
+): { protected: boolean; refusals: VariableRefusal[] } {
+  if (!held?.protected) return { protected: asked ?? false, refusals: [] };
+  if (asked !== false) return { protected: true, refusals: [] };
+  const scope = held.environment === null ? 'every environment' : `\`${held.environment}\``;
+  return {
+    protected: true,
+    refusals: [
+      refusal(
+        'VARIABLE_PROPOSAL_UNPROTECTS',
+        `${held.key} is protected on ${scope}, and a proposal never turns protection off: leave \`protected\` out and it stays protected. A run that needs its value asks a person holding project.admin for a ruling once, in plain words, naming the act and the environment.`,
+        '/protected',
+      ),
+    ],
+  };
+}

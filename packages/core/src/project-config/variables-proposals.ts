@@ -14,7 +14,7 @@ import { db, type Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { encryptSecret, fingerprintSecret } from '../integrations/index.js';
 import { requireDeclaredOn } from '../permissions/index.js';
-import { type DeclaredEnvironment, writeRefusals } from './variables-rules.js';
+import { type DeclaredEnvironment, proposedProtection, writeRefusals } from './variables-rules.js';
 import {
   type Caller,
   callerOf,
@@ -113,27 +113,32 @@ export async function proposeVariable(
   }
   if (req.value !== undefined) requireVault();
   const issueId = await issueOf(projectId, req.issue);
-  if (req.act === 'set') {
-    throwAll(
-      writeRefusals(
-        {
-          key: req.key,
-          environment: req.environment,
-          type: req.type as VariableType,
-          protected: req.protected ?? false,
-          value: req.value,
-        },
-        await declaredEnvironments(projectId),
-      ),
-    );
-  }
+  const environments = req.act === 'set' ? await declaredEnvironments(projectId) : [];
   const row = await db.transaction(async (tx) => {
-    if (req.act === 'delete' && !(await variableAt(tx, projectId, req.key, req.environment))) {
+    const held = await variableAt(tx, projectId, req.key, req.environment);
+    if (req.act === 'delete' && !held) {
       throw refuse(
         'VARIABLE_NOT_FOUND',
         `this project holds no ${req.key} scoped to ${req.environment ?? 'every environment'}, so there is nothing to delete.`,
         '/key',
       );
+    }
+    // a set left without `protected` keeps the held variable's; asking it off is refused (BC-12)
+    const protection = req.act === 'set' ? proposedProtection(req.protected, held) : null;
+    if (protection) {
+      throwAll([
+        ...protection.refusals,
+        ...writeRefusals(
+          {
+            key: req.key,
+            environment: req.environment,
+            type: req.type as VariableType,
+            protected: protection.protected,
+            value: req.value,
+          },
+          environments,
+        ),
+      ]);
     }
     const id = randomUUID();
     const secretName = req.value === undefined ? null : valueNameOf('p', id);
@@ -149,7 +154,7 @@ export async function proposeVariable(
       key: req.key,
       environment: req.environment,
       type: req.act === 'set' ? (req.type ?? null) : null,
-      protected: req.act === 'set' ? (req.protected ?? false) : null,
+      protected: protection?.protected ?? null,
       secretName,
       fingerprint,
       reason: req.reason,
@@ -245,6 +250,15 @@ async function approveIn(
     ? (await valuesOf(projectId, [proposal.secretName], tx)).get(proposal.secretName)
     : undefined;
   const value = decrypted(proposal, enc);
+  // protected since it was proposed, it stays so: no proposal turns protection off (BC-12)
+  const held = await variableAt(tx, projectId, proposal.key, proposal.environment);
+  if (held?.protected && proposal.protected === false) {
+    throw refuse(
+      'VARIABLE_PROPOSAL_UNPROTECTS',
+      `${proposal.key} is protected now, and approving this proposal would turn its protection off, which no proposal does; reject it.`,
+      '/decision',
+    );
+  }
   const input = {
     key: proposal.key,
     environment: proposal.environment,

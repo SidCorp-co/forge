@@ -67,12 +67,11 @@ export const PROJECT_CONFIG_REST_CARDS = {
         when: 'your work needs a variable set or removed on an environment',
         do: 'propose it on the issue that needs it, with the reason; it takes effect once approved',
       },
-      {
-        when: 'a key you read comes back withheld: it is protected',
-        do: 'read its withheldWhy, which names the ruling your run lacks and who gives it; ask once, in plain words, naming the act and the environment',
-      },
     ],
-    practice: ['An agent never writes a variable itself: this proposal is its one way.'],
+    practice: [
+      'An agent never writes a variable itself: this proposal is its one way.',
+      'A set left without `protected` keeps the variable’s own; no proposal turns protection off (VARIABLE_PROPOSAL_UNPROTECTS).',
+    ],
     example: {
       act: 'set',
       environment: 'staging',

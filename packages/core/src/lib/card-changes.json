@@ -255,9 +255,9 @@
     "by": "ISS-1251"
   },
   "POST /api/issues/:id/transition": {
-    "hash": "720f701c2e48517b",
-    "on": "2026-11-16",
-    "by": "ISS-1251"
+    "hash": "10d93d30a5fb33a0",
+    "on": "2026-11-23",
+    "by": "ISS-1429"
   },
   "POST /api/issues/:id/verdicts": {
     "hash": "0c864300a8d0830e",
@@ -620,7 +620,7 @@
     "by": "ISS-1251"
   },
   "POST /api/projects/:id/variables/proposals": {
-    "hash": "89393ba7abb74c91",
+    "hash": "12a13f29b2e6980f",
     "on": "2026-11-23",
     "by": "ISS-1429"
   },

@@ -285,6 +285,13 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
         for: ['run'],
       },
       {
+        when: 'a key you read comes back withheld: it is protected',
+        do: 'park it `needs_info`, `needs` written as one plain ask to the project admin its `withheldWhy` names: a ruling on the act, naming the act and the environment, which they record on the issue as a decision; the key stays protected',
+        watch:
+          'a variable proposal is no way to it: no proposal turns protection off (`VARIABLE_PROPOSAL_UNPROTECTS`)',
+        for: ['run'],
+      },
+      {
         when: 'your issue waits on the approval of a design revision',
         do: 'park it through `issues/<id>/transition` with `{"toStatus":"needs_info","waitingKind":"needs_decision","reason":"<why>","awaitsDesign":{"workflowId":"<id>","revision":2}}`, or a list of 1 to 20 revisions; `needs` may be left out, since the decision settles it. Approve or return answers the park\'s question, and the issue moves back once every revision is decided',
         watch:
@@ -309,7 +316,10 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
       'Parking an issue that waits on another issue’s landing, where a blocks edge orders it.',
     family: 'issue-landing',
     audience: ['master', 'run'],
-    scenarios: ['an issue parked on another issue’s landing: QUESTION_MERGE_IS_ORDERING'],
+    scenarios: [
+      'an issue parked on another issue’s landing: QUESTION_MERGE_IS_ORDERING',
+      'a withheld protected key sent to a variable proposal',
+    ],
   }),
   card('POST /api/projects/:id/workflows/:workflow/design/propose', 'workflows', {
     purpose: "Proposes a revision of a workflow's design for approval.",
