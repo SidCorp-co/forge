@@ -1,4 +1,6 @@
 {
-  "$why": "A skipped `describe` reports as a passing file, so the runner cannot tell you it stopped running. Every entry here is a suite that is skipped on purpose; the reason has to say what would have to change for it to run, because `waiting on ISS-214's endpoints` is what the device-runner E2E said for months after those endpoints shipped — and when the flag was finally set on 2026-08-25 it failed on the first line. A reason that cannot expire is not a reason.",
-  "declared": {}
+  "$why": "A skipped `describe` reports as a passing file, so the runner cannot tell you it stopped running. Every entry here is a suite that is skipped on purpose; the reason has to say what would have to change for it to run, because `waiting on ISS-214's endpoints` is what the device-runner E2E said for months after those endpoints shipped \u2014 and when the flag was finally set on 2026-08-25 it failed on the first line. A reason that cannot expire is not a reason.",
+  "declared": {
+    "packages/core/src/ecosystem/contract/oasdiff-yaml.test.ts": "Runs the real pinned oasdiff, so it runs only where OASDIFF_BIN names it (pnpm --filter @forge/core oasdiff:fetch); CI fetches no oasdiff binary, and the door's YAML reading is proven in tests/integration/contract-version-source-ref-e2e.test.ts with oasdiff stubbed. This entry ends when CI fetches the pinned oasdiff (debt recorded with ISS-1435, 2026-11-23) and sets OASDIFF_BIN."
+  }
 }
