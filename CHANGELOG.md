@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.815] - 2026-11-23
+
+Records the reply-audit language fix served since dev.814
+
+### Changed
+
+- **The reply audit's language fix for ISS-1442, served on forge-dev since dev.814, now has its release record.** The dev.814 run deployed and tagged it but recorded nothing; this version carries it unchanged.
+
 ## [0.4.0-dev.814] - 2026-11-23
 
 Reply audit fails a reply on language only when the asker's language is clear
