@@ -43,7 +43,8 @@ export const CHAT_TURN_MENU: readonly PatPermission[] = [
 
 /**
  * What a steward act reaches (REQ-48 BC-1): the record doors its act catalogue calls, as the
- * project's steward account. The approvals a token names besides are its act's
+ * project's steward account, and `knowledge:read` for the memory recall its triage is told to make
+ * first (`POST /api/memory/search` is a read, ISS-1448); it holds no knowledge write. The approvals a token names besides are its act's
  * (`@forge/contracts/steward-runtime:STEWARD_ACT_APPROVALS`), which a named grant reaches only where
  * it names them.
  */
@@ -52,6 +53,7 @@ export const STEWARD_TURN_MENU: readonly PatPermission[] = [
   'issues:write',
   'projects:read',
   'projects:write',
+  'knowledge:read',
   'questions:read',
   'questions:write',
   'pipeline:read',

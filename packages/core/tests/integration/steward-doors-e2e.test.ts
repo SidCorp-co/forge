@@ -186,6 +186,25 @@ describe('the steward rejects a breakdown and never accepts one (decision 2, ame
   });
 });
 
+describe('the steward recalls memory on a read grant and writes none (ISS-1448)', () => {
+  it('answers its memory search, and refuses a memory write wanting knowledge:write', async () => {
+    const search = await say('steward', 'POST', '/api/memory/search', {
+      projectId,
+      query: 'what earlier work settled about this feedback',
+      topK: 3,
+    });
+    expect(search.status, JSON.stringify(search.json)).toBe(200);
+    const write = await say('steward', 'POST', '/api/memory', {
+      projectId,
+      source: 'knowledge',
+      sourceRef: 'iss-1448-probe',
+      textContent: 'a steward writes no memory',
+    });
+    expect(write.status, JSON.stringify(write.json)).toBe(403);
+    expect(JSON.stringify(write.json)).toContain('knowledge:write');
+  });
+});
+
 describe("a requirement's owner is a member or nobody (PATCH …/requirements/:req)", () => {
   let req: { key: string; id: string };
 
