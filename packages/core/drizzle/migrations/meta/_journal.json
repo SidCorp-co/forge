@@ -4404,6 +4404,13 @@
       "when": 1842739200000,
       "tag": "0692_a_decider_declared_by_chat_identity_decides_a_release",
       "breakpoints": true
+    },
+    {
+      "idx": 693,
+      "version": "7",
+      "when": 1842825600000,
+      "tag": "0693_a_declared_speaker_accepts_a_requirement_revision",
+      "breakpoints": true
     }
   ]
 }

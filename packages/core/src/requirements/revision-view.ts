@@ -100,7 +100,8 @@ export function revisionView(
     createdAt: r.createdAt.toISOString(),
     proposedAt: r.proposedAt?.toISOString() ?? null,
     decidedBy: r.decidedBy,
-    decidedByName: name(r.decidedBy),
+    // a speaker declared by chat identity reads by the name the room showed (REQ-90 BC-15)
+    decidedByName: name(r.decidedBy) ?? r.decidedByChatName,
     decidedAt: r.decidedAt?.toISOString() ?? null,
     returnReason: r.returnReason,
     acceptReason: r.acceptReason,

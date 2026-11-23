@@ -18,6 +18,8 @@ export {
 export type { CriterionClip } from './criterion-clip.js';
 export { designIdNamed, putCriterionSteps } from './criterion-steps.js';
 export { tracedCodesOf, traceWordingsOf } from './criterion-trace.js';
+export { acceptAsDeclared, moveChatAcceptancesToUser } from './declared-accept.js';
+export type { DeclaredAccepter } from './declared-accepter.js';
 export { deferRequirement, undeferRequirement } from './deferral.js';
 export { deferralOf } from './deferral-read.js';
 export { checksOwedIn, type OwedCheck } from './delivery-check.js';

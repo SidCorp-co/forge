@@ -125,7 +125,7 @@ export function decidersBlock(deciders: readonly RulingDeciderRead[]): string | 
     'Their go in any words, on a proposal of that act put to them or in their own request for it, is their agreement: cite that message with agree at once, and ask them nothing more.',
     ...(deciders.some((d) => d.speaker)
       ? [
-          'One declared by chat identity needs no Forge account: their go or hold on a release (support.release_decision), or a reopen they ask for, decides it as theirs. Never ask anyone to link, invite or make an account for them.',
+          'One declared by chat identity needs no Forge account: their go or hold on a release (support.release_decision), their accept of a requirement revision (support.owner_forge_act, act requirement.accept, citing their message), or a reopen they ask for, decides it as theirs. Never ask anyone to link, invite or make an account for them.',
         ]
       : []),
   ].join('\n');

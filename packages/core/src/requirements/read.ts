@@ -286,7 +286,8 @@ export function baselineViews(
     act: b.act,
     agreedBy: b.agreedBy,
     agreedKind: b.agreedKind,
-    agreedByName: b.agreedKind === 'kernel' ? KERNEL_DECIDER_NAME : name(b.agreedBy),
+    agreedByName:
+      b.agreedKind === 'kernel' ? KERNEL_DECIDER_NAME : (name(b.agreedBy) ?? b.agreedByChatName),
     agreedAt: b.agreedAt.toISOString(),
     reason: b.reason,
     readiness: b.readiness,

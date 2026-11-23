@@ -18,6 +18,7 @@ import { peopleOf } from '../lib/people.js';
 import { waivedOf } from './acceptance-waived.js';
 import {
   AN_AGENT,
+  deciderWho,
   entry,
   type Namer,
   revisionEntries,
@@ -158,7 +159,9 @@ const baselineEntry = (b: BaselineRow, n: Namer) =>
     at: b.agreedAt.toISOString(),
     source: b.agreedKind === 'kernel' ? 'system' : 'person',
     who:
-      b.agreedKind === 'kernel' ? say('requirements.history.who.forge') : n.who(b.agreedBy, SIGNER),
+      b.agreedKind === 'kernel'
+        ? say('requirements.history.who.forge')
+        : deciderWho(n, b.agreedBy, b.agreedByChatName, SIGNER),
     kind: say('requirements.history.kind.Agreed'),
     text: noted(baselineText(b), readinessNote(b.readiness)),
   });

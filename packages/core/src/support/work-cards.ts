@@ -323,6 +323,12 @@ export const WORK_ACT_CARDS = {
         watch:
           'it takes project.admin on his own account (else PERMISSION_FORBIDDEN); a release with no deploy waiting is refused SUPPORT_CONFIRM_DEPLOY_NOT_WAITING',
       },
+      {
+        when: 'someone other than the owner accepts a requirement revision in the room, in any words',
+        do: 'make it with support.owner_forge_act { act: requirement.accept, item } citing their message: a speaker the project declares by chat identity for accept accepts it as theirs, with no account',
+        watch:
+          'refused SUPPORT_DECIDER_NOT_DECLARED: ask the owner once, yes or no, whether to declare them; never ask anyone to link, invite or make an account for a decider',
+      },
     ],
     practice: [
       'config.write and binding.write take the whole document, read and changed, with the revision you read as baseRevision; rule.write takes item the rule’s slug and rule { title, body, scope, recheckWhen }, an amend keeping each field you leave out.',

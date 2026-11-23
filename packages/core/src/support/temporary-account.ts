@@ -82,9 +82,12 @@ export async function senderAccount(who: ChatIdentity, projectId?: string): Prom
 
 /**
  * A link or a naming confirmed the person's Forge account: their temporary account, where they had
- * one, records it. Nothing it holds moves, since its history is keyed on the chat identity.
+ * one, records it. Its history is keyed on the chat identity, so it reads as that account's; what
+ * names the identity in place of a user (a declared speaker's acceptance) is moved by its caller.
+ * Answers the temporary account's id where it is linked to `linked.userId`, else null: one the
+ * identity never had, or one an earlier link already gave another account.
  */
-export async function linkTemporaryAccount(linked: SpeakerLinked): Promise<void> {
+export async function linkTemporaryAccount(linked: SpeakerLinked): Promise<string | null> {
   await db
     .update(chatTemporaryAccounts)
     .set({ linkedUserId: linked.userId, linkedAt: new Date() })
@@ -96,4 +99,10 @@ export async function linkTemporaryAccount(linked: SpeakerLinked): Promise<void>
         isNull(chatTemporaryAccounts.linkedUserId),
       ),
     );
+  const held = await temporaryOf({
+    source: linked.source as ConversationAdapter,
+    namespace: linked.namespace,
+    externalId: linked.externalId,
+  });
+  return held && held.linkedUserId === linked.userId ? held.id : null;
 }

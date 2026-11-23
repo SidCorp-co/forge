@@ -22,6 +22,7 @@ import { gateOf, personGateOf } from '../project-config/index.js';
 import { signoffReasonRefusal } from './acceptance-rules.js';
 import { linkedContracts, writePinsIn } from './baselines.js';
 import { readyAnswersOf, readyFactsAt, requirementReadyRecord } from './checklist-record.js';
+import { accepterColumns, agreerColumns, type DeclaredAccepter } from './declared-accepter.js';
 import { requirementDependents } from './dependents.js';
 import { embedRequirementHeadLater } from './embeddings.js';
 import {
@@ -79,10 +80,11 @@ async function writeBaseline(
   actor: RequirementActor,
   reason: string | null,
   readiness: BaselineReadiness | null = null,
+  declared?: DeclaredAccepter,
 ): Promise<number> {
   const [baseline] = await tx
     .insert(requirementBaselines)
-    .values({ requirementId, revision, agreedBy: actor.userId, reason, readiness })
+    .values({ requirementId, revision, ...agreerColumns(actor, declared), reason, readiness })
     .returning({ seq: requirementBaselines.seq });
   if (!baseline) throw new Error(`requirements: no baseline row returned for ${requirementId}`);
   await writePinsIn(
@@ -116,6 +118,9 @@ function announceAgreed(
 /**
  * A person accepts the proposed revision: it becomes the head and the previous current is
  * superseded. After the agree it must pass every agree guard, and re-baselines in the same write.
+ * A speaker a project admin declared by chat identity for `accept` (`declared`, REQ-90 BC-15)
+ * accepts it the same way, recorded as that identity: the declaration, read by the caller, stands
+ * for the signer, and `actor` is the room's session that makes the move.
  */
 export async function acceptRevision(input: {
   projectId: string;
@@ -124,12 +129,15 @@ export async function acceptRevision(input: {
   revision: number;
   /** The signer's own words, owed (REQ-4 BC-16); on an agreed requirement it is the re-baseline's reason. */
   reason?: string | null | undefined;
+  declared?: DeclaredAccepter | undefined;
 }): Promise<RequirementOutcome> {
-  const { projectId, actor } = input;
+  const { projectId, actor, declared } = input;
   const row = await rowIn(db, projectId, input.ref);
-  const gate = await personGateOf(projectId, 'revisions');
-  const signer = await signerRefusal(actor, projectId, gate.act, row, gate.permission);
-  if (signer) return { ok: false, refusals: [signer] };
+  if (!declared) {
+    const gate = await personGateOf(projectId, 'revisions');
+    const signer = await signerRefusal(actor, projectId, gate.act, row, gate.permission);
+    if (signer) return { ok: false, refusals: [signer] };
+  }
   // owed whoever accepts, whatever the gate lets through: the gate says who, never whether why
   const unsaid = signoffReasonRefusal('accept', input.reason);
   if (unsaid) return { ok: false, refusals: [unsaid] };
@@ -185,7 +193,12 @@ export async function acceptRevision(input: {
     }
     await tx
       .update(requirementRevisions)
-      .set({ state: 'current', decidedBy: actor.userId, decidedAt: new Date(), acceptReason })
+      .set({
+        state: 'current',
+        ...accepterColumns(actor, declared),
+        decidedAt: new Date(),
+        acceptReason,
+      })
       .where(revisionWhere(row.id, target.revision));
     await tx
       .update(requirements)
@@ -219,6 +232,7 @@ export async function acceptRevision(input: {
         actor,
         acceptReason,
         readiness,
+        declared,
       );
       await announceAgreed(tx, row, {
         revision: target.revision,

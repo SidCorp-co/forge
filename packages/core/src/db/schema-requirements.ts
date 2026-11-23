@@ -25,6 +25,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { users } from './schema-auth.js';
+import { baselineAgreerColumns, revisionDeciderColumns } from './schema-chat-decider.js';
 import { contractVersions } from './schema-ecosystem.js';
 import { mockups } from './schema-mockups.js';
 import { projects } from './schema-projects.js';
@@ -32,14 +33,12 @@ import { suggestions } from './schema-suggestions.js';
 import { actorAgencies } from './schema-vocabulary.js';
 import { projectWorkflowDesigns, projectWorkflows } from './schema-workflows.js';
 
-export { REQUIREMENT_STATUSES, type RequirementStatus } from '@forge/contracts/requirements';
-
-const inList = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`).join(', '));
-
-export { REVISION_STATES, type RevisionState } from '@forge/contracts/requirements';
-
+export type { RequirementStatus, RevisionState } from '@forge/contracts/requirements';
+export { REQUIREMENT_STATUSES, REVISION_STATES };
 export const CRITERION_FORMS = REQUIREMENT_CRITERION_FORMS;
 export type CriterionForm = (typeof CRITERION_FORMS)[number];
+
+const inList = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`).join(', '));
 
 // the stored status holds only what a person, the assistant or an agent moved it to (REQ-74 BC-8);
 // in_delivery and delivered are stored by their own acts, never read off the issues or verdicts
@@ -159,7 +158,7 @@ export const requirementRevisions = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     proposedAt: timestamp('proposed_at', { withTimezone: true }),
     proposedBy: uuid('proposed_by').references(() => users.id, { onDelete: 'restrict' }),
-    decidedBy: uuid('decided_by').references(() => users.id, { onDelete: 'restrict' }),
+    ...revisionDeciderColumns(),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     returnReason: text('return_reason'),
     // the accepting signer's own words, kept on the act itself; the reason column above is
@@ -220,7 +219,7 @@ export const requirementRevisions = pgTable(
     ),
     decidedChk: check(
       'requirement_revisions_decided_chk',
-      sql`${t.state} NOT IN ('current', 'superseded') OR (${t.decidedBy} IS NOT NULL AND ${t.decidedAt} IS NOT NULL)`,
+      sql`(${t.state} NOT IN ('current', 'superseded') OR ((${t.decidedBy} IS NOT NULL OR ${t.decidedByChatAccount} IS NOT NULL) AND ${t.decidedAt} IS NOT NULL)) AND (${t.decidedByChatAccount} IS NULL) = (${t.decidedByChatName} IS NULL)`,
     ),
     baseChk: check(
       'requirement_revisions_base_chk',
@@ -382,7 +381,7 @@ export const requirementBaselines = pgTable(
     act: text('act', { enum: BASELINE_ACTS }).notNull().default('agree'),
     // a person names their user; `kernel` is only on rows the kernel's follow of a pin-only design
     // wrote before nothing re-pinned by itself (REQ-41 BC-10, BC-23), and those name none
-    agreedBy: uuid('agreed_by').references(() => users.id, { onDelete: 'restrict' }),
+    ...baselineAgreerColumns(),
     agreedKind: text('agreed_kind', { enum: ['person', 'kernel'] })
       .notNull()
       .default('person'),
@@ -395,7 +394,7 @@ export const requirementBaselines = pgTable(
     seqChk: check('requirement_baselines_seq_chk', sql`${t.seq} >= 1`),
     agreedKindChk: check(
       'requirement_baselines_agreed_kind_chk',
-      sql`(${t.agreedKind} = 'person' AND ${t.agreedBy} IS NOT NULL) OR (${t.agreedKind} = 'kernel' AND ${t.agreedBy} IS NULL AND ${t.act} = 'repin')`,
+      sql`((${t.agreedKind} = 'person' AND (${t.agreedBy} IS NOT NULL OR ${t.agreedByChatAccount} IS NOT NULL)) OR (${t.agreedKind} = 'kernel' AND ${t.agreedBy} IS NULL AND ${t.agreedByChatAccount} IS NULL AND ${t.act} = 'repin')) AND (${t.agreedByChatAccount} IS NULL) = (${t.agreedByChatName} IS NULL)`,
     ),
     actChk: check(
       'requirement_baselines_act_chk',

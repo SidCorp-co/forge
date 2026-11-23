@@ -12,6 +12,7 @@ import { resolveSpeaker, type SpeakerLinked, speakerLinkUrl } from '../assistant
 import { db } from '../db/client.js';
 import { supportActions } from '../db/schema-support.js';
 import { logger } from '../lib/logger.js';
+import { moveChatAcceptancesToUser } from '../requirements/index.js';
 import { deliverWaiting } from './dispatch.js';
 import { grantsOf, isNamedOwner, supportConfigOf } from './grants.js';
 import { ownerSetupStep, recordKeptAnswers } from './kept-answers.js';
@@ -87,8 +88,16 @@ export async function linkMember(
  */
 export async function tellLinked(linked: SpeakerLinked): Promise<void> {
   if (linked.source !== SOURCE) return;
-  // the temporary account the person wrote under records the account it now is (ISS-1243 item 10)
-  await linkTemporaryAccount(linked);
+  // the temporary account the person wrote under records the account it now is (ISS-1243 item 10),
+  // and a requirement acceptance they made by a declaration of that identity becomes theirs (ISS-1436)
+  const chatAccountId = await linkTemporaryAccount(linked);
+  if (chatAccountId) {
+    await moveChatAcceptancesToUser({
+      chatAccountId,
+      userId: linked.userId,
+      projectId: linked.projectId,
+    });
+  }
   const recorded = await recordKeptAnswers(linked);
   const written = await db
     .select({ roomId: supportActions.roomId, thread: supportActions.thread })

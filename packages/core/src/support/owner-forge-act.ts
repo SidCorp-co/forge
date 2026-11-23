@@ -16,7 +16,8 @@
 // project rule he rules there is written in his name the same way (`owner-rule-act.ts`, ISS-1357),
 // and so is a project admin's ruling for a production act, on its issue (`owner-ruling-act.ts`,
 // ISS-1431), and his confirm of a release's parked production deploy (`owner-confirm-deploy-act.ts`,
-// ISS-1441).
+// ISS-1441). A requirement revision's acceptance by anyone else is theirs only where a project admin
+// declared them by chat identity for `accept` (`declared-accept.ts`, ISS-1436).
 
 import { ITEM_ACT_NAMES, type ItemAct } from '@forge/contracts/item-acts';
 import { SUPPORT_FORGE_ACTS, type SupportForgeActRequest } from '@forge/contracts/support-channel';
@@ -27,6 +28,7 @@ import { actorFor, permissionRefusalFor, projectResource } from '../permissions/
 import { writeBinding, writeProjectConfig } from '../project-config/index.js';
 import { decideApprovalOfVersion, parseDecision } from '../release-batch/index.js';
 import { memberMessage } from './channel-store.js';
+import { declaredAccept } from './declared-accept.js';
 import { granters, grantsOf, supportConfigOf } from './grants.js';
 import { type Asker, forgeUserOfWriter } from './ops-asker.js';
 import { projectInScope } from './ops-scope.js';
@@ -314,6 +316,11 @@ async function writeDocument(
 async function act(room: RoomRow, input: SupportForgeActRequest): Promise<OpsOutcome<unknown>> {
   const shape = shapeRefusal(input);
   if (shape) return shape;
+  // a speaker the project declares by chat identity accepts a requirement revision as theirs (ISS-1436)
+  if (input.act === 'requirement.accept') {
+    const declared = await declaredAccept(room, input, (said) => reasonOf(room, input, said));
+    if (declared) return declared;
+  }
   const him = await ownerOfMessage(room, input);
   if (!him.ok) return him;
   const project = await projectInScope(room, input.project);

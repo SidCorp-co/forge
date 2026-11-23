@@ -18,6 +18,13 @@ export const SOMEONE = say('requirements.history.who.someone');
 export const SIGNER = say('requirements.history.who.signer');
 export const AN_AGENT = say('requirements.history.who.agent');
 
+/**
+ * Who decided, by their user, or by the name the room showed where a speaker declared by chat
+ * identity decided it with no Forge account (REQ-90 BC-15).
+ */
+export const deciderWho = (n: Namer, id: string | null, chatName: string | null, fallback: Said) =>
+  !id && chatName ? say('standing.who.named', { name: chatName }) : n.who(id, fallback);
+
 type EntryInput = Omit<
   RequirementHistoryEntry,
   'issue' | 'move' | 'who' | 'text' | 'kind' | 'says'
@@ -92,7 +99,7 @@ export function revisionEntries(r: RevisionRow, n: Namer): RequirementHistoryEnt
         id: `rev-${r.revision}-accepted`,
         at: r.decidedAt.toISOString(),
         source: 'person',
-        who: n.who(r.decidedBy, SIGNER),
+        who: deciderWho(n, r.decidedBy, r.decidedByChatName, SIGNER),
         kind: say('requirements.history.kind.Decision'),
         text: r.acceptReason
           ? say('requirements.history.text.acceptedWhy', { r: r.revision, rest: r.acceptReason })
