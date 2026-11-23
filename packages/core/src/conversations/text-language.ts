@@ -225,7 +225,23 @@ export function confidentLanguageOf(text: string | null | undefined): ReplyLangu
   return english / tokens.length >= ENGLISH_SHARE ? 'en' : null;
 }
 
-/** Vietnamese where any of a room's texts reads Vietnamese with confidence, else English: the room's default for a line core writes, never a ground to fail a reply. */
+/** The share of a room's non-name words that are Vietnamese-marked at which its default reads Vietnamese. */
+const ROOM_VIETNAMESE_SHARE = 0.3;
+/** Marked words a room needs at least, so one stray loanword or typed name never flips it. */
+const ROOM_MIN_MARKED = 2;
+
+/**
+ * The room's default language for a line core writes, never a ground to fail a reply: Vietnamese where,
+ * counted over ALL of the room's texts pooled, at least two non-name words spell a Vietnamese-only letter
+ * or a strict word and they make 30% of the non-name words, else English. No strict word is needed
+ * ("a Vietnamese line with no particle"); names (`wordsWithNames`) and a lone loanword stay out, so an English room holding
+ * Vietnamese names stays English.
+ */
 export function roomTextsLanguageOf(texts: readonly string[]): ReplyLanguage {
-  return texts.some((t) => confidentLanguageOf(t) === 'vi') ? 'vi' : 'en';
+  const open = texts
+    .flatMap((t) => wordsWithNames((t ?? '').normalize('NFC')))
+    .filter((t) => !t.name)
+    .map((t) => t.word.toLowerCase());
+  const marked = open.filter((w) => VIETNAMESE_STRICT.has(w) || VIETNAMESE_ONLY_LETTER.test(w)).length;
+  return marked >= ROOM_MIN_MARKED && marked / open.length >= ROOM_VIETNAMESE_SHARE ? 'vi' : 'en';
 }

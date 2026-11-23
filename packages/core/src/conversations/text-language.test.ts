@@ -8,7 +8,7 @@ import {
   TOLD_VIETNAMESE_ROWS,
   VIETNAMESE_ROWS,
 } from './language-rows.fixture.js';
-import { confidentLanguageOf, replyLanguageOf } from './text-language.js';
+import { confidentLanguageOf, replyLanguageOf, roomTextsLanguageOf } from './text-language.js';
 
 const OWNER_REQUEST =
   "Owner request: please draw Catalog API's workflow designs from its code and from REQ-1 (Catalog triển khai sản phẩm và thiết kế lên cửa hàng ePOD). Leave every design proposed for my review."; // i18n-allow: a Vietnamese message the detector is tested on
@@ -141,5 +141,25 @@ describe('a language is told only where the evidence is strong (ISS-1442 r6)', (
     for (const text of MIXED_UNTOLD_ROWS) {
       expect(confidentLanguageOf(text), text).toBeNull(); // i18n-allow: Vietnamese beside one English word
     }
+  });
+});
+
+describe("a room's default language for a line core writes (ISS-1451)", () => {
+  it('reads Vietnamese from a room with no strict word', () => {
+    const texts = ['Đơn hàng bị lỗi', 'Báo lỗi đăng nhập trên điện thoại', 'Em cảm ơn']; // i18n-allow: Vietnamese fixtures
+    expect(roomTextsLanguageOf(texts)).toBe('vi');
+  });
+
+  it('keeps an English room English beside names and loanwords', () => {
+    const texts = [
+      'Hi Nguyễn Văn Đức, the café order is late', // i18n-allow: a Vietnamese name in English
+      'Please check the order from @Trần and the crème brûlée stall', // i18n-allow: names and loanwords
+    ];
+    expect(roomTextsLanguageOf(texts)).toBe('en');
+  });
+
+  it('is English for an empty room and for one lone marked word', () => {
+    expect(roomTextsLanguageOf([])).toBe('en');
+    expect(roomTextsLanguageOf(['the đơn is late'])).toBe('en'); // i18n-allow: one stray word
   });
 });
