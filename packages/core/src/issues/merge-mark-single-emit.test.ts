@@ -45,7 +45,6 @@ vi.mock('./stale-round-merge.js', () => ({ supersedeStaleRoundMerge: async () =>
 // the project declares no merge check and the issue no approved new pattern, so none is owed
 vi.mock('./merge-check.js', () => ({
   uncheckedMergeRefusal: async () => null,
-  checkedBaseOf: async () => null,
 }));
 vi.mock('./review.js', () => ({ unreviewedMergeRefusal: async () => null }));
 vi.mock('./pattern-entry.js', () => ({ markEntryRefusal: async () => null }));

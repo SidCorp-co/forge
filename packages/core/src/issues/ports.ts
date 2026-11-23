@@ -354,7 +354,7 @@ interface IssuePorts {
     },
     landed: readonly string[],
   ) => Promise<{ code: 'CONTRACT_DRIFT' | 'CONTRACT_LANDING_UNNAMED'; detail: string } | null>;
-  contractLag: (projectId: string, commit: string, base: string | null) => Promise<Refusal | null>;
+  contractLag: (projectId: string, commit: string, issueId: string) => Promise<Refusal | null>;
   /** Why `contract` (`<project>/<contract>`) is no contract the project publishes or consumes, or null. */
   contractAboutRefusal: (projectId: string, contract: string) => Promise<string | null>;
   /** The adoption record each named version is, read off the project's interface and links (REQ-5 BC-17). */

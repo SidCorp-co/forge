@@ -12,9 +12,17 @@
  * was read from: an interface declares no path, and a contract never recorded from one asks nothing.
  * Where the change or the file cannot be read from the source host, nothing is asked: the mark's
  * own reading of its commit already says the repository was not read.
+ *
+ * A commit inside a batch is never served on its own: the batch lands at the head its passing merge
+ * check ran on, so the version recorded from that head holds the file for each issue the check
+ * covers (ISS-1437). The bound is that check, not the pushed range: its range is recorded evidence
+ * that the commit and the head landed together, where a range read off the host at mark time could
+ * pair a commit with any later push. Recording the commit's own file instead would make a file
+ * nothing served the registry's latest.
  */
 
 import { db } from '../../db/client.js';
+import { checkedLandingOf } from '../../issues/index.js';
 import { type AncestrySource, ancestrySourceFor } from '../../release-batch/index.js';
 import { loadInterface } from '../interface-service.js';
 import { projectsWhere } from '../store.js';
@@ -95,15 +103,21 @@ export function registryLagRefusal(
   project: { id: string; slug: string },
   commit: string,
   landed: readonly LandedSource[],
+  /** The head of the batch the commit sits in, where a passing merge check places it in one. */
+  batchHead: string | null = null,
 ): RegistryLagRefusal | null {
   const door = (contract: string) =>
     `POST /api/projects/${project.id}/contracts/${contract}/versions`;
   const unrecorded = landed.filter((l) => l.held === null);
   if (unrecorded.length > 0) {
+    const from = batchHead ?? commit;
+    const where = batchHead
+      ? `at ${commit} or at the head of its batch; ${commit} sits in a batch landed at ${batchHead}, so record the file as the batch head left it, never this commit's own file, which nothing served`
+      : `at ${commit}`;
     const each = unrecorded
       .map(
         (l) =>
-          `${project.slug}/${l.contract} is recorded from ${l.path}, which this landing changes, and no version holds that file at ${commit}; record it: ${door(l.contract)} { artifact: <the file's text>, sourceRef: "${l.path}@${commit}" }`,
+          `${project.slug}/${l.contract} is recorded from ${l.path}, which this landing changes, and no version holds that file ${where}; record it: ${door(l.contract)} { artifact: <the file's text>, sourceRef: "${l.path}@${from}" }`,
       )
       .join('; ');
     return {
@@ -145,15 +159,32 @@ async function changedFiles(
   return 'changes' in own ? listed(own) : null;
 }
 
+/** The version holding `s` at `commit`, `unread` where the host holds no file there to compare. */
+async function heldAt(
+  host: Host,
+  versions: readonly Recorded[],
+  s: ContractSource,
+  commit: string,
+): Promise<Recorded | null | 'unread'> {
+  const byRef = versionHolding(versions, s, commit, null);
+  if (byRef) return byRef;
+  const text = await host.readFile(s.path, commit, MAX_ARTIFACT_BYTES);
+  return typeof text === 'string' ? versionHolding(versions, s, commit, sha256(text)) : 'unread';
+}
+
+const decided = (v: Recorded | null): v is Recorded => v !== null && v.approval !== 'proposed';
+
 /**
  * The mark's refusal where the landing at `commit` changed a published contract's source file and
- * no decided version holds that file as the commit left it, else null. `base` is the base of the
- * passing merge check covering the commit, so an issue's earlier commits count as its landing.
+ * no decided version holds that file as the commit left it, or as the head of the batch it landed
+ * in left it, else null. The landing is the issue's passing merge check covering the commit
+ * (`issues/merge-check.ts:checkedLandingOf`): its base, so an issue's earlier commits count as its
+ * landing, and its head, the batch's landed tip.
  */
 export async function landingLagRefusal(
   projectId: string,
   commit: string,
-  base: string | null,
+  issueId: string,
 ): Promise<RegistryLagRefusal | null> {
   const iface = await loadInterface(projectId);
   const uploaded = Object.entries(iface?.document.publishes ?? {})
@@ -171,17 +202,18 @@ export async function landingLagRefusal(
   }
   if (source.kind !== 'host') return null;
   const host = source.host;
+  const landing = await checkedLandingOf(issueId, commit);
+  const batchHead = landing && !sameCommit(landing.head, commit) ? landing.head : null;
   const landed: LandedSource[] = [];
   try {
-    const changed = await changedFiles(host, commit, base);
+    const changed = await changedFiles(host, commit, landing?.base ?? null);
     for (const s of sources) {
       if (!changed?.has(s.path)) continue;
-      let held = versionHolding(versions, s, commit, null);
-      if (!held) {
-        const text = await host.readFile(s.path, commit, MAX_ARTIFACT_BYTES);
-        if (typeof text !== 'string') continue;
-        held = versionHolding(versions, s, commit, sha256(text));
-      }
+      const own = await heldAt(host, versions, s, commit);
+      if (own === 'unread') continue;
+      const atHead = batchHead && !decided(own) ? await heldAt(host, versions, s, batchHead) : null;
+      const later = atHead === 'unread' ? null : atHead;
+      const held = decided(own) ? own : decided(later) ? later : (own ?? later);
       landed.push({ ...s, held: held ? { version: held.version, approval: held.approval } : null });
     }
   } catch {
@@ -189,5 +221,10 @@ export async function landingLagRefusal(
   }
   if (landed.length === 0) return null;
   const [project] = await projectsWhere(db, { ids: [projectId] });
-  return registryLagRefusal({ id: projectId, slug: project?.slug ?? projectId }, commit, landed);
+  return registryLagRefusal(
+    { id: projectId, slug: project?.slug ?? projectId },
+    commit,
+    landed,
+    batchHead,
+  );
 }

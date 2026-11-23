@@ -204,6 +204,7 @@ export {
   releasedIssueOf,
   statusChangesSince,
 } from './memory-reads.js';
+export { checkedLandingOf } from './merge-check.js';
 export { draftMergeHolds } from './merge-holds.js';
 export { mergeIdentityOf, recordRefusedStamp } from './merge-identity.js';
 export { mergeMarkKindOf } from './merge-mark-kind.js';

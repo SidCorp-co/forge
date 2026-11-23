@@ -194,11 +194,16 @@ export async function uncheckedMergeRefusal(args: {
 }
 
 /**
- * The base of the passing merge check whose range holds `commit`, or null where none does: what a
- * landing changed is read from there, so an issue's earlier commits in the batch count (ISS-1419).
+ * The passing merge check whose range holds `commit`, as its base and head, or null where none does:
+ * what a landing changed is read from the base, so an issue's earlier commits in the batch count
+ * (ISS-1419), and the head is the batch's landed tip, whose file a contract version holds for each
+ * commit the check covers (ISS-1437).
  */
-export async function checkedBaseOf(issueId: string, commit: string): Promise<string | null> {
+export async function checkedLandingOf(
+  issueId: string,
+  commit: string,
+): Promise<{ base: string | null; head: string } | null> {
   const records = await listRecordEvents(issueId, { kinds: ['verification'], kernelOnly: true });
   const range = passingRanges(records).find((r) => rangeCovers([r], commit));
-  return range?.base ? range.base : null;
+  return range ? { base: range.base || null, head: range.head } : null;
 }

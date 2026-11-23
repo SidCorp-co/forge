@@ -11,6 +11,12 @@
  * landing recorded a version. A merge mark at a commit whose change carries a contract's source file
  * is now refused by name until a decided version holds that file as the commit left it.
  *
+ * ISS-1437: ISS-1426's commit f1838fc8 changed forge-api.openapi.json, ISS-1431's later commit in the
+ * same batch changed it again, and forge-api 3.0.1 was recorded from the batch head dc2ebebb. The
+ * mark at f1838fc8 was refused, and the only answer was recording a file nothing served as the
+ * registry's latest. A decided version recorded from the head of the passing merge check covering
+ * the commit now holds it; with none, the refusal asks for the batch head's file.
+ *
  * @direct-test-of packages/core/src/ecosystem/contract/source-ref.ts
  * @direct-test-of packages/core/src/ecosystem/contract/publish.ts
  * @direct-test-of packages/core/src/ecosystem/contract/landing-lag.ts
@@ -18,6 +24,7 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { db } from '../../src/db/client.js';
 import type { SourceHost } from '../../src/integrations/source-host/index.js';
 import type { AncestrySource } from '../../src/release-batch/ancestry-source.js';
 import {
@@ -29,6 +36,7 @@ import {
   sender,
 } from '../helpers/ecosystem-world.js';
 import { createTestIssue } from '../helpers/factories.js';
+import { passingReport } from '../helpers/merge-check-report.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
 
 /** a2c403e4, where catalog-api's schema landed on main. */
@@ -278,5 +286,109 @@ describe('ISS-1419 a landing that changes a contract file leaves a decided versi
     host.files.set(`${PATH}@${again}`, V3);
     host.commits.set(again, [PATH]);
     ok(await mark(await issueAt(14193), again));
+  });
+});
+
+/** ISS-1426's own commit in the batch, changing the contract file. */
+const OWN = '1437aaaa'.repeat(5);
+/** The batch head: a later commit of the same landing changed the file again. */
+const BATCH_HEAD = '1437bbbb'.repeat(5);
+const V4 = schemaOf({ site: { type: 'string' }, own: { type: 'string' } });
+const V5 = schemaOf({
+  site: { type: 'string' },
+  own: { type: 'string' },
+  head: { type: 'string' },
+});
+
+describe('ISS-1437 a batch issue is marked on the version recorded from its batch head', () => {
+  const mark = (issueId: string, commit: string) =>
+    say('platform', 'POST', `/api/issues/${issueId}/merge`, { commit, target: 'main' });
+  const issueAt = async (seq: number) =>
+    (
+      await createTestIssue(w.project.internal, w.user.platform, seq, {
+        status: 'in_progress',
+        createdAt: new Date(),
+      })
+    ).id;
+  /** The batch's passing merge check, recorded on `issueId` over OWN..BATCH_HEAD. */
+  const batchChecked = async (issueId: string) => {
+    const { writeCoreRecord } = await import('../../src/issues/record-events/store.js');
+    const { recordFields } = await import('../../src/issues/merge-check-rules.js');
+    const report = {
+      ...passingReport({
+        base: { branch: 'main', sha: LANDED },
+        head: BATCH_HEAD,
+        touched: [{ path: PATH, change: 'changed' }],
+      }),
+      commits: [BATCH_HEAD, OWN],
+    };
+    await writeCoreRecord(db, {
+      issueId,
+      actor: { type: 'user', id: w.user.platform, agency: 'human' },
+      kind: 'verification',
+      fields: recordFields(report, [], { fastDelivery: false, debtIds: [] }),
+    });
+  };
+  const decide = (version: string) =>
+    say(
+      'platform',
+      'POST',
+      `/api/projects/${w.project.internal}/contracts/site-sync-events/versions/${version}/decision`,
+      { decision: 'approve' },
+    );
+
+  beforeEach(() => {
+    host.onMain = new Set([LANDED, OWN, BATCH_HEAD]);
+    host.files.set(`${PATH}@${OWN}`, V4);
+    host.files.set(`${PATH}@${BATCH_HEAD}`, V5);
+    host.commits = new Map([
+      [OWN, [PATH]],
+      [BATCH_HEAD, [PATH, 'src/routes.ts']],
+    ]);
+  });
+
+  it("refuses a batch issue while no version holds the file, asking for the batch head's file, not its own commit's", async () => {
+    const issue = await issueAt(14371);
+    await batchChecked(issue);
+
+    const unrecorded = await mark(issue, OWN);
+    expect(refusal(unrecorded)).toEqual(['CONTRACT_VERSION_UNRECORDED /commit']);
+    expect(detailOf(unrecorded)).toContain(`sourceRef: "${PATH}@${BATCH_HEAD}"`);
+    expect(detailOf(unrecorded)).not.toContain(`${PATH}@${OWN}`);
+    expect(detailOf(unrecorded)).toContain(`sits in a batch landed at ${BATCH_HEAD}`);
+  });
+
+  it("refuses while the batch head's version is proposed, then marks the issue at its own commit once it is decided", async () => {
+    const issue = await issueAt(14372);
+    await batchChecked(issue);
+    const recorded = ok(await upload(V5, `${PATH}@${BATCH_HEAD}`), 201);
+
+    const undecided = await mark(issue, OWN);
+    expect(refusal(undecided)).toEqual(['CONTRACT_VERSION_UNDECIDED /commit']);
+    expect(detailOf(undecided)).toContain(
+      `site-sync-events@${recorded.version.contractVersion} holds ${PATH}`,
+    );
+
+    ok(await decide(recorded.version.contractVersion));
+    ok(await mark(issue, OWN));
+
+    // nothing was recorded from OWN's file: the registry's latest is still the batch head's
+    const latest = ok(
+      await say(
+        'platform',
+        'GET',
+        `/api/projects/${w.project.internal}/contracts/site-sync-events/versions`,
+      ),
+    );
+    expect(JSON.stringify(latest)).not.toContain(`${PATH}@${OWN}`);
+  });
+
+  it('still refuses an issue no passing merge check places in that batch, naming its own commit', async () => {
+    // the batch head's version is decided above; this issue's commit is covered by no check
+    const issue = await issueAt(14373);
+
+    const unrecorded = await mark(issue, OWN);
+    expect(refusal(unrecorded)).toEqual(['CONTRACT_VERSION_UNRECORDED /commit']);
+    expect(detailOf(unrecorded)).toContain(`sourceRef: "${PATH}@${OWN}"`);
   });
 });
