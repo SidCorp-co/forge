@@ -336,6 +336,10 @@
           "why": "The feedback widget's own domain module: its public door, its visitor sessions and drafts. Every line is about the widget, and `widget` is also the conversation adapter its venues open on."
         },
         {
+          "glob": "packages/contracts/src/support-channel.ts",
+          "why": "`deciderSpeakerSchema.source` names the chat server whose account ids a delegated decider is declared by (REQ-90 BC-15), the vocabulary chat_temporary_accounts keys on; contracts cannot import core's provider list at runtime, so the one source a declaration may name is written here."
+        },
+        {
           "glob": "packages/contracts/src/widget.ts",
           "why": "The widget's own contract: `widget` names the channel an external reporter files through, the vocabulary the feedback_external_reporters CHECK is built from."
         },
