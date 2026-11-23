@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.806] - 2026-11-23
+
+Chat-identity deciders accept requirements in rooms; master posts name their thread
+
+### Added
+
+- **A declared speaker accepts a requirement revision in the room.** Where a project admin declared them by chat identity for accept, their acceptance counts as theirs with no Forge account, and moves to their user once they link one.
+
+### Changed
+
+- **A master learns where a post naming no thread lands.** The master-posts card and dispatch guide name each room's landing, never its top level, the report thread for whole-room matters and the delete for misplaced posts; answers name `landedIn`.
+
 ## [0.4.0-dev.805] - 2026-11-23
 
 Read-only owed-line door for judges; owners confirm production deploys from chat
