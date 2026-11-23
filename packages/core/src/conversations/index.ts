@@ -135,6 +135,7 @@ export {
   askerLanguageOf,
   confidentLanguageOf,
   hasVietnameseOnlyLetter,
+  hasVietnameseOnlyWord,
   type ReplyLanguage,
   replyLanguageOf,
   roomTextsLanguageOf,

@@ -285,6 +285,40 @@ describe('support.audit keeps the verdict on a reply the agent posted (ISS-1250)
   });
 });
 
+describe('the language of an asker too short to tell (ISS-1442)', () => {
+  // ISS-1442 r2 c2: an asker whose language cannot be told is no ground to fail the reply matching the message
+  it('passes an English reply to an English message too short to tell in a room whose texts read Vietnamese, and a Vietnamese reply to an unmarked Vietnamese word', () => {
+    const viRoom = ['Đơn hàng của em đã giao chưa ạ, anh kiểm tra giúp em nhé?']; // i18n-allow: the room's people write Vietnamese
+    const en = 'No update yet, the import is still running and I will tell you when it is done.';
+    const vi = 'Dạ chưa có cập nhật ạ, em sẽ báo anh ngay khi xong.'; // i18n-allow: a Vietnamese reply
+    const asked = answeringLanguageOf({ asked: 'Any update?', persona: null, texts: viRoom });
+    expect(asked).toEqual({ language: 'vi', from: 'room', askedAs: 'en' });
+    expect(
+      judgeReply({ ...reply(en, asked.language, asked.from), language: asked }, []).verdict,
+    ).toBe('pass');
+    const unmarked = answeringLanguageOf({
+      asked: 'ok nhe',
+      persona: null,
+      texts: ['Please check'],
+    });
+    expect(unmarked).toEqual({ language: 'vi', from: 'asker' });
+    expect(
+      judgeReply({ ...reply(vi, unmarked.language, unmarked.from), language: unmarked }, [])
+        .verdict,
+    ).toBe('pass');
+    // a clearly told message still holds the reply, naming the message
+    const told = answeringLanguageOf({
+      asked: 'Has my order been delivered yet?',
+      persona: null,
+      texts: viRoom,
+    });
+    const wrong = judgeReply({ ...reply(vi, told.language, told.from), language: told }, []);
+    expect(wrong.findings[0]?.why).toBe(
+      'it is in Vietnamese, and the person it answers wrote in English',
+    );
+  });
+});
+
 // ISS-1416 (FB-824, forge L-168): two replies stated a setting off from a read a turn old, and one
 // told a raise landed in AdminHub API's technical thread when that raise had been refused there
 describe('an on/off state and an act taken are held to their own turn (ISS-1416)', () => {

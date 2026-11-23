@@ -19,6 +19,11 @@ describe('the language a message is written in', () => {
     expect(askerLanguageOf('Alo sao thế')).toBe('vi'); // i18n-allow: a short Vietnamese message the detector is tested on
     expect(askerLanguageOf('thế')).toBe('vi'); // i18n-allow: a one-word Vietnamese message
     expect(askerLanguageOf('ok')).toBeNull();
+    // r2: a Vietnamese-only word typed without marks decides a short message as a letter does
+    for (const bare of ['ok nhe', 'cam on nhe', 'nhe']) {
+      expect(askerLanguageOf(bare), bare).toBe('vi'); // i18n-allow: short unmarked Vietnamese messages
+    }
+    expect(askerLanguageOf('ok thanks')).toBeNull();
     for (const loan of ['café', 'naïve', 'résumé', 'send me the résumé']) {
       expect(askerLanguageOf(loan)).not.toBe('vi');
     }

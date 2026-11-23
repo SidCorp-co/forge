@@ -5,8 +5,9 @@
 
 import {
   askerLanguageOf,
-  hasVietnameseOnlyLetter,
+  hasVietnameseOnlyWord,
   type ReplyLanguage,
+  replyLanguageOf,
   roomTextsLanguageOf,
 } from '../../conversations/index.js';
 
@@ -16,7 +17,11 @@ export type AnsweringFrom = 'asker' | 'persona' | 'room';
 export interface AnsweringLanguage {
   language: ReplyLanguage;
   from: AnsweringFrom;
-  /** Where the asker could not be told: Vietnamese where the asked message spells a Vietnamese-only letter, which a reply is not failed for matching. */
+  /**
+   * Where the asker could not be told, the language the asked message itself reads in: Vietnamese
+   * where it spells a Vietnamese-only letter or word, else English where it carries no Vietnamese
+   * mark. A reply matching it is not failed for differing from the room's (ISS-1442).
+   */
   askedAs?: ReplyLanguage;
 }
 
@@ -33,6 +38,12 @@ export function personaLanguageOf(persona: string | null | undefined): ReplyLang
   return named.length === 1 ? (named[0] ?? null) : null;
 }
 
+/** English where the message has two words or more and none carries a Vietnamese mark; "ok" alone reads as either. */
+function englishAsked(asked: string | null): ReplyLanguage | undefined {
+  const words = (asked ?? '').match(/\p{L}+/gu) ?? [];
+  return words.length >= 2 && replyLanguageOf(asked) === 'en' ? 'en' : undefined;
+}
+
 /**
  * The language the room answers in: the one `asked` (the message the reply answers) was written in,
  * else the one the persona names, else Vietnamese where a text the room's people wrote reads
@@ -45,9 +56,9 @@ export function answeringLanguageOf(input: {
 }): AnsweringLanguage {
   const asker = askerLanguageOf(input.asked);
   if (asker) return { language: asker, from: 'asker' };
-  const askedAs: ReplyLanguage | undefined = hasVietnameseOnlyLetter(input.asked)
+  const askedAs: ReplyLanguage | undefined = hasVietnameseOnlyWord(input.asked)
     ? 'vi'
-    : undefined;
+    : englishAsked(input.asked);
   const persona = personaLanguageOf(input.persona);
   if (persona) return { language: persona, from: 'persona', ...(askedAs && { askedAs }) };
   return { language: roomTextsLanguageOf(input.texts), from: 'room', ...(askedAs && { askedAs }) };

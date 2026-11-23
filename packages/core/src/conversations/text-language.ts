@@ -109,20 +109,29 @@ export function hasVietnameseOnlyLetter(text: string | null | undefined): boolea
   return (text ?? '').match(WORD)?.some((w) => VIETNAMESE_ONLY_LETTER.test(w)) ?? false;
 }
 
-/** A message up to this many words is short enough for one Vietnamese-only letter to decide it. */
+/** Whether a text spells any word with a letter only Vietnamese uses, or is one of its unmarked function words. */
+export function hasVietnameseOnlyWord(text: string | null | undefined): boolean {
+  return (
+    (text ?? '')
+      .match(WORD)
+      ?.some((w) => VIETNAMESE_ONLY_LETTER.test(w) || VIETNAMESE_BARE.has(w.toLowerCase())) ?? false
+  );
+}
+
+/** A message up to this many words is short enough for one Vietnamese-only letter or word to decide it. */
 const SHORT_MESSAGE_WORDS = 5;
 
 /**
  * The language the person asked in, where it can be told: a confident reading, or a short message
- * that spells a word only Vietnamese spells (a three-word greeting). A short message without one is not
- * told, because "ok" and "cho ISS-5" read the same in either language, and an English one with a
- * stray accented loanword ("café") stays English.
+ * that spells a word only Vietnamese spells, by a marked letter or by an unmarked function word
+ * ("ok nhe"). A short message without one is not told, because "ok" reads the same in either language,
+ * and an English one with a stray accented loanword ("café") stays English.
  */
 export function askerLanguageOf(text: string | null | undefined): ReplyLanguage | null {
   const confident = confidentLanguageOf(text);
   if (confident) return confident;
   const words = (text ?? '').match(WORD) ?? [];
-  return words.length > 0 && words.length <= SHORT_MESSAGE_WORDS && hasVietnameseOnlyLetter(text)
+  return words.length > 0 && words.length <= SHORT_MESSAGE_WORDS && hasVietnameseOnlyWord(text)
     ? 'vi'
     : null;
 }
