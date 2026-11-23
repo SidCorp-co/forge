@@ -99,7 +99,10 @@ export const DELIVERY_SCENARIOS: readonly CardScenario[] = [
     situation: 'A run’s read of a production key comes back withheld: it is protected',
     bad: 'it proposed a set of that key, which on approval turned its protection off',
     good: 'park the issue asking the project admin withheldWhy names for a ruling on the act, naming the act and the environment',
-    teaches: [/ruling on the act, naming the act and the environment/i, /no proposal turns protection off/i],
+    teaches: [
+      /ruling on the act, naming the act and the environment/i,
+      /no proposal turns protection off/i,
+    ],
   },
   {
     name: 'a builder run step marked succeeded that did not run',
