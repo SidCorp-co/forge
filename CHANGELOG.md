@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.811] - 2026-11-23
+
+Steward triage recalls memory; names no longer misread as Vietnamese
+
+### Fixed
+
+- **An English message with a name in it is no longer read as Vietnamese.** One unmarked word decides a short message only where no name or English word spells it ("nhe", "khong", "duoc"); "Minh", "toi", "cho" no longer do.
+- **A steward can recall memory.** Its token now holds `knowledge:read`, so the recall its triage is told to make first is answered; it still holds no knowledge write.
+
 ## [0.4.0-dev.810] - 2026-11-23
 
 Records the reply-audit fixes dev.809 served after its run ended without an outcome
