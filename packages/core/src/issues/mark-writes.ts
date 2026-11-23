@@ -1,19 +1,67 @@
 /**
- * The two writes a merge mark makes beside its stamp (`merge-marker.ts:applyMergeMarker`): the box's
- * reading of the landing commit's paths, and an unmark's clear of the row.
+ * The writes a merge mark makes beside its stamp (`merge-marker.ts:applyMergeMarker`): the stamp of a
+ * commit the repository holds as the issue's, the box's reading of the landing commit's paths, and an
+ * unmark's clear of the row.
  */
 
 import type { MergeRefusalCode } from '@forge/contracts/issues';
+import type { LandingArtifact } from '@forge/contracts/landing-artifacts';
 import type { Tx } from '../db/client.js';
 import { refuser } from '../lib/refusal.js';
 import { notFound } from '../middleware/route-errors.js';
 import type { Actor } from './activity.js';
-import { CLEAR_THE_MARK, type markReadPaths } from './landing-evidence.js';
-import { clearIssueMerge, recordReadPaths } from './merge-record.js';
+import type { CommitLanding } from './commit-landing.js';
+import { CLEAR_THE_MARK, type markReadPaths, standingObservedRefusal } from './landing-evidence.js';
+import type { AmendedAsserted } from './mark-detail.js';
+import { currentMarkClaims } from './mark-trail.js';
+import {
+  clearIssueMerge,
+  type MergeRecord,
+  recordIssueMerge,
+  recordReadPaths,
+} from './merge-record.js';
 import { refuseUnmarkOnClosed } from './merged-at.js';
 import { findIssueById } from './read-service.js';
 
 const refuse = refuser<MergeRefusalCode>('MERGE_MARK_REFUSED');
+
+/**
+ * A commit the repository holds as this issue's, stamped as observed: it amends a standing asserted
+ * mark in place and says what it wrote over (ISS-1445), and is refused by name over a merge observed
+ * at another commit, which is never written over.
+ */
+export async function stampRepositoryCommit(
+  tx: Tx,
+  args: {
+    issueId: string;
+    actor: Actor;
+    commit: Extract<CommitLanding, { ok: true }>;
+    landing: string | null;
+    artifacts: LandingArtifact[] | null;
+  },
+): Promise<{ result: MergeRecord; amendedAsserted: AmendedAsserted | null }> {
+  const { issueId, commit } = args;
+  const result = await recordIssueMerge(tx, {
+    issueId,
+    via: 'repository',
+    actor: args.actor,
+    evidence: {
+      kind: 'observed',
+      commitSha: commit.sha,
+      mergedAt: commit.committedAt,
+      target: commit.branch,
+      landing: args.landing,
+      artifacts: args.artifacts,
+    },
+    amendsAsserted: true,
+  });
+  const overObserved = standingObservedRefusal({ named: commit, result });
+  if (overObserved) throw refuse(overObserved.code, overObserved.detail, '/commit');
+  if (!result.amended) return { result, amendedAsserted: null };
+  // the claim the amended mark made: its trail record, the newest until this mark writes its own
+  const claimed = (await currentMarkClaims([issueId], tx)).get(issueId) ?? null;
+  return { result, amendedAsserted: { ...result.amended, claimed } };
+}
 
 /** The box's reading of the landing commit, or the refusal where the row already holds another's. */
 export async function recordStampPaths(

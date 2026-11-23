@@ -28,11 +28,11 @@ import {
   standingMarkRefusal,
   wholeCommitRefusal,
 } from './landing-evidence.js';
-import { markDetailOf } from './mark-detail.js';
+import { type AmendedAsserted, markDetailOf } from './mark-detail.js';
 import { refuseUncheckedMerge, resolveRecordedCommit, withCarriers } from './mark-preconditions.js';
 import { callerRunOf, type MarkSaid, type MarkSaidBy, saidOf } from './mark-said.js';
 import { markTrailLabel, NOT_STAMPED, recordMarkTrail } from './mark-trail.js';
-import { clearMark, recordStampPaths } from './mark-writes.js';
+import { clearMark, recordStampPaths, stampRepositoryCommit } from './mark-writes.js';
 import { identifiedMergeForIssue } from './merge-identity.js';
 import { designOnlyStamp, type MergeMarkKind, mergeMarkKindOf } from './merge-mark-kind.js';
 import { type MergeRecord, recordIssueMerge, recordMergeTarget } from './merge-record.js';
@@ -126,6 +126,8 @@ type Stamp = {
   /** What the repository said of the commit the mark names, where it was asked. */
   reading?: CommitReading | null;
   amended?: Date | null;
+  /** The asserted mark an observed commit amended in place, and the commit it claimed (ISS-1445). */
+  amendedAsserted?: AmendedAsserted | null;
   shape?: LandingShape;
 };
 
@@ -256,19 +258,13 @@ async function stampMark(
     };
   } else if (fromRepository) {
     stamp = {
-      result: await recordIssueMerge(tx, {
+      ...(await stampRepositoryCommit(tx, {
         issueId,
-        via: 'repository',
         actor: args.actor.hookActor,
-        evidence: {
-          kind: 'observed',
-          commitSha: fromRepository.sha,
-          mergedAt: fromRepository.committedAt,
-          target: fromRepository.branch,
-          landing,
-          artifacts,
-        },
-      }),
+        commit: fromRepository,
+        landing,
+        artifacts,
+      })),
       claimedCommit: null,
       readFrom: fromRepository,
     };

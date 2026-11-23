@@ -45,8 +45,30 @@ function mergesBase(subject: string, base: string): boolean {
   return bare === base || bare === `origin/${base}`;
 }
 
+/** The bare numbers a key carries after it, each behind a `/`: `ISS-46/47/48` is three issues under one
+ *  prefix (sidpeak e45996c9, ISS-1445). A number after any other separator is not a key. */
+const SIBLINGS = '((?:/\\d{1,10}(?![A-Za-z0-9]))*)';
+
+const keyedRefs = new Map<string, RegExp>();
+
+/** `pattern` with the sibling numbers each key carries, as the second group. */
+function keyedRef(pattern: RegExp): RegExp {
+  let keyed = keyedRefs.get(pattern.source);
+  if (!keyed) {
+    keyed = new RegExp(`(?:${pattern.source})${SIBLINGS}`, 'gi');
+    keyedRefs.set(pattern.source, keyed);
+  }
+  return keyed;
+}
+
 function seqsIn(text: string, pattern: RegExp): number[] {
-  return [...text.matchAll(pattern)].map((m) => Number(m[1]));
+  return [...text.matchAll(keyedRef(pattern))].flatMap((m) => [
+    Number(m[1]),
+    ...(m[2] ?? '')
+      .split('/')
+      .filter((n) => n !== '')
+      .map(Number),
+  ]);
 }
 
 const leadingLists = new Map<string, RegExp>();
@@ -55,7 +77,7 @@ const leadingLists = new Map<string, RegExp>();
 function leadingSeqs(text: string, pattern: RegExp): number[] {
   let list = leadingLists.get(pattern.source);
   if (!list) {
-    const ref = pattern.source;
+    const ref = keyedRef(pattern).source;
     list = new RegExp(`^(?:${ref})(?:(?:\\s*[,+&/]\\s*|\\s+and\\s+)(?:${ref}))*`, 'i');
     leadingLists.set(pattern.source, list);
   }

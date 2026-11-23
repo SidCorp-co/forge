@@ -5,6 +5,7 @@ import type { Db, Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
 import { emitEvent } from '../outbox/index.js';
+import { assertedMarkOf, droppedPathsOf, pathsKeptAt, withoutPaths } from './asserted-amend.js';
 import { stampGate } from './merge-gate.js';
 import {
   designOnlyStamp,
@@ -58,6 +59,9 @@ export interface MergeRecord {
   artifacts: LandingArtifact[] | null;
   /** The branch the row says the work landed on. */
   target: string | null;
+  /** The asserted mark this stamp amended in place (ISS-1445): its time, kept, and the commit of
+   *  the paths a box read for it, dropped because they were read at another commit. */
+  amended?: { at: Date; pathsAt: string | null } | null;
 }
 
 async function readBack(
@@ -175,6 +179,8 @@ export async function recordIssueMerge(
     via: MergeStampVia;
     /** Also writes over a standing mark naming no evidence (ISS-1345, `mark-trail.ts:evidenceFreeMarkSql`). */
     amendsEvidenceFree?: boolean;
+    /** An observed commit a mark named amends a standing asserted mark in place (ISS-1445). */
+    amendsAsserted?: boolean;
   },
 ): Promise<MergeRecord> {
   const { issueId, evidence } = args;
@@ -182,11 +188,15 @@ export async function recordIssueMerge(
   const target = observed ? observedTarget(issueId, evidence) : null;
   const hostMerge = observed ? (evidence.hostMerge ?? null) : null;
   const [prior] = await executor
-    .select({ projectId: issues.projectId, ...observedColumns })
+    .select({ projectId: issues.projectId, mergedPaths: issues.mergedPaths, ...observedColumns })
     .from(issues)
     .where(eq(issues.id, issueId))
     .limit(1);
   const amends = args.amendsEvidenceFree === true && evidence.kind !== 'observed';
+  const amendsAsserted =
+    args.amendsAsserted === true && observed && !hostMerge && prior !== undefined
+      ? assertedMarkOf(prior)
+      : null;
   const stampExpr =
     evidence.kind === 'observed'
       ? sqlTimestamp(evidence.mergedAt)
@@ -207,10 +217,11 @@ export async function recordIssueMerge(
   const landing = evidence.kind === 'asserted' ? null : (evidence.landing ?? null);
   const artifacts = evidence.artifacts ?? null;
 
-  const [wrote] = await executor
+  const [stamped] = await executor
     .update(issues)
     .set({
-      mergedAt: stampExpr,
+      // an amended asserted mark keeps its time, so its order against a release never moves
+      mergedAt: amendsAsserted ? sql`coalesce(${issues.mergedAt}, ${stampExpr})` : stampExpr,
       ...(evidence.kind === 'observed'
         ? {
             mergedCommitSha: evidence.commitSha,
@@ -218,26 +229,40 @@ export async function recordIssueMerge(
             mergedHead: head ?? null,
           }
         : {}),
+      ...(amendsAsserted && evidence.kind === 'observed'
+        ? { mergedPaths: pathsKeptAt(evidence.commitSha) }
+        : {}),
       ...(landing ? { mergedLanding: landing } : {}),
       ...(artifacts ? { mergedArtifacts: artifacts } : {}),
       updatedAt: sql`now()`,
     })
     .where(and(eq(issues.id, issueId), gate))
-    .returning(observedColumns);
+    .returning({ ...observedColumns, mergedPaths: issues.mergedPaths });
+  const wrote = stamped ? withoutPaths(stamped) : undefined;
+  const amended =
+    stamped && amendsAsserted
+      ? {
+          at: amendsAsserted.at,
+          pathsAt: stamped.mergedPaths === null ? amendsAsserted.pathsAt : null,
+        }
+      : null;
 
   const stepMoved = wrote && (await advanceStepOnStamp(executor, issueId, Boolean(args.actor)));
   if (wrote && prior && args.actor) {
     // every writer of the stamp tells its readers in the stamp's own transaction
-    const { projectId, mergedTarget, mergedHead, ...before } = prior;
+    const { projectId, mergedTarget, mergedHead, mergedPaths, ...before } = prior;
     const { mergedTarget: afterTarget, mergedHead: afterHead, ...after } = wrote;
+    const paths = droppedPathsOf(amended ?? null, mergedPaths);
     await emitEvent(executor, 'issue.updated', {
       issueId,
       projectId,
       actor: args.actor,
-      fields: observed ? OBSERVED_FIELDS : STAMP_FIELDS,
+      fields: [...(observed ? OBSERVED_FIELDS : STAMP_FIELDS), ...paths.fields],
       via: args.via,
-      before: observed ? { ...before, mergedTarget, mergedHead } : before,
-      after: observed ? { ...after, mergedTarget: afterTarget, mergedHead: afterHead } : after,
+      before: observed ? { ...before, mergedTarget, mergedHead, ...paths.before } : before,
+      after: observed
+        ? { ...after, mergedTarget: afterTarget, mergedHead: afterHead, ...paths.after }
+        : after,
       ...(stepMoved ? { stepMoved: true as const } : {}),
     });
   }
@@ -273,6 +298,7 @@ export async function recordIssueMerge(
       landing: wrote.mergedLanding,
       artifacts: wrote.mergedArtifacts,
       target: wrote.mergedTarget,
+      amended,
     };
   }
   const held = await readBack(executor, issueId);
@@ -446,30 +472,6 @@ export async function clearIssueMerge(
     .where(and(eq(issues.id, issueId), ne(issues.status, 'closed')))
     .returning({ id: issues.id });
   return rows.length > 0;
-}
-
-/**
- * A closed issue's landing commit replaced by its real one (ISS-1027, gated and recorded by
- * `merge-correction.ts:correctClosedMerge`): the misread head cleared, the status never touched.
- */
-export async function replaceClosedLanding(
-  executor: Tx,
-  args: { issueId: string; projectId: string; actor: OutboxActor; before: Record<string, unknown> },
-  to: { commitSha: string; mergedAt: Date | null },
-): Promise<Date> {
-  const time = to.mergedAt ? { mergedAt: sqlTimestamp(to.mergedAt) } : {};
-  const [wrote] = await executor
-    .update(issues)
-    .set({ mergedCommitSha: to.commitSha, mergedHead: null, ...time, updatedAt: sql`now()` })
-    .where(
-      and(eq(issues.id, args.issueId), eq(issues.status, 'closed'), isNotNull(issues.mergedAt)),
-    )
-    .returning({ mergedAt: issues.mergedAt });
-  if (!wrote?.mergedAt) throw new Error(`replaceClosedLanding: ${args.issueId} is no closed mark`);
-  const after = { mergedCommitSha: to.commitSha, mergedAt: wrote.mergedAt, mergedHead: null };
-  const fields = Object.keys(after);
-  await emitEvent(executor, 'issue.updated', { ...args, fields, via: 'correction', after });
-  return wrote.mergedAt;
 }
 
 /**

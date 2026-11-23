@@ -203,6 +203,49 @@ export function amendedSentence(at: Date): string {
   );
 }
 
+/**
+ * The sentence a mark carries where the commit it named, which the repository holds as this issue's,
+ * amended an asserted mark in place (ISS-1445): what it wrote over, at any status, closed included.
+ */
+export function amendedAssertedSentence(amended: {
+  at: Date;
+  claimed: string | null;
+  pathsAt: string | null;
+}): string {
+  const claim = amended.claimed
+    ? `which claimed commit ${amended.claimed}`
+    : 'which claimed no commit';
+  const paths = amended.pathsAt
+    ? `; the paths a box read at ${amended.pathsAt} were dropped with it, being another commit's`
+    : '';
+  return (
+    `It amends in place the asserted mark standing since ${amended.at.toISOString()}, ${claim} Forge did ` +
+    `not observe, and keeps that mark's time, so the issue's status and its order against a release do ` +
+    `not move${paths}. That mark's record still says who made it and what it named.`
+  );
+}
+
+/**
+ * A commit the repository holds as this issue's, named over a merge Forge already observed at another
+ * commit (ISS-1445): an observed mark is never written over, so it is refused by name, or `null`.
+ */
+export function standingObservedRefusal(args: {
+  named: { sha: string; repository: string; branch: string };
+  result: { wrote: boolean; commitSha: string | null };
+}): { code: 'MARK_ALREADY_STANDS'; detail: string } | null {
+  const held = (args.result.commitSha ?? '').trim().toLowerCase();
+  if (args.result.wrote || held === '' || held === args.named.sha.toLowerCase()) return null;
+  return {
+    code: 'MARK_ALREADY_STANDS',
+    detail:
+      `this issue's mark is a merge Forge observed at ${held}, and an observed mark is never written ` +
+      `over, so commit ${args.named.sha}, which ${args.named.repository} holds on ${args.named.branch} ` +
+      `as this issue's, was not recorded and nothing changed. To change it, ${CLEAR_THE_MARK}, then mark ` +
+      'again; on a closed issue, `POST /api/issues/:id/merge/correction` with the `commit` and a ' +
+      '`reason` replaces it in place.',
+  };
+}
+
 /** Artifacts the stamp did not record because a mark already stands, or `null` where it did. */
 export function standingArtifactsRefusal(args: {
   sent: readonly LandingArtifact[] | null;

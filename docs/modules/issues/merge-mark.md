@@ -55,7 +55,23 @@ repository resolves it, it is this issue's by the rule every merge stamp is judg
 links, so a mark made before the host's report of the merge arrives still counts — or it is the
 merge of an owed filing the issue answers), and the base branch or the release chain's live branch
 contains it. Then `merged_at` and `merged_commit_sha` are stamped with the full sha the repository
-resolved and its committer date, and the mark reads `observed`.
+resolved and its committer date, and the mark reads `observed`. A subject declares each key it
+names, and a key carries the bare numbers `/` joins to it: `merge: ISS-46/47/48 — …` is the landing
+of all three (`packages/core/src/projects/commit-owners.ts:declaredIssueSeqs`; ISS-1445, where it
+was read as ISS-46's alone).
+
+Such a commit amends in place a mark that stands asserted, at any status, closed included, with no
+reopen (`packages/core/src/issues/merge-record.ts:recordIssueMerge`, `amendsAsserted`; ISS-1445,
+sidpeak 0.32.0: its release run marked each issue at the run's shared commit, and the beta mirror
+refused the rows for an empty `merged_commit_sha`). It fills `merged_commit_sha` and `merged_target`,
+keeps the asserted mark's `merged_at`, so neither the status nor the order against a release moves,
+and drops the paths a box read at another commit, which the paths it names replace. Both trail records
+stand, and the answer and the mark's comment say what it wrote over
+(`packages/core/src/issues/landing-evidence.ts:amendedAssertedSentence`). A design approval's stamp is
+not such a mark: code marked over it is read as above and takes its own time. An observed mark is never
+written over: a commit the repository vouches for, named over a merge observed at another commit, is
+refused `MARK_ALREADY_STANDS` (`standingObservedRefusal`), naming the clear and, on a closed issue, the
+correction door below; a later mark the repository does not vouch for changes nothing either way.
 
 Where the repository does not vouch for it, the mark is recorded all the same, whoever marks: the
 commit is the caller's claim (`packages/core/src/issues/mark-trail.ts:currentMarkClaims`), which a

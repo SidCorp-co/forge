@@ -16,7 +16,8 @@
  *
  * ISS-1345 (FB-755): an evidence-free mark (`{}`) kept every later mark carrying the evidence out
  * with MARK_ALREADY_STANDS. The next mark naming a commit, landing or artifacts amends it in place,
- * keeping both records of who said what; a mark whose commit claim stands is never written over.
+ * keeping both records of who said what; a mark whose commit claim stands is written over only by
+ * a commit the repository holds as this issue's (ISS-1445).
  *
  * ISS-1340 (FB-750): the guide teaches the route for code that lands in another project.
  *

@@ -1,13 +1,18 @@
 /**
  * The words a mark's answer carries about what it did (`merge-marker.ts:writeMarkTrail`): its kind's
  * description, what the marker said and the repository read, and, where they apply, that it amended
- * an evidence-free mark in place (ISS-1345) or names no evidence at all.
+ * an evidence-free mark (ISS-1345) or an asserted one (ISS-1445) in place, or names no evidence at all.
  */
 
 import type { AdoptionHeld } from '@forge/contracts/ecosystem';
 import type { CommitLanding, CommitReading } from './commit-landing.js';
 import * as designMark from './design-mark.js';
-import { amendedSentence, evidenceFreeSentence, type LandingShape } from './landing-evidence.js';
+import {
+  amendedAssertedSentence,
+  amendedSentence,
+  evidenceFreeSentence,
+  type LandingShape,
+} from './landing-evidence.js';
 import { type MarkSaid, saidSentence } from './mark-said.js';
 import { describeAdoptionMark, describeMergeMark, type MergeMarkKind } from './merge-mark-kind.js';
 import type { MergeRecord } from './merge-record.js';
@@ -19,7 +24,16 @@ export interface MarkStampWords {
   readFrom: Extract<CommitLanding, { ok: true }> | null;
   adopted?: AdoptionHeld[] | null;
   amended?: Date | null;
+  amendedAsserted?: AmendedAsserted | null;
   shape?: LandingShape;
+}
+
+/** The asserted mark an observed commit amended in place (ISS-1445): its time, the commit it claimed,
+ *  and the commit of the paths a box read for it, which the amend dropped. */
+export interface AmendedAsserted {
+  at: Date;
+  claimed: string | null;
+  pathsAt: string | null;
 }
 
 export function markDetailOf(args: {
@@ -52,6 +66,7 @@ export function markDetailOf(args: {
     `${kindDetail}.`,
     saidSentence(said, reading),
     ...(stamp.amended ? [amendedSentence(stamp.amended)] : []),
+    ...(stamp.amendedAsserted ? [amendedAssertedSentence(stamp.amendedAsserted)] : []),
     ...(evidenceFree ? [evidenceFreeSentence(evidenceFree)] : []),
   ].join(' ');
 }
