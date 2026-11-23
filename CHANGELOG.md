@@ -9,6 +9,20 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.802] - 2026-11-23
+
+Admins give production rulings from rooms or issues; chat deciders decide without accounts
+
+### Added
+
+- **A project admin gives a production ruling where they already are.** On the issue page (Production ruling), or in a Forge room, whose agent records it as theirs; a run working that open issue then reads the protected key.
+- **A decider declared by chat identity decides without a Forge account.** A project admin names the speaker and the acts; their go or hold on a release, or a reopen they ask for in the project's room, counts as theirs.
+
+### Fixed
+
+- **A triage that files an issue can file its criteria too.** `createIssue.criteria` writes them on the draft in the same act; a draft filed without any is answered with a warning naming the door that adds them.
+- **A variable proposal no longer turns protection off.** A proposal leaving out `protected` keeps a protected variable protected, one asking it off is refused, and a withheld key now sends the run to ask for a ruling.
+
 ## [0.4.0-dev.801] - 2026-11-23
 
 Room replies and their check agree on stating a live status

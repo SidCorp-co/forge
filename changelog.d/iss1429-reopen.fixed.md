@@ -1,1 +1,0 @@
-**A variable proposal no longer turns protection off.** A proposal leaving out `protected` keeps a protected variable protected, one asking it off is refused, and a withheld key now sends the run to ask for a ruling.
