@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.799] - 2026-11-23
+
+Operations rooms record a routing decision on every turn
+
+### Fixed
+
+- **An operations room now records which project each message concerns and what it does with it.** Its brief names support.decide among its acts, so its turns are counted by decision like every other room’s.
+
 ## [0.4.0-dev.798] - 2026-11-22
 
 Room threads answered by one rule, lent runs say why, truthful earlier raises pass review
