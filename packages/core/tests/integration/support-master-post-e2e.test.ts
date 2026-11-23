@@ -165,7 +165,8 @@ describe("the master's post naming no thread goes in the room's report thread (I
     ]);
     expect(topOf(chat.rid).map((l) => l.text)).toEqual([ANCHOR]);
     const anchor = String(topOf(chat.rid)[0]?.id);
-    expect(first.body).toMatchObject({ rid: chat.rid, thread: anchor });
+    // the answer names the thread it landed in, and that it is the room's report thread (ISS-1433)
+    expect(first.body).toMatchObject({ rid: chat.rid, thread: anchor, landedIn: 'report-thread' });
     expect(second.body).toMatchObject({ rid: chat.rid, thread: anchor });
     expect(
       w

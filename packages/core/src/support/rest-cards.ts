@@ -18,6 +18,12 @@ export const SUPPORT_REST_CARDS = {
         watch: 'a users’ room takes it only in a thread, never at its top level',
       },
       {
+        when: 'you name no thread',
+        do: 'it lands in your project’s own thread of an operations room, or the report thread of any other room the team reads; a users’ room refuses it. The answer’s `thread` and `landedIn` say where it went',
+        watch:
+          'no master post goes at a room’s top level, where reports bury the room’s own talk (ISS-1224)',
+      },
+      {
         when: 'a release you watched go live is to be told in the project’s thread',
         do: 'post its page’s `card`: your own words in the owner’s language, `attachments: card.attachments`, `report: "release <version>"`',
         watch: 'the cover and shots are the judges’ marks; pick no file of your own',
@@ -31,10 +37,14 @@ export const SUPPORT_REST_CARDS = {
         when: 'that thread was already told the item’s result',
         do: 'post only what it did not say, as a follow-up naming the message (`followsUp`)',
       },
+      {
+        when: 'your post landed in the wrong thread',
+        do: '`DELETE /api/projects/:id/support/master-posts/:messageId` by the messageId it answered, within its edit window, then post it where it belongs',
+      },
     ],
     practice: [
       'Read the thread first (`GET …/master-posts/threads/:thread`): post only on its own matter, and nothing the room agent or another master already said.',
-      'A matter for the whole room goes in the room’s report thread, never in an asker’s thread.',
+      'A matter for the whole room goes in its report thread: name the room’s `reportThread` from the rooms read as `thread`, never an asker’s thread.',
       'Attach the file to the issue first, then name its id in `attachments`.',
     ],
     example: {
@@ -42,13 +52,18 @@ export const SUPPORT_REST_CARDS = {
       rid: 'GENERAL',
       thread: 'q7XkP2mN9aB4cD8e',
     },
+    // FB-832 (adminhub-api's master, 2026-11-23): a post naming no thread landed beside an ask, the
+    // card saying neither where it would go nor how to take it back (ISS-1433)
     // forge, 2026-10-17..11-16: 13 of 29 posts refused, among them top-level posts in a users' room
     // (SUPPORT_POST_NEEDS_THREAD) and a second telling of one result (SUPPORT_MASTER_POST_ALREADY_TOLD)
     redFlag:
       'Posting at a users’ room’s top level, or telling a thread a result it was already told.',
     family: 'rooms',
     audience: ['master'],
-    scenarios: ['the ePOD release posts told in the asker’s thread once checked live'],
+    scenarios: [
+      'the ePOD release posts told in the asker’s thread once checked live',
+      'a post naming no thread landed in the project’s thread beside a room agent’s ask (FB-832)',
+    ],
   },
   'POST /api/projects/:id/support/technical-needs': {
     purpose:

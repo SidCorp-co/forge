@@ -121,7 +121,8 @@ describe("a master's post in the shared operations room (ISS-934)", () => {
     expect(put.status, JSON.stringify(put.body)).toBe(200);
     const res = await post({ text: REVIEW, rid: chat.rid });
     expect(res.status, JSON.stringify(res.body)).toBe(201);
-    expect(res.body).toMatchObject({ rid: chat.rid, thread: THREAD });
+    // the answer names the thread it landed in, and that it is the project's own (ISS-1433)
+    expect(res.body).toMatchObject({ rid: chat.rid, thread: THREAD, landedIn: 'project-thread' });
     const lines = chat.linesIn(chat.rid);
     expect(lines.map((l) => [l.tmid, l.text])).toEqual([[THREAD, REVIEW]]);
     const [act] = await rows<{ kind: string; thread: string; by: string }>(sql`

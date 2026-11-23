@@ -194,15 +194,17 @@ screens the words for the room's readers and records the post as the master's.
   runs as a Claude Code background session in a sandbox of its room's own.
 - **Where in it.** \`thread\` is the id of the thread's first message, the asker's message for a
   result. Take it from the rooms read: each room's \`recentThreads\` names its newest threads, who
-  asked in each, when it last moved and the FB-n filed from it. With none the post goes in the
-  report thread of a room the team reads (Forge opens one, never the top level), or, in an operations
-  room every project shares, in the project's own thread its binding records. A person's own report
-  thread is named with \`PUT /api/projects/:id/support/rooms/:roomId/report-thread { thread }\`.
+  asked in each, when it last moved and the FB-n filed from it. With none, it lands in the project's
+  own thread its binding records in an operations room, in the report thread of any other room the
+  team reads (Forge opens one), and a room its users read refuses it; the answer's \`thread\` and
+  \`landedIn\` say where it went. No master post goes at a room's top level, where reports bury the
+  room's own talk. A person's own report thread is named with
+  \`PUT /api/projects/:id/support/rooms/:roomId/report-thread { thread }\`.
   \`forge-runner api -i\` prints the HTTP status, to tell a 201 from a 200.
 - **Read the thread first.** \`GET /api/projects/:id/support/master-posts/threads/:thread?rid=\`
   shows its recent posts: who (a member, the room agent, a project's master, core), when, what.
-  Post only on that thread's own matter; a matter for the whole room goes to the room's report
-  thread, never into an asker's thread. Say nothing when the room agent or another master already
+  Post only on that thread's own matter; a matter for the whole room goes to its report thread
+  (name the room's \`reportThread\` from the rooms read as \`thread\`), never into an asker's thread. Say nothing when the room agent or another master already
   said it. Your post replaces the bot's answer to the current request, so the thread reads one voice.
 - **Once per result.** A users' thread already told an item's result takes a post only as a
   follow-up naming the message that told it, \`followsUp\`, as the refusal
@@ -231,7 +233,8 @@ screens the words for the room's readers and records the post as the master's.
 - **Editing or deleting your own post.** Within ${SUPPORT_MASTER_POST_EDIT_WINDOW_MS / 60_000} minutes of posting,
   \`PATCH /api/projects/:id/support/master-posts/:messageId { text }\` replaces its words, screened as
   the post was, and \`DELETE\` on the same path removes it with its images or PDF; \`messageId\` is
-  the one the post answered. Each is recorded on the room with who and when. Past the window, post a
+  the one the post answered. Each is recorded on the room with who and when. A post that landed in
+  the wrong thread is deleted this way and posted where it belongs. Past the window, post a
   correction instead. Refused by name, nothing changed: \`SUPPORT_POST_UNKNOWN\`,
   \`SUPPORT_POST_NOT_YOURS\` (another account's or project's post, or no master post),
   \`SUPPORT_POST_EDIT_WINDOW_PASSED\`, \`SUPPORT_POST_DELETED\` and \`SUPPORT_POST_UNCHANGED\` (the

@@ -207,6 +207,20 @@ describe('the dispatch guide names the room door a master posts its own results 
       expect(prose).toContain(code);
     }
   });
+
+  // ISS-1433 (FB-832): a post naming no thread landed in the project's thread beside a room agent's
+  // ask, and the guide never said where such a post goes, nor how to take a misplaced one back
+  it('says where a post naming no thread lands in each room, never at the top level, and how to undo it', () => {
+    expect(prose).toContain(
+      "With none, it lands in the project's own thread its binding records in an operations room, in the report thread of any other room the team reads (Forge opens one), and a room its users read refuses it",
+    );
+    expect(prose).toMatch(/No master post goes at a room's top level, where [^.]+/);
+    expect(prose).toContain("name the room's `reportThread` from the rooms read as `thread`");
+    expect(prose).toContain('`landedIn`');
+    expect(prose).toContain(
+      'A post that landed in the wrong thread is deleted this way and posted where it belongs',
+    );
+  });
 });
 
 // ISS-1006 round 2: a decision raised before its asker was taught reads "No summary"; the master that

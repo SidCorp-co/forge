@@ -71,6 +71,8 @@ type Posted = Outcome<{
   /** Whose answer the post replaced in place, so one voice stands in the thread (ISS-1243). */
   replaced?: 'agent' | 'master';
   updated?: true; // a report updated its own earlier post in place (ISS-1417)
+  /** Which thread a post a room's top level would take landed in, as its answer says (ISS-1433). */
+  landedIn?: 'project-thread' | 'report-thread';
 }>;
 
 /** The project a post was made for, recorded where the room is another project's (ISS-1230). */
@@ -413,7 +415,8 @@ async function postInNamedThread(
  * thread of a room the team reads, opened once the post is screened and its images taken, so a
  * refused post opens nothing (ISS-1224); never
  * its top level. Screened as a top-level post is, since everyone in the room reads it, and recorded
- * as the master's.
+ * as the master's. Its answer names which of the two it landed in (`landedIn`, ISS-1433, FB-832: a
+ * master naming no thread could not tell it had landed in its project's thread beside an ask).
  */
 async function postAtTop(
   actor: Actor,
@@ -428,6 +431,7 @@ async function postAtTop(
   if (!admitted.ok) return admitted;
   const staged = await stagePostImages(room, images);
   if (!staged.ok) return staged;
+  const landedIn = thread ? 'project-thread' : 'report-thread';
   let to = thread;
   if (!to) {
     const report = await reportThreadFor(room, [text]);
@@ -459,6 +463,7 @@ async function postAtTop(
       rid: room.rid,
       messageId: posted.messageId,
       thread: to,
+      landedIn,
       ...answeredImages(shown.posted),
     },
   };

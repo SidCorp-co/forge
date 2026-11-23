@@ -19,6 +19,24 @@ export const SUPPORT_SCENARIOS: readonly CardScenario[] = [
     teaches: [/raise it here/i, /refused to you/i],
   },
   {
+    name: 'a post naming no thread landed in the project’s thread beside a room agent’s ask (FB-832)',
+    card: 'POST /api/projects/:id/support/master-posts',
+    source:
+      'FB-832, adminhub-api’s master 2026-11-23: posted with rid and no thread, which landed in its project’s thread H5Yt beside an ask',
+    situation: 'A master posts a matter for the whole operations room, naming the room alone',
+    bad: 'it named no thread and could not tell where the post would land, nor how to take it back',
+    good: 'know where a post naming no thread lands, name the report thread for a whole-room matter, and delete a misplaced post within its window',
+    teaches: [
+      /operations room/i,
+      /report thread of any other room the team reads/i,
+      /users’ room refuses it/i,
+      /at a room’s top level, where/i,
+      /`reportThread`/,
+      /DELETE \/api\/projects\/:id\/support\/master-posts\/:messageId/,
+      /edit window/i,
+    ],
+  },
+  {
     name: 'a room post deleted by a chat id no master post held: SUPPORT_POST_UNKNOWN',
     card: 'DELETE /api/projects/:id/support/master-posts/:messageId',
     source: `${USE}: its one call refused SUPPORT_POST_UNKNOWN`,
