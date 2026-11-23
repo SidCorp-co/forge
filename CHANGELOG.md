@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.804] - 2026-11-23
+
+Forge-ops compose targets receive their environment's Variables from Forge
+
+### Added
+
+- **A forge-ops compose target now receives its environment's Variables.** A sync, or a forge-ops deploy through Forge, writes them into the target's env file server-side, audited by key and fingerprint; no value reaches an agent.
+
 ## [0.4.0-dev.803] - 2026-11-23
 
 API contracts kept in YAML record, and batch issues share one contract version
