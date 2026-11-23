@@ -324,7 +324,7 @@ export const ROOM_ACT_CARDS = {
       'message is the messageId reply answered you; failed is [] where every line holds.',
       'Name in missed each capability the reply should have reached for, by its forge_find name.',
       // ISS-1430: the code half failed a dated earlier read the agent's own reading let pass
-      'A live setting, account or record status stated with no read of it this turn fails accurate, dated or not; “not checked now”, said plainly, does not.',
+      'A live setting, account or record status stated with no read of it this turn, yours or a master’s answer handed in it, fails accurate, dated or not; “not checked now”, said plainly, does not.',
     ],
     example: {
       thread: THREAD,

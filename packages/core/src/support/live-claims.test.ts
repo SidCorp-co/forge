@@ -2,6 +2,7 @@
 // post saying a change is live without the turn having read a release is refused. The 2026-11-08
 // cleanup audit found the pattern missing the common phrasings and catching an order's state.
 // @direct-test-of packages/core/src/support/live-claims.ts
+// @direct-test-of packages/core/src/support/not-checked.ts
 
 import { describe, expect, it } from 'vitest';
 import { liveClaimIn } from './live-claims.js';
@@ -31,5 +32,22 @@ describe('liveClaimIn', () => {
     'we deploy on Fridays',
   ])('reads %s as no claim of a deploy', (text) => {
     expect(liveClaimIn(text)).toBeNull();
+  });
+
+  // ISS-1430: the brief teaches "say plainly it is not checked now"; the pre-post screen let none
+  // through, so a post that followed it was refused SUPPORT_LIVE_CLAIM_UNREAD
+  it.each([
+    'I have not checked whether it is deployed now; I will read the release and tell you.',
+    "I couldn't check now whether the fix went live.",
+    'Em chưa kiểm tra lại nên chưa biết bản vá đã triển khai hay chưa ạ.', // i18n-allow: a synthetic reply
+  ])('reads %s, a plain "not checked now", as no claim', (text) => {
+    expect(liveClaimIn(text)).toBeNull();
+  });
+
+  it.each([
+    'I have not checked it now, but at 06:51 the fix was deployed to production.',
+    'The fix is live; I have not checked it again now.',
+  ])('reads %s, a value restated beside "not checked now", as a claim', (text) => {
+    expect(liveClaimIn(text)).not.toBeNull();
   });
 });

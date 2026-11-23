@@ -172,13 +172,12 @@ export async function asksOfThread(room: RoomRow, thread: string): Promise<Maste
  * reply stated "still off" in the turn that handed it the master's check, its own last read hours old
  * and of another screen, and a reply said a
  * raise was made 3 s after it was refused, following "make the act as them and say it is done". A
- * state he reports is his read, never stated as current without one of this turn (ISS-1430); an act is
- * told from its result. The ask and the answer each
+ * state he reports is his read, dated; an act is told from its result. The ask and the answer each
  * stand in an untrusted frame, core's teaching alone outside (ISS-1425).
  */
 export function masterAnsweredNote(question: string, answer: string): string {
   // the ask and the answer are words, never core's: either may quote a member (ISS-1425)
-  return `The master answered your ask.\n${markUntrusted(question, { source: 'your ask of the master' })}\n${markUntrusted(answer, { source: 'the master answer' })}\nAnswer the person in this thread yourself now, in your own words and in the language they write, to them in the second person, with what this settles; the master's words are for you, never posted as they are. A state he reports is his read, not yours: read it yourself in this turn before you state it, and where you cannot, say you have not checked it now rather than restate his. Where they already ruled on it, make the act as them and tell it from the act's result: done once it answered, and a refused act was not made; never ask them again.`;
+  return `The master answered your ask.\n${markUntrusted(question, { source: 'your ask of the master' })}\n${markUntrusted(answer, { source: 'the master answer' })}\nAnswer the person in this thread yourself now, in your own words and in the language they write, to them in the second person, with what this settles; the master's words are for you, never posted as they are. A state he reports is his read, not yours: say it as his check and when he made it, or read it yourself in this turn. Where they already ruled on it, make the act as them and tell it from the act's result: done once it answered, and a refused act was not made; never ask them again.`;
 }
 
 /**

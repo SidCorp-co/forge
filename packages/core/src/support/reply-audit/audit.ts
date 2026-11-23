@@ -25,6 +25,7 @@ import { handedOn, isStateRead, stateRead } from '../dated-reads.js';
 import { supportConfigOf } from '../grants.js';
 import { roleOfRoom } from '../ops-role.js';
 import { knownThread, no, type Outcome, threadUnknown } from '../outcome.js';
+import { sessionTurnSpan } from '../session-turns.js';
 import type { RoomRow } from '../store.js';
 import { type AnsweringLanguage, answeringLanguageOf } from './answering-language.js';
 import { apiHosts } from './code-lines.js';
@@ -108,9 +109,39 @@ async function handedOnBefore(roomId: string, posted: Posted): Promise<boolean> 
 }
 
 /**
+ * Whether a master's answer to the room's ask (`master-ask.ts:answerMasterAsk`) was handed in the
+ * reply's turn (ISS-1430): delivered at or after the turn's hand-over (its messages are stamped
+ * delivered just before the turn opens, one written into the running turn later) and before the reply.
+ */
+async function masterAnsweredInTurn(roomId: string, posted: Posted, turnId: string) {
+  const span = await sessionTurnSpan(turnId);
+  if (!span) return false;
+  const opened = span.startedAt.toISOString();
+  const handedAt = sql`COALESCE((SELECT max(t.delivered_at) FROM support_actions t
+    WHERE t.room_id = ${roomId} AND t.kind = 'message_in' AND t.output->>'path' IN ('start', 'send')
+      AND t.delivered_at <= ${opened}::timestamptz), ${opened}::timestamptz)`;
+  const [row] = await db
+    .select({ id: supportActions.id })
+    .from(supportActions)
+    .where(
+      and(
+        eq(supportActions.roomId, roomId),
+        eq(supportActions.kind, 'message_in'),
+        eq(supportActions.actorKind, 'core'),
+        sql`${supportActions.input}->>'ask' IS NOT NULL`,
+        sql`${supportActions.deliveredAt} >= ${handedAt}`,
+        lte(supportActions.deliveredAt, posted.at),
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
+}
+
+/**
  * The acts around a reply its session posted in a turn: whether that turn read live state or looked
- * at a screen, whether an act landed somewhere else in that turn or earlier in the conversation, and
- * when the session last read in an earlier turn. Undefined where the reply names no turn.
+ * at a screen, whether an act landed somewhere else in that turn or earlier in the conversation,
+ * whether a master's answer was handed in it, and when the session last read in an earlier turn.
+ * Undefined where the reply names no turn.
  */
 async function readsAround(roomId: string, posted: Posted): Promise<TurnReads | undefined> {
   if (!posted.sessionId || !posted.turnId) return undefined;
@@ -126,6 +157,7 @@ async function readsAround(roomId: string, posted: Posted): Promise<TurnReads | 
   const acted = reads.length < mine.length || (await handedOnBefore(roomId, posted));
   const looked = reads.some((r) => r.tool === 'look');
   if (reads.length > 0) return { thisTurn: true, earlierAt: null, looked, handedOn: acted };
+  const masterAnswered = await masterAnsweredInTurn(roomId, posted, posted.turnId);
   const [earlier] = await db
     .select({
       at: sql<Date | null>`max(${supportActions.createdAt})`.mapWith((v) =>
@@ -141,7 +173,13 @@ async function readsAround(roomId: string, posted: Posted): Promise<TurnReads | 
         lte(supportActions.createdAt, posted.at),
       ),
     );
-  return { thisTurn: false, earlierAt: earlier?.at ?? null, looked: false, handedOn: acted };
+  return {
+    thisTurn: false,
+    earlierAt: earlier?.at ?? null,
+    looked: false,
+    handedOn: acted,
+    masterAnswered,
+  };
 }
 
 const textOf = (input: unknown) => {

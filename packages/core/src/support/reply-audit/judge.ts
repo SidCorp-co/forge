@@ -30,12 +30,15 @@ import {
  * deployment read and a look at a screen each count; `looked` is whether its turn looked at a screen
  * (ISS-1356), and `handedOn` whether an act landed somewhere else: a raise, a route, an ask or a
  * filing (ISS-1416, `dated-reads.ts:handedOn`), in its turn or earlier in its thread (ISS-1423).
+ * `masterAnswered` is whether a master's answer to the room's ask was handed in its turn
+ * (`master-ask.ts:masterAnsweredNote`): his fresh check of what he reports, said as his (ISS-1430).
  */
 export interface TurnReads {
   thisTurn: boolean;
   earlierAt: Date | null;
   looked: boolean;
   handedOn: boolean;
+  masterAnswered?: boolean;
 }
 
 export interface AuditedReply {
@@ -115,10 +118,10 @@ const STATE_READ =
  * Why a reply's statement of a live setting, account or release rests on no read of this turn
  * (ISS-1354): one made in an earlier turn, or none, whether or not the reply dates it (ISS-1430). A
  * state the reply says plainly it has not checked now is no statement of it. Null where it states
- * none, or this turn read.
+ * none, or this turn read: its own read, or a master's answer handed in it (ISS-1430).
  */
 function staleStateClaim(reply: AuditedReply): string | null {
-  if (!reply.reads || reply.reads.thisTurn) return null;
+  if (!reply.reads || reply.reads.thisTurn || reply.reads.masterAnswered) return null;
   const claim = assertedStateClaimIn(reply.text, [LIVE_CLAIM_RE]);
   if (!claim) return null;
   const read = RECORD_HINT.test(claim) ? RECORD_READ : STATE_READ;

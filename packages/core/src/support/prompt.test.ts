@@ -299,17 +299,15 @@ describe('every room agent brief carries the room conduct', () => {
     expect(note).toContain("tell it from the act's result: done once it answered");
     expect(note).toContain('a refused act was not made');
     expect(note).not.toContain('say it is done');
-    expect(note).toContain('A state he reports is his read, not yours');
+    expect(note).toContain(
+      'A state he reports is his read, not yours: say it as his check and when he made it',
+    );
   });
 
-  // ISS-1430 (FB-831, L-167): "say it as his check and when he made it" and the turn's opening line
-  // offered a dated earlier read, which the reply audit fails: each says read again, or not checked now
-  it('offers no dated earlier read: the master note and the turn opening say read again or not checked now', () => {
-    const note = masterAnsweredNote('Is the drive back?', 'Still read-only at 17:05.');
-    expect(note).not.toContain('when he made it');
-    expect(note).toContain(
-      'read it yourself in this turn before you state it, and where you cannot, say you have not checked it now rather than restate his',
-    );
+  // ISS-1430 (FB-831, L-167): the turn's opening line offered no way but restating an earlier read of
+  // the agent's own where it could not read again: it says read again, or not checked now. A master's
+  // answer handed in the turn is his fresh check, said as his, which the audit counts as a read.
+  it('offers no dated earlier read of its own: the turn opening says read again or not checked now', () => {
     const opening = earlierReadLine(
       new Date('2026-11-22T06:51:00Z'),
       new Date('2026-11-23T02:08:00Z'),

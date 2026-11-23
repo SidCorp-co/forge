@@ -9,6 +9,7 @@
 import { and, eq, gte, inArray, isNotNull, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { supportActions } from '../db/schema-support.js';
+import { firstAssertedIn } from './not-checked.js';
 import { no, type Outcome } from './outcome.js';
 import { insertAction, type RoomRow, roomsOfSession } from './store.js';
 import { TOP_LEVEL } from './thread.js';
@@ -28,10 +29,12 @@ const RELEASE_NOTE_IDS = ['result:%', 'promise:%', 'release-told:%'] as const;
 export const LIVE_CLAIM_RE =
   /(?<!\b(?:orders?|tickets?|đơn(?:\s+hàng)?)\s+(?:\S+\s+)?)\b(?:is|are|was|were|isn['’]t|aren['’]t|wasn['’]t|weren['’]t|'s|’s|not|now|already|yet|been|still|be)\s+(?:not\s+)?(?:yet\s+)?(?:live|deployed|released|in\s+production|on\s+production|on\s+prod)\b|\b(?:reached|hit)\s+(?:production|prod|staging)\b|\b(?:went|deployed|released|shipped|pushed|live)\s+(?:\S+\s+)?(?:to|on|in)\s+(?:production|prod|staging)\b|\bgo(?:es|ne|ing)?\s+live\b|\bwent\s+live\b|(?:^|[^\p{L}])lên\s+(?:production|prod|staging|live|môi\s+trường)|(?:^|[^\p{L}])(?:đã|chưa|đang|sẽ)\s+(?:được\s+)?(?:triển\s+khai|phát\s+hành|deploy|release)|(?:^|[^\p{L}])trên\s+(?:production|prod)(?![\p{L}])/iu; // i18n-allow: the Vietnamese phrasing of a live or not-live claim being policed
 
-/** The words of a live or not-live claim in `text`, or null where it makes none. */
+/**
+ * The words of a live or not-live claim in `text`, or null where it makes none: a state the post says
+ * plainly it has not checked now is no claim (ISS-1430, `not-checked.ts`).
+ */
 export function liveClaimIn(text: string): string | null {
-  const m = text.match(LIVE_CLAIM_RE);
-  return m ? m[0].trim() : null;
+  return firstAssertedIn(text, [LIVE_CLAIM_RE]);
 }
 
 /** Record a release read the session made, under the turn it made it in. */

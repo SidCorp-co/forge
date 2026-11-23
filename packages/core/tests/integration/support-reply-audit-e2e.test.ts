@@ -26,6 +26,7 @@ import { SupportWorld } from '../helpers/support-world.js';
 // @direct-test-of packages/core/src/support/thread-answer.ts
 // @direct-test-of packages/core/src/support/actions-route.ts
 // @direct-test-of packages/core/src/support/dated-reads.ts
+// @direct-test-of packages/core/src/support/master-ask.ts
 // @direct-test-of packages/core/src/support/dispatch.ts
 // @direct-test-of packages/core/src/db/schema-support-verdicts.ts
 //
@@ -492,4 +493,25 @@ describe('an earlier read is dated as a turn opens, and an act is told from its 
     const elsewhere = await replyAndAudit('And the cache step?', claim, []);
     expect(elsewhere.audit?.body).toMatchObject({ verdict: 'fail', failed: ['accurate'] });
   }, 180_000);
+});
+
+// ISS-1430 (FB-831, L-167): a master's answer handed in a turn is his fresh check, which the room agent
+// usually cannot read again; said as his it passes, and with no answer or read in its turn it fails
+describe("a master's answer handed in the turn counts as its read (ISS-1430)", () => {
+  it('passes a state said as the master’s check of its turn, and fails it with no answer or read', async () => {
+    // the answer as answerMasterAsk records it, delivered at the reply's turn's opening
+    const answerInTurnOf = (message: string) =>
+      rows(sql`INSERT INTO support_actions (room_id, project_id, thread, kind, actor_kind, input, external_id, delivered_at)
+             SELECT a.room_id, a.project_id, a.thread, 'message_in', 'core', jsonb_build_object('ask', ${randomUUID()}::text),
+                    ${`master-ask:${randomUUID()}`}, t.started_at
+               FROM support_actions a JOIN support_session_turns t ON t.id = a.turn_id
+              WHERE a.kind = 'reply' AND a.external_id = ${message}`).then(() => undefined);
+    const claim = 'The master checked at 02:05: the export flag is still off on staging.';
+    const answered = await replyAndAudit('Is the export flag off?', claim, [], answerInTurnOf);
+    expect(answered.audit?.body, JSON.stringify(answered.audit?.body)).toMatchObject({
+      verdict: 'pass',
+    });
+    const unanswered = await replyAndAudit('And the export flag now?', claim, []);
+    expect(unanswered.audit?.body).toMatchObject({ verdict: 'fail', failed: ['accurate'] });
+  }, 120_000);
 });
