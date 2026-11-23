@@ -56,6 +56,7 @@ export { decisionOwedBy } from './owed.js';
 export { type AgentOwedQuestion, questionsOwedToAgents } from './owed-to-agents.js';
 export { expirePermissionPrompt } from './permission-prompt.js';
 export { provideQuestionPorts, type StewardDecisionAnswer } from './ports.js';
+export { type ProjectQuestionsClosed, voidProjectQuestions } from './project-stop.js';
 export {
   answerAs,
   answerOf,

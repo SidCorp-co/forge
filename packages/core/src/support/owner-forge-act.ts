@@ -16,7 +16,7 @@
 // project rule he rules there is written in his name the same way (`owner-rule-act.ts`, ISS-1357),
 // and so is a project admin's ruling for a production act, on its issue (`owner-ruling-act.ts`,
 // ISS-1431), and his confirm of a release's parked production deploy (`owner-confirm-deploy-act.ts`,
-// ISS-1441). A requirement revision's acceptance by anyone else is theirs only where a project admin
+// ISS-1441), and his ruling to archive a project (`owner-archive-act.ts`, ISS-1449). A requirement revision's acceptance by anyone else is theirs only where a project admin
 // declared them by chat identity for `accept` (`declared-accept.ts`, ISS-1436).
 
 import { ITEM_ACT_NAMES, type ItemAct } from '@forge/contracts/item-acts';
@@ -36,6 +36,7 @@ import type { OpsOutcome } from './ops-types.js';
 import { asAsker } from './ops-writes.js';
 import { no } from './outcome.js';
 import { doorOfDecision } from './owner-acts-reach.js';
+import { archiveProjectAsOwner } from './owner-archive-act.js';
 import { confirmDeployAsOwner } from './owner-confirm-deploy-act.js';
 import { decisionForgeAct, isDecisionForgeAct } from './owner-decision-acts.js';
 import { isMembershipAct, membershipAct } from './owner-membership-act.js';
@@ -61,6 +62,7 @@ const doorSaid = (code: string, detail: string): OpsOutcome<never> => ({
 const NO_REASON = new Set<string>([
   // cited on the production gate it confirms, by message, thread and group
   'release.confirmDeploy',
+  'project.archive',
   'requirement.propose',
   'workflow.propose',
   'release.cut',
@@ -344,7 +346,9 @@ async function act(room: RoomRow, input: SupportForgeActRequest): Promise<OpsOut
                 ? recordProductionRuling(input, reason, at)
                 : input.act === 'release.confirmDeploy'
                   ? confirmDeployAsOwner(input, cited, at)
-                  : writeDocument(input, at),
+                  : input.act === 'project.archive'
+                    ? archiveProjectAsOwner(input, { ...at, projectSlug: project.value.slug })
+                    : writeDocument(input, at),
   );
   if (!made.ok) return made;
   return {

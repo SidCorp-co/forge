@@ -324,6 +324,12 @@ export const WORK_ACT_CARDS = {
           'it takes project.admin on his own account (else PERMISSION_FORBIDDEN); a release with no deploy waiting is refused SUPPORT_CONFIRM_DEPLOY_NOT_WAITING',
       },
       {
+        when: 'the owner rules a project removed or archived, in any words',
+        do: 'archive it as his with support.owner_forge_act { act: project.archive, item: the project’s own slug }; its runs stop, its questions close, its groups and deploy binding are switched off, and its repository and site are left as they are',
+        watch:
+          'only the owner’s own message counts (else SUPPORT_FORGE_ACT_NOT_THE_OWNER) and he must admin the organization; a live release or a deploy waiting on a confirm is refused SUPPORT_ARCHIVE_RELEASE_IN_FLIGHT or SUPPORT_ARCHIVE_DEPLOY_AWAITING_CONFIRM, nothing done; tell him what was done and what was left, and that archive is undone on its page',
+      },
+      {
         when: 'someone other than the owner accepts a requirement revision in the room, in any words',
         do: 'make it with support.owner_forge_act { act: requirement.accept, item } citing their message: a speaker the project declares by chat identity for accept accepts it as theirs, with no account',
         watch:

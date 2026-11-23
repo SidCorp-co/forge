@@ -51,6 +51,7 @@ export { registerPausedRunWedgeResolve } from './paused-run-wedge-resolve.js';
 export { backfillPhaseJournal } from './phase-journal-backfill.js';
 export { registerPhaseJournalClose } from './phase-journal-close.js';
 export { providePipelinePorts } from './ports.js';
+export { liveRunsOfProject, stopProjectRuns } from './project-stop.js';
 export { pipelineRunProjectId, stepDurationsForProject } from './read.js';
 export { runReconcilerOnce } from './reconciler.js';
 export { verifyRecovery } from './recovery-verifier.js';

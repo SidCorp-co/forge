@@ -121,6 +121,7 @@ export {
   forgeBindingsTool,
   forgeConfigTool,
 } from './tool.js';
+export { type UnboundBinding, unbindForArchive } from './unbind-for-archive.js';
 export { variableHeld, writeVariableByGrant } from './variables-grant.js';
 export { protectedReaders, RULING_ON_PAGE, RULING_ROOM_ACT } from './variables-rules.js';
 export { declaredEnvironments } from './variables-service.js';

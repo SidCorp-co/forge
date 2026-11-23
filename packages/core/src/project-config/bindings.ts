@@ -439,6 +439,8 @@ export async function removeBinding(input: {
   projectId: string;
   bindingId: string;
   baseRevision: number;
+  /** The project is being archived: its document keeps naming the binding, now switched off. */
+  archiving?: boolean;
 }): Promise<BindingRemoveOutcome> {
   const { projectId, bindingId, baseRevision } = input;
   const current = await store.readBinding(bindingId);
@@ -446,7 +448,7 @@ export async function removeBinding(input: {
   if (current.revision !== baseRevision) {
     return { ok: false, refusals: [staleBase(baseRevision, current.revision)] };
   }
-  const refs = await referencedAs(projectId, bindingId);
+  const refs = input.archiving ? [] : await referencedAs(projectId, bindingId);
   if (refs.length > 0) return { ok: false, refusals: refs.map((r) => inUse(r.path, r.path)) };
   const config = current.config as Record<string, unknown>;
   const result = await store.casBinding({

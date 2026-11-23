@@ -2064,6 +2064,12 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_CONFIRM_DEPLOY_NOT_WAITING",
 	/** A production deploy's confirm from a room whose parked binding no longer reaches the project's production (ISS-1441). */
 	"SUPPORT_CONFIRM_DEPLOY_NOT_PRODUCTION",
+	/** A project archive from a room while a release run of the project is live (ISS-1449). */
+	"SUPPORT_ARCHIVE_RELEASE_IN_FLIGHT",
+	/** A project archive from a room while a release's production deploy waits on a confirm (ISS-1449). */
+	"SUPPORT_ARCHIVE_DEPLOY_AWAITING_CONFIRM",
+	/** A project archive from a room for a project that is archived already (ISS-1449). */
+	"SUPPORT_ARCHIVE_ALREADY",
 	/** A raise into a technical thread where a person spoke within the turn, naming no answer to his message (ISS-1299). */
 	"SUPPORT_RAISE_THREAD_UNREAD",
 	/** A raise whose words are not in the language the technical thread's reader writes (ISS-1299). */
@@ -2279,6 +2285,9 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_RULING_ISSUE_CLOSED: 409,
 	SUPPORT_CONFIRM_DEPLOY_NOT_WAITING: 409,
 	SUPPORT_CONFIRM_DEPLOY_NOT_PRODUCTION: 409,
+	SUPPORT_ARCHIVE_RELEASE_IN_FLIGHT: 409,
+	SUPPORT_ARCHIVE_DEPLOY_AWAITING_CONFIRM: 409,
+	SUPPORT_ARCHIVE_ALREADY: 409,
 	SUPPORT_RAISE_THREAD_UNREAD: 409,
 	SUPPORT_RAISE_NOT_IN_THREAD_LANGUAGE: 400,
 	SUPPORT_OWNER_PRODUCT_UNKNOWN: 404,

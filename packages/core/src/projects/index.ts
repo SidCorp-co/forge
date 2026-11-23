@@ -10,6 +10,7 @@ export {
   listProjectHeads,
   orgSiblingProjects,
   pendingInvitationNamed,
+  projectArchiveHead,
   projectCreatorOf,
   projectHead,
   projectName,
@@ -22,6 +23,7 @@ export {
   updateProjectSchema,
 } from './request-schemas.js';
 export {
+  archiveProject,
   findProjectIdBySlug,
   findProjectOrgId,
   findProjectOrgIds,

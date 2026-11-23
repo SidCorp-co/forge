@@ -27,6 +27,16 @@ export async function projectHead(projectId: string) {
   return row ?? null;
 }
 
+/** A project's organization and when it was archived (null while it is live), or null when there is none. */
+export async function projectArchiveHead(projectId: string) {
+  const [row] = await db
+    .select({ orgId: projects.orgId, archivedAt: projects.archivedAt })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  return row ?? null;
+}
+
 /** A project's slug, name and org, and whether that org is personal; null when there is none. */
 export async function projectOrgHead(projectId: string) {
   const [row] = await db

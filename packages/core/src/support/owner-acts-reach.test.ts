@@ -72,3 +72,16 @@ describe('the rule write the owner rules in chat (ISS-1357)', () => {
     );
   });
 });
+
+// ISS-1449 (FB-848): the owner's ruling to remove a project had no act, so the room sent him to a page;
+// it is an owner act now, and its card teaches what it does, its refusals and what it leaves alone.
+describe('the project archive the owner rules in chat (ISS-1449)', () => {
+  it('is a declared owner act, and the card names it, its refusals and what it leaves alone', () => {
+    expect(SUPPORT_FORGE_ACTS).toContain('project.archive');
+    const card = JSON.stringify(WORK_ACT_CARDS.owner_forge_act);
+    expect(card).toContain('act: project.archive, item: the project’s own slug');
+    expect(card).toContain('SUPPORT_ARCHIVE_RELEASE_IN_FLIGHT');
+    expect(card).toContain('SUPPORT_ARCHIVE_DEPLOY_AWAITING_CONFIRM');
+    expect(card).toContain('repository and site are left as they are');
+  });
+});

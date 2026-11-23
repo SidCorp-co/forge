@@ -56,6 +56,7 @@ export {
   resolveRunnerForDevice,
 } from './prepare-claimed-job.js';
 export { JOB_LAST_PROGRESS_SQL } from './progress-signal.js';
+export { stopProjectJobs } from './project-stop.js';
 export {
   buildBarrierFragments,
   freshRunnerAvailability,

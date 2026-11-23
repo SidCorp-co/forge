@@ -329,6 +329,8 @@ export const SUPPORT_FORGE_ACTS = [
 	"release.return",
 	// a release's production deploy parked on a confirm, confirmed as his press (ISS-1441)
 	"release.confirmDeploy",
+	// the owner's ruling to remove a project: archived, its groups and deploy binding unbound, its repository and site untouched (ISS-1449)
+	"project.archive",
 	"issue.merge",
 	"config.write",
 	"binding.write",
@@ -378,7 +380,7 @@ export const supportForgeActRequestSchema = z.strictObject({
 		.min(1)
 		.max(200)
 		.describe(
-			"the item: REQ-n, FB-n, a workflow's flow such as chat-turn, a release version such as 0.19.0, an issue ISS-n, a suggestion's id, a mockup's key, a binding's id, the project's slug for config.write, the rule's slug for rule.write, or the ecosystem's slug for membership.* (project is then the member project)",
+			"the item: REQ-n, FB-n, a workflow's flow such as chat-turn, a release version such as 0.19.0, an issue ISS-n, the project's own slug for project.archive, a suggestion's id, a mockup's key, a binding's id, the project's slug for config.write, the rule's slug for rule.write, or the ecosystem's slug for membership.* (project is then the member project)",
 		),
 	reason: z
 		.string()
