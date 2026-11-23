@@ -24,6 +24,16 @@ describe('the language a message is written in', () => {
       expect(askerLanguageOf(bare), bare).toBe('vi'); // i18n-allow: short unmarked Vietnamese messages
     }
     expect(askerLanguageOf('ok thanks')).toBeNull();
+    // r3: a name or English word that is also an unmarked Vietnamese word decides nothing in a short message
+    for (const english of [
+      'Minh, any update?',
+      'thanks Minh',
+      'hi Minh',
+      'toi nay',
+      'Minh, can you check ISS-5?',
+    ]) {
+      expect(askerLanguageOf(english), english).toBeNull(); // i18n-allow: English messages carrying a name
+    }
     for (const loan of ['café', 'naïve', 'résumé', 'send me the résumé']) {
       expect(askerLanguageOf(loan)).not.toBe('vi');
     }

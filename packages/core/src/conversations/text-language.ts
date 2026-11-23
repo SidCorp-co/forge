@@ -19,7 +19,7 @@ export function replyLanguageOf(text: string | null | undefined): ReplyLanguage 
   return marked / words.length >= VIETNAMESE_SHARE ? 'vi' : 'en';
 }
 
-// words Vietnamese typed without its marks still carries, none of them an English word
+// words Vietnamese typed without its marks still carries; a share of them, with three words, reads Vietnamese
 const VIETNAMESE_BARE: ReadonlySet<string> = new Set([
   'cho',
   'nha',
@@ -40,6 +40,18 @@ const VIETNAMESE_BARE: ReadonlySet<string> = new Set([
   'nay',
   'cua',
 ]); // i18n-allow: unmarked Vietnamese function words
+// the few of them no name and no English word spells, so that ONE of them decides a short message:
+// "minh", "toi", "kia", "nay", "cho", "thi", "xin", "roi", "vay" and "chua" are also given names, surnames or English words
+const VIETNAMESE_ONLY_BARE: ReadonlySet<string> = new Set([
+  'nha',
+  'nhe',
+  'nhung',
+  'luon',
+  'giup',
+  'duoc',
+  'khong',
+  'cua',
+]); // i18n-allow: unmarked Vietnamese function words no name or English word spells
 const ENGLISH_FUNCTION: ReadonlySet<string> = new Set([
   'the',
   'is',
@@ -114,7 +126,8 @@ export function hasVietnameseOnlyWord(text: string | null | undefined): boolean 
   return (
     (text ?? '')
       .match(WORD)
-      ?.some((w) => VIETNAMESE_ONLY_LETTER.test(w) || VIETNAMESE_BARE.has(w.toLowerCase())) ?? false
+      ?.some((w) => VIETNAMESE_ONLY_LETTER.test(w) || VIETNAMESE_ONLY_BARE.has(w.toLowerCase())) ??
+    false
   );
 }
 

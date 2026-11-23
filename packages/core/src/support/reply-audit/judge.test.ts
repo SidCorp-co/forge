@@ -306,6 +306,12 @@ describe('the language of an asker too short to tell (ISS-1442)', () => {
       judgeReply({ ...reply(vi, unmarked.language, unmarked.from), language: unmarked }, [])
         .verdict,
     ).toBe('pass');
+    // r3: a name that is also a Vietnamese word does not make the message Vietnamese
+    const named = answeringLanguageOf({ asked: 'thanks Minh', persona: null, texts: viRoom });
+    expect(named.askedAs).toBe('en');
+    expect(
+      judgeReply({ ...reply(en, named.language, named.from), language: named }, []).verdict,
+    ).toBe('pass');
     // a clearly told message still holds the reply, naming the message
     const told = answeringLanguageOf({
       asked: 'Has my order been delivered yet?',
