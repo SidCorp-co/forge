@@ -39,6 +39,8 @@ export const DEVICE_REFUSAL_CODES = [
 	/** A box's lease give-back named no run session over a lease a live run session of that box holds (ISS-752). */
 	"ISSUE_LEASE_RUN_UNNAMED",
 	"MASTER_SESSION_NOT_HELD",
+	/** A project has no live master and no runner box, so no master is shown an owed line (ISS-1421). */
+	"MASTER_OWED_NO_BOX",
 	"CHECKOUT_HEAD_NOT_ASKED",
 	"CHECKOUT_HEAD_MALFORMED",
 	"CHECKOUT_HEAD_OTHER_REPOSITORY",
@@ -72,6 +74,7 @@ export type DeviceRefusalCode = (typeof DEVICE_REFUSAL_CODES)[number];
 
 export const DEVICE_REFUSAL_STATUSES = {
 	MASTER_SESSION_NOT_HELD: 404,
+	MASTER_OWED_NO_BOX: 409,
 	CHECKOUT_HEAD_NOT_ASKED: 404,
 	CHECKOUT_ANCESTRY_NOT_ASKED: 404,
 	BOX_ANSWER_NOT_ASKED: 404,

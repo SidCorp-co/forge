@@ -9,12 +9,12 @@
 
 import type { MasterOwedRead } from '@forge/contracts/master-standing';
 import { sql } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
+import { refuseDevice } from '../devices/refusals.js';
 import { liveMaster } from './live-master.js';
 import { readMasterWork } from './owed.js';
 
-export const MASTER_OWED_NO_BOX = 'MASTER_OWED_NO_BOX';
+export const MASTER_OWED_NO_BOX = 'MASTER_OWED_NO_BOX' as const;
 
 type Box = { id: string; name: string | null };
 
@@ -42,10 +42,10 @@ export async function readMasterOwedNow(projectId: string): Promise<MasterOwedRe
     ? { id: master.device_id, name: master.device_name }
     : await runnerBox(projectId);
   if (!box) {
-    throw new HTTPException(409, {
-      message: `${MASTER_OWED_NO_BOX}: project ${projectId} has no live master and no runner box, so no master is shown an owed line here; bind a box to the project (\`forge-runner bind\`) and read again`,
-      cause: { code: MASTER_OWED_NO_BOX },
-    });
+    throw refuseDevice(
+      MASTER_OWED_NO_BOX,
+      `project ${projectId} has no live master and no runner box, so no master is shown an owed line here; bind a box to the project (\`forge-runner bind\`) and read again`,
+    );
   }
   const { work, waits } = await readMasterWork(box.id, projectId);
   return {
