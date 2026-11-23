@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.812] - 2026-11-23
+
+Names, mentions and places no longer decide a short message's language
+
+### Fixed
+
+- **A short English message holding a name no longer reads as Vietnamese.** A capitalised word, an @mention, the word after one or after a greeting, and a place like Nha Trang decide no language, so a correct English reply passes.
+
 ## [0.4.0-dev.811] - 2026-11-23
 
 Steward triage recalls memory; names no longer misread as Vietnamese
