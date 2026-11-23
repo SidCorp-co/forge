@@ -100,16 +100,32 @@ export function roomTextsLanguageOf(texts: readonly string[]): ReplyLanguage {
   return texts.some((t) => confidentLanguageOf(t) === 'vi') ? 'vi' : 'en';
 }
 
+// the letters only Vietnamese spells with: d-bar, the circumflex, breve and horn vowels, and the hook, tilde and
+// dot tones; the acute and grave tones are left out because French, Italian and loanwords carry them
+const VIETNAMESE_ONLY_LETTER =
+  /[ảãạăằắẳẵặâầấẩẫậẻẽẹêềếểễệỉĩịỏõọôồốổỗộơờớởỡợủũụưừứửữựỷỹỵđ]/i; // i18n-allow: Vietnamese letters
+
+/** Whether a text spells any word with a letter only Vietnamese uses. */
+export function hasVietnameseOnlyLetter(text: string | null | undefined): boolean {
+  return (text ?? '').match(WORD)?.some((w) => VIETNAMESE_ONLY_LETTER.test(w)) ?? false;
+}
+
+/** A message up to this many words is short enough for one Vietnamese-only letter to decide it. */
+const SHORT_MESSAGE_WORDS = 5;
+
 /**
  * The language the person asked in, where it can be told: a confident reading, or a short message
- * that spells a word only Vietnamese spells, such as "run ISS-365" typed in Vietnamese. A short message without one is not
- * told, because "ok" and "cho ISS-5" read the same in either language.
+ * that spells a word only Vietnamese spells (a three-word greeting). A short message without one is not
+ * told, because "ok" and "cho ISS-5" read the same in either language, and an English one with a
+ * stray accented loanword ("café") stays English.
  */
 export function askerLanguageOf(text: string | null | undefined): ReplyLanguage | null {
   const confident = confidentLanguageOf(text);
   if (confident) return confident;
   const words = (text ?? '').match(WORD) ?? [];
-  return words.length > 0 && words.length < 3 && words.some((w) => VIETNAMESE_LETTER.test(w))
+  return words.length > 0 &&
+    words.length <= SHORT_MESSAGE_WORDS &&
+    hasVietnameseOnlyLetter(text)
     ? 'vi'
     : null;
 }

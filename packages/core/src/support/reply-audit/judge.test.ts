@@ -165,6 +165,23 @@ describe('support.audit keeps the verdict on a reply the agent posted (ISS-1250)
     });
   });
 
+  // ISS-1442 (FB-841): a Vietnamese reply to a short Vietnamese message is not failed for the room's English
+  it('passes a Vietnamese reply to a short Vietnamese message, and fails a wrong-language reply to a told one', () => {
+    const vi = 'Dạ, em đây ạ. Anh cần em giúp việc gì không ạ?'; // i18n-allow: a Vietnamese reply
+    const en = 'Hello, I am here. Is there anything you need help with right now?';
+    const room = ['Please check the import for me'];
+    const answering = answeringLanguageOf({ asked: 'Alo sao thế', persona: null, texts: room }); // i18n-allow: a short Vietnamese message
+    expect(answering.from).toBe('asker');
+    expect(judgeReply(reply(vi, answering.language, answering.from), []).verdict).toBe('pass');
+    const wrong = judgeReply(reply(en, answering.language, answering.from), []);
+    expect(wrong.failed).toEqual(['language']);
+    expect(wrong.findings[0]?.why).toBe('it is in English, and the person it answers wrote in Vietnamese');
+    // an untold asker with a Vietnamese-only letter among many English words: the reply matching it is passed
+    const mixed = answeringLanguageOf({ asked: 'please tell me how the thế is going on today ok', persona: null, texts: room }); // i18n-allow: a mixed message
+    expect(mixed.from).toBe('room');
+    expect(judgeReply({ ...reply(vi, mixed.language, mixed.from), language: mixed }, []).verdict).toBe('pass');
+  });
+
   it('takes the one language a persona names, in either language, and none where it names both', () => {
     expect(personaLanguageOf('Trả lời bằng tiếng Việt, ngắn gọn.')).toBe('vi'); // i18n-allow: a Vietnamese persona
     expect(personaLanguageOf('Always answer in English, briefly.')).toBe('en');

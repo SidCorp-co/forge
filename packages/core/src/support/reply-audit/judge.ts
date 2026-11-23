@@ -108,7 +108,7 @@ export function codeFindings(reply: AuditedReply): ReplyFinding[] {
   }
   const written = confidentLanguageOf(reply.text);
   const held = reply.language;
-  if (written && written !== held.language) {
+  if (written && written !== held.language && written !== held.askedAs) {
     found.push({
       line: 'language',
       why: `it is in ${LANGUAGE_NAME[written]}, and ${HELD_TO[held.from](LANGUAGE_NAME[held.language])}`,

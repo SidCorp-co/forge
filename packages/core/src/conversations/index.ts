@@ -135,6 +135,7 @@ export {
   askerLanguageOf,
   confidentLanguageOf,
   type ReplyLanguage,
+  hasVietnameseOnlyLetter,
   replyLanguageOf,
   roomTextsLanguageOf,
 } from './text-language.js';

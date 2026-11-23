@@ -6,6 +6,7 @@
 import {
   askerLanguageOf,
   type ReplyLanguage,
+  hasVietnameseOnlyLetter,
   roomTextsLanguageOf,
 } from '../../conversations/index.js';
 
@@ -15,6 +16,8 @@ export type AnsweringFrom = 'asker' | 'persona' | 'room';
 export interface AnsweringLanguage {
   language: ReplyLanguage;
   from: AnsweringFrom;
+  /** Where the asker could not be told: Vietnamese where the asked message spells a Vietnamese-only letter, which a reply is not failed for matching. */
+  askedAs?: ReplyLanguage;
 }
 
 /** How a persona names each language, in English or in Vietnamese. */
@@ -42,7 +45,8 @@ export function answeringLanguageOf(input: {
 }): AnsweringLanguage {
   const asker = askerLanguageOf(input.asked);
   if (asker) return { language: asker, from: 'asker' };
+  const askedAs: ReplyLanguage | undefined = hasVietnameseOnlyLetter(input.asked) ? 'vi' : undefined;
   const persona = personaLanguageOf(input.persona);
-  if (persona) return { language: persona, from: 'persona' };
-  return { language: roomTextsLanguageOf(input.texts), from: 'room' };
+  if (persona) return { language: persona, from: 'persona', ...(askedAs && { askedAs }) };
+  return { language: roomTextsLanguageOf(input.texts), from: 'room', ...(askedAs && { askedAs }) };
 }
