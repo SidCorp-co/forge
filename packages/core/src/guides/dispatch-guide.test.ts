@@ -107,6 +107,18 @@ describe('the dispatch guide teaches batches by default', () => {
     expect(prose).not.toContain('no shipped role, no declaration');
   });
 
+  // ISS-1444 (FB-843, forge-plugin L-16): a master declared and dispatched a builder on the declare
+  // alone, and the issue stood at open through the build; a declare moves no status
+  it("takes each declared issue's lease with its run before the builder is dispatched", () => {
+    const direct = prose.slice(prose.indexOf('### Direct mode')).replace(/\s+/g, ' ');
+    expect(direct).toContain(
+      "take each of those issues' lease with that run before the builder is dispatched",
+    );
+    expect(direct).toContain("-H 'x-forge-run: <run id>'");
+    expect(direct).toContain('a declare records the run and moves no status');
+    expect(direct).toContain('so the issue stands at `in_progress`');
+  });
+
   // ISS-1366 (FB-780, epod): a master declared a run, woke a finished builder with SendMessage,
   // and its next dispatch was refused as undeclared. Both the declaration step and direct mode
   // say a woken subagent takes no run, never to wake one while a declared run waits, and the way out.

@@ -264,7 +264,7 @@ build instead of dispatching shipped roles, so §5 and §6 do not apply but for 
 shipped role, no printed brief, no plan approval, design record, review or judge before the landing.
 It works in batches, as §4 splits them:
 1. Take every issue the order admits, and each that arrives mid-batch. Claim each with a lease, as
-   ${guideRef('issue-flow')} (Take it) says, and move it to \`in_progress\`. Before its build starts,
+   ${guideRef('issue-flow')} (Take it) says, and move it to \`in_progress\` (an issue a builder takes, with its declared run, step 2). Before its build starts,
    each issue's criteria are on its record (\`PUT /api/issues/:id/criteria\`), never only in its
    description: the merge check, the mark and every verdict read them there. A batch is never smaller
    than an issue: one issue is never split across releases, and a large issue is built whole, in as
@@ -274,7 +274,11 @@ It works in batches, as §4 splits them:
    (\`git worktree add -b <batch-branch>-<part> <repo>/.claude/worktrees/<batch>-<part> <batch-branch>\`);
    no two builders share a tree. Fold each builder's commits into the batch branch (cherry-pick or
    merge) and remove its tree once it is folded. Declare its run first, over the issues it builds,
-   in a tree of its own (\`forge-runner run declare --role general-purpose\`): the run is one of the
+   in a tree of its own (\`forge-runner run declare --role general-purpose\`), and take each of those
+   issues' lease with that run before the builder is dispatched, the door ${guideRef('issue-flow')} (Take it)
+   names, the call naming the run (\`-H 'x-forge-run: <run id>'\`), so the issue stands at \`in_progress\`
+   while it is built: a declare records the run and moves no status, and a dispatch on a declare alone
+   leaves the issue at \`open\` until the landing is refused. The run is one of the
    project's subagent slots, and the box refuses a builder dispatched without one or as another role
    than the one declared. Only that Agent call takes the run: a finished builder woken with
    \`SendMessage\` takes none (on a runner built from 0.4.0-dev.754 on; an older runner binds
