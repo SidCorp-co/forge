@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.805] - 2026-11-23
+
+Read-only owed-line door for judges; owners confirm production deploys from chat
+
+### Added
+
+- **A judge can read what a project's master owes without asking it.** A read-only door answers the owed line the master would be shown now, an owner's unanswered room message included, and the qa guide names it.
+- **The owner can confirm a production deploy from the project's room.** His plain go to a parked deploy confirms it as his, under his own project.admin and citing his message, and the release run carries on.
+
 ## [0.4.0-dev.804] - 2026-11-23
 
 Forge-ops compose targets receive their environment's Variables from Forge
