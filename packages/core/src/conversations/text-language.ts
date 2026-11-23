@@ -242,6 +242,8 @@ export function roomTextsLanguageOf(texts: readonly string[]): ReplyLanguage {
     .flatMap((t) => wordsWithNames((t ?? '').normalize('NFC')))
     .filter((t) => !t.name)
     .map((t) => t.word.toLowerCase());
-  const marked = open.filter((w) => VIETNAMESE_STRICT.has(w) || VIETNAMESE_ONLY_LETTER.test(w)).length;
+  const marked = open.filter(
+    (w) => VIETNAMESE_STRICT.has(w) || VIETNAMESE_ONLY_LETTER.test(w),
+  ).length;
   return marked >= ROOM_MIN_MARKED && marked / open.length >= ROOM_VIETNAMESE_SHARE ? 'vi' : 'en';
 }
