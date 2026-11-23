@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.807] - 2026-11-23
+
+Consumers read a provider's contract file and page; closed issues take their own commit
+
+### Fixed
+
+- **A project's token reads a provider's version artifact and API page.** Where it already read that provider's contract versions, as an active member of an ecosystem the contract is published to; writes and other routes stay fenced.
+- **A closed issue's asserted mark takes its own observed commit without a reopen.** A commit the repository holds as the issue's fills its merged commit and keeps its time; `ISS-46/47/48` declares all three keys.
+
 ## [0.4.0-dev.806] - 2026-11-23
 
 Chat-identity deciders accept requirements in rooms; master posts name their thread
