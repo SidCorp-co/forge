@@ -327,6 +327,8 @@ export const SUPPORT_FORGE_ACTS = [
 	"release.cut",
 	"release.approve",
 	"release.return",
+	// a release's production deploy parked on a confirm, confirmed as his press (ISS-1441)
+	"release.confirmDeploy",
 	"issue.merge",
 	"config.write",
 	"binding.write",

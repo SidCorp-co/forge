@@ -37,14 +37,26 @@ describe("the owner's acts from chat (ISS-1299)", () => {
       'contract.decide',
       'design.repin',
       'preview.approve',
-      'release.confirmDeploy',
       'requirement.repin',
     ]);
-    expect(doorOfDecision('release.confirmDeploy')).toEqual({
-      tool: null,
-      page: "the release's page (Confirm production deploy)",
-    });
+    expect(doorOfDecision('preview.approve')).toEqual({ tool: null, page: "the preview's page" });
     expect(doorOfDecision('question.close')).toBeNull();
+  });
+});
+
+// ISS-1441 (FB-838): the owner's "ok" to a parked production deploy had only the release's page; the
+// room now confirms it as him, and its card teaches the act rather than a button.
+describe("the production deploy's confirm the owner gives in chat (ISS-1441)", () => {
+  it('is an owner act from chat, and the card names it and its refusals', () => {
+    expect(doorOfDecision('release.confirmDeploy')).toEqual({
+      tool: 'owner_forge_act',
+      acts: ['release.confirmDeploy'],
+    });
+    expect(SUPPORT_FORGE_ACTS).toContain('release.confirmDeploy');
+    const card = JSON.stringify(WORK_ACT_CARDS.owner_forge_act);
+    expect(card).toContain('act: release.confirmDeploy, item: the version');
+    expect(card).toContain('SUPPORT_CONFIRM_DEPLOY_NOT_WAITING');
+    expect(card).not.toMatch(/type confirm|press (the )?confirm/i);
   });
 });
 

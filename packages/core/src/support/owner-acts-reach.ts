@@ -34,7 +34,7 @@ export const CHAT_DOOR_OF_DECISION: Readonly<Record<DecisionAct, ChatDoor>> = {
   'release.cut': owner('release.cut'),
   'release.decide': { tool: 'release_decision' },
   'release.decideDraft': { tool: 'release_decision' },
-  'release.confirmDeploy': page("the release's page (Confirm production deploy)"),
+  'release.confirmDeploy': owner('release.confirmDeploy'),
   'preview.approve': page("the preview's page"),
   'design.decide': owner('workflow.approve', 'workflow.return'),
   'mockup.accept': owner('mockup.accept'),

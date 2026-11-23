@@ -44,6 +44,8 @@ interface ProdGateState {
   requestedAt: string;
   confirmedAt: string | null;
   confirmedByUserId?: string;
+  /** ISS-1441 — the message his confirm was read from, where he gave it in a room rather than pressed it. */
+  confirmedCited?: ProdGo['cited'];
   /** ISS-1279 — set only where the parked deploy held the lock, and carried rather than
    *  recomputed: the confirm endpoint resolves no binding set of its own. */
   lock?: DeployLockIntent;
@@ -188,7 +190,7 @@ async function getProdGateState(bindingId: string): Promise<ProdGateState | null
   return null;
 }
 
-interface ConfirmProdResult {
+export interface ConfirmProdResult {
   confirmed: boolean;
   runId: string | null;
   /** The binding id the confirmation targeted (== old project_integration id). */
@@ -268,6 +270,7 @@ export async function confirmByApprovalGo(bindingId: string, runId: string): Pro
 export async function confirmPendingProdDeploy(
   bindingId: string,
   confirmedByUserId?: string,
+  cited?: ProdGo['cited'],
 ): Promise<ConfirmProdResult> {
   const gate = await getProdGateState(bindingId);
   if (!gate) {
@@ -301,6 +304,7 @@ export async function confirmPendingProdDeploy(
       ...gate,
       confirmedAt: new Date().toISOString(),
       ...(confirmedByUserId ? { confirmedByUserId } : {}),
+      ...(cited ? { confirmedCited: cited } : {}),
     };
     await writeRunMetadata(run.id, {
       merge: { [GATE_METADATA_KEY]: gates },

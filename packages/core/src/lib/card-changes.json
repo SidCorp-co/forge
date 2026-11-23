@@ -1660,9 +1660,9 @@
     "by": "ISS-1251"
   },
   "support.owner_forge_act": {
-    "hash": "6b628bddf1116002",
+    "hash": "5dcbd8a16bacf661",
     "on": "2026-11-23",
-    "by": "ISS-1431"
+    "by": "ISS-1441"
   },
   "support.owner_sign_in": {
     "hash": "b5127efc72a53204",
@@ -1725,9 +1725,9 @@
     "by": "ISS-1251"
   },
   "support.release_decision": {
-    "hash": "77dd4400ccd54b6f",
+    "hash": "711fc910661ea784",
     "on": "2026-11-23",
-    "by": "ISS-1432"
+    "by": "ISS-1441"
   },
   "support.releases": {
     "hash": "2b98df17bf868dcf",

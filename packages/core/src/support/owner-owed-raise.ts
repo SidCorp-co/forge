@@ -69,7 +69,7 @@ function taskNote(thread: string, project: string, d: NeedsYouDecision, to: stri
     : `No recommendation from the record (${d.noRecommendation}); give yours from what you read.`;
   return [
     `An item on ${project} waits on the owner (${d.key}, ${d.id}). Put it to him now with support.raise_owed { thread: "${thread}", text }: ${to}; plain words with no code, what it is, the options and your recommendation, short. It is posted in the project's technical channel, once; post it nowhere else.`,
-    'When he answers, in any words, settle it as him citing his own message (support.answer_question for a question, support.release_decision for a release decision, support.owner_forge_act for any other Forge act he asks: a requirement, a design, a release cut or approval with carry, a merge mark, config, an ecosystem invite or a membership answer); never send him to a page. An act no door makes from chat is refused naming where it is made: tell him that in one line, never that it is being done.',
+    'When he answers, in any words, settle it as him citing his own message (support.answer_question for a question, support.release_decision for a release decision, support.owner_forge_act for any other Forge act he asks: a requirement, a design, a release cut or approval with carry, the confirm of a production deploy, a merge mark, config, an ecosystem invite or a membership answer); never send him to a page. An act no door makes from chat is refused naming where it is made: tell him that in one line, never that it is being done.',
     // the item's words are its writers' (a master's or a run's), data framed, never core's (ISS-1425)
     markUntrusted(
       [

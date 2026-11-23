@@ -281,7 +281,7 @@ export const WORK_ACT_CARDS = {
       },
     ],
     practice: [
-      'Never answer with “approve it on the web”; an approval by a project admin also stands for the production deploy it plans.',
+      'Never answer with “approve it on the web”; an approval by a project admin also stands for the production deploy it plans, and a deploy still waiting is confirmed with owner_forge_act release.confirmDeploy.',
       'The owner’s chat account no Forge account: his go is kept, and decided as his once a project admin, or an instance admin once for every project, names his account (speaker-links/named); tell the room it is noted, and never ask him to link anything.',
       'A speaker the project declares by chat identity decides it as theirs, with no account; refused SUPPORT_DECIDER_NOT_DECLARED, ask the owner once, yes or no, whether to declare them. Never ask anyone to link, invite or make an account for a decider.',
     ],
@@ -305,7 +305,7 @@ export const WORK_ACT_CARDS = {
   },
   owner_forge_act: {
     purpose:
-      'Makes the Forge act the owner asks for in chat (accept, approve, cut, mark merged, change config or a rule, a production ruling) as him, citing his message.',
+      'Makes the Forge act the owner asks for in chat (accept, approve, cut, confirm a deploy, mark merged, config, a rule or ruling) as him, citing his message.',
     situations: [
       {
         when: 'the owner asks you, in any words, for a Forge act, a ruling that lets a run do a production act among them, or settles one you put to him',
@@ -316,6 +316,12 @@ export const WORK_ACT_CARDS = {
         do: 'record it as theirs with support.owner_forge_act { act: issue.rule_production, item: the issue the run works, ruling: { act, environment } } citing their message; the run then reads that environment’s protected key, and the key stays protected',
         watch:
           'it takes project.admin on their own account (else PERMISSION_FORBIDDEN, nothing recorded), a production-tier environment and an open issue, and is withdrawn on the issue’s page; never ask anyone to turn a key’s protection off',
+      },
+      {
+        when: 'a release’s production deploy waits on a confirm and the owner says go, in any words',
+        do: 'confirm it as his with support.owner_forge_act { act: release.confirmDeploy, item: the version }; the release run carries on',
+        watch:
+          'it takes project.admin on his own account (else PERMISSION_FORBIDDEN); a release with no deploy waiting is refused SUPPORT_CONFIRM_DEPLOY_NOT_WAITING',
       },
     ],
     practice: [

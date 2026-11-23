@@ -15,7 +15,8 @@
 // it records quotes his message by id and thread, and the room's record keeps the act beside it. A
 // project rule he rules there is written in his name the same way (`owner-rule-act.ts`, ISS-1357),
 // and so is a project admin's ruling for a production act, on its issue (`owner-ruling-act.ts`,
-// ISS-1431).
+// ISS-1431), and his confirm of a release's parked production deploy (`owner-confirm-deploy-act.ts`,
+// ISS-1441).
 
 import { ITEM_ACT_NAMES, type ItemAct } from '@forge/contracts/item-acts';
 import { SUPPORT_FORGE_ACTS, type SupportForgeActRequest } from '@forge/contracts/support-channel';
@@ -33,6 +34,7 @@ import type { OpsOutcome } from './ops-types.js';
 import { asAsker } from './ops-writes.js';
 import { no } from './outcome.js';
 import { doorOfDecision } from './owner-acts-reach.js';
+import { confirmDeployAsOwner } from './owner-confirm-deploy-act.js';
 import { decisionForgeAct, isDecisionForgeAct } from './owner-decision-acts.js';
 import { isMembershipAct, membershipAct } from './owner-membership-act.js';
 import { writeOwnerRule } from './owner-rule-act.js';
@@ -55,6 +57,8 @@ const doorSaid = (code: string, detail: string): OpsOutcome<never> => ({
 
 /** The acts whose door takes no reason: his message is cited on the room's record alone. */
 const NO_REASON = new Set<string>([
+  // cited on the production gate it confirms, by message, thread and group
+  'release.confirmDeploy',
   'requirement.propose',
   'workflow.propose',
   'release.cut',
@@ -316,6 +320,7 @@ async function act(room: RoomRow, input: SupportForgeActRequest): Promise<OpsOut
   if (!project.ok) return project;
   const { asker, said } = him.value;
   const reason = reasonOf(room, input, said);
+  const cited = { message: input.message, thread: input.thread, rid: room.rid };
   const at = { projectId: project.value.id, userId: asker.userId };
   const made = await asAsker(asker, project.value.id, () =>
     ITEM_ACT.has(input.act)
@@ -330,7 +335,9 @@ async function act(room: RoomRow, input: SupportForgeActRequest): Promise<OpsOut
               ? writeOwnerRule(input, { source: reason ?? '', ruledBy: ruledBy(asker, input) }, at)
               : input.act === 'issue.rule_production'
                 ? recordProductionRuling(input, reason, at)
-                : writeDocument(input, at),
+                : input.act === 'release.confirmDeploy'
+                  ? confirmDeployAsOwner(input, cited, at)
+                  : writeDocument(input, at),
   );
   if (!made.ok) return made;
   return {

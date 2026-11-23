@@ -38,7 +38,6 @@ import { providerRefused } from '../lib/provider-refusal.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requiresOnParam } from '../permissions/index.js';
-import { announceIntegrationChanged } from '../project-config/index.js';
 import {
   assertAttemptHoldsRun,
   coolifyDeliveryStatus,
@@ -296,27 +295,21 @@ function registerSetupRoutes(routes: Routes): void {
     '/:projectId/integrations/:id/confirm-prod-deploy',
     requiresOnParam('project.admin', 'projectId'),
     async (c) => {
-      const projectId = c.req.param('projectId');
-      const id = c.req.param('id');
-      const existing = await findBindingWithConnectionById(id);
-      if (!existing || existing.binding.projectId !== projectId) throw notFound();
-      const { bindingReachesProduction, confirmPendingProdDeploy } = await import(
+      // the one confirm door, which the owner's word in his room reaches too (ISS-1441)
+      const { confirmProdDeployOf, NOT_PRODUCTION_BINDING } = await import(
         '../release-batch/index.js'
       );
-      if (!(await bindingReachesProduction(projectId, existing.binding))) {
-        throw new HTTPException(400, {
-          message:
-            "confirm-prod-deploy is only valid on a deploy binding that reaches the project document's production environment — this one does not, so there is no production deploy for a human to confirm",
-          cause: { code: 'NOT_LIVE_BINDING' },
-        });
-      }
-      // who pressed it is recorded on the gate and named to the release run it carries on (ISS-1096)
-      const result = await confirmPendingProdDeploy(id, c.get('userId'));
-      await announceIntegrationChanged(projectId, {
-        bindingId: id,
-        connectionId: existing.connection.id,
+      const out = await confirmProdDeployOf({
+        projectId: c.req.param('projectId'),
+        bindingId: c.req.param('id'),
+        userId: c.get('userId'),
       });
-      return c.json(result);
+      if (out.ok) return c.json(out.result);
+      if (out.why === 'unknown_binding') throw notFound();
+      throw new HTTPException(400, {
+        message: NOT_PRODUCTION_BINDING,
+        cause: { code: 'NOT_LIVE_BINDING' },
+      });
     },
   );
 }

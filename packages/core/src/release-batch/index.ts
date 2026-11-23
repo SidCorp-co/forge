@@ -16,6 +16,11 @@ export { releaseEndsRun } from './change-request-roster.js';
 export { settleChangeRequestRelease } from './change-request-settle.js';
 export { registerReleaseBatchClaimSubscriber } from './claim-subscriber.js';
 export {
+  confirmProdDeployOf,
+  NOT_PRODUCTION_BINDING,
+  type ProdConfirmOutcome,
+} from './confirm-prod-door.js';
+export {
   activeCoolifyIntegrations,
   type CoolifyIntegrationRow,
   coolifyDeliveryStatus,
@@ -36,6 +41,7 @@ export {
   awaitsProdConfirm,
   confirmPendingProdDeploy,
   giveProdGoWithApproval,
+  pendingConfirmBindingsOf,
   pendingProdConfirmsOfRuns,
 } from './coolify-prod-gate.js';
 export { createReleaseBatch } from './create.js';
