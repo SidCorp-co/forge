@@ -203,6 +203,21 @@ describe('every room brief decides each message from its meaning and records it'
       'asks no "ok?" of anyone whose own request already agrees to it',
     );
   });
+
+  // ISS-1427: Forge-Communicate ran 135 turns and recorded no decision on any, its brief never naming
+  // support.decide: the operations brief lists it among its acts and maps it with the support brief's line
+  it('the operations brief names support.decide in its act list and its map', () => {
+    const operations = operationsBrief({
+      role: { name: 'ops', persona: 'You are ops.', grants: ['read'] } as unknown as Parameters<
+        typeof operationsBrief
+      >[0]['role'],
+      scope: 'org',
+      reach: [],
+    });
+    expect(operations).toMatch(/Your acts: [^.]*\bdecide\b[^.]*\./);
+    expect(operations).toContain(mapLine('decide'));
+    expect(brief).toContain(mapLine('decide'));
+  });
 });
 
 // ISS-1243 (owner 2026-11-15, AdminHub-Support): every room agent keeps permission talk out of a work

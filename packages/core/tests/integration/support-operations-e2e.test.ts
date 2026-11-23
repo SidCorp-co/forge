@@ -58,7 +58,14 @@ const SY = {
 };
 
 /** The acts that name the thread they are taken for. */
-const THREADED = new Set(['move', 'draft_requirement', 'draft_feedback', 'research', 'record']);
+const THREADED = new Set([
+  'move',
+  'draft_requirement',
+  'draft_feedback',
+  'research',
+  'record',
+  'decide',
+]);
 /** The acts that run as the member whose message asked for them, naming it (ISS-716). */
 const ASKED = new Set(['move', 'draft_requirement', 'draft_feedback']);
 /** What a member writes into a thread while a turn works on another member's command there. */
@@ -440,6 +447,29 @@ describe('REQ-75 r4: operations rooms answer under their bot’s role (BC-20..BC
       key: 'FB-999',
     });
     expect(refusal(none)?.code, JSON.stringify(none)).toBe('OPS_OUT_OF_SCOPE');
+  });
+
+  // ISS-1427: Forge-Communicate recorded no decision on 135 turns; the act its brief now names is
+  // one an operations room takes, kept on its thread so its turns are counted by decision
+  it('records an operations room’s routing decision on its thread', async () => {
+    const out = await ask('alice', 'ops', {
+      action: 'decide',
+      decision: 'answer',
+      project: slug.social,
+      signals: ['message'],
+      confidence: 'high',
+      why: 'asks about the social project by name',
+    });
+    expect(out, JSON.stringify(out)).toMatchObject({
+      isError: false,
+      decided: 'answer',
+      project: slug.social,
+    });
+    const decided = await rows<{ project: string }>(sql`
+      SELECT a.input->>'project' AS project FROM support_actions a
+        JOIN support_rooms r ON r.id = a.room_id
+       WHERE r.rid = ${chat.rooms.ops} AND a.kind = 'routing_decided'`);
+    expect(decided).toEqual([{ project: slug.social }]);
   });
 
   it('refuses a support group’s acts, research the role lacks, and a page that is not public', async () => {
