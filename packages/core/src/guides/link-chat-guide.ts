@@ -6,7 +6,7 @@ export const LINK_CHAT_GUIDE: CoreGuide = {
   title: 'Linking a chat account to a Forge account',
   summary:
     'Who can link a Rocket.Chat account to a Forge user, the steps, what the person sees, how to check it worked, and what to tell them when it fails.',
-  version: 3,
+  version: 4,
   body: `## Linking a chat account to a Forge account
 
 A link says "this chat account is this Forge user". Until it exists, what a person answers in the
@@ -33,6 +33,13 @@ Never hand him the page, and never ask him to link anything or to change his cha
 his answer is refused \`SUPPORT_ANSWER_NOT_THE_OWNER\` because his account is no Forge account,
 it is kept: tell the room it is noted and waits on a setup step its admins own. The refusal names
 the admins. Once his account is named or linked, you are told which kept answers were recorded.
+
+### A decider needs no link
+A person who decides an act (a release's go or hold, a requirement's acceptance, an issue's reopen
+or move) needs no Forge account. Where a project admin declared them by chat identity, their word in
+the project's room decides it as theirs. Refused \`SUPPORT_DECIDER_NOT_DECLARED\`, ask the owner
+once, as a yes or no, whether to declare them for that act. Never ask anyone to link, invite or make
+an account for a decider, and never hand a decider this page for their decision.
 
 ### Steps for a member
 1. Call \`support.link { thread, member }\` for the person (\`member\` is their \`from.id\`; they must

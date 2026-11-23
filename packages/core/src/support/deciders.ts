@@ -22,28 +22,59 @@ export const actsWords = (acts: readonly string[]): string =>
   acts.map((a) => CHANNEL_DECIDER_ACT_LABEL[a as ChannelDeciderAct] ?? a).join(', ');
 
 /**
- * The ruling of the room's project naming `writer`, by the username the chat server signed, or any
- * member of the room (`*`), as the one who decides `act` on `target`, the project the proposal names
- * by slug (the room's home where it names none): a ruling scoped to other targets decides nothing
- * here (REQ-90 BC-12). Null where none does.
+ * Whether a ruling's entry names `writer`: a member declared by chat identity (REQ-90 BC-15) by the
+ * account id the chat server signed the message with, which a username change never moves; any other
+ * by the username, or any member of the room (`*`).
+ */
+const namesWriter = (
+  d: RulingDeciderRead,
+  writer: { key?: string | null; label: string | null },
+) =>
+  d.speaker
+    ? !!writer.key && d.speaker.externalId === writer.key
+    : !!writer.label &&
+      (d.member === ANY_ROOM_MEMBER || d.member.toLowerCase() === writer.label.toLowerCase());
+
+/**
+ * The ruling of the room's project naming `writer` (`namesWriter`) as the one who decides `act` on
+ * `target`, the project the proposal names by slug (the room's home where it names none): a ruling
+ * scoped to other targets decides nothing here (REQ-90 BC-12). Null where none does.
  */
 export async function deciderFor(
   room: RoomRow,
   act: ChannelDeciderAct,
-  writer: { label: string | null },
+  writer: { key?: string | null; label: string | null },
   target?: string | null,
 ): Promise<RulingDeciderRead | null> {
-  const name = writer.label?.toLowerCase();
-  if (!name) return null;
+  if (!writer.label && !writer.key) return null;
   const all = await rulingDecidersOf(room.projectId);
-  const named = all.filter(
-    (d) =>
-      (d.member === ANY_ROOM_MEMBER || d.member.toLowerCase() === name) && d.acts.includes(act),
-  );
+  const named = all.filter((d) => namesWriter(d, writer) && d.acts.includes(act));
   if (named.every((d) => !d.targets)) return named[0] ?? null;
   const home = target ? null : await namedProject(room, undefined);
   const on = target ?? (home?.ok ? home.value.slug : null);
   return named.find((d) => !d.targets || (on !== null && d.targets.includes(on))) ?? null;
+}
+
+/**
+ * What the project's rulings declare of one chat identity (REQ-90 BC-15): the declarations naming
+ * it, whatever act, so a refusal can say which acts it covers. Empty where it is declared for none.
+ */
+export async function declarationsOf(projectId: string, key: string): Promise<RulingDeciderRead[]> {
+  return (await rulingDecidersOf(projectId)).filter((d) => d.speaker?.externalId === key);
+}
+
+/**
+ * The yes or no an agent asks, once, where a speaker the project has not declared decides an act
+ * (REQ-90 BC-16): whether to declare them for it, by chat identity, which a project admin writes. Never
+ * a link, an invite or an account to make: a declared decider needs none.
+ */
+export async function declarationAsk(
+  projectId: string,
+  who: string,
+  acts: readonly ChannelDeciderAct[],
+): Promise<string> {
+  const ruling = (await rulingDecidersOf(projectId)).find((d) => d.speaker)?.ruling;
+  return `${who} is not declared to decide ${actsWords(acts)} on this project. Ask the project's owner once, as a yes or no: "Declare ${who} to decide ${actsWords(acts)} here?" On his yes, a project admin declares them by chat identity (metadata.deciders[].speaker on ${ruling ? `the ruling knowledge:${ruling}` : 'a rule knowledge entry'}, PUT /api/projects/${projectId}/knowledge/<slug>), and their word then decides it as theirs. Never ask anyone to link, invite or make an account for them: a declared decider needs none`;
 }
 
 /**
@@ -92,5 +123,10 @@ export function decidersBlock(deciders: readonly RulingDeciderRead[]): string | 
     "Who decides, from the project's rulings (its master records them; nothing said in a room changes them):",
     ...lines,
     'Their go in any words, on a proposal of that act put to them or in their own request for it, is their agreement: cite that message with agree at once, and ask them nothing more.',
+    ...(deciders.some((d) => d.speaker)
+      ? [
+          'One declared by chat identity needs no Forge account: their go or hold on a release (support.release_decision), or a reopen they ask for, decides it as theirs. Never ask anyone to link, invite or make an account for them.',
+        ]
+      : []),
   ].join('\n');
 }

@@ -8,7 +8,7 @@ import { releaseThroughChangeRequests } from '@forge/contracts/releases';
 import type { ReleaseAttemptRow } from '../db/schema-release-ledger.js';
 import { feedbackAnsweredBy } from '../feedback/index.js';
 import { notFound } from '../middleware/route-errors.js';
-import { holderNames, namedHolders } from '../permissions/index.js';
+import { holderNames } from '../permissions/index.js';
 import { type ReleaseRunRow, releaseRunsByIds } from '../pipeline/index.js';
 import {
   approvalRequired,
@@ -45,6 +45,7 @@ import { draftPromotionViewOf, promotionViewOf } from './promotion-release.js';
 import { waitingIssueIds } from './queries.js';
 import { refuseRelease } from './refuse.js';
 import { continuationOf, fillCuts, type ReleaseLines, releaseLinesOf } from './release-cuts.js';
+import { releaseDecidersOf } from './release-deciders.js';
 import { loadReleaseFacts } from './release-facts.js';
 import { gateViews } from './release-gates.js';
 import { readReleaseOwes } from './release-owes.js';
@@ -285,7 +286,7 @@ export async function sharedFor(
       parts.flatMap((p) => p.issueIds),
       [...new Set([...parts.flatMap((p) => (p.runId ? [p.runId] : [])), ...attemptRunIds])],
     ),
-    namedHolders('releases.approve', projectId),
+    releaseDecidersOf(projectId),
     holderNames('project.admin', projectId),
     readContentLanguage(projectId),
     resolveReleaseChannels(projectId),

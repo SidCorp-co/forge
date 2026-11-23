@@ -35,6 +35,51 @@ type Decision =
   | { decision: 'approve'; reason?: string; carry?: Carry }
   | { decision: 'return'; reason: string };
 
+/**
+ * Who decides a release: a Forge user, whose releases.approve the door checks, or a decider a project
+ * admin declared by chat identity (REQ-90 BC-15), whose declaration its caller checked: the identity's
+ * account and the name the room showed. Each is recorded as itself, never as anyone else.
+ */
+export type ReleaseDecider =
+  | { kind: 'person'; userId: string }
+  | { kind: 'chat'; chatAccountId: string; name: string };
+
+/** The decider's columns on a decision row. */
+export const deciderColumns = (by: ReleaseDecider) =>
+  by.kind === 'person'
+    ? { decidedByUser: by.userId, decidedByChatAccount: null, decidedByChatName: null }
+    : { decidedByUser: null, decidedByChatAccount: by.chatAccountId, decidedByChatName: by.name };
+
+/** Refused where a person holds no releases.approve; a declared decider's declaration is its caller's. */
+export async function deciderRefusal(projectId: string, by: ReleaseDecider): Promise<void> {
+  if (by.kind === 'chat') return;
+  const denied = await permissionRefusalFor(
+    actorFor(by.userId),
+    'releases.approve',
+    projectResource(projectId),
+    'approving or returning a release',
+  );
+  if (denied) throw new RefusalError([denied], denied.code);
+}
+
+/** Who decided a row, as a release reads a person: a declared chat decider reads by their name. */
+async function decidedByOf(row: {
+  decidedByUser: string | null;
+  decidedByChatAccount: string | null;
+  decidedByChatName: string | null;
+}): Promise<{ id: string; name: string; kind: 'human' | 'agent' } | null> {
+  if (row.decidedByChatAccount) {
+    return {
+      id: row.decidedByChatAccount,
+      name: row.decidedByChatName ?? 'Unknown',
+      kind: 'human',
+    };
+  }
+  if (!row.decidedByUser) return null;
+  const p = (await peopleOf([row.decidedByUser])).get(row.decidedByUser);
+  return { id: row.decidedByUser, name: p?.name ?? 'Unknown', kind: p?.kind ?? 'human' };
+}
+
 const sameRoster = (a: readonly string[], b: readonly string[]) =>
   a.length === b.length && [...a].sort().every((id, i) => id === [...b].sort()[i]);
 
@@ -101,13 +146,13 @@ export async function draftDecisionRefusal(
 }
 
 async function viewOf(row: ReleaseDraftApprovalRow): Promise<ReleaseDraftApprovalView> {
-  const people = await peopleOf([row.decidedByUser]);
-  const p = people.get(row.decidedByUser);
+  // the row's check names exactly one decider
+  const decidedBy = (await decidedByOf(row)) ?? { id: '', name: 'Unknown', kind: 'human' as const };
   return {
     id: row.id,
     version: row.version,
     decision: row.decision,
-    decidedBy: { id: row.decidedByUser, name: p?.name ?? 'Unknown', kind: p?.kind ?? 'human' },
+    decidedBy,
     decidedAt: row.decidedAt.toISOString(),
     reason: row.reason,
   };
@@ -189,14 +234,18 @@ export async function decideDraftApproval(input: {
   userId: string;
   decision: Decision;
 }): Promise<ReleaseDraftApprovalView> {
-  const { projectId, version, userId, decision } = input;
-  const denied = await permissionRefusalFor(
-    actorFor(userId),
-    'releases.approve',
-    projectResource(projectId),
-    'approving or returning a release',
-  );
-  if (denied) throw new RefusalError([denied], denied.code);
+  return decideDraftApprovalBy({ ...input, by: { kind: 'person', userId: input.userId } });
+}
+
+/** `decideDraftApproval` by either decider (`ReleaseDecider`). */
+export async function decideDraftApprovalBy(input: {
+  projectId: string;
+  version: string;
+  by: ReleaseDecider;
+  decision: Decision;
+}): Promise<ReleaseDraftApprovalView> {
+  const { projectId, version, by, decision } = input;
+  await deciderRefusal(projectId, by);
   if (decision.decision === 'approve' && decision.carry !== undefined) {
     throw refuseRelease(
       'RELEASE_APPROVAL_SHAPE',
@@ -216,7 +265,7 @@ export async function decideDraftApproval(input: {
         version,
         issueIds: roster,
         decision: decision.decision === 'approve' ? 'approved' : 'returned',
-        decidedByUser: userId,
+        ...deciderColumns(by),
         reason: decision.reason?.trim() || null,
       })
       .returning();

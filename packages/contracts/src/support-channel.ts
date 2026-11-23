@@ -129,13 +129,16 @@ export const supportMemberRequestSchema = z.strictObject({
 });
 
 /**
- * What a decider may be named for: the acts a proposal waits on an agreement for, and a release's go
- * or no (ISS-1383): the member named for `release` is the project's release decider, whose go cited
- * by the room agent is decided as theirs, or kept until their chat account is named.
+ * What a decider may be named for: the acts a proposal waits on an agreement for, a release's go or
+ * no (ISS-1383), a requirement's acceptance and an issue's reopen or status move at their request
+ * (REQ-90 BC-15). A decider declared by chat identity (`speaker`) decides them as that identity, with
+ * no Forge account; `accept` and `reopen` are declared only that way.
  */
 export const CHANNEL_DECIDER_ACTS = [
 	...SUPPORT_PROPOSAL_KINDS,
 	"release",
+	"accept",
+	"reopen",
 ] as const;
 export type ChannelDeciderAct = (typeof CHANNEL_DECIDER_ACTS)[number];
 
@@ -147,7 +150,30 @@ export const CHANNEL_DECIDER_ACT_LABEL: Record<ChannelDeciderAct, string> = {
 	build: "a build",
 	command: "a host command",
 	release: "a release's go or no",
+	accept: "accepting a requirement",
+	reopen: "an issue's reopen or status move",
 };
+
+/** The acts a decider is named for only by chat identity (REQ-90 BC-15). */
+export const DECLARED_ONLY_ACTS: readonly ChannelDeciderAct[] = [
+	"accept",
+	"reopen",
+];
+
+/**
+ * A delegated decider's chat identity (REQ-90 BC-15): the chat source and the account id that server
+ * signs their messages with, which a username change never moves. A project admin declares it.
+ */
+export const deciderSpeakerSchema = z.strictObject({
+	source: z.enum(["rocketchat"]),
+	externalId: z
+		.string()
+		.regex(
+			/^[A-Za-z0-9_-]{1,64}$/,
+			"the chat account id its server signs with",
+		),
+});
+export type DeciderSpeaker = z.infer<typeof deciderSpeakerSchema>;
 
 /**
  * One member the project's rulings name as the one who decides acts (ISS-1042), by the chat username
@@ -159,25 +185,43 @@ export const CHANNEL_DECIDER_ACT_LABEL: Record<ChannelDeciderAct, string> = {
 /** A ruling's `member` that names every member of the room (REQ-90 BC-12): any of them agrees. */
 export const ANY_ROOM_MEMBER = "*";
 
-export const rulingDeciderSchema = z.strictObject({
-	/** The chat username, or `*` for any member of the room. */
-	member: z.union([z.literal(ANY_ROOM_MEMBER), chatUsernameSchema]),
-	acts: z
-		.array(z.enum(CHANNEL_DECIDER_ACTS))
-		.min(1)
-		.max(CHANNEL_DECIDER_ACTS.length)
-		.refine((a) => new Set(a).size === a.length, "an act is named once"),
-	/**
-	 * The projects, by slug, whose acts this member decides (REQ-90 BC-12): a filing names the project
-	 * it is for. Absent, every project the room files to.
-	 */
-	targets: z
-		.array(z.string().trim().min(1).max(100))
-		.min(1)
-		.max(20)
-		.refine((t) => new Set(t).size === t.length, "a target is named once")
-		.optional(),
-});
+export const rulingDeciderSchema = z
+	.strictObject({
+		/** The chat username, or `*` for any member of the room. */
+		member: z.union([z.literal(ANY_ROOM_MEMBER), chatUsernameSchema]),
+		acts: z
+			.array(z.enum(CHANNEL_DECIDER_ACTS))
+			.min(1)
+			.max(CHANNEL_DECIDER_ACTS.length)
+			.refine((a) => new Set(a).size === a.length, "an act is named once"),
+		/**
+		 * The projects, by slug, whose acts this member decides (REQ-90 BC-12): a filing names the project
+		 * it is for. Absent, every project the room files to.
+		 */
+		targets: z
+			.array(z.string().trim().min(1).max(100))
+			.min(1)
+			.max(20)
+			.refine((t) => new Set(t).size === t.length, "a target is named once")
+			.optional(),
+		/**
+		 * The chat identity a project admin declared this member by (REQ-90 BC-15): their word in the
+		 * project's room decides the acts named as that identity, with no Forge account or invite.
+		 * `member` is then the name the room shows them by.
+		 */
+		speaker: deciderSpeakerSchema.optional(),
+	})
+	.refine((d) => !(d.speaker && d.member === ANY_ROOM_MEMBER), {
+		message: "a chat identity is one member's, never any member of the room",
+		path: ["speaker"],
+	})
+	.refine(
+		(d) => d.speaker || !d.acts.some((a) => DECLARED_ONLY_ACTS.includes(a)),
+		{
+			message: `${DECLARED_ONLY_ACTS.join(" and ")} are declared by chat identity: name the member's speaker { source, externalId }`,
+			path: ["speaker"],
+		},
+	);
 export type RulingDecider = z.infer<typeof rulingDeciderSchema>;
 
 /** The key of a `rule` knowledge entry's metadata that names its deciders (ISS-1042). */
@@ -200,7 +244,7 @@ export const rulingDecidersSchema = z
 	);
 
 /** The valid shape of `metadata.deciders`, as a refusal names it. */
-export const RULING_DECIDERS_SHAPE = `metadata.${RULING_DECIDERS_KEY}: [{ member: <chat username> | "${ANY_ROOM_MEMBER}" (any member of the room), acts: (${CHANNEL_DECIDER_ACTS.join(" | ")})[], targets?: <project slug>[] }], on an entry of kind rule`;
+export const RULING_DECIDERS_SHAPE = `metadata.${RULING_DECIDERS_KEY}: [{ member: <chat username> | "${ANY_ROOM_MEMBER}" (any member of the room), acts: (${CHANNEL_DECIDER_ACTS.join(" | ")})[], targets?: <project slug>[], speaker?: { source: "rocketchat", externalId: <chat account id> } (a delegated decider a project admin declares by chat identity; ${DECLARED_ONLY_ACTS.join(" and ")} need it) }], on an entry of kind rule`;
 
 /** An instruction a member gave in the channel, kept as a rule linked to its message (BC-35). */
 /**

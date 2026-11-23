@@ -7,11 +7,13 @@
 
 import type { SupportReleaseDecisionRequest } from '@forge/contracts/support-channel';
 import { outsideTokenScope } from '../credentials/pat-scope.js';
+import type { RulingDeciderRead } from '../knowledge/index.js';
 import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
 import { actorFor, permissionRefusalFor, projectResource } from '../permissions/index.js';
 import {
   decideApprovalOfVersion,
+  decideApprovalOfVersionBy,
   giveProdGoWithApproval,
   parseDecision,
   runCutAs,
@@ -23,6 +25,8 @@ import { refusalsOf } from './ops-writes.js';
 import { no } from './outcome.js';
 import { insertAction, type RoomRow } from './store.js';
 import { citableRoomOf } from './technical-thread-room.js';
+import { senderAccount } from './temporary-account.js';
+import { roomAuth } from './thread.js';
 
 /** How much of his message the decision's reason quotes: the reason is at most 1000 characters. */
 const QUOTE_MAX = 400;
@@ -154,6 +158,75 @@ export async function decideAs(
       version: input.version,
       project: project.slug,
       decidedBy: person.label ?? person.key,
+      approval: decided.value,
+      ...(deploy ? { productionDeploy: deploy } : {}),
+    },
+  };
+}
+
+/**
+ * Decide the release as a speaker a project admin declared by chat identity for the release act
+ * (REQ-90 BC-15), who holds no Forge account: recorded as that identity (its account, the name the
+ * room shows) with their message as the evidence, and the declaration cited, never as the owner or
+ * the room's agent. A go approves it with no owner press; a hold (a return) is recorded as theirs.
+ * The production deploy a confirm holds still waits on a project admin's press: a declaration lends
+ * the release decision, not project.admin.
+ */
+export async function decideAsDeclared(
+  room: RoomRow,
+  input: SupportReleaseDecisionRequest,
+  project: { id: string; slug: string },
+  said: Said,
+  declaration: RulingDeciderRead,
+): Promise<OpsOutcome<unknown>> {
+  const { namespace } = await roomAuth(room);
+  const account = await senderAccount(
+    { source: 'rocketchat', namespace, externalId: said.authorKey, label: said.author },
+    project.id,
+  );
+  if (account.kind !== 'temporary') {
+    // a Forge account resolved after all: their own grants decide, as any person's word
+    return no(
+      'SUPPORT_RELEASE_DECISION_NOT_PERMITTED',
+      '/message',
+      `${said.author ? `@${said.author}` : `account ${said.authorKey}`} is a Forge account now: cite ${input.message} again, and it is decided by their own releases.approve. Nothing was decided`,
+    );
+  }
+  const name = said.author ? `@${said.author}` : `account ${said.authorKey}`;
+  const decision = parseDecision({
+    decision: input.decision,
+    reason:
+      `${reasonOf(room, input, said)}; decided as ${name}, whom the project declares by chat identity to decide its releases [knowledge:${declaration.ruling}]`.slice(
+        0,
+        1000,
+      ),
+  });
+  const decided = await refusalsOf(async () => ({
+    ok: true as const,
+    value: await decideApprovalOfVersionBy({
+      projectId: project.id,
+      version: input.version,
+      by: { kind: 'chat', chatAccountId: account.temporaryAccountId, name },
+      decision,
+    }),
+  }));
+  if (!decided.ok) return decided;
+  const deploy =
+    input.decision === 'approve' && (await runCutAs(project.id, input.version))
+      ? {
+          standsFor: null,
+          waitsOn:
+            "a production deploy that waits on a confirm waits on a project admin's press; a declared decider's approval does not stand for it",
+        }
+      : null;
+  return {
+    ok: true,
+    value: {
+      decision: input.decision,
+      version: input.version,
+      project: project.slug,
+      decidedBy: name,
+      declaredBy: `knowledge:${declaration.ruling}`,
       approval: decided.value,
       ...(deploy ? { productionDeploy: deploy } : {}),
     },

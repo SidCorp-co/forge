@@ -608,7 +608,10 @@ export interface OutboxEventPayloads
 		reason: string | null;
 		/** The unproven criteria the approval carried by name, each still owed after the release (ISS-914). */
 		carried: { issue: string; n: number; standing: string; why: string }[];
+		/** A user's id, or the chat identity's account of a decider declared by it (REQ-90 BC-15). */
 		decidedBy: string;
+		/** The name the room showed a decider declared by chat identity; absent for a user. */
+		decidedByName?: string;
 		decidedAt: string;
 	};
 	/**

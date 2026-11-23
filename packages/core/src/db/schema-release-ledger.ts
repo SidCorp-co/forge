@@ -20,6 +20,7 @@ import { users } from './schema-auth.js';
 import { issues } from './schema-issues.js';
 import { pipelineRuns } from './schema-pipeline.js';
 import { projects } from './schema-projects.js';
+import { chatTemporaryAccounts } from './schema-support-asks.js';
 
 export { RELEASE_ATTEMPT_STAGES, type ReleaseAttemptStage };
 
@@ -94,6 +95,15 @@ export const releaseApprovals = pgTable(
     note: text('note'),
     decision: text('decision').$type<ReleaseApprovalDecision>(),
     decidedByUser: uuid('decided_by_user').references(() => users.id, { onDelete: 'restrict' }),
+    /**
+     * A decider a project admin declared by chat identity, who holds no Forge account (REQ-90 BC-15):
+     * the chat identity's account and the name the room showed at the decision, in place of a user.
+     */
+    decidedByChatAccount: uuid('decided_by_chat_account').references(
+      () => chatTemporaryAccounts.id,
+      { onDelete: 'restrict' },
+    ),
+    decidedByChatName: text('decided_by_chat_name'),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     reason: text('reason'),
     /** The unproven criteria an approval carried by name, each with the approver's why (ISS-914); empty where none. */
@@ -111,7 +121,7 @@ export const releaseApprovals = pgTable(
     ),
     decidedChk: check(
       'release_approvals_decided_chk',
-      sql`(${t.decision} IS NULL) = (${t.decidedByUser} IS NULL) AND (${t.decision} IS NULL) = (${t.decidedAt} IS NULL)`,
+      sql`(${t.decision} IS NULL) = (${t.decidedAt} IS NULL) AND (${t.decision} IS NULL) = (${t.decidedByUser} IS NULL AND ${t.decidedByChatAccount} IS NULL) AND (${t.decidedByUser} IS NULL OR ${t.decidedByChatAccount} IS NULL) AND (${t.decidedByChatAccount} IS NULL) = (${t.decidedByChatName} IS NULL)`,
     ),
     reasonChk: check(
       'release_approvals_reason_chk',
@@ -139,9 +149,13 @@ export const releaseDraftApprovals = pgTable(
     version: text('version').notNull(),
     issueIds: jsonb('issue_ids').$type<string[]>().notNull(),
     decision: text('decision').$type<ReleaseApprovalDecision>().notNull(),
-    decidedByUser: uuid('decided_by_user')
-      .notNull()
-      .references(() => users.id, { onDelete: 'restrict' }),
+    /** Null where a decider declared by chat identity decided it (REQ-90 BC-15). */
+    decidedByUser: uuid('decided_by_user').references(() => users.id, { onDelete: 'restrict' }),
+    decidedByChatAccount: uuid('decided_by_chat_account').references(
+      () => chatTemporaryAccounts.id,
+      { onDelete: 'restrict' },
+    ),
+    decidedByChatName: text('decided_by_chat_name'),
     decidedAt: timestamp('decided_at', { withTimezone: true }).notNull().defaultNow(),
     reason: text('reason'),
   },
@@ -158,6 +172,10 @@ export const releaseDraftApprovals = pgTable(
     reasonChk: check(
       'release_draft_approvals_reason_chk',
       sql`${t.decision} <> 'returned' OR ${t.reason} IS NOT NULL`,
+    ),
+    deciderChk: check(
+      'release_draft_approvals_decider_chk',
+      sql`(${t.decidedByUser} IS NULL) <> (${t.decidedByChatAccount} IS NULL) AND (${t.decidedByChatAccount} IS NULL) = (${t.decidedByChatName} IS NULL)`,
     ),
   }),
 );

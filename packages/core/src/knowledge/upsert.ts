@@ -17,7 +17,7 @@ import { knowledgePort } from './ports.js';
 import { entryProvenanceRefusal, owesProvenance, provenanceOf } from './provenance.js';
 import { parseReadWhen, type ReadWhenCondition, readWhenRefusal } from './read-when.js';
 import { flagKnowledgeForChange, ruleChange } from './recheck.js';
-import { rulingDecidersRefusal } from './ruling-deciders.js';
+import { declarationRefusal, rulingDecidersRefusal } from './ruling-deciders.js';
 import { retireReplaced, subjectHeldRefusal } from './subject-held.js';
 
 export async function upsertKnowledgeEntry(
@@ -182,7 +182,7 @@ export async function upsertKnowledgeEntries(
   const entries = lastPerKey(inputs);
   // a ruling naming who decides an act is read by every room of the project (ISS-1042)
   for (const entry of entries) {
-    const deciders = rulingDecidersRefusal(entry);
+    const deciders = rulingDecidersRefusal(entry) ?? (await declarationRefusal(entry, writer));
     if (deciders) throw deciders;
   }
   for (const projectId of new Set(entries.map((e) => e.projectId))) {

@@ -165,9 +165,18 @@ export function languageAgreement(projectId: string, held: LanguageHeld): Repres
   };
 }
 
-/** `@thanhnh decides recording work (a filing) on sid-desk`; `*` reads `any member of the room`. */
-export function deciderWords(d: Pick<RulingDecider, 'member' | 'acts' | 'targets'>): string {
-  const who = d.member === ANY_ROOM_MEMBER ? 'any member of the room' : `@${d.member}`;
+/**
+ * `@thanhnh decides recording work (a filing) on sid-desk`; `*` reads `any member of the room`; a
+ * member a project admin declared by chat identity reads `@tuyen, by chat identity, decides …`
+ * (REQ-90 BC-15), with no Forge account behind it.
+ */
+export function deciderWords(
+  d: Pick<RulingDecider, 'member' | 'acts' | 'targets' | 'speaker'>,
+): string {
+  const who =
+    d.member === ANY_ROOM_MEMBER
+      ? 'any member of the room'
+      : `@${d.member}${d.speaker ? ', by chat identity,' : ''}`;
   const acts = d.acts.map((a) => CHANNEL_DECIDER_ACT_LABEL[a] ?? a).join(', ');
   const where = d.targets?.length ? ` on ${d.targets.join(', ')}` : '';
   return `${who} decides ${acts}${where}`;

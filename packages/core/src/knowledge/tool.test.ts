@@ -80,6 +80,8 @@ describe('forge_knowledge upsert', () => {
         scope: 'every deploy of this project',
         recheckWhen: 'scripts/deploy.sh moves',
       }),
+      // the caller is the writer a declaration by chat identity is checked against (ISS-1432)
+      expect.objectContaining({ userId: expect.any(String), agency: 'agent' }),
     );
   });
 });

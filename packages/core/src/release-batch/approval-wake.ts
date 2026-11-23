@@ -89,7 +89,8 @@ export async function tellReleaseRun(p: Decided): Promise<Told> {
     );
     return delivered > 0 ? 'master_woken' : 'no_master';
   }
-  const name = (await peopleOf([p.decidedBy])).get(p.decidedBy)?.name ?? p.decidedBy;
+  const name =
+    p.decidedByName ?? (await peopleOf([p.decidedBy])).get(p.decidedBy)?.name ?? p.decidedBy;
   const [channels, held] = await Promise.all([
     resolveReleaseChannels(p.projectId),
     readProjectDocument(p.projectId),

@@ -2,6 +2,7 @@
 // @direct-test-of packages/core/src/support/ops-feedback-read.ts
 // @direct-test-of packages/core/src/support/ops-acts.ts
 // @direct-test-of packages/core/src/support/ops-types.ts
+// @direct-test-of packages/core/src/support/ops-writes.ts
 //
 // REQ-75 r4 BC-20..BC-24, end to end: two bot accounts on one chat server, each with its role on
 // its rocketchat connection — babo (read, deliver) in an organization-wide operations room and in
@@ -39,37 +40,11 @@ import {
   opsChat,
   type RoomName,
 } from '../helpers/ops-chat-server.js';
+import { BABO, opsModel, SY } from '../helpers/ops-session-model.js';
 import { boxToken, type Served, serveCore } from '../helpers/preview-world.js';
 import { SessionBox } from '../helpers/support-world.js';
 
 vi.setConfig({ testTimeout: 90_000, hookTimeout: 120_000 });
-
-const BABO = {
-  name: 'babo',
-  persona:
-    'You are Babo. You coordinate Forge and delivery for the team: projects, issues, runners, masters and releases. You never decide product direction.',
-  grants: ['read', 'deliver'],
-};
-const SY = {
-  name: 'sy',
-  persona:
-    'You are Sy. You work on product direction, requirements, feedback and research, as drafts a person decides. You never move delivery.',
-  grants: ['read', 'draft', 'research'],
-};
-
-/** The acts that name the thread they are taken for. */
-const THREADED = new Set([
-  'move',
-  'draft_requirement',
-  'draft_feedback',
-  'research',
-  'record',
-  'decide',
-]);
-/** The acts that run as the member whose message asked for them, naming it (ISS-716). */
-const ASKED = new Set(['move', 'draft_requirement', 'draft_feedback']);
-/** What a member writes into a thread while a turn works on another member's command there. */
-const INTERJECTION = 'hmm, wait';
 
 let core: Served;
 let chat: OpsChat;
@@ -120,41 +95,7 @@ beforeAll(async () => {
   );
   box = new SessionBox(core.base, await boxToken(alice.id, deviceId), deviceId);
   await box.connect();
-  box.model = async (turn, act) => {
-    for (const m of turn.messages) {
-      if (m.from !== 'forge' && m.text === INTERJECTION) {
-        await act({ action: 'reply', thread: m.thread, text: 'noted' });
-        continue;
-      }
-      if (m.from === 'forge' || !m.text.startsWith('do ')) continue;
-      // `interject` has a member write in the thread before the act runs; `name` has the session
-      // name another thread and message than the one it was handed, as a confused session would
-      const {
-        interject,
-        name,
-        ...args
-      }: Record<string, unknown> & {
-        interject?: { who: MemberName; room: RoomName };
-        name?: { thread: string; message: string };
-      } = JSON.parse(m.text.slice(3));
-      if (interject) {
-        const id = await chat.say(interject.who, interject.room, INTERJECTION, m.thread);
-        await expect
-          .poll(
-            async () =>
-              (await rows(sql`SELECT 1 FROM support_actions WHERE external_id = ${id}`)).length,
-          )
-          .toBe(1);
-      }
-      const out = await act({
-        ...args,
-        ...(THREADED.has(String(args.action)) ? { thread: name?.thread ?? m.thread } : {}),
-        ...(ASKED.has(String(args.action)) ? { message: name?.message ?? m.message } : {}),
-      });
-      answered.set(m.thread, out);
-      await act({ action: 'reply', thread: m.thread, text: out.isError ? 'refused' : 'done' });
-    }
-  };
+  box.model = opsModel(chat, answered);
 
   // dave's chat address names a viewer; the confirmed link names him dana, and the link wins
   const namespace = new URL(chat.serverUrl).host;
@@ -354,9 +295,13 @@ describe('REQ-75 r4: operations rooms answer under their bot’s role (BC-20..BC
     expect(read, JSON.stringify(read)).toMatchObject({ project: slug.catalog, total: 6 });
     for (const who of ['carol', 'eve'] as const) {
       const out = await ask(who, 'ops', move(3));
-      expect(refusal(out)?.code, `${who}: ${JSON.stringify(out)}`).toBe('OPS_ASKER_UNMAPPED');
-      expect(refusal(out)?.detail).toContain('can only read');
-      expect(refusal(out)?.detail).toContain('project.write');
+      // ISS-1432 (REQ-90 BC-16): a move at an undeclared speaker's word asks once whether to
+      // declare them, never for an account to be named or linked
+      expect(refusal(out)?.code, `${who}: ${JSON.stringify(out)}`).toBe(
+        'SUPPORT_DECIDER_NOT_DECLARED',
+      );
+      expect(refusal(out)?.detail).toContain('as a yes or no');
+      expect(refusal(out)?.detail).not.toMatch(/speaker-links|link (her|his|their) account/);
     }
     expect(await statusOf(3)).toBe('open');
   });
@@ -485,5 +430,61 @@ describe('REQ-75 r4: operations rooms answer under their bot’s role (BC-20..BC
     const inside = await ask('alice', 'social', { action: 'research', url: 'https://127.0.0.1/' });
     expect(refusal(inside)?.code, JSON.stringify(inside)).toBe('OPS_RESEARCH_REFUSED');
     expect(refusal(inside)?.detail).toContain('not a public address');
+  });
+});
+
+// ISS-1432 (REQ-90 BC-15): a member's "reopen" in the room waited on an account an admin had to make
+// or link. A project admin now declares the speaker by chat identity for an issue's reopen or status
+// move; their word in that project's own room moves it, with their message on the transition.
+describe('ISS-1432: a speaker declared by chat identity has an issue moved at their word', () => {
+  beforeAll(async () => {
+    // carol holds no Forge account; alice, the catalog's owner, declares her for its moves
+    const put = await api(owner, 'PUT', `/api/projects/${home.catalog}/knowledge/catalog-moves`, {
+      title: 'Carol parks and reopens catalog issues',
+      body: 'Owner ruling: carol decides parking and reopening catalog issues.',
+      kind: 'rule',
+      confidence: 'verified',
+      source: 'owner ruling, ISS-1432',
+      scope: 'issues of the catalog',
+      recheckWhen: 'the owner names another',
+      metadata: {
+        deciders: [
+          {
+            member: 'carol',
+            speaker: { source: 'rocketchat', externalId: chat.members.carol.userId },
+            acts: ['reopen'],
+          },
+        ],
+      },
+    });
+    expect(put.status, JSON.stringify(put.body)).toBe(200);
+  });
+
+  it('refuses her word in another project’s room by name, moving nothing', async () => {
+    const out = await ask('carol', 'ops', move(6));
+    // [MOVED_ANYWHERE] a declaration of the catalog lends its moves in the catalog's room alone
+    expect(refusal(out)?.code, JSON.stringify(out)).toBe('SUPPORT_DECIDER_OUTSIDE_PROJECT_ROOM');
+    expect(await statusOf(6)).toBe('open');
+  });
+
+  it('moves the issue at her word in the project’s room, citing her message and the declaration', async () => {
+    const out = await ask('carol', 'group', move(6));
+    // [UNMAPPED_REFUSED] before the fix: OPS_ASKER_UNMAPPED, nothing moved
+    expect(out, JSON.stringify(out)).toMatchObject({
+      issue: 'ISS-6',
+      from: 'open',
+      to: 'on_hold',
+      as: '@carol',
+      declaredBy: 'knowledge:catalog-moves',
+    });
+    expect(await statusOf(6)).toBe('on_hold');
+    const [moved] = await rows<{ reason: string | null; actor_agency: string }>(
+      sql`SELECT k.reason, k.actor_agency FROM kernel_transitions k JOIN issues i ON i.id = k.entity_id
+           WHERE k.entity = 'issue' AND i.project_id = ${home.catalog}::uuid AND i.iss_seq = 6
+           ORDER BY k.created_at DESC LIMIT 1`,
+    );
+    expect(moved?.reason).toContain("At @carol's word");
+    expect(moved?.reason).toContain('knowledge:catalog-moves');
+    expect(moved?.actor_agency).toBe('agent');
   });
 });

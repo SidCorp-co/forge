@@ -33,6 +33,11 @@ import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 // @direct-test-of packages/core/src/support/setup-step.ts
 // @direct-test-of packages/core/src/support/ops-asker.ts
 // @direct-test-of packages/core/src/support/speaker-link.ts
+// @direct-test-of packages/core/src/support/deciders.ts
+// @direct-test-of packages/core/src/knowledge/ruling-deciders.ts
+// @direct-test-of packages/core/src/release-batch/approvals.ts
+// @direct-test-of packages/core/src/release-batch/draft-approval.ts
+// @direct-test-of packages/core/src/agreements/represented.ts
 //
 // ISS-1313 (FB-730, adminhub-api 0.27.0, 2026-11-18): the owner wrote "Cái CTV cho lên prod đi nha"
 // in his room, and his go reached no door: his chat account maps to no Forge account, so
@@ -250,56 +255,81 @@ describe("ISS-1313: an unlinked owner's go on a release is kept, and decided as 
   });
 });
 
-describe("ISS-1313: an unmapped member's refusal names the admin step, never a link to ask for", () => {
-  it('names speaker-links/named and who holds it, and asks nobody to link anything', async () => {
-    // bob is no Forge account and no owner: his go is refused, and nothing is kept
+// ISS-1432 (REQ-90 BC-16): an undeclared speaker's go was refused naming the admins' account naming,
+// which the room relayed to the owner as "link her account"; it now asks once whether to declare them
+describe("ISS-1432: an undeclared speaker's go asks once whether to declare them, never for an account", () => {
+  it('refuses it by name with the one yes or no, and asks nobody to link or invite anything', async () => {
+    // bob is no Forge account, no owner and not declared: his go is refused, and nothing is kept
     const before = (await keptGoes()).length;
     const bob = await goBy(chat.bob, 'cho lên 0.27.0 đi');
-    expect(code(bob.out), JSON.stringify(bob.out)).toBe('OPS_ASKER_UNMAPPED');
+    // [ASKS_FOR_ACCOUNT] before the fix: OPS_ASKER_UNMAPPED naming speaker-links/named
+    expect(code(bob.out), JSON.stringify(bob.out)).toBe('SUPPORT_DECIDER_NOT_DECLARED');
     const said = JSON.stringify(bob.out);
-    expect(said).toContain(`/api/projects/${w.projectId}/speaker-links/named`);
-    expect(said).toContain('project admin');
-    expect(said).toContain('instance admin');
-    expect(said).toContain('/api/speaker-links/named');
-    expect(said).not.toMatch(/Confirm a speaker link|give it on the chat server/);
-    expect(said).toMatch(/never ask the owner to link anything/i);
+    expect(said).toContain('as a yes or no');
+    expect(said).toContain("Declare @bob to decide a release's go or no here?");
+    expect(said).toContain('metadata.deciders[].speaker');
+    expect(said).not.toMatch(
+      /speaker-links|link (her|his|their) account|names (her|his|their) Forge account/,
+    );
+    expect(said).toContain('Never ask anyone to link, invite or make an account for them');
     expect((await keptGoes()).length).toBe(before);
   });
 });
 
-// ISS-1383 (FB-795, sidpeak 0.28.0 held since 2026-11-20): the project names its release decider in
-// a ruling, and her chat account carries no address, so her go was refused OPS_ASKER_UNMAPPED where
-// an unlinked owner's is kept. Hers is now kept the same way and decided as hers once named.
-describe("ISS-1383: the named release decider's unmapped go is kept, and decided as hers once named", () => {
-  let decider = '';
+// ISS-1432 (REQ-90 BC-15, BC-16; FB-795, sidpeak's releases held on the owner since 2026-11-20): the
+// project's BA decides its releases in the room and holds no Forge account, so her go was kept until
+// an admin named an account (ISS-1383) and the room asked the owner to "link her account". A project
+// admin now declares her by chat identity, with the acts she decides; her go or hold in the project's
+// room decides the release as that identity, with no account, no invite and no owner press.
+describe('ISS-1432: a decider declared by chat identity decides the release with no Forge account', () => {
   let held = '';
+  let onHold = '';
+  let memberToken = '';
+  const RULING = 'release-go-by-bob';
 
-  beforeAll(async () => {
-    // bob is the project's named release decider, by the username the chat server signs
-    const ruled = await api(
-      admin,
-      'PUT',
-      `/api/projects/${w.projectId}/knowledge/release-go-by-bob`,
-      {
-        title: 'Releases go on bob’s word',
-        body: 'Owner ruling: bob decides whether a release goes to production.',
-        kind: 'rule',
-        confidence: 'verified',
-        source: 'owner ruling, ISS-1383',
-        scope: 'releases of this project',
-        recheckWhen: 'the owner names another release decider',
-        metadata: { deciders: [{ member: 'bob', acts: ['release'] }] },
-      },
-    );
-    expect(ruled.status, JSON.stringify(ruled.body)).toBe(200);
-    const d = await createTestUser({ verified: true });
-    decider = d.id;
-    await addProjectMember(w.projectId, decider, 'admin');
-    ({ approvalId: held } = await cutAndAsk(w.projectId, w.ownerId, '0.28.0'));
+  /** The declaration, written by `token`: bob for releases, carol for reopens only. */
+  const declare = (token: string, deciders: Record<string, unknown>[]) =>
+    api(token, 'PUT', `/api/projects/${w.projectId}/knowledge/${RULING}`, {
+      title: 'Releases go on bob’s word',
+      body: 'Owner ruling: bob decides whether a release goes to production.',
+      kind: 'rule',
+      confidence: 'verified',
+      source: 'owner ruling, ISS-1432',
+      scope: 'releases of this project',
+      recheckWhen: 'the owner names another release decider',
+      metadata: { deciders },
+    });
+  const BOB = () => ({
+    member: 'bob',
+    speaker: { source: 'rocketchat', externalId: chat.bob.userId },
+    acts: ['release'],
+  });
+  const CAROL = () => ({
+    member: 'carol',
+    speaker: { source: 'rocketchat', externalId: chat.carol.userId },
+    acts: ['reopen'],
   });
 
-  /** `who` writes `text`, and the agent cites it as their go on 0.28.0. */
-  async function goOn028(who: typeof chat.bob, text: string) {
+  /** The decision row of an approval, with who decided it. */
+  const decidedRow = async (id: string) =>
+    (
+      await rows<{
+        decision: string | null;
+        decided_by_user: string | null;
+        decided_by_chat_account: string | null;
+        decided_by_chat_name: string | null;
+        reason: string | null;
+      }>(sql`SELECT decision, decided_by_user, decided_by_chat_account, decided_by_chat_name, reason
+               FROM release_approvals WHERE id = ${id}`)
+    )[0];
+
+  /** `who` writes `text`, and the agent cites it as their `decision` on `version`. */
+  async function decides(
+    who: typeof chat.bob,
+    text: string,
+    version: string,
+    decision: 'approve' | 'return' = 'approve',
+  ) {
     let out: Record<string, unknown> = {};
     const heard = await w.hear(
       () => chat.say(who, text),
@@ -309,54 +339,103 @@ describe("ISS-1383: the named release decider's unmapped go is kept, and decided
           thread: String(message().thread),
           message: String(message().message),
           project: slug,
-          version: '0.28.0',
-          decision: 'approve',
+          version,
+          decision,
+          ...(decision === 'return' ? { reason: 'giữ lại, chưa test xong' } : {}),
         });
       },
     );
-    return { id: heard.id, out };
+    return { id: heard.id, out, turn: heard.turn };
   }
 
-  it('keeps her go where her chat account maps to no Forge user, telling the room in plain words', async () => {
-    const go = await goOn028(chat.bob, 'Ok cho lên 0.28.0 nhé');
-    // [DECIDER_REFUSED] before the fix: OPS_ASKER_UNMAPPED, nothing kept, the release held on the owner
+  beforeAll(async () => {
+    memberToken = await userToken(member);
+    ({ approvalId: held } = await cutAndAsk(w.projectId, w.ownerId, '0.28.0'));
+    ({ approvalId: onHold } = await cutAndAsk(w.projectId, w.ownerId, '0.29.0'));
+  });
+
+  it('refuses a declaration by a member who is no project admin, by name, storing nothing', async () => {
+    const put = await declare(memberToken, [BOB()]);
+    // [DECLARED_BY_ANYONE] before the fix: a speaker was unknown to the door, refused only as a shape
+    expect(put.status, JSON.stringify(put.body)).toBe(422);
+    expect(JSON.stringify(put.body)).toContain('KNOWLEDGE_DECLARATION_NOT_ADMIN');
+    expect(JSON.stringify(put.body)).toContain('project.admin');
+    expect(
+      await rows(
+        sql`SELECT 1 FROM knowledge_entries WHERE project_id = ${w.projectId}::uuid AND slug = ${RULING}`,
+      ),
+    ).toEqual([]);
+  });
+
+  it('refuses a reopen named by username alone: it is declared by chat identity', async () => {
+    const put = await declare(admin, [{ member: 'carol', acts: ['reopen'] }]);
+    expect(put.status, JSON.stringify(put.body)).toBe(422);
+    expect(JSON.stringify(put.body)).toContain('KNOWLEDGE_DECIDERS_SHAPE');
+    expect(JSON.stringify(put.body)).toContain('declared by chat identity');
+  });
+
+  it('takes an admin’s declaration with no Forge account or invite, and shows it with the deciders', async () => {
+    const put = await declare(admin, [BOB(), CAROL()]);
+    expect(put.status, JSON.stringify(put.body)).toBe(200);
+    // no Forge account was made or invited for either
+    expect(await rows(sql`SELECT 1 FROM users WHERE display_name IN ('bob', 'carol')`)).toEqual([]);
+    const read = await api(admin, 'GET', `/api/projects/${w.projectId}/agreements`);
+    expect(read.status, JSON.stringify(read.body)).toBe(200);
+    const said = JSON.stringify(read.body);
+    expect(said).toContain("@bob, by chat identity, decides a release's go or no");
+    expect(said).toContain("@carol, by chat identity, decides an issue's reopen or status move");
+    expect(said).not.toContain(chat.bob.userId);
+  });
+
+  it('approves the release on her go in the project’s room, as her chat identity, with no owner press', async () => {
+    const go = await decides(chat.bob, 'Ok cho lên 0.28.0 nhé', '0.28.0');
+    // [DECIDER_KEPT] before the fix: kept until an admin named an account, the release held
     expect(code(go.out), JSON.stringify(go.out)).toBeUndefined();
-    expect(go.out).toMatchObject({ kept: true, version: '0.28.0', project: slug });
-    const said = JSON.stringify(go.out);
-    expect(said).toContain('@bob');
-    expect(said).toContain('noted');
-    expect(said).toContain('speaker-links/named');
-    expect(said).not.toMatch(/ask (him|them) to link it|Confirm a speaker link/);
-    const kept = (await keptGoes()).at(-1);
-    expect(kept?.input).toMatchObject({
-      message: go.id,
+    expect(go.out).toMatchObject({
+      decision: 'approve',
       version: '0.28.0',
-      ownerKey: chat.bob.userId,
+      decidedBy: '@bob',
+      declaredBy: `knowledge:${RULING}`,
     });
-    expect(await approvalOf(held)).toMatchObject({ decision: null });
+    const row = await decidedRow(held);
+    expect(row).toMatchObject({
+      decision: 'approved',
+      decided_by_user: null,
+      decided_by_chat_name: '@bob',
+    });
+    const [account] = await rows<{ id: string; external_id: string }>(
+      sql`SELECT id, external_id FROM chat_temporary_accounts WHERE id = ${row?.decided_by_chat_account}::uuid`,
+    );
+    expect(account?.external_id).toBe(chat.bob.userId);
+    expect(row?.reason).toContain(go.id);
+    expect(row?.reason).toContain('Ok cho lên 0.28.0 nhé');
+    expect(row?.reason).toContain(`knowledge:${RULING}`);
+    // the room's brief says what her word does, and never to ask for an account
+    expect(go.turn.text).toContain("@bob, by chat identity, decides a release's go or no");
+    expect(go.turn.text).toContain('Never ask anyone to link, invite or make an account for them');
+    // nothing was kept for an account to come
+    expect((await keptGoes()).filter((k) => k.input.version === '0.28.0')).toEqual([]);
   });
 
-  it('refuses a stranger’s go by name, keeping nothing', async () => {
-    const before = (await keptGoes()).length;
-    const stranger = await goOn028(chat.carol, 'cho lên luôn');
-    expect(code(stranger.out), JSON.stringify(stranger.out)).toBe('OPS_ASKER_UNMAPPED');
-    expect((await keptGoes()).length).toBe(before);
-    expect(await approvalOf(held)).toMatchObject({ decision: null });
+  it('records her hold as hers, the release returned with her why', async () => {
+    const hold = await decides(chat.bob, 'Khoan, giữ 0.29.0 lại', '0.29.0', 'return');
+    expect(code(hold.out), JSON.stringify(hold.out)).toBeUndefined();
+    expect(await decidedRow(onHold)).toMatchObject({
+      decision: 'returned',
+      decided_by_user: null,
+      decided_by_chat_name: '@bob',
+    });
+    expect((await decidedRow(onHold))?.reason).toContain('giữ lại, chưa test xong');
   });
 
-  it('decides it as hers once an admin names her account', async () => {
-    await w.settleWarm();
-    const named = await api(admin, 'POST', NAMED(), {
-      source: 'rocketchat',
-      externalId: chat.bob.userId,
-      userId: decider,
-      reason: 'FB-795: the chat server reports no address for the release decider',
-    });
-    expect(named.status, JSON.stringify(named.body)).toBe(201);
-    await expect
-      .poll(async () => (await approvalOf(held))?.decision, { timeout: 10_000 })
-      .toBe('approved');
-    expect((await approvalOf(held))?.decided_by_user).toBe(decider);
-    expect((await keptGoes()).at(-1)?.output).toMatchObject({ recorded: true, by: decider });
+  it('refuses a go on a release her declaration does not cover, by name, deciding nothing', async () => {
+    const { approvalId } = await cutAndAsk(w.projectId, w.ownerId, '0.30.0');
+    const go = await decides(chat.carol, 'cho lên 0.30.0 luôn', '0.30.0');
+    expect(code(go.out), JSON.stringify(go.out)).toBe('SUPPORT_DECIDER_ACT_NOT_DECLARED');
+    const said = JSON.stringify(go.out);
+    expect(said).toContain("an issue's reopen or status move");
+    expect(said).toContain('yes or no');
+    expect(said).not.toMatch(/speaker-links|link (her|his|their) account/);
+    expect(await decidedRow(approvalId)).toMatchObject({ decision: null });
   });
 });

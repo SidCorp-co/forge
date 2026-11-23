@@ -1615,9 +1615,9 @@
     "by": "ISS-1251"
   },
   "support.link": {
-    "hash": "e30b47b5cca5cafa",
-    "on": "2026-11-16",
-    "by": "ISS-1251"
+    "hash": "d3fcf711c0b0ffae",
+    "on": "2026-11-23",
+    "by": "ISS-1432"
   },
   "support.look": {
     "hash": "2b3ce61a4492e3f6",
@@ -1715,9 +1715,9 @@
     "by": "ISS-1251"
   },
   "support.release_decision": {
-    "hash": "9c5e40c4b83ea299",
-    "on": "2026-11-19",
-    "by": "ISS-1313"
+    "hash": "77dd4400ccd54b6f",
+    "on": "2026-11-23",
+    "by": "ISS-1432"
   },
   "support.releases": {
     "hash": "2b98df17bf868dcf",

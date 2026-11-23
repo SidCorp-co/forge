@@ -18,7 +18,6 @@ import { agrees } from '../lib/plural.js';
 import { RefusalError } from '../lib/refusal.js';
 import { notFound } from '../middleware/route-errors.js';
 import { emitEvent } from '../outbox/index.js';
-import { actorFor, permissionRefusalFor, projectResource } from '../permissions/index.js';
 import {
   approvalRequired,
   bindingOf,
@@ -28,7 +27,13 @@ import {
 } from '../project-config/index.js';
 import { type Carry, parseCarry } from './approval-carry.js';
 import { approvalChecklistRefusals } from './approval-checklist.js';
-import { decideDraftApproval, draftNotApprovableWhy } from './draft-approval.js';
+import {
+  decideDraftApprovalBy,
+  deciderColumns,
+  deciderRefusal,
+  draftNotApprovableWhy,
+  type ReleaseDecider,
+} from './draft-approval.js';
 import { runCutAs } from './naming.js';
 import { refuseRelease } from './refuse.js';
 import { recordUnapproved } from './unapproved.js';
@@ -123,6 +128,17 @@ export async function approvalViews(rows: readonly ReleaseApprovalRow[]): Promis
     name: people.get(id)?.name ?? 'Unknown',
     kind: people.get(id)?.kind ?? 'human',
   });
+  // a decider declared by chat identity reads by the name the room showed (REQ-90 BC-15)
+  const decider = (r: ReleaseApprovalRow) =>
+    r.decidedByChatAccount
+      ? {
+          id: r.decidedByChatAccount,
+          name: r.decidedByChatName ?? 'Unknown',
+          kind: 'human' as const,
+        }
+      : r.decidedByUser
+        ? who(r.decidedByUser)
+        : null;
   return rows.map((r) => ({
     id: r.id,
     runId: r.runId,
@@ -135,7 +151,7 @@ export async function approvalViews(rows: readonly ReleaseApprovalRow[]): Promis
     },
     note: r.note,
     decision: r.decision ?? null,
-    decidedBy: r.decidedByUser ? who(r.decidedByUser) : null,
+    decidedBy: decider(r),
     decidedAt: r.decidedAt ? r.decidedAt.toISOString() : null,
     reason: r.reason,
     carried: r.carried,
@@ -273,14 +289,19 @@ export async function decideApproval(input: {
   userId: string;
   decision: Decision;
 }): Promise<ApprovalView> {
-  const { projectId, runId, approvalId, userId, decision } = input;
-  const denied = await permissionRefusalFor(
-    actorFor(userId),
-    'releases.approve',
-    projectResource(projectId),
-    'approving or returning a release',
-  );
-  if (denied) throw new RefusalError([denied], denied.code);
+  return decideApprovalBy({ ...input, by: { kind: 'person', userId: input.userId } });
+}
+
+/** `decideApproval` by either decider (`ReleaseDecider`), each recorded as itself. */
+async function decideApprovalBy(input: {
+  projectId: string;
+  runId: string;
+  approvalId: string;
+  by: ReleaseDecider;
+  decision: Decision;
+}): Promise<ApprovalView> {
+  const { projectId, runId, approvalId, by, decision } = input;
+  await deciderRefusal(projectId, by);
   const carried =
     decision.decision === 'approve'
       ? await refuseIncompleteApproval(projectId, runId, approvalId, decision)
@@ -290,7 +311,7 @@ export async function decideApproval(input: {
       .update(releaseApprovals)
       .set({
         decision: decision.decision === 'approve' ? 'approved' : 'returned',
-        decidedByUser: userId,
+        ...deciderColumns(by),
         decidedAt: sql`now()`,
         reason: decision.reason?.trim() ?? null,
         carried,
@@ -312,7 +333,8 @@ export async function decideApproval(input: {
         decision: decided.decision,
         reason: decided.reason,
         carried: decided.carried,
-        decidedBy: userId,
+        decidedBy: by.kind === 'person' ? by.userId : by.chatAccountId,
+        ...(by.kind === 'chat' ? { decidedByName: by.name } : {}),
         decidedAt: decided.decidedAt.toISOString(),
       });
     }
@@ -348,14 +370,27 @@ export async function decideApprovalOfVersion(input: {
   userId: string;
   decision: Decision;
 }): Promise<ApprovalView | ReleaseDraftApprovalView> {
+  return decideApprovalOfVersionBy({ ...input, by: { kind: 'person', userId: input.userId } });
+}
+
+/**
+ * `decideApprovalOfVersion` by either decider: a decider a project admin declared by chat identity
+ * (REQ-90 BC-15) decides it as that identity, its declaration checked by the caller that read it.
+ */
+export async function decideApprovalOfVersionBy(input: {
+  projectId: string;
+  version: string;
+  by: ReleaseDecider;
+  decision: Decision;
+}): Promise<ApprovalView | ReleaseDraftApprovalView> {
   const { projectId, version } = input;
   const run = await runCutAs(projectId, version);
   // a project declaring no production cuts no run: its draft is what a listed approver decides (ISS-869)
   if (!run && (await draftNotApprovableWhy(projectId)) === null)
-    return decideDraftApproval({
+    return decideDraftApprovalBy({
       projectId,
       version,
-      userId: input.userId,
+      by: input.by,
       decision: input.decision,
     });
   if (!run) {
@@ -373,11 +408,11 @@ export async function decideApprovalOfVersion(input: {
       '/version',
     );
   }
-  return decideApproval({
+  return decideApprovalBy({
     projectId,
     runId: run.id,
     approvalId: pending.id,
-    userId: input.userId,
+    by: input.by,
     decision: input.decision,
   });
 }

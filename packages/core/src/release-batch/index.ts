@@ -5,6 +5,7 @@ export {
   approvalRequired,
   approvalsOfRuns,
   decideApprovalOfVersion,
+  decideApprovalOfVersionBy,
   parseDecision,
 } from './approvals.js';
 export { assertAttemptHoldsRun } from './attempt-holds.js';

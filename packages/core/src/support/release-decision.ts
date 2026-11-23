@@ -7,15 +7,19 @@
 // quotes his message with its id and thread, so it is audited back to his words.
 // The owner a binding names whose chat account is no Forge account yet (ISS-1313, FB-730) is not
 // refused: his go or no is kept as his answers are (`kept-answers.ts`), the room is told it waits on
-// his admins' setup step, and it is decided as his once they name his account. The member the
-// project's rulings name as its release decider is kept the same way (ISS-1383), and the word may be
+// his admins' setup step, and it is decided as his once they name his account. The word may be
 // cited from the project's technical channel, where the release was put to him (ISS-1347).
+// A speaker a project admin declared by chat identity for the release act (REQ-90 BC-15) needs no
+// Forge account at all: their go or hold, in that project's own room, decides the release as that
+// identity, at once (`release-decide-as.ts:decideAsDeclared`). An unmapped speaker it declares for no
+// release, or does not declare, is refused by name, and the agent asks the owner once whether to
+// declare them (BC-16): never to link, invite or make an account for them.
 
 import type { SupportReleaseDecisionRequest } from '@forge/contracts/support-channel';
 import { isRefusal } from '../lib/refusal.js';
 import { listReleases, parseReleaseVersion } from '../release-batch/index.js';
 import { memberMessage } from './channel-store.js';
-import { deciderFor } from './deciders.js';
+import { actsWords, declarationAsk, declarationsOf } from './deciders.js';
 import { grantsOf, isNamedOwner, supportConfigOf } from './grants.js';
 import { keepOwnerGo, ownerSetupStep } from './kept-answers.js';
 import { forgeUserOrSilence } from './ops-asker.js';
@@ -23,7 +27,7 @@ import { projectInScope } from './ops-scope.js';
 import type { OpsOutcome } from './ops-types.js';
 import { asAsker } from './ops-writes.js';
 import { no } from './outcome.js';
-import { decideAs, type Said } from './release-decide-as.js';
+import { decideAs, decideAsDeclared, type Said } from './release-decide-as.js';
 import { namingStep } from './setup-step.js';
 import { insertAction, type RoomRow } from './store.js';
 import { citableRoomOf } from './technical-thread-room.js';
@@ -38,7 +42,6 @@ async function keepGo(
   input: SupportReleaseDecisionRequest,
   project: { id: string; slug: string },
   said: Said,
-  who: 'owner' | 'decider',
 ): Promise<OpsOutcome<unknown>> {
   const listed = await listReleases(project.id, null);
   if (!listed.releases.some((r) => r.version === input.version)) {
@@ -59,14 +62,6 @@ async function keepGo(
     ownerKey: said.authorKey,
   });
   const word = input.decision === 'approve' ? 'go' : 'no';
-  // the named release decider's go is kept as the owner's is, and decided as hers once named (ISS-1383)
-  const whose =
-    who === 'owner'
-      ? { whose: "the owner's", word: `his ${word}` }
-      : {
-          whose: `${said.author ? `@${said.author}` : `account ${said.authorKey}`}'s, the project's named release decider,`,
-          word: `their ${word}`,
-        };
   return {
     ok: true,
     value: {
@@ -74,11 +69,7 @@ async function keepGo(
       decision: input.decision,
       version: input.version,
       project: project.slug,
-      next: await ownerSetupStep(
-        project.id,
-        `${whose.word} on ${project.slug} ${input.version}`,
-        whose.whose,
-      ),
+      next: await ownerSetupStep(project.id, `his ${word} on ${project.slug} ${input.version}`),
     },
   };
 }
@@ -108,17 +99,47 @@ async function citedWord(
 }
 
 /**
- * Who of the unmapped may have a go kept (ISS-1313, ISS-1383): the owner the binding names, or the
- * member the project's rulings name as deciding the release's project (`deciders.ts`, act
- * `release`), by the username the chat server signed. Null for anyone else.
+ * The unmapped writer's go, by the project's declaration of their chat identity (REQ-90 BC-15):
+ * decided as that identity where a declaration of the release's project covers the release act on
+ * it and the word was said in that project's own room; otherwise refused by name, saying which acts
+ * it covers or that none is declared, with the one yes or no the agent may ask (BC-16).
  */
-async function keptFor(
+async function byDeclaration(
   room: RoomRow,
+  input: SupportReleaseDecisionRequest,
+  project: { id: string; slug: string },
   said: Said,
-  project: string,
-): Promise<'owner' | 'decider' | null> {
-  if (isNamedOwner(grantsOf(await supportConfigOf(room)), said.authorKey)) return 'owner';
-  return (await deciderFor(room, 'release', { label: said.author }, project)) ? 'decider' : null;
+): Promise<OpsOutcome<unknown>> {
+  const who = said.author ? `@${said.author}` : `account ${said.authorKey}`;
+  const declared = await declarationsOf(project.id, said.authorKey);
+  const covering = declared.find(
+    (d) => d.acts.includes('release') && (!d.targets || d.targets.includes(project.slug)),
+  );
+  if (!covering) {
+    if (declared.length > 0) {
+      const acts = [...new Set(declared.flatMap((d) => d.acts))];
+      return no(
+        'SUPPORT_DECIDER_ACT_NOT_DECLARED',
+        '/message',
+        `${who} is declared on ${project.slug} by chat identity to decide ${actsWords(acts)} [knowledge:${declared[0]?.ruling}], not ${actsWords(['release'])}${declared.some((d) => d.targets) ? ` on ${project.slug}` : ''}: a declaration lends the acts it names and no other. ${await declarationAsk(project.id, who, ['release'])}. Nothing was decided`,
+      );
+    }
+    return no(
+      'SUPPORT_DECIDER_NOT_DECLARED',
+      '/message',
+      `${who} holds no Forge account and is not declared to decide ${project.slug}'s releases, so their word decides none. ${await declarationAsk(project.id, who, ['release'])}. Nothing was decided`,
+    );
+  }
+  // the declaration is the project's own: it lends the act to the speaker's word in that project's
+  // room (or its technical channel), never in another project's room that follows it
+  if (room.projectId !== project.id) {
+    return no(
+      'SUPPORT_DECIDER_OUTSIDE_PROJECT_ROOM',
+      '/message',
+      `${who} is declared to decide ${project.slug}'s releases in ${project.slug}'s own room, and ${input.message} was said in a room of another project: their go there decides nothing. Cite their word in ${project.slug}'s room. Nothing was decided`,
+    );
+  }
+  return decideAsDeclared(room, input, project, said, covering);
 }
 
 async function decide(
@@ -145,18 +166,21 @@ async function decide(
     project.value.id,
   );
   if (!person.ok) {
-    const who = await keptFor(room, said, project.value.slug);
-    if (!who) return person;
+    // the owner the binding names keeps his go until his account is named (ISS-1313); anyone else
+    // decides by the project's declaration of their chat identity, or not at all (REQ-90 BC-15)
+    if (!isNamedOwner(grantsOf(await supportConfigOf(room)), said.authorKey)) {
+      return byDeclaration(room, input, project.value, said);
+    }
     // kept only where unmapped: a writer the chat server would not name just now may be one Forge
     // already knows, whose kept go no admin's naming would ever come to decide
     if (silent) {
       return no(
         'OPS_ASKER_UNMAPPED',
         '/message',
-        `the chat server would not say who ${said.author ? `@${said.author}` : `account ${said.authorKey}`} is just now, so this word can be neither decided nor kept: cite message ${input.message} again in a moment. Where it never says, the account is named once: ${await namingStep(project.value.id, who === 'owner' ? 'his' : 'their')}. Nothing was decided`,
+        `the chat server would not say who ${said.author ? `@${said.author}` : `account ${said.authorKey}`} is just now, so this word can be neither decided nor kept: cite message ${input.message} again in a moment. Where it never says, the account is named once: ${await namingStep(project.value.id, 'his')}. Nothing was decided`,
       );
     }
-    return keepGo(room, input, project.value, said, who);
+    return keepGo(room, input, project.value, said);
   }
   return decideAs(room, input, project.value, person.value, said, (fn) =>
     asAsker(person.value, project.value.id, fn),
@@ -164,8 +188,9 @@ async function decide(
 }
 
 /**
- * Record a person's release decision from his own message (ISS-1206): decided as him, kept as the
- * unlinked owner's (ISS-1313), or refused by name with nothing decided. Either way the act is on the
+ * Record a person's release decision from his own message (ISS-1206): decided as him, as a decider
+ * declared by chat identity (REQ-90 BC-15), kept as the unlinked owner's (ISS-1313), or refused by
+ * name with nothing decided. Either way the act is on the
  * room's record beside his message.
  */
 export async function decideReleaseFromMessage(

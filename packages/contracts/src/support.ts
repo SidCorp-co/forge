@@ -2038,6 +2038,12 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_RELEASE_DECISION_NOT_PERMITTED",
 	/** A release decision naming no one whole version (ISS-1206). */
 	"SUPPORT_RELEASE_VERSION_AMBIGUOUS",
+	/** An unmapped speaker's decision the project declares them for no act at all (REQ-90 BC-15, ISS-1432). */
+	"SUPPORT_DECIDER_NOT_DECLARED",
+	/** A declared speaker's decision of an act their declaration does not cover (REQ-90 BC-15). */
+	"SUPPORT_DECIDER_ACT_NOT_DECLARED",
+	/** A declared speaker's word said outside the declaring project's own room (REQ-90 BC-15). */
+	"SUPPORT_DECIDER_OUTSIDE_PROJECT_ROOM",
 	/** An owner's Forge act cited from a message that is no member's own in the thread named (ISS-1243). */
 	"SUPPORT_FORGE_ACT_NOT_HIS_MESSAGE",
 	/** An owner's Forge act cited from a message the room's named owner did not write, as the chat server signed it (ISS-1243). */
@@ -2256,6 +2262,9 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_RELEASE_DECISION_NOT_HIS_MESSAGE: 403,
 	SUPPORT_RELEASE_DECISION_NOT_PERMITTED: 403,
 	SUPPORT_RELEASE_VERSION_AMBIGUOUS: 400,
+	SUPPORT_DECIDER_NOT_DECLARED: 403,
+	SUPPORT_DECIDER_ACT_NOT_DECLARED: 403,
+	SUPPORT_DECIDER_OUTSIDE_PROJECT_ROOM: 403,
 	SUPPORT_FORGE_ACT_NOT_HIS_MESSAGE: 403,
 	SUPPORT_FORGE_ACT_NOT_THE_OWNER: 403,
 	SUPPORT_FORGE_ACT_NO_OWNER: 403,

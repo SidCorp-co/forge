@@ -4397,6 +4397,13 @@
       "when": 1842652800000,
       "tag": "0691_a_room_agent_asks_for_a_secret_through_one_door",
       "breakpoints": true
+    },
+    {
+      "idx": 692,
+      "version": "7",
+      "when": 1842739200000,
+      "tag": "0692_a_decider_declared_by_chat_identity_decides_a_release",
+      "breakpoints": true
     }
   ]
 }

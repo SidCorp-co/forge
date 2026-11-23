@@ -50,6 +50,7 @@ export {
 export {
   type RulingDeciderRead,
   rulingDecidersOf,
+  rulingDecidersOfProjects,
 } from './ruling-deciders.js';
 export {
   type KnowledgeHit,

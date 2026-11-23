@@ -259,7 +259,7 @@ describe('ISS-1042: the member the project’s rulings name as decider agrees in
     expect(JSON.stringify(act.body)).toContain('KNOWLEDGE_DECIDERS_SHAPE');
     expect(JSON.stringify(act.body)).toContain('/metadata/deciders/0/acts/0');
     expect(JSON.stringify(act.body)).toContain(
-      'acts: (fix | filing | deploy | command | build | release)[]',
+      'acts: (fix | filing | deploy | command | build | release | accept | reopen)[]',
     );
     const guide = await putRuling('not-a-rule', {
       kind: 'guide',

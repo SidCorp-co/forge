@@ -68,7 +68,7 @@ const actions: Record<Input['action'], (input: Input, reader: ProjectReader) => 
       if (!entry) throw new Error('NOT_FOUND: knowledge entry not found');
       return entry;
     },
-    upsert: async (input) => {
+    upsert: async (input, reader) => {
       const slug = required(input.slug, 'slug', 'upsert');
       const title = required(input.title, 'title', 'upsert');
       const body = required(input.body, 'body', 'upsert');
@@ -95,6 +95,8 @@ const actions: Record<Input['action'], (input: Input, reader: ProjectReader) => 
           term,
           anchor,
         }),
+        // the caller is the writer a declaration by chat identity is checked against (REQ-90 BC-15)
+        { userId: reader.userId, agency: 'agent' },
       );
     },
     delete: async (input) => {
