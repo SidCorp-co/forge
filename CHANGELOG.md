@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.819] - 2026-11-23
+
+Owners can archive a project from its room
+
+### Added
+
+- **The owner can archive a project from a room.** support.owner_forge_act takes project.archive: it stops the project's runs, closes its questions, switches off its groups and deploy binding, and archives it, leaving its repository and sites untouched.
+
 ## [0.4.0-dev.818] - 2026-11-23
 
 Short Vietnamese lines keep a Vietnamese room's default language
