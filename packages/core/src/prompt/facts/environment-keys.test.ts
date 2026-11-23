@@ -2,10 +2,14 @@
 // signs in itself and hands back a session, so neither the always-on fact nor the QA guide may send a
 // judge to a file holding the password, or to its fields.
 // @direct-test-of packages/core/src/guides/qa-guide.ts
+// @direct-test-of packages/core/src/project-config/cards.ts
+// @direct-test-of packages/core/src/support/secret-link.ts
 
 import { describe, expect, it } from 'vitest';
 import { QA_GUIDE } from '../../guides/qa-guide.js';
+import { PROJECT_CONFIG_REST_CARDS } from '../../project-config/cards.js';
 import type { ProjectDocument } from '../../project-config/index.js';
+import { slotSays } from '../../support/secret-link.js';
 import { renderTestCreds } from './environment-keys.js';
 
 const document = {
@@ -40,4 +44,25 @@ describe('a judge is told to sign in through judge-login and handed only a sessi
   it('says nothing where no environment names a testing profile', () => {
     expect(renderTestCreds('p1', null)).toBeUndefined();
   });
+});
+
+// REQ-80 BC-12 (ISS-1429): a run refused a protected variable asks a project admin for the ruling,
+// once, naming the act and the environment; no text teaching around the refusal says to turn its
+// protection off, which is what a room agent asked an owner for over 37 hours.
+describe('a withheld variable is taught as a ruling to ask for, never protection to drop', () => {
+  const taught = {
+    'the variables fact': renderTestCreds('p1', document) ?? '',
+    'the proposals card': JSON.stringify(
+      PROJECT_CONFIG_REST_CARDS['POST /api/projects/:id/variables/proposals'],
+    ),
+    "the room's note on a protected slot": slotSays(false, false, 'only a run … reads it'),
+  };
+  for (const [where, text] of Object.entries(taught)) {
+    it(`${where} asks for the ruling once, naming the act and the environment`, () => {
+      expect(text).toMatch(/ruling/);
+      expect(text).toMatch(/once/);
+      expect(text).toMatch(/naming the act and the environment/);
+      expect(text).not.toMatch(/protection off|protected: false|unprotect|turn[^.]*protection/i);
+    });
+  }
 });

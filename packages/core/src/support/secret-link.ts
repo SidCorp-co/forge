@@ -67,11 +67,12 @@ const OPENS_FOR: Record<SupportSecretLinkRequest['kind'], (slug: string) => stri
   integration: () => 'a person signed in to Forge who manages that connection',
 };
 
-function says(write: boolean, held: boolean, readBy: string | undefined): string {
+/** What the room is told with a slot's link: who reads it, where it goes, and what never to ask. */
+export function slotSays(write: boolean, held: boolean, readBy: string | undefined): string {
   return [
     ...(readBy
       ? [
-          `${readBy}. A master or a run that landed nothing there reads it as withheld: say so to the one it is for, and that a person can turn its protection off, saying why.`,
+          `${readBy}. Any other master or run reads it as withheld: say so to the one it is for, and that it asks a person holding project.admin for a ruling once, in plain words, naming the act and the environment.`,
         ]
       : []),
     held
@@ -141,7 +142,7 @@ export async function secretLink(
         : {}),
       opensFor: OPENS_FOR[slot.value.kind](project.value.slug),
       ...(slot.value.createdProtected ? { readBy: slot.value.createdProtected } : {}),
-      says: says(token !== null, slot.value.held, slot.value.createdProtected),
+      says: slotSays(token !== null, slot.value.held, slot.value.createdProtected),
     },
   };
 }

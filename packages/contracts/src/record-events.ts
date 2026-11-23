@@ -105,7 +105,9 @@ export function recordAction(kind: RecordEventKind | typeof RECORD_DIGEST_KIND):
 /**
  * The fields a caller's `decision` record carries (ISS-585): what was decided, why, until when, how
  * to reverse it and the assumption under it (the master's and a run's shape), `serves` and `none`
- * (the plugin's), and `lead`. A key outside them is refused by name (`EVENT_FIELD_UNKNOWN`). The
+ * (the plugin's), `lead`, and `production`: the production-tier environment a person's ruling for a
+ * production act names, which opens that environment's protected variables to a run working the
+ * issue (REQ-80 BC-11). A key outside them is refused by name (`EVENT_FIELD_UNKNOWN`). The
  * decisions core writes for its own acts (a feedback routing, a suggestion's outcome) are core's
  * records and carry their own keys.
  */
@@ -118,7 +120,11 @@ export const DECISION_RECORD_FIELDS = [
 	"serves",
 	"none",
 	"lead",
+	"production",
 ] as const;
+
+/** The decision field a ruling for a production act names its environment in (REQ-80 BC-11). */
+export const RULING_ENVIRONMENT_FIELD = "production" satisfies (typeof DECISION_RECORD_FIELDS)[number];
 
 /**
  * The record kinds whose fields are a closed set, by kind. A kind not named here takes any key of

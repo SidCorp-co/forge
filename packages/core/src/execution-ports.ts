@@ -43,6 +43,7 @@ import {
   readPullRequestsForIssues,
 } from './integrations/source-host/index.js';
 import {
+  decisionsNamingProduction,
   draftFeedbackCarriers,
   draftIssuesPeopleFiled,
   filingsMarked,
@@ -222,6 +223,7 @@ export const declaredRunSecretPorts = {
   declaredRunOfCall,
   declaredRunElsewhere,
   liveMasterSessionOf,
+  decisionsNamingProduction,
   recordRunSecretResolve,
   requirementJudgedBy,
   recordRequirementSecretRead,

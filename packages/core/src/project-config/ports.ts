@@ -7,6 +7,7 @@ import type { ReviewRunDeclaration } from '@forge/contracts/agent-sessions';
 import type { Tx } from '../db/client.js';
 import { portSlot } from '../lib/port-slot.js';
 import type { PatPrincipal } from '../middleware/require-pat.js';
+import type { DecisionNamingProduction } from './variables-rules.js';
 
 export interface SecretResolveAudit {
   /** The environment judged; null for a review run's read where no one environment names its profile. */
@@ -96,6 +97,14 @@ interface ProjectConfigPorts {
   ): Promise<{ box: string; keys: string[] } | null>;
   /** The live resident master session of the project on the caller's box, or null (REQ-88). */
   liveMasterSessionOf(args: { deviceId: string; projectId: string }): Promise<string | null>;
+  /**
+   * The standing decisions naming a production environment (REQ-80 BC-11) on the run's issues and on
+   * the project's other open ones, oldest first; their writers unnamed.
+   */
+  decisionsNamingProduction(
+    projectId: string,
+    runIssueIds: readonly string[],
+  ): Promise<Array<Omit<DecisionNamingProduction, 'writer'> & { writer: DecisionWriter }>>;
   /** Audit a declared run's resolve on the issue it judges, committed before any value leaves. */
   recordRunSecretResolve(audit: RunSecretResolveAudit): Promise<void>;
   /** The shipped release still holding the issue's work, by version; null while none does (ISS-1407). */
@@ -122,6 +131,8 @@ interface ProjectConfigPorts {
     issue: string;
   }>;
 }
+
+type DecisionWriter = Omit<DecisionNamingProduction['writer'], 'name'>;
 
 const slot = portSlot<ProjectConfigPorts>('project-config', 'provideProjectConfigPorts');
 export const provideProjectConfigPorts = slot.provide;

@@ -69,7 +69,7 @@ export const PROJECT_CONFIG_REST_CARDS = {
       },
       {
         when: 'a key you read comes back withheld: it is protected',
-        do: 'read its withheldWhy: land an issue on the branch it names, or propose protected: false with why',
+        do: 'read its withheldWhy, which names the ruling your run lacks and who gives it; ask once, in plain words, naming the act and the environment',
       },
     ],
     practice: ['An agent never writes a variable itself: this proposal is its one way.'],

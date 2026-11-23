@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   askRefusals,
+  type DecisionNamingProduction,
   type DeclaredEnvironment,
   effectiveVariables,
   type HeldVariable,
+  protectedReaders,
+  type RulingAsk,
+  rulingRead,
+  withheldWhy,
   writeRefusals,
 } from './variables-rules.js';
 
@@ -72,22 +77,149 @@ describe('the variables a run receives on the environment it targets (REQ-80 BC-
       production,
       false,
     );
-    const refused = askRefusals(['DATABASE_URL', 'NOPE', 'STRIPE_KEY'], read, production);
+    const refused = askRefusals(['DATABASE_URL', 'NOPE', 'STRIPE_KEY'], read, production, ask);
     expect(refused.map((r) => [r.code, r.path])).toEqual([
       ['VARIABLE_KEY_UNKNOWN', '/key/NOPE'],
       ['VARIABLE_PROTECTED_WITHHELD', '/key/STRIPE_KEY'],
     ]);
     expect(refused[0]?.detail).toContain('NOPE');
-    expect(refused[1]?.detail).toContain('none of this run');
+    expect(refused[1]?.detail).toContain(ask.lacks);
     // which run reads it, by the branch the environment deploys from (ISS-1392)
-    const named = askRefusals(['STRIPE_KEY'], read, { ...production, deploysFrom: 'main' });
+    const named = askRefusals(['STRIPE_KEY'], read, { ...production, deploysFrom: 'main' }, ask);
     expect(named[0]?.detail).toContain('only a run with an issue merged on `main`, the branch');
-    expect(refused[1]?.detail).toContain('names no branch it deploys from, so no run reads it');
+    expect(refused[1]?.detail).toContain('names no branch it deploys from, so only a run working');
   });
 
   it('refuses nothing when every asked key is effective', () => {
     const read = effectiveVariables([v('A', null)], stg, false);
-    expect(askRefusals(['A', 'A'], read, stg)).toEqual([]);
+    expect(askRefusals(['A', 'A'], read, stg, ask)).toEqual([]);
+  });
+});
+
+const ask: RulingAsk = {
+  lacks: "none of this run's issues (ISS-7) carries a ruling for a production act on `production`",
+  who: 'a person holding project.admin on this project (Ann)',
+};
+
+describe("a person's ruling for a production act opens the protected variables (REQ-80 BC-11)", () => {
+  const prod: DeclaredEnvironment = { name: 'canawan', tier: 'production', deploysFrom: 'main' };
+  const admins = [{ id: 'u-ann', name: 'Ann' }];
+  const runIssues = [{ id: 'i7', key: 'ISS-7' }];
+  const now = new Date('2026-11-23T00:00:00Z');
+  const ruling = (over: Partial<DecisionNamingProduction> = {}): DecisionNamingProduction => ({
+    id: 'r1',
+    issueId: 'i7',
+    issueKey: 'ISS-7',
+    issueStatus: 'in_progress',
+    environment: 'canawan',
+    act: 'Set supplier PGPrints on canawan',
+    untilAt: null,
+    writer: { type: 'user', id: 'u-ann', agency: 'human', name: 'Ann' },
+    ...over,
+  });
+  const read = (decisions: DecisionNamingProduction[], issues = runIssues) =>
+    rulingRead({ decisions, environment: prod, runIssues: issues, admins, now });
+  const lacks = (decisions: DecisionNamingProduction[], issues = runIssues) => {
+    const r = read(decisions, issues);
+    if (r.kind !== 'lacking') throw new Error(`expected a lacking ruling, read ${r.kind}`);
+    expect(r.ask.who).toBe('a person holding project.admin on this project (Ann)');
+    return r.ask.lacks;
+  };
+
+  it("reads a project admin's ruling on the run's open issue naming the environment", () => {
+    const r = read([ruling()]);
+    expect(r).toMatchObject({ kind: 'ruled', ruling: { id: 'r1', issueKey: 'ISS-7' } });
+  });
+
+  it('opens a protected variable on the environment once ruled, and only there', () => {
+    const secret = v('ADMIN_KEY', 'canawan', true);
+    expect(effectiveVariables([secret], prod, true).effective.get('ADMIN_KEY')).toBe(secret);
+    expect(effectiveVariables([secret], { ...prod, tier: 'staging' }, true).withheld).toEqual([
+      'ADMIN_KEY',
+    ]);
+  });
+
+  it('lacks one where none is written, naming the issues it read', () => {
+    expect(lacks([])).toBe(
+      "none of this run's issues (ISS-7) carries a ruling for a production act on `canawan`",
+    );
+    expect(lacks([], [])).toContain('this run works no issue');
+  });
+
+  it('lacks one written by a person without project.admin, naming them', () => {
+    const by = { type: 'user', id: 'u-bob', agency: 'human' as const, name: 'Bob' };
+    expect(lacks([ruling({ writer: by })])).toContain('written by Bob, who holds no project.admin');
+  });
+
+  it("lacks one written by an agent, even on an admin's account", () => {
+    const box = { type: 'device', id: 'd1', agency: 'agent' as const, name: 'box' };
+    const pat = { type: 'user', id: 'u-ann', agency: 'agent' as const, name: 'Ann' };
+    for (const writer of [box, pat]) {
+      expect(lacks([ruling({ writer })])).toContain(
+        "written by an agent, and a ruling is a person's",
+      );
+    }
+  });
+
+  it('lacks one naming another environment, naming both', () => {
+    expect(lacks([ruling({ environment: 'stg' })])).toBe(
+      "ISS-7's ruling names `stg`, not `canawan`",
+    );
+  });
+
+  it('lacks one on an issue no longer open', () => {
+    for (const status of ['closed', 'dropped']) {
+      expect(lacks([ruling({ issueStatus: status })])).toContain(
+        `ISS-7 is ${status}, and a ruling holds only while its issue is open`,
+      );
+    }
+  });
+
+  it('lacks one on an issue this run does not work, naming that issue', () => {
+    expect(lacks([ruling({ issueId: 'i9', issueKey: 'ISS-9' })])).toBe(
+      'ISS-9 carries a ruling for `canawan`, and this run works ISS-7, not ISS-9',
+    );
+  });
+
+  it('lacks one naming no act, and one whose until date has passed', () => {
+    expect(lacks([ruling({ act: null })])).toContain('names no act in its `decision` field');
+    const lapsed = ruling({ untilAt: new Date('2026-11-22T00:00:00Z') });
+    expect(lacks([lapsed])).toContain('lapsed at 2026-11-22T00:00:00.000Z');
+    expect(lacks([ruling({ untilAt: now })])).toContain('lapsed at');
+    expect(read([ruling({ untilAt: new Date('2026-11-24T00:00:00Z') })]).kind).toBe('ruled');
+  });
+
+  it('takes a standing ruling over a failed one beside it', () => {
+    const r = read([ruling({ id: 'r0', environment: 'stg' }), ruling()]);
+    expect(r).toMatchObject({ kind: 'ruled', ruling: { id: 'r1' } });
+  });
+
+  it('names who may give it where nobody holds project.admin', () => {
+    const r = rulingRead({ decisions: [], environment: prod, runIssues, admins: [], now });
+    expect(r.kind === 'lacking' && r.ask.who).toContain('nobody holds project.admin');
+  });
+});
+
+describe('a refused protected variable asks for the ruling, never for protection off (REQ-80 BC-12)', () => {
+  const prod: DeclaredEnvironment = { name: 'canawan', tier: 'production', deploysFrom: 'main' };
+  const why = withheldWhy(prod, ask);
+
+  it('names the ruling it lacks, who gives it, the act and the environment, asked once', () => {
+    expect(why).toContain(ask.lacks);
+    expect(why).toContain(`Ask ${ask.who} once, in plain words`);
+    expect(why).toContain('naming that act and `canawan`');
+    expect(why).toContain('`production` field is `canawan`');
+  });
+
+  it('never tells an agent to have protection turned off', () => {
+    for (const text of [
+      why,
+      protectedReaders(prod),
+      protectedReaders({ name: 'p', tier: 'production' }),
+    ]) {
+      expect(text).not.toMatch(/protection off|protected: false|unprotect|turn[^.]*protection/i);
+    }
+    expect(protectedReaders(prod)).toContain("carries a project admin's ruling");
   });
 });
 

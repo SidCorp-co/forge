@@ -253,6 +253,10 @@ export {
   mirrorCommentRecord,
   remirrorCommentRecord,
 } from './record-events/mirror.js';
+export {
+  type DecisionNamingProductionRow,
+  decisionsNamingProduction,
+} from './record-events/production-rulings.js';
 export { mintCommentQuestion } from './record-events/question-record.js';
 export type { RecordEvent } from './record-events/store.js';
 export {
