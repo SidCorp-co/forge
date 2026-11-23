@@ -6,7 +6,7 @@ import { type AuditedReply, judgeReply, type TurnReads } from './judge.js';
 
 const reply = (text: string, language: 'vi' | 'en' = 'vi'): AuditedReply => ({
   text,
-  language: { language, from: 'asker' },
+  language,
   roomKind: 'operations',
   apiHosts: [],
 });

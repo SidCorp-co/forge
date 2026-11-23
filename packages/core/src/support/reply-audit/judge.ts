@@ -11,9 +11,8 @@ import type {
   ReplyVerdict,
   SupportAuditRequest,
 } from '@forge/contracts/support-reply-audit';
-import { confidentLanguageOf } from '../../conversations/index.js';
+import { confidentLanguageOf, type ReplyLanguage } from '../../conversations/index.js';
 import { LIVE_CLAIM_RE } from '../live-claims.js';
-import type { AnsweringFrom, AnsweringLanguage } from './answering-language.js';
 import {
   actClaimIn,
   apiHostLinkIn,
@@ -55,10 +54,10 @@ export interface AuditedReply {
   /** The reply as posted. */
   text: string;
   /**
-   * The language the room is answered in, and where it was read (`answering-language.ts`): never the
-   * project's content language, which is for Forge's records (ISS-1377).
+   * The language the person it answers wrote in, where that message is confidently told
+   * (`answering-language.ts`); null where it is not, and no language finding is raised (ISS-1442).
    */
-  language: AnsweringLanguage;
+  language: ReplyLanguage | null;
   roomKind: SupportRoomKind;
   /** The API's public hosts no person-facing link may point at (`code-lines.ts:apiHosts`). */
   apiHosts: readonly string[];
@@ -73,13 +72,6 @@ export interface Judgement {
 }
 
 const LANGUAGE_NAME = { vi: 'Vietnamese', en: 'English' } as const;
-
-/** What the reply was held to, said with where that language was read. */
-const HELD_TO: Readonly<Record<AnsweringFrom, (language: string) => string>> = {
-  asker: (l) => `the person it answers wrote in ${l}`,
-  persona: (l) => `the room's persona names ${l}`,
-  room: (l) => `the room's people write in ${l}`,
-};
 
 /** The rubric lines code tells on its own, each with the words that failed it. */
 export function codeFindings(reply: AuditedReply): ReplyFinding[] {
@@ -108,10 +100,10 @@ export function codeFindings(reply: AuditedReply): ReplyFinding[] {
   }
   const written = confidentLanguageOf(reply.text);
   const held = reply.language;
-  if (written && written !== held.language && written !== held.askedAs) {
+  if (written && held && written !== held) {
     found.push({
       line: 'language',
-      why: `it is in ${LANGUAGE_NAME[written]}, and ${HELD_TO[held.from](LANGUAGE_NAME[held.language])}`,
+      why: `it is in ${LANGUAGE_NAME[written]}, and the person it answers wrote in ${LANGUAGE_NAME[held]}`,
       by: 'code',
     });
   }

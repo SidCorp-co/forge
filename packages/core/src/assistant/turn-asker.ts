@@ -1,6 +1,6 @@
 // Who asks a Forge UI turn, as a persona names them, and the language a code-written line answers them in.
 
-import { askerLanguageOf, languageOfTag, type ReplyLanguage } from '../conversations/index.js';
+import { confidentLanguageOf, languageOfTag, type ReplyLanguage } from '../conversations/index.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { readContentLanguage } from '../project-config/index.js';
 import type { WebTurnArgs } from './web-turn-args.js';
@@ -12,7 +12,7 @@ import type { WebTurnArgs } from './web-turn-args.js';
  */
 export async function askerLineLanguage(args: WebTurnArgs): Promise<ReplyLanguage> {
   return (
-    askerLanguageOf(args.window.question) ??
+    confidentLanguageOf(args.window.question) ??
     languageOfTag((await readContentLanguage(args.project.id)).contentLanguage)
   );
 }

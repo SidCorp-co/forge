@@ -1,9 +1,16 @@
 import { REPLY_RUBRIC_LINES, type ReplyRubricLine } from '@forge/contracts/support-reply-audit';
 import { describe, expect, it } from 'vitest';
-import { hasEnglishEvidence } from '../../conversations/index.js';
-import { ENGLISH_ROWS } from '../../conversations/language-rows.fixture.js';
+import {
+  ENGLISH_ROWS,
+  NOT_ENGLISH_ROWS,
+  ROOMS,
+  TOLD_ENGLISH_ROWS,
+  TOLD_VIETNAMESE_ROWS,
+  UNTOLD_ROWS,
+  VIETNAMESE_ROWS,
+} from '../../conversations/language-rows.fixture.js';
 import { mapLine } from '../act-cards.js';
-import { answeringLanguageOf, personaLanguageOf } from './answering-language.js';
+import { answeringLanguageOf } from './answering-language.js';
 import { actClaimIn, liveStateClaimIn } from './code-lines.js';
 import { AUDIT_RUBRIC_TEXT } from './index.js';
 import { type AuditedReply, judgeReply, type TurnReads } from './judge.js';
@@ -66,13 +73,9 @@ const SELF: Record<string, ReplyRubricLine[]> = {
   '15/11 15:36': ['accurate', 'answered'],
 };
 
-const reply = (
-  text: string,
-  language: 'vi' | 'en' = 'vi',
-  from: 'asker' | 'persona' | 'room' = 'asker',
-): AuditedReply => ({
+const reply = (text: string, language: 'vi' | 'en' | null = 'vi'): AuditedReply => ({
   text,
-  language: { language, from },
+  language,
   roomKind: 'operations',
   apiHosts: API,
 });
@@ -126,80 +129,39 @@ describe('support.audit keeps the verdict on a reply the agent posted (ISS-1250)
     ]);
   });
 
-  it('fails a reply in another language than the room answers in, naming both, and passes it in that one', () => {
+  it('fails a reply in another language than the person wrote in, naming that, and passes it in that one', () => {
     const text = 'The release is live on production now, and the import is fixed.';
     const j = judgeReply(reply(text, 'vi'), []);
     expect(j.failed).toEqual(['language']);
     expect(j.findings[0]?.why).toBe(
       'it is in English, and the person it answers wrote in Vietnamese',
     );
-    expect(judgeReply(reply(text, 'vi', 'persona'), []).findings[0]?.why).toBe(
-      "it is in English, and the room's persona names Vietnamese",
-    );
     expect(judgeReply(reply(text, 'en'), []).verdict).toBe('pass');
+    // asked with nothing to tell, the reply is held to no language at all
+    expect(judgeReply(reply(text, null), []).verdict).toBe('pass');
   });
 
-  // ISS-1377 (FB-789): the room answers in the person's language, then the persona's, then what its
-  // people wrote; the project's content language, for Forge's records, never enters it
-  it('reads the answering language from the person, then the persona, then the room', () => {
+  // ISS-1442 r6: only the asked message decides the answering language; never the persona or the room's texts
+  it('reads the answering language from the person alone, and none where the message cannot be told', () => {
     const vi = 'Đơn hàng của em đã giao chưa ạ?'; // i18n-allow: a member writing Vietnamese
     const en = 'Has my order been delivered yet?';
-    const persona = 'You are the shop desk assistant. Reply in plain Vietnamese, short and warm.';
-    expect(answeringLanguageOf({ asked: vi, persona: null, texts: [] })).toEqual({
-      language: 'vi',
-      from: 'asker',
-    });
-    expect(answeringLanguageOf({ asked: en, persona, texts: [vi] })).toEqual({
-      language: 'en',
-      from: 'asker',
-    });
-    expect(answeringLanguageOf({ asked: 'ok', persona, texts: [] })).toEqual({
-      language: 'vi',
-      from: 'persona',
-    });
-    expect(answeringLanguageOf({ asked: null, persona: null, texts: [en, vi] })).toEqual({
-      language: 'vi',
-      from: 'room',
-    });
-    expect(answeringLanguageOf({ asked: null, persona: null, texts: [] })).toEqual({
-      language: 'en',
-      from: 'room',
-    });
+    expect(answeringLanguageOf({ asked: vi })).toBe('vi');
+    expect(answeringLanguageOf({ asked: en })).toBe('en');
+    expect(answeringLanguageOf({ asked: 'ok' })).toBeNull();
+    expect(answeringLanguageOf({ asked: null })).toBeNull();
   });
 
   // ISS-1442 (FB-841): a Vietnamese reply to a short Vietnamese message is not failed for the room's English
   it('passes a Vietnamese reply to a short Vietnamese message, and fails a wrong-language reply to a told one', () => {
     const vi = 'Dạ, em đây ạ. Anh cần em giúp việc gì không ạ?'; // i18n-allow: a Vietnamese reply
     const en = 'Hello, I am here. Is there anything you need help with right now?';
-    const room = ['Please check the import for me'];
-    const answering = answeringLanguageOf({ asked: 'Alo sao thế', persona: null, texts: room }); // i18n-allow: a short Vietnamese message
-    expect(answering.from).toBe('asker');
-    expect(judgeReply(reply(vi, answering.language, answering.from), []).verdict).toBe('pass');
-    const wrong = judgeReply(reply(en, answering.language, answering.from), []);
+    const answering = answeringLanguageOf({ asked: 'Alo sao thế' }); // i18n-allow: a short Vietnamese message
+    expect(answering).toBe('vi');
+    expect(judgeReply(reply(vi, answering), []).verdict).toBe('pass');
+    const wrong = judgeReply(reply(en, answering), []);
     expect(wrong.failed).toEqual(['language']);
     expect(wrong.findings[0]?.why).toBe(
       'it is in English, and the person it answers wrote in Vietnamese',
-    );
-    // r5: a Vietnamese-only letter among English words is no Vietnamese message: English evidence vetoes it
-    const mixed = answeringLanguageOf({
-      asked: 'please tell me how the thế is going on today ok', // i18n-allow: a mixed message
-      persona: null,
-      texts: room,
-    });
-    expect(mixed.askedAs).toBe('en');
-    expect(
-      judgeReply({ ...reply(en, mixed.language, mixed.from), language: mixed }, []).verdict,
-    ).toBe('pass');
-  });
-
-  it('takes the one language a persona names, in either language, and none where it names both', () => {
-    expect(personaLanguageOf('Trả lời bằng tiếng Việt, ngắn gọn.')).toBe('vi'); // i18n-allow: a Vietnamese persona
-    expect(personaLanguageOf('Always answer in English, briefly.')).toBe('en');
-    expect(personaLanguageOf('Answer in Vietnamese, or in English where they write English.')).toBe(
-      null,
-    );
-    expect(personaLanguageOf('You are Babo. You coordinate Forge and delivery for the team.')).toBe(
-      null,
     );
   });
 
@@ -287,71 +249,79 @@ describe('support.audit keeps the verdict on a reply the agent posted (ISS-1250)
   });
 });
 
-describe('the language of an asker too short to tell (ISS-1442)', () => {
-  // ISS-1442 r2 c2: an asker whose language cannot be told is no ground to fail the reply matching the message
-  it('passes an English reply to an English message too short to tell in a room whose texts read Vietnamese, and a Vietnamese reply to an unmarked Vietnamese word', () => {
-    const viRoom = ['Đơn hàng của em đã giao chưa ạ, anh kiểm tra giúp em nhé?']; // i18n-allow: the room's people write Vietnamese
-    const en = 'No update yet, the import is still running and I will tell you when it is done.';
-    const vi = 'Dạ chưa có cập nhật ạ, em sẽ báo anh ngay khi xong.'; // i18n-allow: a Vietnamese reply
-    const asked = answeringLanguageOf({ asked: 'Any update?', persona: null, texts: viRoom });
-    expect(asked).toEqual({ language: 'vi', from: 'room', askedAs: 'en' });
-    expect(
-      judgeReply({ ...reply(en, asked.language, asked.from), language: asked }, []).verdict,
-    ).toBe('pass');
-    const unmarked = answeringLanguageOf({
-      asked: 'ok nhe',
-      persona: null,
-      texts: ['Please check'],
-    });
-    expect(unmarked).toEqual({ language: 'vi', from: 'asker' });
-    expect(
-      judgeReply({ ...reply(vi, unmarked.language, unmarked.from), language: unmarked }, [])
-        .verdict,
-    ).toBe('pass');
-    // r3: a name that is also a Vietnamese word does not make the message Vietnamese
-    const named = answeringLanguageOf({ asked: 'thanks Minh', persona: null, texts: viRoom });
-    expect(named.askedAs).toBe('en');
-    expect(
-      judgeReply({ ...reply(en, named.language, named.from), language: named }, []).verdict,
-    ).toBe('pass');
-    // r4: a name, mention or place that keeps its accents does not make the message Vietnamese
-    for (const asked of [
-      'Nhung, any update?',
-      'Phương, any update?', // i18n-allow: an English message carrying a Vietnamese name
-      '@Tuyền can you check?', // i18n-allow: an English message carrying a Vietnamese name or place
-      'Hi Đức, is it live?', // i18n-allow: an English message carrying a Vietnamese name or place
-      'Nha Trang deploy done?',
-      'Phương Đức Tuyền', // i18n-allow: an English message carrying a Vietnamese name or place
-    ]) {
-      const a = answeringLanguageOf({ asked, persona: null, texts: viRoom });
-      expect(a.askedAs, asked).not.toBe('vi');
-      expect(judgeReply({ ...reply(en, a.language, a.from), language: a }, []).verdict, asked).toBe(
-        'pass',
-      );
-    }
-    // r5: every English row passes an English reply in a Vietnamese-reading room, bar a bare name or an
-    // "ok <name>" that carries no English word and so is left untold
+const EN_REPLY = 'No update yet, the import is still running and I will tell you when it is done.';
+const VI_REPLY = 'Dạ chưa có cập nhật ạ, em sẽ báo anh ngay khi xong.'; // i18n-allow: a Vietnamese reply
+
+describe('the language of an asker not confidently told (ISS-1442)', () => {
+  // every message the dev.812 and dev.813 judges listed, and the builder's own rows
+  it('passes a reply in either language to every English row, in a room reading English and in one reading Vietnamese', () => {
     for (const asked of ENGLISH_ROWS) {
-      const a = answeringLanguageOf({ asked, persona: null, texts: viRoom });
-      expect(a.language === 'vi' && a.from === 'asker', asked).toBe(false);
-      if (hasEnglishEvidence(asked)) {
-        expect(a.askedAs ?? (a.from === 'asker' ? a.language : undefined), asked).toBe('en');
-        expect(
-          judgeReply({ ...reply(en, a.language, a.from), language: a }, []).verdict,
-          asked,
-        ).toBe('pass');
+      for (const room of ROOMS) {
+        const held = answeringLanguageOf({ asked, ...room });
+        if (held === 'vi') throw new Error(`${asked} is told Vietnamese`);
+        for (const text of [EN_REPLY, VI_REPLY]) {
+          const j = judgeReply(reply(text, held), []);
+          if (held === null) expect(j.failed, `${asked} / ${text}`).not.toContain('language');
+          else expect(j.failed.includes('language'), `${asked} / ${text}`).toBe(text === VI_REPLY);
+        }
       }
     }
-    // a clearly told message still holds the reply, naming the message
-    const told = answeringLanguageOf({
-      asked: 'Has my order been delivered yet?',
-      persona: null,
-      texts: viRoom,
-    });
-    const wrong = judgeReply({ ...reply(vi, told.language, told.from), language: told }, []);
-    expect(wrong.findings[0]?.why).toBe(
-      'it is in Vietnamese, and the person it answers wrote in English',
-    );
+  });
+
+  it('passes a reply in either language to every Vietnamese row not read English, in either room', () => {
+    for (const asked of NOT_ENGLISH_ROWS) {
+      for (const room of ROOMS) {
+        const held = answeringLanguageOf({ asked, ...room });
+        if (held === 'en') throw new Error(`${asked} is told English`);
+        for (const text of [EN_REPLY, VI_REPLY]) {
+          const j = judgeReply(reply(text, held), []);
+          if (held === null) expect(j.failed, `${asked} / ${text}`).not.toContain('language');
+          else expect(j.failed.includes('language'), `${asked} / ${text}`).toBe(text === EN_REPLY);
+        }
+      }
+    }
+  });
+
+  it('raises no language finding for a message left untold, in either room', () => {
+    for (const asked of UNTOLD_ROWS) {
+      // i18n-allow: messages that cannot be told
+      for (const room of ROOMS) {
+        const held = answeringLanguageOf({ asked, ...room });
+        expect(held, asked).toBeNull();
+        for (const text of [EN_REPLY, VI_REPLY]) {
+          expect(judgeReply(reply(text, held), []).failed, asked).not.toContain('language');
+        }
+      }
+    }
+  });
+
+  it('still fails a wrong-language reply to a confidently told message, naming it', () => {
+    for (const room of ROOMS) {
+      for (const asked of TOLD_ENGLISH_ROWS) {
+        const held = answeringLanguageOf({ asked, ...room });
+        expect(held, asked).toBe('en');
+        expect(judgeReply(reply(VI_REPLY, held), []).findings[0]?.why, asked).toBe(
+          'it is in Vietnamese, and the person it answers wrote in English',
+        );
+        expect(judgeReply(reply(EN_REPLY, held), []).verdict, asked).toBe('pass');
+      }
+      for (const asked of TOLD_VIETNAMESE_ROWS) {
+        const held = answeringLanguageOf({ asked, ...room });
+        expect(held, asked).toBe('vi');
+        expect(judgeReply(reply(EN_REPLY, held), []).findings[0]?.why, asked).toBe(
+          'it is in English, and the person it answers wrote in Vietnamese',
+        );
+        expect(judgeReply(reply(VI_REPLY, held), []).verdict, asked).toBe('pass');
+      }
+    }
+  });
+
+  it('holds the Vietnamese rows to a Vietnamese reply', () => {
+    for (const asked of VIETNAMESE_ROWS) {
+      const held = answeringLanguageOf({ asked });
+      expect(held, asked).toBe('vi');
+      expect(judgeReply(reply(VI_REPLY, held), []).failed, asked).not.toContain('language');
+    }
   });
 });
 

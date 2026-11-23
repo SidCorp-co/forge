@@ -1,8 +1,8 @@
 // Composing one turn's reply: the egress gate, the transport's hooks, the model, and the screen.
 
 import {
-  askerLanguageOf,
   codeAuthored,
+  confidentLanguageOf,
   type ReplyLanguage,
   recordSilence,
 } from '../conversations/index.js';
@@ -60,7 +60,7 @@ export async function silence(ctx: TurnContext, reason: string): Promise<TurnRep
 
 /** The language the person asked in, where it can be told. */
 export const askedInOf = (ctx: TurnContext): ReplyLanguage | null =>
-  askerLanguageOf(ctx.req.message);
+  confidentLanguageOf(ctx.req.message);
 
 /** A turn that ended in an error: a coded failure the window records, never a silence it chose. */
 async function failed(ctx: TurnContext, result: ExternalChatTurnResult): Promise<TurnReply> {

@@ -4,7 +4,7 @@
 // ~63 s; a two-word Vietnamese "run ISS-365" was answered in English).
 
 import { describe, expect, it } from 'vitest';
-import { askerLanguageOf } from '../conversations/text-language.js';
+import { confidentLanguageOf } from '../conversations/text-language.js';
 import { applyTurnContext } from './turn-context.js';
 
 const SPEC_ASK =
@@ -12,15 +12,17 @@ const SPEC_ASK =
 
 describe('the language a person asked in', () => {
   it('is told from a long message, and from a short one that spells a Vietnamese word', () => {
-    expect(askerLanguageOf(SPEC_ASK)).toBe('vi');
-    expect(askerLanguageOf('chạy ISS-365')).toBe('vi'); // i18n-allow: the production ask replayed as the test case
-    expect(askerLanguageOf('What is the status of ISS-290 right now?')).toBe('en');
+    expect(confidentLanguageOf(SPEC_ASK)).toBe('vi');
+    expect(confidentLanguageOf('chạy giúp ISS-365')).toBe('vi'); // i18n-allow: the production ask replayed with its function word
+    expect(confidentLanguageOf('What is the status of ISS-290 right now?')).toBe('en');
   });
 
   it('is not guessed from a short message that could be either', () => {
-    expect(askerLanguageOf('ok')).toBeNull();
-    expect(askerLanguageOf('chay ISS-365')).toBeNull();
-    expect(askerLanguageOf('ISS-365')).toBeNull();
+    expect(confidentLanguageOf('ok')).toBeNull();
+    expect(confidentLanguageOf('chay ISS-365')).toBeNull();
+    // r6: one accented word alone is untold: a lowercase name or food word spells the same letter
+    expect(confidentLanguageOf('chạy ISS-365')).toBeNull(); // i18n-allow: the production ask, now untold
+    expect(confidentLanguageOf('ISS-365')).toBeNull();
   });
 });
 

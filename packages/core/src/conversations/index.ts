@@ -132,14 +132,8 @@ export {
   settleConversationMode,
 } from './store.js';
 export {
-  askerLanguageOf,
   confidentLanguageOf,
-  hasEnglishEvidence,
-  hasVietnameseEvidence,
-  hasVietnameseOnlyLetter,
-  hasVietnameseOnlyWord,
   type ReplyLanguage,
-  readsVietnameseBesideNames,
   replyLanguageOf,
   roomTextsLanguageOf,
 } from './text-language.js';

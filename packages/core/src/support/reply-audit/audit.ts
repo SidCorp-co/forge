@@ -13,7 +13,7 @@ import type {
   SupportAuditView,
 } from '@forge/contracts/support-reply-audit';
 import { and, desc, eq, inArray, lte, ne, or, sql } from 'drizzle-orm';
-import { readMessages } from '../../conversations/index.js';
+import type { ReplyLanguage } from '../../conversations/index.js';
 import { db } from '../../db/client.js';
 import { conversations } from '../../db/schema-conversations.js';
 import { supportActions } from '../../db/schema-support.js';
@@ -22,18 +22,14 @@ import { doorNamed as servedDoorNamed } from '../../guides/index.js';
 import { auditCorrectionRef, recordCorrection } from '../../lessons/index.js';
 import { doorCatalog } from '../../lib/door-catalog.js';
 import { handedOn, isStateRead, stateRead } from '../dated-reads.js';
-import { supportConfigOf } from '../grants.js';
 import { RELEASE_READS, releaseReadInTurn } from '../live-claims.js';
-import { roleOfRoom } from '../ops-role.js';
 import { knownThread, no, type Outcome, threadUnknown } from '../outcome.js';
 import { sessionTurnSpan } from '../session-turns.js';
 import type { RoomRow } from '../store.js';
-import { type AnsweringLanguage, answeringLanguageOf } from './answering-language.js';
+import { answeringLanguageOf } from './answering-language.js';
 import { apiHosts } from './code-lines.js';
 import { type Judgement, judgeReply, type TurnReads } from './judge.js';
 
-/** The thread's last messages the room's language is read from where neither the asker nor the persona tells it. */
-const CONTEXT_MESSAGES = 12;
 const REASON_CHARS = 900;
 
 interface Posted {
@@ -242,31 +238,16 @@ async function askedOf(room: RoomRow, thread: string, reply: Posted): Promise<st
   return textOf(row?.input);
 }
 
-/** The persona the room's agent is briefed with: an operations room's role's, else its binding's. */
-async function personaOf(room: RoomRow): Promise<string | null> {
-  if (room.kind === 'operations') {
-    const role = await roleOfRoom(room);
-    return role.ok ? role.value.persona : null;
-  }
-  return (await supportConfigOf(room))?.persona ?? null;
-}
-
 /**
- * The language the reply is held to (ISS-1377): the room's answering language, read from the person
- * it answers, the persona, then the room's people, never the project's content language.
+ * The language the reply is held to (ISS-1442): the one the person it answers wrote in, where that
+ * message is confidently told, else none. Never the persona, the room's people or the project's content language.
  */
 async function answeringOf(
   room: RoomRow,
   thread: string,
-  conversationId: string,
   reply: Posted,
-): Promise<AnsweringLanguage> {
-  const recent = await readMessages(conversationId, CONTEXT_MESSAGES);
-  return answeringLanguageOf({
-    asked: await askedOf(room, thread, reply),
-    persona: await personaOf(room),
-    texts: recent.filter((m) => m.role === 'user').map((m) => m.content),
-  });
+): Promise<ReplyLanguage | null> {
+  return answeringLanguageOf({ asked: await askedOf(room, thread, reply) });
 }
 
 async function verdictOf(roomId: string, message: string): Promise<SupportAuditView | null> {
@@ -365,7 +346,7 @@ export async function auditReply(
   const judgement = judgeReply(
     {
       text: posted.text,
-      language: await answeringOf(room, input.thread, conversationId, posted),
+      language: await answeringOf(room, input.thread, posted),
       roomKind: room.kind,
       apiHosts: apiHosts(),
       reads: await readsAround(room, posted),
