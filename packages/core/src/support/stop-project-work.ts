@@ -60,7 +60,10 @@ export async function stopProjectWork(at: {
     ...by,
     reason: WITHDRAWN_FOR,
   });
-  const unbound = await unbindForArchive(at.projectId);
+  const unbound = await unbindForArchive(
+    at.projectId,
+    (b) => b.provider === 'rocketchat' || b.role === 'deploy',
+  );
   if (!unbound.ok) {
     return {
       ok: false,
