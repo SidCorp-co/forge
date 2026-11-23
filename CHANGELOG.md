@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.813] - 2026-11-23
+
+Short messages with English words are no longer read as Vietnamese
+
+### Fixed
+
+- **An English message holding a Vietnamese name, place or loanword no longer reads as Vietnamese.** One common English word vetoes the Vietnamese reading, wherever the name sits and whatever its accents, so a correct English reply passes.
+
 ## [0.4.0-dev.812] - 2026-11-23
 
 Names, mentions and places no longer decide a short message's language
