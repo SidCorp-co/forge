@@ -347,4 +347,8 @@ export { reviewRunRoutes } from './review-run-routes.js';
 export { projectConfigSchemaRoutes } from './schema-routes.js';
 export { projectSecretRoutes } from './secret-routes.js';
 export { jobTestingSecretsRoutes } from './testing-secrets-routes.js';
-export { jobVariableRoutes, variableRoutes } from './variables-routes.js';
+export {
+  environmentVariableRoutes,
+  jobVariableRoutes,
+  variableRoutes,
+} from './variables-routes.js';

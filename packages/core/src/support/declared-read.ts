@@ -125,3 +125,41 @@ export async function runDeclaredRead(input: {
     },
   };
 }
+
+/**
+ * Run one forge-ops call that writes (REQ-80 BC-10: a compose target's env file, a deploy) on the
+ * project's box, by the same path a declared read takes: its credential the declared project
+ * secrets, set on that one process, and what it printed cut of each of them and of every value in
+ * `cut` before core hands it on. The box is asked once; a write is never retried here.
+ */
+export async function runOpsCall(input: {
+  projectId: string;
+  name: string;
+  argv: string[];
+  secrets: readonly SupportReadSecret[];
+  timeoutMs: number;
+  cut: Record<string, string>;
+}): Promise<{ ok: true; value: SupportReadResult } | { ok: false; why: string }> {
+  const env = await secretEnvOf(input.projectId, input.name, input.secrets);
+  if (!env.ok) return { ok: false, why: env.refusals.map((r) => r.detail).join('; ') };
+  const box = await projectReadBox(input.projectId);
+  if (!box.ok) return { ok: false, why: box.refusals.map((r) => r.detail).join('; ') };
+  const hidden = { ...input.cut, ...env.env };
+  const ran = await runOpsRead({
+    deviceId: box.value,
+    projectId: input.projectId,
+    name: input.name,
+    argv: input.argv,
+    timeoutMs: input.timeoutMs,
+    env: env.env,
+  });
+  if (!ran.ok) return { ok: false, why: withoutSecrets(ran.why, hidden) };
+  return {
+    ok: true,
+    value: {
+      ...ran.value,
+      stdout: withoutSecrets(ran.value.stdout, hidden),
+      stderr: withoutSecrets(ran.value.stderr, hidden),
+    },
+  };
+}

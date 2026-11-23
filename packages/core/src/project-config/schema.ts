@@ -12,6 +12,7 @@ import { approvalsSchema } from '@forge/contracts/person-gates';
 import { previewSettingsSchema } from '@forge/contracts/preview';
 import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import { REQUIREMENT_READINESS_GATES } from '@forge/contracts/requirements';
+import { opsProgramSchema, scriptOpsSecretsSchema } from '@forge/contracts/script-sandbox';
 import { stewardPolicySchema } from '@forge/contracts/steward-runtime';
 import { supportApiBindingConfigSchema } from '@forge/contracts/support';
 import { rocketchatBindingTargetShape } from '@forge/contracts/support-channel';
@@ -133,6 +134,16 @@ const routePrefix = () =>
     .regex(/^\/[^\s?#]*$/, 'a path prefix starting with `/` (no query or fragment)');
 const routeList = () => unique(z.array(routePrefix()).min(1).max(20));
 
+/** A forge-ops compose target Forge writes an environment's variables into (REQ-80 BC-10). */
+export const forgeOpsTargetSchema = z.strictObject({
+  program: opsProgramSchema,
+  target: z
+    .string()
+    .regex(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/, 'the target as forge-ops list_targets names it'),
+  secrets: scriptOpsSecretsSchema,
+});
+export type ForgeOpsTargetDeclaration = z.infer<typeof forgeOpsTargetSchema>;
+
 const deploymentSchema = z.union([
   z.strictObject({ binding: uuid(), trigger: z.enum(DEPLOYMENT_TRIGGERS) }),
   z.strictObject({
@@ -145,6 +156,10 @@ const deploymentSchema = z.union([
       .max(120)
       .regex(/^\S(?:.*\S)?$/, 'a name with no leading or trailing space')
       .optional(),
+    // REQ-80 BC-10: a forge-ops compose target whose env file Forge writes the environment's
+    // effective variables into, server-side, through the project's box: the forge-ops CLI there, the
+    // target as forge-ops names it, and the forge-ops credential as project secrets (as ISS-707's)
+    forgeOps: forgeOpsTargetSchema.optional(),
   }),
 ]);
 

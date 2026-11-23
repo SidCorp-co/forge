@@ -7,6 +7,7 @@ import {
   createVariableRequestSchema,
   decideVariableProposalRequestSchema,
   ENV_MANAGE,
+  forgeOpsDeployRequestSchema,
   proposeVariableRequestSchema,
   updateVariableRequestSchema,
   VARIABLE_KEY,
@@ -33,6 +34,7 @@ import {
   removeVariable,
   revealVariable,
 } from './variables-service.js';
+import { deployThroughTarget, syncTargetVariables } from './variables-target-door.js';
 
 export const variableRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -156,6 +158,51 @@ variableRoutes.post(
     const { id, variable } = c.req.valid('param');
     c.header('Cache-Control', 'no-store');
     return c.json(await revealVariable(id, c.get('userId'), variable));
+  },
+);
+
+/**
+ * The target door (REQ-80 BC-10): an environment's effective variables written into its forge-ops
+ * compose target's env file, on an explicit sync and on a forge-ops deploy through Forge. Each takes
+ * `deploys.run`, as every act that changes what a target runs does, and answers keys and fingerprints,
+ * never a value: an agent triggers the write and no value passes through its call or its output.
+ */
+export const environmentVariableRoutes = new Hono<{ Variables: AuthVars }>();
+environmentVariableRoutes.use(
+  '/:id/environments/:environment/*',
+  requireAuth(),
+  assertEmailVerified(),
+);
+
+const environmentParam = zValidator(
+  'param',
+  z.object({ id: z.uuid(), environment: z.string().regex(/^[a-z][a-z0-9-]{0,62}$/) }),
+  invalid('invalid path: the project id is a uuid and the environment one the project declares'),
+);
+const DEPLOY = requiresOnParam('deploys.run', 'id');
+
+environmentVariableRoutes.post(
+  '/:id/environments/:environment/variables/sync',
+  environmentParam,
+  DEPLOY,
+  noQuery,
+  async (c) => {
+    const { id, environment } = c.req.valid('param');
+    return c.json(await syncTargetVariables(id, c.get('userId'), environment));
+  },
+);
+
+environmentVariableRoutes.post(
+  '/:id/environments/:environment/forge-ops/deploy',
+  environmentParam,
+  DEPLOY,
+  strictBody(
+    forgeOpsDeployRequestSchema,
+    "{ args: { service, version, ... } } deploys the environment's forge-ops target after writing its variables into the target's env file (REQ-80 BC-10); the target is the environment's declaration",
+  ),
+  async (c) => {
+    const { id, environment } = c.req.valid('param');
+    return c.json(await deployThroughTarget(id, c.get('userId'), environment, c.req.valid('json')));
   },
 );
 

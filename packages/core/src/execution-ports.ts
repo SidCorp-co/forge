@@ -159,6 +159,7 @@ import {
   droppedUnansweredOf,
   masterAsksOf,
   projectReadBox,
+  runOpsCall,
   secretEnvOf,
   unhandledMessagesOf,
   withoutSecrets,
@@ -228,6 +229,7 @@ export const declaredRunSecretPorts = {
   requirementJudgedBy,
   recordRequirementSecretRead,
   openReviewRun,
+  runOpsCall,
 };
 
 /** The design and contract context a job's issue reaches, and the record of what its prompt carried. */

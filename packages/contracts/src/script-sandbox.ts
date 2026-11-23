@@ -61,6 +61,19 @@ export const FORGE_OPS_EXEC_TOOL = "exec_command" as const;
  */
 export const FORGE_OPS_COMMAND_NAME = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$/;
 
+/**
+ * The forge-ops tool that reads and writes a compose target's env file, as
+ * `{ target, action, key, value }` (`list`, `get`, `set`), once the target's owner enabled env on it
+ * (REQ-80 BC-10).
+ */
+export const FORGE_OPS_ENV_TOOL = "env" as const;
+
+/** The forge-ops tool that deploys a service of a target. */
+export const FORGE_OPS_DEPLOY_TOOL = "deploy" as const;
+
+/** The longest one argv item a box runs (`ops_read.rs:MAX_ARG_CHARS`): a call's JSON arguments fit in it. */
+export const BOX_ARG_MAX_CHARS = 4_000;
+
 /** The most lines forge-ops' `logs` answers; a `tail` past it is refused by forge-ops. */
 export const FORGE_OPS_LOGS_TAIL_MAX = 2000;
 
@@ -98,7 +111,7 @@ export const SCRIPT_OPS_TIMEOUT_MAX_MS = 120_000;
 export const SCRIPT_OPS_TIMEOUT_DEFAULT_MS = 60_000;
 
 /** The forge-ops CLI on the box: an absolute path ending in `/forge-ops`, with no . or .. segment. */
-const opsProgramSchema = z
+export const opsProgramSchema = z
 	.string()
 	.max(300)
 	.regex(
@@ -152,7 +165,7 @@ export type ScriptOpsCallDeclaration = z.infer<typeof scriptOpsCallSchema>;
  * forge-ops credential as project secrets (ISS-707): core reads each from the vault and the box sets
  * it on that one call's process, so no call runs on a credential the box holds of its own.
  */
-const scriptOpsSecretsSchema = z
+export const scriptOpsSecretsSchema = z
 	.array(supportReadSecretSchema)
 	.min(
 		1,

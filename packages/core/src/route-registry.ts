@@ -167,6 +167,7 @@ import { meHomeRoutes } from './product-progress/index.js';
 import {
   contentLanguageRoutes,
   environmentStateRoutes,
+  environmentVariableRoutes,
   jobTestingSecretsRoutes,
   jobVariableRoutes,
   projectConfigRoutes,
@@ -309,6 +310,7 @@ function mountProjectDocumentRoutes(app: Hono<{ Variables: RequestIdVars }>): vo
   app.route('/api/projects', projectConfigRoutes);
   app.route('/api/projects', projectSecretRoutes);
   app.route('/api/projects', variableRoutes);
+  app.route('/api/projects', environmentVariableRoutes);
   app.route('/api/projects', reviewRunRoutes);
   app.route('/api/projects', environmentStateRoutes);
   app.route('/api/projects', workflowRoutes);

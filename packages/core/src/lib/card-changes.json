@@ -324,6 +324,16 @@
     "on": "2026-11-17",
     "by": "ISS-1251"
   },
+  "POST /api/projects/:id/environments/:environment/forge-ops/deploy": {
+    "hash": "44a9d082f47d557b",
+    "on": "2026-11-23",
+    "by": "ISS-1350"
+  },
+  "POST /api/projects/:id/environments/:environment/variables/sync": {
+    "hash": "fdeddd2b7f1da427",
+    "on": "2026-11-23",
+    "by": "ISS-1350"
+  },
   "POST /api/projects/:id/executions": {
     "hash": "4a44947781ca1aa2",
     "on": "2026-11-17",

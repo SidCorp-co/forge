@@ -4,6 +4,7 @@
 // root fills them at boot (`provideProjectOrg` is the pattern).
 
 import type { ReviewRunDeclaration } from '@forge/contracts/agent-sessions';
+import type { SupportReadResult, SupportReadSecret } from '@forge/contracts/support';
 import type { Tx } from '../db/client.js';
 import { portSlot } from '../lib/port-slot.js';
 import type { PatPrincipal } from '../middleware/require-pat.js';
@@ -116,6 +117,19 @@ interface ProjectConfigPorts {
   ): Promise<{ requirementId: string; issueIds: string[] } | null>;
   /** Audit a requirement judge's resolve on the requirement, committed before any value leaves. */
   recordRequirementSecretRead(audit: RequirementSecretReadAudit): Promise<void>;
+  /**
+   * Run one forge-ops call that writes on the project's box (REQ-80 BC-10), its credential the
+   * declared project secrets, what it printed cut of them and of every value in `cut`
+   * (`support/declared-read.ts:runOpsCall`).
+   */
+  runOpsCall(input: {
+    projectId: string;
+    name: string;
+    argv: string[];
+    secrets: readonly SupportReadSecret[];
+    timeoutMs: number;
+    cut: Record<string, string>;
+  }): Promise<{ ok: true; value: SupportReadResult } | { ok: false; why: string }>;
   /** Open a review run a person declared on a box serving the project (`devices/review-run.ts`). */
   openReviewRun(args: {
     projectId: string;

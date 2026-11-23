@@ -1,8 +1,9 @@
 // A project's environment variables (REQ-80, design `environment-variables`): held in Forge per
 // environment the way GitLab holds CI/CD variables, changed only by a holder of `env.manage`,
 // audited by fingerprint and never by value, handed to the runs that target an environment, and
-// referenced from testing profiles. Forge manages them; it never writes a deploy target (owner,
-// 2026-10-30).
+// referenced from testing profiles. Forge manages them and writes no deploy target (owner,
+// 2026-10-30), with one exception (BC-10, the Steward's question f88c3727): a forge-ops compose
+// target, whose env file Forge writes server-side on a deploy through Forge and on an explicit sync.
 
 import { z } from "zod";
 import { REASON_TEXT_MAX } from "./reason-text.js";
@@ -73,6 +74,12 @@ export const VARIABLE_REFUSAL_CODES = [
 	"VARIABLE_PROPOSAL_DECIDED",
 	/** A proposal would turn a protected variable's protection off, which no proposal does (BC-12). */
 	"VARIABLE_PROPOSAL_UNPROTECTS",
+	/** The environment's deployment is no forge-ops compose target Forge may write its env file in (BC-10). */
+	"VARIABLE_TARGET_UNBOUND",
+	/** A write into the target's env file did not happen: the box, the credential or forge-ops refused (BC-10). */
+	"VARIABLE_TARGET_WRITE_FAILED",
+	/** The env file was written and the forge-ops deploy that follows it did not run or failed (BC-10). */
+	"VARIABLE_TARGET_DEPLOY_FAILED",
 ] as const;
 export type VariableRefusalCode = (typeof VARIABLE_REFUSAL_CODES)[number];
 
@@ -86,6 +93,9 @@ export const VARIABLE_REFUSAL_STATUSES = {
 	VARIABLE_VAULT_NOT_CONFIGURED: 503,
 	VARIABLE_PROPOSAL_NOT_FOUND: 404,
 	VARIABLE_PROPOSAL_DECIDED: 409,
+	VARIABLE_TARGET_UNBOUND: 409,
+	VARIABLE_TARGET_WRITE_FAILED: 503,
+	VARIABLE_TARGET_DEPLOY_FAILED: 503,
 } as const satisfies RefusalStatuses<VariableRefusalCode>;
 
 const key = z.string().regex(VARIABLE_KEY, "a key is a letter or underscore, then letters, digits or underscores, at most 255 characters");
@@ -214,4 +224,39 @@ export interface RunVariablesView {
 	 * refused with (ISS-1392); empty on a `?key=` read, which refuses instead.
 	 */
 	withheldWhy: { key: string; why: string }[];
+}
+
+/**
+ * `POST /api/projects/:id/environments/:environment/forge-ops/deploy`: forge-ops' deploy arguments
+ * past the target, which is the environment's declaration (`{ service, version }` and the like).
+ */
+export const forgeOpsDeployRequestSchema = z.strictObject({
+	args: z
+		.record(
+			z
+				.string()
+				.regex(/^[A-Za-z_][A-Za-z0-9_]{0,39}$/)
+				.refine((k) => k !== "target", "the target is the environment's declaration, never an argument"),
+			z.union([z.string().max(2000), z.number().finite(), z.boolean()]),
+		)
+		.default({}),
+});
+export type ForgeOpsDeployRequest = z.infer<typeof forgeOpsDeployRequestSchema>;
+
+/**
+ * What Forge wrote into a forge-ops compose target's env file (BC-10): each key by its fingerprint,
+ * never a value, and each effective key it did not write, with why.
+ */
+export interface TargetVariablesView {
+	environment: string;
+	target: { kind: "forge-ops"; name: string };
+	/** `sync`: the explicit act; `deploy`: the write a deploy through Forge makes before it deploys. */
+	via: "sync" | "deploy";
+	written: { key: string; type: VariableType; fingerprint: string }[];
+	withheld: { key: string; why: string }[];
+}
+
+/** A deploy through Forge: the env file written first, then forge-ops' answer, cut of every secret. */
+export interface TargetDeployView extends TargetVariablesView {
+	deploy: { exitCode: number | null; stdout: string; stderr: string; durationMs: number };
 }

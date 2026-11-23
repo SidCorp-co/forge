@@ -155,6 +155,47 @@ export const PROJECT_CONFIG_REST_CARDS = {
     audience: ['person'],
     scenarios: ['the steward revealing a secret to read it, forbidden'],
   },
+  'POST /api/projects/:id/environments/:environment/variables/sync': {
+    purpose:
+      'Writes an environment’s variables into its forge-ops compose target’s env file, server-side.',
+    situations: [
+      {
+        when: 'a variable set on the Variables page must reach an app a forge-ops compose target runs',
+        do: 'sync that environment; the answer names each key written by fingerprint, never a value',
+      },
+    ],
+    practice: [
+      'A protected variable reaches only a production-tier target; each key withheld says why.',
+      'A deployment with no forgeOps declared is refused VARIABLE_TARGET_UNBOUND naming what to bind.',
+    ],
+    example: {},
+    // FB-758: epod's production read only its server env file, so a master copied a secret value by
+    // hand with forge-ops env, through its own tool call
+    redFlag:
+      'Copying a variable’s value into a target with forge-ops env set from an agent’s own call.',
+    audience: ['master', 'run'],
+    scenarios: ['a production value copied by hand into a forge-ops env file: FB-758'],
+  },
+  'POST /api/projects/:id/environments/:environment/forge-ops/deploy': {
+    purpose:
+      'Deploys an environment’s forge-ops compose target after writing its variables into the env file.',
+    situations: [
+      {
+        when: 'a release deploys to a forge-ops compose target',
+        do: 'deploy through this door with forge-ops’ deploy arguments, so the app starts on the variables Forge holds',
+      },
+    ],
+    practice: [
+      'The target is the environment’s declaration; its env file is written before the deploy runs.',
+      'A write that fails never deploys: VARIABLE_TARGET_WRITE_FAILED names the key and what was written.',
+    ],
+    example: { args: { service: 'go-backend', version: 'v1.50.0' } },
+    // FB-758: a deploy outside Forge started the app on an env file nobody had written the new value into
+    redFlag:
+      'Deploying with forge-ops directly after a variable changed, then copying its value by hand.',
+    audience: ['master', 'run'],
+    scenarios: ['a forge-ops deploy that ran before the variable reached its env file: FB-758'],
+  },
   'POST /api/projects/:id/variables/proposals/:proposal/decision': {
     purpose: 'Approves or rejects an agent’s proposed variable change, as a holder of env.manage.',
     situations: [

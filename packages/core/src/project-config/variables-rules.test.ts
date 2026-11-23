@@ -1,3 +1,4 @@
+// @direct-test-of packages/core/src/project-config/variables-target.ts
 import { describe, expect, it } from 'vitest';
 import {
   askRefusals,
@@ -12,6 +13,7 @@ import {
   withheldWhy,
   writeRefusals,
 } from './variables-rules.js';
+import { cutOf, envWritesOf } from './variables-target.js';
 
 const production: DeclaredEnvironment = { name: 'production', tier: 'production' };
 const stg: DeclaredEnvironment = { name: 'stg', tier: 'staging' };
@@ -299,5 +301,45 @@ describe('what a variable write is refused for (REQ-80 BC-2)', () => {
     ]);
     expect(writeRefusals({ ...ok, value: '123456' }, environments)).toEqual([]);
     expect(writeRefusals({ ...ok, type: 'plain', value: 'on' }, environments)).toEqual([]);
+  });
+});
+
+describe('what Forge writes into a forge-ops compose target’s env file (REQ-80 BC-10)', () => {
+  const target = { program: '/opt/forge-ops', target: 'epod', secrets: [] };
+  const held = (key: string, value: string, type: 'plain' | 'secret' | 'file' = 'secret') => ({
+    id: key,
+    key,
+    type,
+    protected: false,
+    fingerprint: `fp-${key}`,
+    value,
+  });
+
+  it('writes one line per key and says why it writes none it cannot hold, nothing left out unsaid', () => {
+    const plan = envWritesOf(
+      target,
+      [
+        held('TLS_CERT', '-----BEGIN-----', 'file'),
+        held('MOTD', 'line one\nline two', 'plain'),
+        held('HUGE', 'x'.repeat(4_000)),
+        held('EDGE', 'y'.repeat(3_900)),
+        held('API_KEY', 'sk_live_abcdef'),
+      ],
+      ['STRIPE_KEY'],
+      { name: 'stg', tier: 'staging' },
+    );
+    expect(plan.writes.map((w) => w.variable.key)).toEqual(['API_KEY', 'EDGE']);
+    expect(plan.writes[0]?.argv).toEqual([
+      '/opt/forge-ops',
+      'env',
+      JSON.stringify({ target: 'epod', action: 'set', key: 'API_KEY', value: 'sk_live_abcdef' }),
+    ]);
+    expect(plan.withheld.map((w) => w.key)).toEqual(['HUGE', 'MOTD', 'STRIPE_KEY', 'TLS_CERT']);
+    expect(plan.withheld.find((w) => w.key === 'STRIPE_KEY')?.why).toContain('staging-tier');
+  });
+
+  it('cuts a secret as stored and as its JSON argument escapes it, and leaves a plain value', () => {
+    const cut = cutOf([held('PASS', 'a"b\\c-long-secret'), held('MODE', 'on', 'plain')]);
+    expect(Object.values(cut)).toEqual(['a"b\\c-long-secret', 'a\\"b\\\\c-long-secret']);
   });
 });

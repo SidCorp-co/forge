@@ -184,7 +184,7 @@ export async function readVariables(projectId: string, userId: string) {
     environments: await declaredEnvironments(projectId),
     canManage: holds(caller.access, ENV_MANAGE) && caller.agency === 'human',
     proposalsWaiting: proposals.filter((p) => p.status === 'proposed').length,
-    says: `a secret or file value is never listed: a person holding ${ENV_MANAGE} reveals one with POST /api/projects/${projectId}/variables/<variable>/reveal, and a run reads the variables of the environment it targets at ${RUN_DOOR}. An agent proposes a change at POST /api/projects/${projectId}/variables/proposals.`,
+    says: `a secret or file value is never listed: a person holding ${ENV_MANAGE} reveals one with POST /api/projects/${projectId}/variables/<variable>/reveal, and a run reads the variables of the environment it targets at ${RUN_DOOR}. An agent proposes a change at POST /api/projects/${projectId}/variables/proposals. An environment on a forge-ops compose target gets its variables in that target's env file, server-side, from POST /api/projects/${projectId}/environments/<environment>/variables/sync or a deploy through POST /api/projects/${projectId}/environments/<environment>/forge-ops/deploy: never copy a value by hand.`,
   };
 }
 

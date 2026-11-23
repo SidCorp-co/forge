@@ -251,4 +251,23 @@ export const CONFIG_SCENARIOS: readonly CardScenario[] = [
     good: 'bind the connection with role monitoring and a target naming its scrapes and rules',
     teaches: [/bind it with role monitoring/i],
   },
+  {
+    name: 'a production value copied by hand into a forge-ops env file: FB-758',
+    card: 'POST /api/projects/:id/environments/:environment/variables/sync',
+    source:
+      'FB-758 (epod production, 2026-11-19): a master copied a Variables value with forge-ops env set',
+    situation: 'A value an owner entered on the Variables page must reach epod’s production app',
+    bad: 'the master copied the secret with forge-ops env set, passing it through its own tool call',
+    good: 'sync the environment: Forge writes the env file and answers keys and fingerprints only',
+    teaches: [/sync that environment/i, /never a value/i, /forge-ops env set/i],
+  },
+  {
+    name: 'a forge-ops deploy that ran before the variable reached its env file: FB-758',
+    card: 'POST /api/projects/:id/environments/:environment/forge-ops/deploy',
+    source: 'FB-758 (epod production, 2026-11-19): the app read only its server env file',
+    situation: 'A release deploys to a forge-ops compose target after a variable changed',
+    bad: 'deploy with forge-ops directly, then copy the value by hand',
+    good: 'deploy through Forge’s door, which writes the env file before the deploy runs',
+    teaches: [/deploy through this door/i, /env file is written before the deploy runs/i],
+  },
 ];
