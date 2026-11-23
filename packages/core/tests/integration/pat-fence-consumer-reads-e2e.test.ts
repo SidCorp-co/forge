@@ -6,11 +6,14 @@
  * PAT_PROJECT_OUTSIDE_FENCE on catalog-api's and adminhub-api's contract versions and
  * PAT_ACCOUNT_ROUTE on their ecosystem's bus. Anything wider stays fenced: another route of the
  * provider, a write, a contract published to no ecosystem its project is an active member of, an
- * ecosystem it is not in, a steward's whole sight, the account's ecosystem list (ISS-734).
+ * ecosystem it is not in, a steward's whole sight, the account's ecosystem list (ISS-734). The
+ * ecosystem-inbox guide also sends it to the provider's version artifact and API page, and those two
+ * GETs pass the fence the same way, answered as the party read answers (ISS-1438, FB-835).
  *
  * @direct-test-of packages/core/src/middleware/pat-fence.ts
  */
 
+import { createHash } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
@@ -25,7 +28,15 @@ import {
 } from '../helpers/ecosystem-world.js';
 
 let w: EcosystemWorld;
-let as: (who: 'plugin' | 'store', method: string, path: string, body?: unknown) => Promise<Reply>;
+let as: (
+  who: 'plugin' | 'store' | 'internal',
+  method: string,
+  path: string,
+  body?: unknown,
+) => Promise<Reply>;
+
+const ARTIFACT =
+  '{"openapi":"3.1.0","info":{"title":"forge-api","version":"2026-09-20"},"paths":{}}';
 
 const codeOf = (r: Reply): string | null =>
   (r.json?.code as string | undefined) ??
@@ -58,7 +69,17 @@ beforeAll(async () => {
   as = requester(w.app, {
     plugin: await fenced(w.user.plugin, w.project.plugin, 'plugin master'),
     store: await fenced(w.user.store, w.project.store, 'store master'),
+    // the provider's own admin, fenced to a project of theirs that is in no ecosystem
+    internal: await fenced(w.user.platform, w.project.internal, 'internal master'),
   });
+  // the version a consumer builds against holds its stored bytes, as a published upload does
+  const sha = createHash('sha256').update(ARTIFACT).digest('hex');
+  await db.execute(sql`
+    INSERT INTO contract_artifacts (sha256, content, byte_length)
+    VALUES (${sha}, ${ARTIFACT}, ${Buffer.byteLength(ARTIFACT)})`);
+  await db.execute(sql`
+    UPDATE contract_versions SET artifact_sha256 = ${sha}
+     WHERE provider_project_id = ${w.project.forge} AND contract_slug = 'forge-api'`);
 }, 120_000);
 
 afterAll(async () => {
@@ -83,6 +104,21 @@ describe('a fenced token reads what its project builds against', () => {
     expect(list.status, JSON.stringify(list.json)).toBe(200);
   });
 
+  it("reads the artifact of a version it builds against and the provider's API page, as a party", async () => {
+    const art = await as(
+      'plugin',
+      'GET',
+      `/api/projects/${w.project.forge}/contracts/forge-api/versions/2026-09-20/artifact`,
+    );
+    expect(art.status, JSON.stringify(art.json)).toBe(200);
+    expect(art.json).toMatchObject({ openapi: '3.1.0' });
+
+    const page = await as('plugin', 'GET', `/api/projects/${w.project.forge}/api-page`);
+    expect(page.status, JSON.stringify(page.json)).toBe(200);
+    expect(page.json.reader).toMatchObject({ access: 'party' });
+    expect(page.json.publishes.map((p: { slug: string }) => p.slug)).toContain('forge-api');
+  });
+
   it('reads the bus of the ecosystem its project is a member of', async () => {
     const bus = await as('plugin', 'GET', `/api/ecosystems/${w.eco}/bus`);
     expect(bus.status, JSON.stringify(bus.json)).toBe(200);
@@ -103,6 +139,20 @@ describe('a fenced token reads what its ecosystem publishes, as a member', () =>
     expect(r.status, JSON.stringify(r.json)).toBe(200);
     expect(r.json.reader).toMatchObject({ access: 'party' });
   });
+
+  it("reads that contract's artifact and the provider's API page the same way", async () => {
+    const art = await as(
+      'store',
+      'GET',
+      `/api/projects/${w.project.forge}/contracts/forge-api/versions/2026-09-20/artifact`,
+    );
+    expect(art.status, JSON.stringify(art.json)).toBe(200);
+    expect(art.json).toMatchObject({ openapi: '3.1.0' });
+
+    const page = await as('store', 'GET', `/api/projects/${w.project.forge}/api-page`);
+    expect(page.status, JSON.stringify(page.json)).toBe(200);
+    expect(page.json.reader).toMatchObject({ access: 'party' });
+  });
 });
 
 describe('anything wider stays fenced', () => {
@@ -121,6 +171,33 @@ describe('anything wider stays fenced', () => {
     );
     expect(write.status).toBe(403);
     expect(codeOf(write)).toBe('PAT_PROJECT_OUTSIDE_FENCE');
+  });
+
+  it('refuses every write the provider serves beside those reads, by name', async () => {
+    const forge = `/api/projects/${w.project.forge}`;
+    for (const [method, path] of [
+      ['POST', `${forge}/contracts/forge-api/versions/2026-09-20/decision`],
+      ['PUT', `${forge}/interface`],
+    ] as const) {
+      const r = await as('plugin', method, path, {});
+      expect(r.status, `${method} ${path}: ${JSON.stringify(r.json)}`).toBe(403);
+      expect(codeOf(r), `${method} ${path}`).toBe('PAT_PROJECT_OUTSIDE_FENCE');
+    }
+  });
+
+  it("reads as its fence alone: a project in no ecosystem is refused the provider's versions, artifact and page, though its user administers the provider", async () => {
+    const base = `/api/projects/${w.project.forge}/contracts/forge-api/versions`;
+    for (const path of [
+      base,
+      `${base}/2026-09-20`,
+      `${base}/2026-09-20/artifact`,
+      `/api/projects/${w.project.forge}/api-page`,
+    ]) {
+      const r = await as('internal', 'GET', path);
+      expect(r.status, `${path}: ${JSON.stringify(r.json)}`).toBe(403);
+      expect(codeOf(r), path).toBe('FORBIDDEN');
+      expect(JSON.stringify(r.json), path).toMatch(/ecosystem/);
+    }
   });
 
   it('refuses the bus of an ecosystem its project is not in, though its user stewards it', async () => {
@@ -150,5 +227,13 @@ describe('a fenced token whose project left the ecosystem', () => {
       `/api/projects/${w.project.forge}/contracts/forge-api/versions/2026-09-20`,
     );
     expect(r.status, JSON.stringify(r.json)).toBe(403);
+    for (const path of [
+      `/api/projects/${w.project.forge}/contracts/forge-api/versions/2026-09-20/artifact`,
+      `/api/projects/${w.project.forge}/api-page`,
+    ]) {
+      const left = await as('store', 'GET', path);
+      expect(left.status, `${path}: ${JSON.stringify(left.json)}`).toBe(403);
+      expect(codeOf(left), path).toBe('FORBIDDEN');
+    }
   });
 });

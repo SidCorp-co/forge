@@ -80,16 +80,20 @@ export function projectNamedBy(
   return slug ? { by: 'header', ref: slug } : null;
 }
 
-// What a fenced project builds against, read-only (FB-320, ISS-734): a provider's contract versions,
-// which the route answers only where a project of the fence is an active member of an ecosystem the
-// contract is published to (`ecosystem/contract/party-read.ts:contractReader`). Every other route of
-// the provider stays fenced.
-const PROVIDER_CONTRACT_READ =
-  /^\/api\/projects\/[0-9a-f-]{36}\/contracts\/[^/]+\/versions(?:\/[^/]+)?\/?$/i;
+// What a fenced project builds against, read-only (FB-320, ISS-734, ISS-1438): a provider's contract
+// versions, one version's stored artifact, and its API page. Each route answers only as the fence's
+// own projects (`lib/authz.ts:effectiveProjectRole` and `loadVisibleProjectIds` read the fence), so
+// a party read decides: `ecosystem/contract/party-read.ts:contractReader` for the versions and the
+// artifact, `ecosystem/api-page.ts:readApiPage` for the page. Every other route of the provider, and
+// every write, stays fenced.
+const PROVIDER_PARTY_READS = [
+  /^\/api\/projects\/[0-9a-f-]{36}\/contracts\/[^/]+\/versions(?:\/[^/]+(?:\/artifact)?)?\/?$/i,
+  /^\/api\/projects\/[0-9a-f-]{36}\/api-page\/?$/i,
+];
 
-/** Whether a request on a fenced token reads a provider's contract versions. */
+/** Whether a request on a fenced token is a provider's party read: its contract versions, a version's artifact, or its API page. */
 export const readsProviderContract = (method: string, path: string): boolean =>
-  (method === 'GET' || method === 'HEAD') && PROVIDER_CONTRACT_READ.test(path);
+  (method === 'GET' || method === 'HEAD') && PROVIDER_PARTY_READS.some((read) => read.test(path));
 
 /** Refuse a request on a fenced token that names a project outside the fence; an unfenced token, or a request naming no project, passes. */
 export async function refuseOutsideFence(args: {

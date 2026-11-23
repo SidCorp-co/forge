@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { projectNamedBy } from './pat-fence.js';
+import { projectNamedBy, readsProviderContract } from './pat-fence.js';
 
 const id = 'A417A126-7B96-4B8F-8D83-FAA1E7CCBD56';
 const other = 'd1bb4907-0000-4000-8000-000000000001';
@@ -24,5 +24,41 @@ describe('the project a request names, read for the fence', () => {
     expect(projectNamedBy('/api/projects', undefined, undefined)).toBeNull();
     expect(projectNamedBy('/api/projects/health', 'not-an-id', '')).toBeNull();
     expect(projectNamedBy(`/api/issues/${id}`, undefined, '  ')).toBeNull();
+  });
+});
+
+describe("a provider's party read, the one thing a fenced token reads across its fence", () => {
+  const provider = `/api/projects/${other}`;
+  const versions = `${provider}/contracts/admin-rest-v1/versions`;
+
+  it('passes a GET or HEAD of the versions, one version, its artifact and the API page', () => {
+    for (const path of [
+      versions,
+      `${versions}/11.1.0`,
+      `${versions}/11.1.0/artifact`,
+      `${provider}/api-page`,
+      `${provider}/api-page/`,
+    ]) {
+      expect(readsProviderContract('GET', path), path).toBe(true);
+      expect(readsProviderContract('HEAD', path), path).toBe(true);
+    }
+  });
+
+  it('passes no write on those paths, and no other route of the provider', () => {
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
+      for (const path of [versions, `${versions}/11.1.0/artifact`, `${provider}/api-page`]) {
+        expect(readsProviderContract(method, path), `${method} ${path}`).toBe(false);
+      }
+    }
+    for (const path of [
+      `${versions}/11.1.0/decision`,
+      `${versions}/11.1.0/artifact/raw`,
+      `${provider}/api-page/raw`,
+      `${provider}/interface`,
+      `${provider}/contracts/admin-rest-v1`,
+      `/api/projects/not-an-id/api-page`,
+    ]) {
+      expect(readsProviderContract('GET', path), path).toBe(false);
+    }
   });
 });
