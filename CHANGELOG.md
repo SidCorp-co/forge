@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.818] - 2026-11-23
+
+Short Vietnamese lines keep a Vietnamese room's default language
+
+### Fixed
+
+- **A room reads Vietnamese again for every short line it read a release ago.** The default is the old per-text reading or, pooled, two Vietnamese-marked words outnumbering English ones two to one; English rooms with Vietnamese names stay English. (ISS-1451)
+
 ## [0.4.0-dev.817] - 2026-11-23
 
 A Vietnamese room's default language reads Vietnamese again
