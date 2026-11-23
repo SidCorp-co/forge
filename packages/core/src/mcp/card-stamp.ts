@@ -1,7 +1,7 @@
 // `pnpm --filter @forge/core cards:stamp [ISS-n]`: writes the card ledger (`lib/card-changes.json`)
 // from the cards this build serves, so a card's `changed` is the day its text last changed and the
 // issue that changed it, never a date written by hand. The issue is the argument, or the one the
-// branch is named for; neither is refused by name.
+// branch is named for (a branch naming two is refused by name); neither is guessed.
 
 import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
@@ -16,8 +16,13 @@ function issue(): string {
   const given = process.argv[2];
   if (given) return given;
   const branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf8' });
-  const n = /iss-?(\d+)/i.exec(branch)?.[1];
-  return n ? `ISS-${n}` : '';
+  const named = [...new Set([...branch.matchAll(/iss-?(\d+)/gi)].map((m) => m[1]))];
+  if (named.length > 1) {
+    throw new Error(
+      `cards:stamp: the branch names ${named.map((n) => `ISS-${n}`).join(' and ')}; name the one whose landing changes the cards (cards:stamp ISS-n)`,
+    );
+  }
+  return named[0] ? `ISS-${named[0]}` : '';
 }
 
 const by = issue();
