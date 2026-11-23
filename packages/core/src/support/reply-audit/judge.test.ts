@@ -175,11 +175,19 @@ describe('support.audit keeps the verdict on a reply the agent posted (ISS-1250)
     expect(judgeReply(reply(vi, answering.language, answering.from), []).verdict).toBe('pass');
     const wrong = judgeReply(reply(en, answering.language, answering.from), []);
     expect(wrong.failed).toEqual(['language']);
-    expect(wrong.findings[0]?.why).toBe('it is in English, and the person it answers wrote in Vietnamese');
+    expect(wrong.findings[0]?.why).toBe(
+      'it is in English, and the person it answers wrote in Vietnamese',
+    );
     // an untold asker with a Vietnamese-only letter among many English words: the reply matching it is passed
-    const mixed = answeringLanguageOf({ asked: 'please tell me how the thế is going on today ok', persona: null, texts: room }); // i18n-allow: a mixed message
+    const mixed = answeringLanguageOf({
+      asked: 'please tell me how the thế is going on today ok', // i18n-allow: a mixed message
+      persona: null,
+      texts: room,
+    });
     expect(mixed.from).toBe('room');
-    expect(judgeReply({ ...reply(vi, mixed.language, mixed.from), language: mixed }, []).verdict).toBe('pass');
+    expect(
+      judgeReply({ ...reply(vi, mixed.language, mixed.from), language: mixed }, []).verdict,
+    ).toBe('pass');
   });
 
   it('takes the one language a persona names, in either language, and none where it names both', () => {

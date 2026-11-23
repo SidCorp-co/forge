@@ -5,8 +5,8 @@
 
 import {
   askerLanguageOf,
-  type ReplyLanguage,
   hasVietnameseOnlyLetter,
+  type ReplyLanguage,
   roomTextsLanguageOf,
 } from '../../conversations/index.js';
 
@@ -45,7 +45,9 @@ export function answeringLanguageOf(input: {
 }): AnsweringLanguage {
   const asker = askerLanguageOf(input.asked);
   if (asker) return { language: asker, from: 'asker' };
-  const askedAs: ReplyLanguage | undefined = hasVietnameseOnlyLetter(input.asked) ? 'vi' : undefined;
+  const askedAs: ReplyLanguage | undefined = hasVietnameseOnlyLetter(input.asked)
+    ? 'vi'
+    : undefined;
   const persona = personaLanguageOf(input.persona);
   if (persona) return { language: persona, from: 'persona', ...(askedAs && { askedAs }) };
   return { language: roomTextsLanguageOf(input.texts), from: 'room', ...(askedAs && { askedAs }) };

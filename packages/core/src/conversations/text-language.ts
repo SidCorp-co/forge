@@ -102,8 +102,7 @@ export function roomTextsLanguageOf(texts: readonly string[]): ReplyLanguage {
 
 // the letters only Vietnamese spells with: d-bar, the circumflex, breve and horn vowels, and the hook, tilde and
 // dot tones; the acute and grave tones are left out because French, Italian and loanwords carry them
-const VIETNAMESE_ONLY_LETTER =
-  /[ảãạăằắẳẵặâầấẩẫậẻẽẹêềếểễệỉĩịỏõọôồốổỗộơờớởỡợủũụưừứửữựỷỹỵđ]/i; // i18n-allow: Vietnamese letters
+const VIETNAMESE_ONLY_LETTER = /[ảãạăằắẳẵặâầấẩẫậẻẽẹêềếểễệỉĩịỏõọôồốổỗộơờớởỡợủũụưừứửữựỷỹỵđ]/i; // i18n-allow: Vietnamese letters
 
 /** Whether a text spells any word with a letter only Vietnamese uses. */
 export function hasVietnameseOnlyLetter(text: string | null | undefined): boolean {
@@ -123,9 +122,7 @@ export function askerLanguageOf(text: string | null | undefined): ReplyLanguage 
   const confident = confidentLanguageOf(text);
   if (confident) return confident;
   const words = (text ?? '').match(WORD) ?? [];
-  return words.length > 0 &&
-    words.length <= SHORT_MESSAGE_WORDS &&
-    hasVietnameseOnlyLetter(text)
+  return words.length > 0 && words.length <= SHORT_MESSAGE_WORDS && hasVietnameseOnlyLetter(text)
     ? 'vi'
     : null;
 }
