@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.800] - 2026-11-23
+
+Admin-ordered production acts can read protected keys, with each read audited
+
+### Fixed
+
+- **A project admin's ruling now opens a protected production variable.** A run working the ruled, open issue reads it through the audited variables door; any other run is told which ruling it lacks and whom to ask.
+
 ## [0.4.0-dev.799] - 2026-11-23
 
 Operations rooms record a routing decision on every turn
