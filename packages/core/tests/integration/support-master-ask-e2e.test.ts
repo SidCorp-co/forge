@@ -86,6 +86,10 @@ describe('ISS-1243: a room agent asks its master in its turn', () => {
     }));
     expect(out, JSON.stringify(out)).toMatchObject({ asked: true, project: slug });
     const askId = String(out.ask);
+    // ISS-1457: the ask's own teaching asks for one holding line, so the answer's reply is the only
+    // one that carries the answer (two replies in other words read as a double)
+    expect(String(out.next)).toContain('one short line that it is in hand');
+    expect(String(out.next)).not.toContain('answer what you can');
 
     // the ask wakes the master: its event is on the outbox for the master wake to consume
     const events = await rows<{ payload: Body }>(
@@ -137,6 +141,9 @@ describe('ISS-1243: a room agent asks its master in its turn', () => {
     // ISS-1425: the master's answer reaches the turn inside the untrusted frame
     const handed = notes.find((n) => n.thread === thread && n.text.includes(answer));
     expect(inUntrustedFrame(handed?.text ?? '', answer)).toBe(true);
+    // ISS-1457: the reply to the answer says only what it adds to the holding line already posted
+    expect(handed?.text).toContain('say only what this adds or changes');
+    expect(handed?.text).toContain('support.silent');
     expect(await w.linesIn(thread)).toEqual([]);
     expect((await asksOf()).body).toMatchObject({ waiting: 0, breached: 0 });
     expect((await asksOf('all')).body).toMatchObject({ waiting: 0, breached: 1 });
