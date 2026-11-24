@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.820] - 2026-11-24
+
+A reopened fix sends its verified feedback back to waiting on the carrier
+
+### Fixed
+
+- **A feedback item Forge verified by ship now goes back to its carrier when that carrier reopens.** A person's verify stays, but its read names the reopened carrier instead of "nothing is owed" (ISS-1453).
+
 ## [0.4.0-dev.819] - 2026-11-23
 
 Owners can archive a project from its room
