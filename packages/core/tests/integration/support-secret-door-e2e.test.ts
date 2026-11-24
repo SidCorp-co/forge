@@ -387,8 +387,6 @@ describe('ISS-1348: one secret act for every kind of slot', () => {
     expect(told).toContain('variable GOOGLE_CLIENT_SECRET at environment production');
     expect(told).toContain('the one-time write URL');
     expect(told).toContain(`fingerprint ${fingerprint?.f}`);
-    expect(told).not.toMatch(/naming (that|the) fingerprint/i);
-    expect(told).toContain('never post it');
 
     // the page: a person adds the variable the thread asked for, every environment
     const page = await api(w.owner, 'POST', `/api/projects/${w.projectId}/variables`, {

@@ -6,7 +6,7 @@ const FP = '0123456789abcdef';
 const ask = {
   kind: 'variable',
   slot: { key: 'GOOGLE_CLIENT_SECRET', environment: 'production' },
-} as Parameters<typeof filledNote>[0];
+} as unknown as Parameters<typeof filledNote>[0];
 
 describe('the secret-received notice (ISS-1454)', () => {
   it('never asks the agent to name the fingerprint, which the post filter refuses as a sha', () => {
