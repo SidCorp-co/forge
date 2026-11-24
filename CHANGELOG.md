@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.824] - 2026-11-24
+
+Room agents answer the master's reply with only what it adds
+
+### Fixed
+
+- **One owner message drew two replies in other words.** The ask-master teaching said answer from the record while waiting, then answer again on the master answer; it now asks one holding line, then only what the answer adds.
+
 ## [0.4.0-dev.823] - 2026-11-24
 
 Direct mode takes each issue's lease before dispatching its builder
