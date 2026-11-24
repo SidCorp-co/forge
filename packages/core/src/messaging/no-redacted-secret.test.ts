@@ -18,10 +18,12 @@ describe('NO_REDACTED_SECRET and a prose label', () => {
     expect(refused(text)).toBe(false);
   });
 
-  it.each(['mật khẩu: Abc12345!', 'mat khau: s3cret', 'api key: abc123'])( // i18n-allow: label under test
-    'still refuses %s',
-    (text) => {
-      expect(refused(text)).toBe(true);
-    },
-  );
+  const values = [
+    'mật khẩu: Abc12345!', // i18n-allow: the Vietnamese label under test
+    'mat khau: s3cret',
+    'api key: abc123',
+  ];
+  it.each(values)('still refuses %s', (text) => {
+    expect(refused(text)).toBe(true);
+  });
 });
