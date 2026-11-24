@@ -4,6 +4,7 @@
 import {
 	BEARER_PATTERN,
 	BODY_RES,
+	PROSE_LABEL_FIELD,
 	ENV_SECRET_ASSIGNMENT_PATTERN,
 	FEEDBACK_SERVER_KEY_PATTERN,
 	FIELD_VALUE,
@@ -96,7 +97,7 @@ const LINE_RULES: readonly SpanRule[] = [
 			pattern,
 			kept: group1,
 			keptTail: (m) => closingKept(m[2] ?? "").length,
-			prose: (m) => isOrdinaryWord(m[2] ?? ""),
+			prose: (m) => isOrdinaryWord(m[2] ?? "", PROSE_LABEL_FIELD.test(m[1] ?? "")),
 		}),
 	),
 	{
@@ -116,7 +117,7 @@ const LABEL_RULE: SpanRule = {
 	// a label followed by a word has its value, and the value is prose
 	prose: (m, text) => {
 		const next = FIELD_VALUE.exec(text.slice(m.index + m[0].length))?.[1];
-		return next !== undefined && isOrdinaryWord(next);
+		return next !== undefined && isOrdinaryWord(next, PROSE_LABEL_FIELD.test(m[0]));
 	},
 };
 

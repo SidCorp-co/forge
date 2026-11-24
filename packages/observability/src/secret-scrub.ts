@@ -4,6 +4,7 @@
 import {
 	BEARER_PATTERN,
 	BODY_RES,
+	PROSE_LABEL_FIELD,
 	ENV_SECRET_ASSIGNMENT_PATTERN,
 	escapeRegExp,
 	FEEDBACK_SERVER_KEY_PATTERN,
@@ -162,13 +163,15 @@ export function closingKept(value: string): string {
  * take any (`no token: 4.`, `(secret: 12)`), a word all but `!` and `?`, the symbols a password most
  * often ends in (`password: required.` is prose, `password: Welcome!` is not).
  */
-export function isOrdinaryWord(value: string): boolean {
+export function isOrdinaryWord(value: string, anyLetters = false): boolean {
 	const { body, marks } = splitClosing(value);
 	if (/^\d{1,3}$/.test(body)) return true;
 	if (/[!?]/.test(marks)) return false;
+	// a prose label (ISS-1458) takes a word of any script's letters and marks, `lỗi`, `chưa`
+	const word = anyLetters ? /^[\p{L}\p{M}]+(?:-[\p{L}\p{M}]+)*$/u : /^[A-Za-z]+(?:-[A-Za-z]+)*$/;
 	return (
 		body.length < 24 &&
-		/^[A-Za-z]+(?:-[A-Za-z]+)*$/.test(body) &&
+		word.test(body) &&
 		!/[a-z][A-Z]/.test(body)
 	);
 }
@@ -214,7 +217,7 @@ export function scrubLogText(
 			out = scrubHeaderValue(out, headerRe);
 			for (const re of bodyRes)
 				out = out.replace(re, (whole, field: string, value: string) =>
-					isOrdinaryWord(value) ? whole : `${field}${FILTERED}${closingKept(value)}`,
+					isOrdinaryWord(value, PROSE_LABEL_FIELD.test(field)) ? whole : `${field}${FILTERED}${closingKept(value)}`,
 				);
 			out = scrubSecretValues(out, extraSecrets);
 			out = out.replace(ENV_SECRET_ASSIGNMENT_PATTERN, `$1=${FILTERED}`);

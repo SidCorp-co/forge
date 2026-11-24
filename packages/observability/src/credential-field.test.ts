@@ -160,3 +160,35 @@ describe('scrubbing a value that closes a bracket twice', () => {
     },
   );
 });
+
+// ISS-1458 (FB-856): a prose label (`mật khẩu`, `api key`) followed by a plain word of letters, marks
+// included, is a sentence about the feature, not a credential. A digit, a symbol, camelCase or 24+
+// characters after it is still one.
+describe('a prose label followed by a plain word is prose', () => {
+  it.each([
+    'Chức năng quên mật khẩu: lỗi ở bước gửi email', // i18n-allow: Vietnamese prose under test
+    'Luồng đặt lại mật khẩu = chưa chạy', // i18n-allow: Vietnamese prose under test
+    'password reset: failing at the email step',
+    'API key: missing in the config',
+    'mat khau: chua chay', // i18n-allow: the label without its marks, then a word
+  ])('leaves the line unchanged: %s', (text) => {
+    expect(scrubLogText(text)).toBe(text);
+    expect(containsSecret(text)).toBe(false);
+  });
+
+  it.each([
+    ['Vietnamese label, digit and symbol', 'mật khẩu: Abc12345!', `mật khẩu: ${FILTERED}`], // i18n-allow: label under test
+    ['unmarked label, digit', 'mat khau: s3cret', `mat khau: ${FILTERED}`],
+    ['api key, digit', 'api key: abc123', `api key: ${FILTERED}`],
+    ['secret key, hex', 'secret key: 3f9a8c1d2e4b5a69', `secret key: ${FILTERED}`],
+    ['camelCase after a Vietnamese label', 'mật khẩu: hunterTwo', `mật khẩu: ${FILTERED}`], // i18n-allow: label under test
+    ['24 letters after a label', `api key: ${'q'.repeat(24)}`, `api key: ${FILTERED}`],
+  ])('still refuses %s', (_shape, text, scrubbed) => {
+    expect(scrubLogText(text)).toBe(scrubbed);
+    expect(containsSecret(text)).toBe(true);
+  });
+
+  it('keeps the ASCII-only word test on a structured key', () => {
+    expect(scrubLogText('password: lỗi')).toBe(`password: ${FILTERED}`); // i18n-allow: a non-ASCII word under a body key
+  });
+});

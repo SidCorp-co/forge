@@ -189,6 +189,24 @@ export const BODY_RES = [...SCRUB_BODY_KEYS, ...PROSE_LABELS].map(
 		),
 );
 
+/**
+ * ISS-1458 -- a field text ending in a prose label (`... mật khẩu:`, `the api key =`), which is how
+ * the scrubber tells a prose label from a body key. Under a prose label a plain word of any
+ * language's letters and marks is prose (`mật khẩu: lỗi ở bước gửi email`, FB-856); a body key keeps
+ * the ASCII-only word test, so structured scrubbing is untouched.
+ *
+ * Trade, named: a password of letters alone written after a prose label now passes. That is
+ * acceptable because structured keys, tokens, hex, PEM, JWT and URL shapes are scrubbed as before,
+ * any value with a digit or symbol (or camelCase, or 24+ characters) after the label is still
+ * redacted, and a chat room holds a separate path for a real credential (support.secret_link). It
+ * ends when a room is found storing letters-only passwords under a prose label, or when the secret
+ * link path stops being the way a person hands one over.
+ */
+export const PROSE_LABEL_FIELD = new RegExp(
+	`(?:${PROSE_LABELS.map(escapeRegExp).join("|")})\\W*$`,
+	"i",
+);
+
 export const isScrubbedKey = (key: string) =>
 	SCRUB_BODY_KEYS.has(key) ||
 	SCRUB_BODY_KEYS.has(key.toLowerCase()) ||
