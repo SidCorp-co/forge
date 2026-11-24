@@ -36,6 +36,7 @@ import type { OpsOutcome } from './ops-types.js';
 import { asAsker } from './ops-writes.js';
 import { no } from './outcome.js';
 import { doorOfDecision } from './owner-acts-reach.js';
+import { bindingWriteOf } from './owner-binding-act.js';
 import { archiveProjectAsOwner } from './owner-archive-act.js';
 import { confirmDeployAsOwner } from './owner-confirm-deploy-act.js';
 import { decisionForgeAct, isDecisionForgeAct } from './owner-decision-acts.js';
@@ -301,16 +302,27 @@ async function writeDocument(
   );
   if (denied) return denied;
   const baseRevision = input.baseRevision ?? null;
-  const written =
-    input.act === 'config.write'
-      ? await writeProjectConfig({ ...at, baseRevision, raw: input.document })
-      : await writeBinding({ ...at, bindingId: input.item, baseRevision, raw: input.document });
+  if (input.act === 'config.write') {
+    const written = await writeProjectConfig({ ...at, baseRevision, raw: input.document });
+    if (!written.ok) return { ok: false, refusals: written.refusals.map((r) => ({ ...r })) };
+    return {
+      ok: true,
+      value: {
+        key: input.item,
+        recorded: `the project document at revision ${written.held.revision}`,
+      },
+    };
+  }
+  // item names a binding this project holds, or "new" makes one; anything else is refused by name
+  const target = await bindingWriteOf(at.projectId, input.item, baseRevision, input.document);
+  if (!target.ok) return target;
+  const written = await writeBinding({ ...at, ...target.value });
   if (!written.ok) return { ok: false, refusals: written.refusals.map((r) => ({ ...r })) };
   return {
     ok: true,
     value: {
-      key: input.item,
-      recorded: `${input.act === 'config.write' ? 'the project document' : `binding ${input.item}`} at revision ${written.held.revision}`,
+      key: target.value.bindingId,
+      recorded: `binding ${target.value.bindingId} at revision ${written.held.revision}`,
     },
   };
 }

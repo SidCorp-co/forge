@@ -337,9 +337,9 @@ export const WORK_ACT_CARDS = {
       },
     ],
     practice: [
-      'config.write and binding.write take the whole document, read and changed, with the revision you read as baseRevision; rule.write takes item the rule’s slug and rule { title, body, scope, recheckWhen }, an amend keeping each field you leave out.',
-      'Linking a project into an ecosystem is membership.invite then membership.accept, item the ecosystem’s slug, project the member; in an operations room the writer acts as himself.',
-      'An act no door makes is refused naming where it is made: tell him that act is missing, in one line, and do the rest; never say it is being done. A rule.write by an account without project.write is refused PERMISSION_FORBIDDEN, nothing written.',
+      'config.write and binding.write take the whole document with the revision you read as baseRevision. binding.write’s item is a binding this project holds, else SUPPORT_FORGE_ACT_SHAPE; its first binding is item "new", baseRevision null, a binding-v1 document with no id (role, connection, target).',
+      'rule.write takes item the rule’s slug and rule { title, body, scope, recheckWhen }, an amend keeping each field you leave out. Linking a project into an ecosystem is membership.invite then membership.accept, item the ecosystem’s slug, project the member.',
+      'An act no door makes is refused naming where it is made: tell him in one line, never that it is being done, and do the rest. A Sentry connection’s targets are one: the Integrations page sets them. A rule.write by an account without project.write is refused PERMISSION_FORBIDDEN.',
     ],
     example: {
       thread: THREAD,

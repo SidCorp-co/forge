@@ -85,3 +85,13 @@ describe('the project archive the owner rules in chat (ISS-1449)', () => {
     expect(card).toContain('repository and site are left as they are');
   });
 });
+
+// ISS-1455 (FB-854): the card teaches what binding.write's item is and how a first binding is made.
+describe('the binding write the owner gives in chat (ISS-1455)', () => {
+  it('names item, "new" for a first binding, and sends a Sentry connection’s targets to its page', () => {
+    const card = JSON.stringify(WORK_ACT_CARDS.owner_forge_act);
+    expect(card).toContain('binding.write’s item is a binding this project holds');
+    expect(card).toContain('item \\"new\\", baseRevision null');
+    expect(card).toContain('Sentry connection’s targets are one: the Integrations page');
+  });
+});
