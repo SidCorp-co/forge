@@ -1,6 +1,6 @@
 // The receipt of a secret a room agent asked for (ISS-1348 c3): once its slot is given a value
 // through either door (its page, or the one-time write URL), every thread that asked hears so, as a
-// fact handed to the room's session with the value's fingerprint and never the value. The session
+// fact handed to the room's session with the value's fingerprint (never posted) and never the value. The session
 // tells the person in its own words (agent-is-the-voice); core posts nothing. A thread is told once
 // per fill, however many asks it made for that slot.
 
@@ -25,11 +25,11 @@ export function slotLabelOf(ask: Pick<AskRow, 'kind' | 'slot'>): string {
   return `the credential of the ${s.provider} connection`;
 }
 
-function filledNote(ask: AskRow, fingerprint: string, via: 'page' | 'presigned'): string {
+export function filledNote(ask: AskRow, fingerprint: string, via: 'page' | 'presigned'): string {
   const how = via === 'presigned' ? 'the one-time write URL' : 'its page in Forge';
   return [
     `${slotLabelOf(ask)}, which this thread asked for with support.secret_link, now holds a value: it was set through ${how} (fingerprint ${fingerprint}).`,
-    'Forge kept no part of it in chat. Tell the person once, in your own words, that it was received, naming that fingerprint, and go on with what it was for.',
+    'Forge kept no part of it in chat. Tell the person once, in your own words, which secret was received (say what it is for, as the person knows it), and go on with what it was for. The fingerprint is for Forge\u2019s records: never post it.',
     'Never ask for it again, never ask to see it, and never repeat it.',
   ].join(' ');
 }

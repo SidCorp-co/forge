@@ -82,7 +82,7 @@ export function slotSays(write: boolean, held: boolean, readBy: string | undefin
     write
       ? `Where the value sits in a file or a terminal, give the command too: it sets the slot once and only within ${SECRET_WRITE_TTL_MINUTES} minutes, and reads nothing.`
       : 'Where the value sits in a file or a terminal, ask again with presign: true for a one-time write URL.',
-    'You will be told in this thread, by fingerprint, once it holds a value; never ask for the value in chat, never write a settings address by hand, and never ask anyone to rotate it.',
+    'You will be told in this thread once it holds a value; say which secret arrived and never post its fingerprint; never ask for the value in chat, never write a settings address by hand, and never ask anyone to rotate it.',
   ].join(' ');
 }
 

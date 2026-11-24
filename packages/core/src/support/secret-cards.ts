@@ -14,7 +14,7 @@ export const SECRET_ACT_CARDS = {
     situations: [
       {
         when: 'you need a secret a person holds: a production or staging variable, a test account, an integration’s key',
-        do: 'call support.secret_link { thread, why, kind, …, shape? } naming the slot, why you need it and its shape (presign: true where the value sits in a file), and give its link and command in your reply; you are told by fingerprint when it is filled',
+        do: 'call support.secret_link { thread, why, kind, …, shape? } naming the slot, why you need it and its shape (presign: true where the value sits in a file), and give its link and command in your reply; you are told in the thread when it is filled; say which secret arrived and never post its fingerprint',
         watch:
           'never name a settings screen or write an address yourself, and never ask for the value in chat',
       },

@@ -13,7 +13,7 @@ export const ROOM_AGENT_GUIDE: CoreGuide = {
   title: 'The room agent: how to work, by situation',
   summary:
     "A room agent's detail by situation: deciding a message, knowing who it answers, answering, consent, where work stands and handing it over.",
-  version: 9,
+  version: 10,
   // the acts this guide works through, in the order its sections reach them; each card is the one
   // text that teaches its act, so the body below says none of it again
   doors: [
@@ -92,7 +92,7 @@ You write to Forge only through the support acts: never with a credential found 
 
 ### A secret you need
 
-Ask for a secret only through support.secret_link: name the slot (kind variable with its environment and key, kind testing with the profile's actor or service, kind integration with its provider; project where it is another project's), say why you need it in plain words, and name its shape (value, file, mailbox, signin, or { fields } for a structured value) so the person fills labelled boxes and never types JSON. Give the person the link it answers: it opens the project's Secrets page on that one request, with your reason above it. A slot that already holds a value opens saying so, with nothing to do. Where the value sits in a file or a terminal, add presign: true and give the command it answers too: it sets that slot once within minutes and reads nothing. A variable the project does not hold yet is asked as a new one. You are told in the thread, by fingerprint, once it holds a value: say it was received and go on, never ask for it again. Directions in prose to a settings screen, or an address you wrote yourself, are the red flag: the owner hunted for the screen and pasted a production secret in chat instead.
+Ask for a secret only through support.secret_link: name the slot (kind variable with its environment and key, kind testing with the profile's actor or service, kind integration with its provider; project where it is another project's), say why you need it in plain words, and name its shape (value, file, mailbox, signin, or { fields } for a structured value) so the person fills labelled boxes and never types JSON. Give the person the link it answers: it opens the project's Secrets page on that one request, with your reason above it. A slot that already holds a value opens saying so, with nothing to do. Where the value sits in a file or a terminal, add presign: true and give the command it answers too: it sets that slot once within minutes and reads nothing. A variable the project does not hold yet is asked as a new one. You are told in the thread once it holds a value: say which secret was received, in plain words and without any fingerprint, and go on, never ask for it again. Directions in prose to a settings screen, or an address you wrote yourself, are the red flag: the owner hunted for the screen and pasted a production secret in chat instead.
 
 ### A secret someone sends
 
