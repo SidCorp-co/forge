@@ -209,14 +209,14 @@ export const FEEDBACK_ROW_CHIP_LABELS: Record<FeedbackRowChip, string> = {
 	declined: "Declined",
 };
 
-export const FEEDBACK_ROW_CHIP_TONES: Record<FeedbackRowChip, IssueStatusTone> = {
-	new: "neutral",
-	planned: "ready",
-	running: "run",
-	done: "done",
-	declined: "neutral",
-};
-
+export const FEEDBACK_ROW_CHIP_TONES: Record<FeedbackRowChip, IssueStatusTone> =
+	{
+		new: "neutral",
+		planned: "ready",
+		running: "run",
+		done: "done",
+		declined: "neutral",
+	};
 
 export const FEEDBACK_PHASE_TONES: Record<FeedbackPhase, IssueStatusTone> = {
 	new: "you",

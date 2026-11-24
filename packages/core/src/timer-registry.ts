@@ -315,12 +315,10 @@ export function coreTimers(): Timer[] {
       kind: 'cluster',
       name: 'feedback-loop-check',
       cron: '*/15 * * * *',
-      run: logged(
-        'feedback-loop-check: sweep complete',
-        sweepResolvedFeedback,
-        (r) =>
-          (r as { verified: number; noted: number }).verified + (r as { noted: number }).noted > 0,
-      ),
+      run: logged('feedback-loop-check: sweep complete', sweepResolvedFeedback, (r) => {
+        const n = r as { verified: number; noted: number; withdrawn: number };
+        return n.verified + n.noted + n.withdrawn > 0;
+      }),
     },
     {
       kind: 'cluster',
