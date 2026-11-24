@@ -2,8 +2,8 @@
 // The write itself is the binding door's, with every check it makes; this only resolves `item`.
 
 import { readBinding, slotFor, uuid } from '../project-config/index.js';
-import { no } from './outcome.js';
 import type { OpsOutcome } from './ops-types.js';
+import { no } from './outcome.js';
 
 /** `item` that makes a project's binding instead of naming one it holds. */
 export const NEW_BINDING = 'new';
@@ -60,4 +60,3 @@ export async function bindingWriteOf(
   }
   return { ok: true, value: { bindingId: item, baseRevision, raw: document } };
 }
-
