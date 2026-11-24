@@ -17,6 +17,8 @@ describe('the secret-received notice (ISS-1454)', () => {
   });
 
   it('the room guide does not tell the agent to name a fingerprint', () => {
-    expect(JSON.stringify(ROOM_AGENT_GUIDE)).not.toMatch(/by fingerprint|naming (that|the) fingerprint/i);
+    expect(JSON.stringify(ROOM_AGENT_GUIDE)).not.toMatch(
+      /by fingerprint|naming (that|the) fingerprint/i,
+    );
   });
 });
