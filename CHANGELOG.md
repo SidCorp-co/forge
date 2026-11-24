@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.821] - 2026-11-24
+
+Secret receipts name the secret in plain words, not a refused fingerprint
+
+### Fixed
+
+- **A room agent is no longer told to name a secret's fingerprint.** The post filter refuses hex runs, so the notice, room guide and secret card now say which secret arrived and that its fingerprint is never posted.
+
 ## [0.4.0-dev.820] - 2026-11-24
 
 A reopened fix sends its verified feedback back to waiting on the carrier
