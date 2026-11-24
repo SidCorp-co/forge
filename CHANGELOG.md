@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.823] - 2026-11-24
+
+Direct mode takes each issue's lease before dispatching its builder
+
+### Fixed
+
+- **A direct-mode builder's issue now stands at in_progress while it is built.** The dispatch guide's Direct mode and the pass nudge tell a master to take each declared issue's lease with the run before dispatching (ISS-1444).
+
 ## [0.4.0-dev.822] - 2026-11-24
 
 Rooms can write a project's first binding and get named refusals for non-bindings
