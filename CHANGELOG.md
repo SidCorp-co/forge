@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.822] - 2026-11-24
+
+Rooms can write a project's first binding and get named refusals for non-bindings
+
+### Fixed
+
+- **A room's binding.write names what its item must be.** An item that is no binding of the project is refused by name, not as a database error, and item "new" makes the project's first binding through the binding door.
+
 ## [0.4.0-dev.821] - 2026-11-24
 
 Secret receipts name the secret in plain words, not a refused fingerprint
