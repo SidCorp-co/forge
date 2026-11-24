@@ -31,6 +31,7 @@ import {
   issueWait,
   type RoutedIssueFacts,
   relayWait,
+  settledWait,
   shippedOwedWait,
 } from './standing-carrier.js';
 import {
@@ -227,6 +228,8 @@ export interface StandingFacts {
   shippedFailing?: readonly string[];
   /** The criteria its carriers shipped owed live (`ISS-382 c3`): resolved, verified once they pass (ISS-1234). */
   shippedOwed?: readonly string[];
+  /** A verified item's carriers that reopened since (ISS-1453). */
+  reopenedCarriers?: readonly string[];
   /** Its requirement route stands delivered or accepted: what its shipping still owes (ISS-1332). */
   requirement?: RequirementOwed | null;
 }
@@ -357,14 +360,7 @@ function waitingOf(
         yours: false,
       };
     default:
-      return theirs(
-        wait(
-          'none',
-          say('standing.who.nothing'),
-          say('standing.act.none'),
-          say('feedback.rule.nothingOwed', { phase }),
-        ),
-      );
+      return theirs(settledWait(phase, facts.reopenedCarriers ?? []));
   }
 }
 
@@ -413,7 +409,7 @@ function groupOf(phase: FeedbackPhase, owed: Owed, facts: StandingFacts): TurnGr
   if (owed.yours) return 'needs_you';
   if (phase === 'resolved') return facts.masterVerifies ? 'done' : 'waiting';
   if (phase === 'planned' || owed.wait.kind === 'agent') return 'moving';
-  if (phase === 'verified' || phase === 'declined') return 'done';
+  if (phase === 'declined' || (phase === 'verified' && owed.wait.kind === 'none')) return 'done';
   return 'waiting';
 }
 
@@ -521,7 +517,8 @@ export function chipOf(phase: FeedbackPhase, group: FeedbackAttentionGroup): Fee
       return group === 'running' ? 'running' : 'planned';
     case 'resolved':
     case 'verified':
-      return 'done';
+      // a verified item whose carrier reopened waits again, so it is no longer Done (ISS-1453)
+      return phase === 'verified' && group === 'waiting' ? 'planned' : 'done';
     case 'declined':
       return 'declined';
   }

@@ -387,3 +387,34 @@ describe('a feedback item whose carrier waits on an answer names no role (ISS-68
     expect(answer.times.basis).not.toBe(person.times.basis);
   });
 });
+
+// ISS-1453: an item a person verified keeps its verdict, but once its carrier reopened it may not
+// read "nothing is owed". Planted red by dropping the verified case's reopened-carrier branch.
+describe('a verified item reads a carrier that reopened (ISS-1453)', () => {
+  const verified = (reopenedCarriers: readonly string[]) =>
+    feedbackStandingOf(
+      'verified',
+      'issue',
+      [],
+      'R',
+      reader,
+      null,
+      { ...NO_STANDING_FACTS, reopenedCarriers },
+      AT,
+    );
+
+  it('names the reopened carrier and is not Done', () => {
+    const s = verified(['ISS-372']);
+    expect(s.waitingOn).toMatchObject({ kind: 'issue', who: 'ISS-372', ref: 'ISS-372' });
+    expect(s.waitingOn.rule).toBe('verified: ISS-372 reopened since; the verdict stands');
+    expect(s.attentionGroup).not.toBe('done');
+    expect(s.chip).toBe('planned');
+  });
+
+  it('reads nothing owed, and Done, where no carrier reopened', () => {
+    const s = verified([]);
+    expect(s.waitingOn.kind).toBe('none');
+    expect(s.waitingOn.rule).toBe('verified: nothing is owed');
+    expect(s.chip).toBe('done');
+  });
+});

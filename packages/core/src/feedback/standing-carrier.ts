@@ -14,6 +14,8 @@ import { STANDING_DUE_WORKING_DAYS, type StuckReading } from '@forge/contracts/s
 import { issuesNamed } from '../lib/named-items.js';
 import { addWorkingDays } from '../lib/working-days.js';
 import type { CarryingRelease } from './dependents.js';
+import type { Linked } from './list-read.js';
+import type { Row } from './read.js';
 import type { Owed, PhaseFacts, StandingFacts, StandingViewer } from './standing.js';
 
 type FeedbackWaitingOn = WaitingOn<FeedbackWaitingKind>;
@@ -390,4 +392,40 @@ function shippedFailingWait(shippedFailing: readonly string[]): FeedbackWaitingO
     say('feedback.rule.shippedFailing', { failing }),
     { ref: shippedFailing[0]?.split(' ')[0] ?? null },
   );
+}
+
+/**
+ * What a verified or declined item waits on: nothing, unless a carrier reopened since its verify
+ * (ISS-1453), when it names the reopened carrier, the verdict standing (a person's verify is kept).
+ */
+export function settledWait(phase: string, reopened: readonly string[]): FeedbackWaitingOn {
+  const keys = carriersPhrase(reopened);
+  if (phase === 'verified' && keys) {
+    return wait(
+      'issue',
+      keys,
+      say('standing.act.beResolved'),
+      say('feedback.rule.verifiedCarrierReopened', { carriers: reopened.join(', ') }),
+      { ref: reopened[0] ?? null },
+    );
+  }
+  return wait(
+    'none',
+    say('standing.who.nothing'),
+    say('standing.act.none'),
+    say('feedback.rule.nothingOwed', { phase }),
+  );
+}
+
+/**
+ * The carriers of a verified item that have reopened since (`ISS-372`, ISS-1453): the verdict was said
+ * of work that is failing again, so the item may not read that nothing is owed. Only an issue route
+ * has carriers to reopen; any other item, and any item not verified, reads none.
+ */
+export function reopenedCarriersIn(r: Row, l: Linked): string[] {
+  if (r.status !== 'verified' || r.route !== 'issue') return [];
+  return (l.routeIssues.get(r.id) ?? []).flatMap((id) => {
+    const issue = l.issues.get(id);
+    return issue?.status === 'reopen' ? [issue.key] : [];
+  });
 }

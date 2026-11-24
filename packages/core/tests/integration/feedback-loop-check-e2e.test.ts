@@ -26,7 +26,12 @@ import {
   startQueue,
   testEnv,
 } from '../helpers/ecosystem-world.js';
-import { addProjectMember, createTestProject, createTestUser } from '../helpers/factories.js';
+import {
+  addProjectMember,
+  createTestProject,
+  createTestUser,
+  seedIssueStatus,
+} from '../helpers/factories.js';
 import { ago, feedback, issue, world } from '../helpers/forecast-world.js';
 import { declareControls } from '../helpers/project-controls.js';
 import { TRIAGE_ANSWERS } from '../helpers/triage-answers.js';
@@ -424,5 +429,94 @@ describe('a carrier shipped with a failing criterion verifies nothing (ISS-1159)
       decision: 'verified',
       reason: expect.stringContaining('Verified by ship'),
     });
+  });
+});
+
+// ISS-1453: epod FB-214 was verified by ship on 1.93.0, then the live judge failed its carrier ISS-372
+// and it reopened; the item still read verified, "nothing is owed". Planted red by leaving the verify
+// one-way: the first test then finds the item still verified with ISS-372 reopen.
+describe('a carrier that reopens takes back the verify its ship recorded (ISS-1453)', () => {
+  const reopen = (carrierId: string) => seedIssueStatus(carrierId, 'reopen');
+
+  async function verifiedByShip() {
+    const { sweepResolvedFeedback } = await import('../../src/feedback/index.js');
+    const w = await world();
+    const carrier = await issue(w, { status: 'closed', createdAt: ago(30), mergedAt: ago(2) });
+    const fb = await feedback(w, [carrier.id]);
+    await sweepResolvedFeedback();
+    const path = `/api/projects/${w.projectId}/feedback/${fb}`;
+    const get = async () => (await api(w.token, 'GET', path)).body.feedback as Doc;
+    expect((await get()).status).toBe('verified');
+    return { w, carrier, fb, path, get, sweep: sweepResolvedFeedback };
+  }
+
+  it('returns an item verified by ship to the phase that waits on its carrier, naming it, as Forge', async () => {
+    const { carrier, get, sweep } = await verifiedByShip();
+    await reopen(carrier.id);
+    expect(
+      (await get()).waitingOn,
+      'before the sweep the read already names the carrier',
+    ).toMatchObject({
+      ref: carrier.key,
+    });
+
+    const swept = await sweep();
+    expect(swept.withdrawn).toBeGreaterThanOrEqual(1);
+    const after = await get();
+    expect(after.status).toBe('triaged');
+    expect(after.phase).toBe('planned');
+    // the carrier's own wait, rolled up: a reopened issue waits on the master, and the line names it
+    expect(after.waitingOn).toMatchObject({ ref: carrier.key });
+    expect(String((after.waitingOn as Doc).rule)).toContain(carrier.key);
+    expect(after.chip).toBe('planned');
+    expect((after.decisions as Doc[]).at(-1)).toMatchObject({
+      decision: 'triaged',
+      decidedBy: null,
+      decidedAgency: 'system',
+      carrier: carrier.key,
+      reason: expect.stringContaining(`${carrier.key} reopened`),
+    });
+    expect((await sweep()).withdrawn, 'a withdrawn item is not taken back twice').toBe(0);
+  });
+
+  it('verifies the item again once the reopened carrier ships passing', async () => {
+    const { carrier, get, sweep } = await verifiedByShip();
+    await reopen(carrier.id);
+    await sweep();
+    expect((await get()).status, 'taken back while the carrier is reopened').toBe('triaged');
+    await seedIssueStatus(carrier.id, 'closed');
+    await sweep();
+    expect((await get()).status).toBe('verified');
+  });
+
+  it('leaves an item verified by ship whose carrier did not reopen', async () => {
+    const { get, sweep } = await verifiedByShip();
+    await sweep();
+    const after = await get();
+    expect(after.status).toBe('verified');
+    expect(after.waitingOn).toMatchObject({ kind: 'none' });
+    expect(String((after.waitingOn as Doc).rule)).toContain('nothing is owed');
+  });
+
+  it('keeps an item a person verified verified when its carrier reopens, but reads the carrier reopen', async () => {
+    const { sweepResolvedFeedback } = await import('../../src/feedback/index.js');
+    const w = await world();
+    const carrier = await issue(w, { status: 'closed', createdAt: ago(30), mergedAt: ago(2) });
+    const fb = await feedback(w, [carrier.id]);
+    const path = `/api/projects/${w.projectId}/feedback/${fb}`;
+    const said = await api(w.token, 'POST', `${path}/verify`, {});
+    expect(said.status, JSON.stringify(said.body)).toBe(200);
+    await reopen(carrier.id);
+
+    const swept = await sweepResolvedFeedback();
+    expect(swept.withdrawn).toBe(0);
+    const out = (await api(w.token, 'GET', path)).body.feedback as Doc;
+    expect(out.status).toBe('verified');
+    expect(out.verified).toMatchObject({ how: 'person' });
+    const waiting = out.waitingOn as Doc;
+    expect(waiting).toMatchObject({ kind: 'issue', ref: carrier.key });
+    expect(String(waiting.rule)).toContain(`${carrier.key} reopened`);
+    expect(String(waiting.rule)).not.toContain('nothing is owed');
+    expect(out.attentionGroup).not.toBe('done');
   });
 });

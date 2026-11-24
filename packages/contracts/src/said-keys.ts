@@ -1650,6 +1650,10 @@ export const SAID = {
 		vars: { why: "text" },
 	},
 	"standing.who.nothing": { en: "Nothing" },
+	"feedback.rule.verifiedCarrierReopened": {
+		en: "verified: {carriers} reopened since; the verdict stands",
+		vars: { carriers: "text" },
+	},
 	"feedback.rule.nothingOwed": {
 		en: "{phase}: nothing is owed",
 		vars: { phase: "code" },

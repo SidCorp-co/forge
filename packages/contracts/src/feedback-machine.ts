@@ -10,7 +10,7 @@ import { defineMachine, fromEach } from "./state-machine.js";
 
 export const FEEDBACK_MACHINE = defineMachine({
 	entity: "feedback",
-	shapes: ["a2122359", "e469bebc", "7c86963a", "cc2c1b17", "5cebf76f", "9fb27bdd", "db74d2fc"],
+	shapes: ["a2122359", "e469bebc", "7c86963a", "cc2c1b17", "5cebf76f", "9fb27bdd", "db74d2fc", "58f0dbc0"],
 	design: { flow: "feedback-lifecycle", revision: 14 },
 	states: FEEDBACK_STATUSES,
 	initial: ["new"],
@@ -24,5 +24,8 @@ export const FEEDBACK_MACHINE = defineMachine({
 		{ from: "triaged", to: "verified", act: "reporter.verified", permission: "project.read", guards: [] },
 		{ from: "triaged", to: "reopened", act: "reporter.reopened", permission: null, guards: [] },
 		{ from: "verified", to: "reopened", act: "reporter.reopened", permission: null, guards: [] },
+		// Forge's own: an item it verified by ship goes back to triaged, which reads planned, when the
+		// carrier that verified it reopens (ISS-1453). No person says it, so it is no reopen.
+		{ from: "verified", to: "triaged", act: "feedback.verifyWithdrawn", permission: null, guards: [] },
 	],
 });

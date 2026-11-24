@@ -61,7 +61,7 @@ import {
   revisionStageOf,
   type StandingViewer,
 } from './standing.js';
-import { shippedFailingOf, shippedOwedOf } from './standing-carrier.js';
+import { reopenedCarriersIn, shippedFailingOf, shippedOwedOf } from './standing-carrier.js';
 import { targetView } from './target-view.js';
 import { recordCheckOf, verifyHeldOf, verifyWindowDays } from './verify-window.js';
 import type { ViewerCan } from './viewer-can.js';
@@ -409,7 +409,6 @@ function standingIn(r: Row, l: Linked, viewer: StandingViewer, now: Date) {
 
 function ownStandingIn(r: Row, l: Linked, viewer: StandingViewer, now: Date) {
   const phase = phaseIn(r, l);
-  const snoozed = snoozeOf(r, now);
   const route = routeView(r, l);
   const reporter = l.names.get(r.reportedBy) ?? 'The reporter';
   const unreleased = unreleasedCarrierKeys(l.routeIssues.get(r.id) ?? [], l.issues);
@@ -429,7 +428,7 @@ function ownStandingIn(r: Row, l: Linked, viewer: StandingViewer, now: Date) {
       runnerBound: l.runnerBound,
       clarification: askedOf(r.id, phase, carried.draft, l) ?? null,
       masterVerifies: l.masterVerifies,
-      snoozedUntil: snoozed?.until ?? null,
+      snoozedUntil: snoozeOf(r, now)?.until ?? null,
       recordCheckAt: recordCheckOf(r, phase, l.verifyWindowDays)?.toISOString() ?? null,
       recordCanSay: r.violatedCriterionId !== null,
       verifyHeld: verifyHeldOf(r, phase)?.why ?? null,
@@ -455,6 +454,7 @@ function ownStandingIn(r: Row, l: Linked, viewer: StandingViewer, now: Date) {
       carrierRunning: r.route === 'issue' && owed.some((c) => c.status === 'in_progress'),
       shippedFailing: phase === 'planned' ? shippedFailingOf(factsIn(r, l)) : [],
       shippedOwed: phase === 'resolved' ? shippedOwedOf(factsIn(r, l)) : [],
+      reopenedCarriers: reopenedCarriersIn(r, l),
       ...requirementFactsIn(r, l),
     },
     {

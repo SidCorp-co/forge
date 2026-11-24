@@ -24,6 +24,14 @@ describe('feedback-lifecycle: the machine draws only the moves the rules can tak
     expect(reopenRefusal('planned', 'it is back')?.code).toBe('FEEDBACK_NOT_RESOLVED');
   });
 
+  // ISS-1453: Forge takes back its own ship verify when the carrier reopens; no person says it, so it is no reopen
+  it('lets a verified item go back to triaged by the system alone, so no reopen is forged for a person', () => {
+    const edge = edgeBetween(FEEDBACK_MACHINE, 'verified', 'triaged');
+    expect(edge?.act).toBe('feedback.verifyWithdrawn');
+    expect(edge?.permission).toBeNull();
+    expect(exitsOf(FEEDBACK_MACHINE, 'verified')).toEqual(['reopened', 'triaged']);
+  });
+
   it('verifies only a triaged item', () => {
     expect(edgeBetween(FEEDBACK_MACHINE, 'triaged', 'verified')?.act).toBe('reporter.verified');
   });

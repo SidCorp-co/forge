@@ -21,14 +21,20 @@
  * by ship, as Forge's own decision naming the version. Its reporter, or a holder of
  * feedback.approve, may reopen it with a reason before or after that sweep (`rules.ts:reopenRefusal`).
  * The window and the record note above are a strict project's alone.
+ *
+ * A verify is said of work that shipped. When a carrier of an item Forge itself verified reopens
+ * (the live judge failed it), the sweep takes the verify back (`withdrawShipVerify`, ISS-1453): the
+ * item returns to triaged, which reads planned on that carrier, with Forge's own decision naming it.
+ * An item a person verified keeps its verdict; its read names the reopened carrier instead.
  */
 
 import { feedbackKey } from '@forge/contracts/feedback';
 import { FEEDBACK_MACHINE } from '@forge/contracts/feedback-machine';
 import { type FixConfirmation, loopCloseFromConfirm } from '@forge/contracts/reproduce';
-import { and, eq } from 'drizzle-orm';
-import { db } from '../db/client.js';
-import { feedback } from '../db/schema-feedback.js';
+import { and, desc, eq, exists, inArray } from 'drizzle-orm';
+import { db, type Tx } from '../db/client.js';
+import { issues } from '../db/schema.js';
+import { feedback, feedbackDecisions, feedbackRouteIssues } from '../db/schema-feedback.js';
 import { issueDisplayIds } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { movedRow, transition } from '../lifecycle/index.js';
@@ -42,6 +48,7 @@ import { tellStepToReporters } from './reporters.js';
 import { personalActRefusal, reopenRefusal } from './rules.js';
 import { decide, feedbackKernelActor, inTx, lockFeedback, roleFacts } from './service.js';
 import { shippedFailingIn, shippedOwedIn } from './shipped-held.js';
+import { reopenedCarriersIn } from './standing-carrier.js';
 import { verifyRefusal } from './verify-rules.js';
 import { recordCheckAt, verifyWindowDays } from './verify-window.js';
 
@@ -54,6 +61,8 @@ export interface AutoVerifySweepResult {
   shipped: number;
   /** Reopened by a Not fixed said in the preview of the change that shipped. */
   reopened: number;
+  /** Verified by ship earlier, then taken back to triaged because a carrier reopened (ISS-1453). */
+  withdrawn: number;
   /** Past their window, left resolved for a holder of feedback.approve with what the record reads. */
   held: number;
   /** Of those, the ones whose reason was written on the item this sweep (new, or changed since). */
@@ -110,6 +119,90 @@ async function verifyByShip(row: Row, projectId: string, linked: Linked): Promis
     return null;
   });
   return moved;
+}
+
+/**
+ * Whether Forge itself said the item's last verdict: the newest verify, reopen, triage or decline on
+ * it is a verify by the system actor (`how: automatic`). A verify a person said is theirs and stays.
+ */
+async function lastVerdictIsForges(tx: Tx, id: string) {
+  const [last] = await tx
+    .select({ decision: feedbackDecisions.decision, agency: feedbackDecisions.decidedAgency })
+    .from(feedbackDecisions)
+    .where(
+      and(
+        eq(feedbackDecisions.feedbackId, id),
+        inArray(feedbackDecisions.decision, ['verified', 'reopened', 'triaged', 'declined']),
+      ),
+    )
+    .orderBy(desc(feedbackDecisions.decidedAt), desc(feedbackDecisions.id))
+    .limit(1);
+  return last?.decision === 'verified' && last.agency === 'system';
+}
+
+/**
+ * Takes back a verify Forge itself recorded when a carrier of the item reopens (ISS-1453): the verify
+ * was said of work that is failing again, so the item goes back to triaged, which reads planned on
+ * its carrier, as Forge's own decision naming the reopened carrier. A verify a person said is never
+ * taken back; its read shows the reopen instead (`standing.ts:waitingOf`). Read again under the lock.
+ */
+async function withdrawShipVerify(row: Row, projectId: string): Promise<boolean> {
+  let moved = false;
+  await inTx(async (tx): Promise<null> => {
+    await lockFeedback(tx, projectId);
+    const now = await rowIn(tx, projectId, row.id, true);
+    if (now.status !== 'verified') return null;
+    const reopened = reopenedCarriersIn(now, await linkedOf(projectId, [now]));
+    const first = reopened[0];
+    if (first === undefined) return null;
+    if (!(await lastVerdictIsForges(tx, now.id))) return null;
+    const reason = `Verification withdrawn: ${reopened.join(', ')} reopened after its work shipped`;
+    movedRow(
+      await transition(tx, FEEDBACK_MACHINE, {
+        to: 'triaged',
+        expect: now.status,
+        set: { resolvedSeenAt: null, ...NOT_HELD, updatedAt: new Date() },
+        where: eq(feedback.id, now.id),
+        reason,
+        actor: { type: 'system' },
+        source: 'feedback-ship-verify-withdrawn',
+        returning: ['id'],
+      }),
+    );
+    await decide(tx, now, 'system', {
+      decision: 'triaged',
+      route: now.route,
+      carrier: first,
+      reason,
+    });
+    // the verify told its reporters it was settled; the same reporters are told it is not, once
+    await tellStepToReporters(tx, now, 'triaged', null, first);
+    moved = true;
+    return null;
+  });
+  return moved;
+}
+
+/** Items Forge verified, or a person did, whose issue carrier has since reopened: the candidates to read again. */
+async function verifiedWithReopenedCarrier(): Promise<Row[]> {
+  return db
+    .select()
+    .from(feedback)
+    .where(
+      and(
+        eq(feedback.status, 'verified'),
+        eq(feedback.route, 'issue'),
+        exists(
+          db
+            .select({ one: feedbackRouteIssues.issueId })
+            .from(feedbackRouteIssues)
+            .innerJoin(issues, eq(issues.id, feedbackRouteIssues.issueId))
+            .where(
+              and(eq(feedbackRouteIssues.feedbackId, feedback.id), eq(issues.status, 'reopen')),
+            ),
+        ),
+      ),
+    );
 }
 
 /** The latest confirm, when the change that shipped is the one it was said of; null asks as today. */
@@ -233,6 +326,7 @@ export async function sweepResolvedFeedback(
     verified: 0,
     shipped: 0,
     reopened: 0,
+    withdrawn: 0,
     held: 0,
     noted: 0,
   };
@@ -302,6 +396,16 @@ export async function sweepResolvedFeedback(
           'feedback: what the record reads of an item past its verify window was not written',
         );
       }
+    }
+  }
+  for (const row of await verifiedWithReopenedCarrier()) {
+    try {
+      if (await withdrawShipVerify(row, row.projectId)) result.withdrawn += 1;
+    } catch (err) {
+      logger.error(
+        { err, feedback: row.id },
+        'feedback: a verified item whose carrier reopened was not taken back to its carrier',
+      );
     }
   }
   return result;
