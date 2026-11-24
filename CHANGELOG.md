@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.825] - 2026-11-24
+
+Plain words after a prose label are no longer redacted as secrets
+
+### Fixed
+
+- **A sentence about the password feature is no longer refused.** A prose label like "mật khẩu:" or "api key:" followed by a plain word of letters is left as written; a value with a digit or symbol is still redacted.
+
 ## [0.4.0-dev.824] - 2026-11-24
 
 Room agents answer the master's reply with only what it adds
