@@ -1,1 +1,0 @@
-**A room agent asked whether one issue is fixed answers from that issue.** The issues card now teaches its status, what works and what it waits on; awaiting release means merged, not live, and no release status update replaces it.

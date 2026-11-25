@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.829] - 2026-11-25
+
+The room assistant answers whether one issue is fixed from that issue
+
+### Fixed
+
+- **A room agent asked whether one issue is fixed answers from that issue.** The issues card now teaches its status, what works and what it waits on; awaiting release means merged, not live, and no release status update replaces it.
+
 ## [0.4.0-dev.828] - 2026-11-25
 
 Monitoring rules alert when a probe answers slower than a set time
