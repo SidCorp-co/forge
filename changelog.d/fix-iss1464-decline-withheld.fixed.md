@@ -1,0 +1,1 @@
+**A feedback server key now says when a decline reason is withheld.** A declined item on a no_egress project answers declineReasonWithheld true beside the null reason; every other read answers false, so a product can tell the two nulls apart.

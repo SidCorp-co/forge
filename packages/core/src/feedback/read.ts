@@ -263,12 +263,17 @@ async function declineReasonOf(row: Row, phase: FeedbackPhase): Promise<string |
  * that settled who may read the item itself: a product's server key, on an item its product filed
  * (`server-key-door.ts`, ISS-1287). No `project.read` floor, so no other caller takes it. Beside the
  * summary, the reason its decline wrote for its reporter (ISS-1412), withheld as every decision reason
- * is from an agent where the project's data policy keeps the item's text in.
+ * is from an agent where the project's data policy keeps the item's text in, and then `declineReasonWithheld`
+ * says so by name on a declined item (ISS-1464), so that null is never read as no reason.
  */
 export async function filedReadOf(
   viewer: FeedbackActor,
   row: Row,
-): Promise<{ summary: FeedbackSummary; declineReason: string | null }> {
+): Promise<{
+  summary: FeedbackSummary;
+  declineReason: string | null;
+  declineReasonWithheld: boolean;
+}> {
   const [level, linked, can] = await Promise.all([
     dataPolicyOf(row.projectId),
     linkedOf(row.projectId, [row]),
@@ -277,7 +282,9 @@ export async function filedReadOf(
   const { withhold } = feedbackEgress(level, viewer.agency, {});
   const summary = summaryOf(row, linked, viewer, withhold, can);
   const declineReason = withhold ? null : await declineReasonOf(row, summary.phase);
-  return { summary, declineReason };
+  // null alone cannot say whether a declined item has no reason or the data policy keeps it in (ISS-1464)
+  const declineReasonWithheld = withhold && summary.phase === 'declined';
+  return { summary, declineReason, declineReasonWithheld };
 }
 
 export async function detailAs(

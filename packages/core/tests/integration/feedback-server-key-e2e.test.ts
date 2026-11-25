@@ -288,7 +288,7 @@ describe('a feedback server key reading back (ISS-1287)', () => {
     };
     const read = await api(secret, 'GET', at(fbKey));
     expect(read.status, JSON.stringify(read.body)).toBe(200);
-    expect(read.body).toEqual({ feedback: { ...(await asPage()), declineReason: null } });
+    expect(read.body).toEqual({ feedback: { ...(await asPage()), declineReason: null, declineReasonWithheld: false } });
     expect(read.body.feedback).toMatchObject({ phase: 'new', chip: 'new' });
 
     const declined = await api(adminJwt, 'POST', `${at(fbKey)}/triage`, {
@@ -298,7 +298,7 @@ describe('a feedback server key reading back (ISS-1287)', () => {
     expect(declined.status, JSON.stringify(declined.body)).toBe(200);
     const after = await api(secret, 'GET', at(fbKey));
     expect(after.body).toEqual({
-      feedback: { ...(await asPage()), declineReason: 'Stock is counted nightly.' },
+      feedback: { ...(await asPage()), declineReason: 'Stock is counted nightly.', declineReasonWithheld: false },
     });
     expect(after.body.feedback).toMatchObject({ phase: 'declined', chip: 'declined' });
 
@@ -382,6 +382,7 @@ describe('a feedback server key reading a decline (ISS-1412)', () => {
       const body = await asKey(key);
       expect((body.feedback as Body).phase, key).not.toBe('declined');
       expect((body.feedback as Body).declineReason, key).toBeNull();
+      expect((body.feedback as Body).declineReasonWithheld, key).toBe(false);
     }
 
     const fullBefore = await api(adminJwt, 'GET', at(root));
@@ -395,6 +396,7 @@ describe('a feedback server key reading a decline (ISS-1412)', () => {
         phase: 'declined',
         chip: 'declined',
         declineReason: 'The printer driver prints blank.',
+        declineReasonWithheld: false,
       },
     });
     expect(JSON.stringify(declined)).not.toContain('Printer driver, not us.');
@@ -405,7 +407,10 @@ describe('a feedback server key reading a decline (ISS-1412)', () => {
       phase: 'declined',
       declineReason: 'The printer driver prints blank.',
     });
-    expect((await asKey(routed)).feedback).toMatchObject({ declineReason: null });
+    expect((await asKey(routed)).feedback).toMatchObject({
+      declineReason: null,
+      declineReasonWithheld: false,
+    });
 
     // a person's full read gains no field and still holds the reason in its decisions
     const full = await api(adminJwt, 'GET', at(root));
@@ -440,7 +445,11 @@ describe('a feedback server key reading a decline (ISS-1412)', () => {
     expect(declined.status, JSON.stringify(declined.body)).toBe(200);
     const read = await api(secret, 'GET', at);
     expect(read.status, JSON.stringify(read.body)).toBe(200);
-    expect(read.body.feedback).toMatchObject({ phase: 'declined', declineReason: null });
+    expect(read.body.feedback).toMatchObject({
+      phase: 'declined',
+      declineReason: null,
+      declineReasonWithheld: true,
+    });
     expect(JSON.stringify(read.body)).not.toContain('4411');
   });
 });

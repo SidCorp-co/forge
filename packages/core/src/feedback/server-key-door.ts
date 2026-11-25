@@ -130,13 +130,19 @@ async function readWithServerKey(c: Context, token: string, ref: string): Promis
       `${feedbackKey(row.fbSeq)} was filed by another reporter; server key ${key.prefix}… reads only the items ${key.product} filed`,
     );
   }
-  const { summary, declineReason } = await filedReadOf(
+  const { summary, declineReason, declineReasonWithheld } = await filedReadOf(
     { userId: key.accountId, agency: 'agent' },
     row,
   );
   await touchServerKey(key.id, now);
   const body: FeedbackServerKeyReadResponse = {
-    feedback: { key: summary.key, phase: summary.phase, chip: summary.chip, declineReason },
+    feedback: {
+      key: summary.key,
+      phase: summary.phase,
+      chip: summary.chip,
+      declineReason,
+      declineReasonWithheld,
+    },
   };
   return c.json(body);
 }

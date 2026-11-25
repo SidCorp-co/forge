@@ -85,7 +85,12 @@ export const feedbackServerKeyReadResponseSchema = z.strictObject({
 			.string()
 			.nullable()
 			.describe(
-				"Where phase is declined, the reason the decline wrote for its reporter (a duplicate reads its original's); null in every other phase, and where the project's data policy (no_egress) keeps decision reasons from every agent.",
+				"Where phase is declined, the reason the decline wrote for its reporter (a duplicate reads its original's); null in every other phase, and where the project's data policy (no_egress) keeps decision reasons from every agent. Read declineReasonWithheld to tell the two nulls apart.",
+			),
+		declineReasonWithheld: z
+			.boolean()
+			.describe(
+				"True where phase is declined and the project's data policy (no_egress) keeps the reason from this key, so declineReason null is withheld and not absent; false in every other case.",
 			),
 	}),
 });
