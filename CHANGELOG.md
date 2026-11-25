@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.836] - 2026-11-25
+
+Masters can hand the room assistant facts for a thread nobody has written in
+
+### Changed
+
+- **A master can tell a thread no member wrote in.** Its facts open the room agent's turn there, and the agent tells the thread in the room's language; a master's own words are still refused in a users' room.
+
 ## [0.4.0-dev.835] - 2026-11-25
 
 Masters reach users rooms only through the room bot
