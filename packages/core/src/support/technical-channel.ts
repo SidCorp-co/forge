@@ -29,7 +29,7 @@ import { projectThreadFor, sharedRoomOf } from './project-thread.js';
 import { roomIsBound } from './rooms.js';
 import { screenForThread } from './screen.js';
 import { insertAction, type RoomRow, roomsOfProject } from './store.js';
-import { heldRaise, readTechnicalTurn, type TechnicalTurn, wordsMisfit } from './technical-turn.js';
+import { heldRaise, readTechnicalTurn, type TechnicalTurn } from './technical-turn.js';
 import { actingThread, postInThread, roomAuth, scrubbedForRoom, TOP_LEVEL } from './thread.js';
 
 /** The tool a raised need is recorded under on the asker's thread. */
@@ -239,7 +239,7 @@ export async function raiseTechnical(
   if (written === 'agent') {
     const turn = await turnAt(room, to.value);
     const sameRoom = to.value.kind === 'thread' && to.value.room.id === room.id;
-    const unread = heldRaise(turn, input.answers, sameRoom) ?? wordsMisfit(turn, input.text);
+    const unread = heldRaise(turn, input.answers, sameRoom);
     if (unread) return unread;
     const line = await screenForThread(
       room,
@@ -343,7 +343,7 @@ export async function raiseAsMaster(
   const { room, to } = from.value;
   const turn = await turnAt(room, to);
   // a master holds no room session, so a held raise teaches it the general answer, never a session door
-  const unread = heldRaise(turn, input.answers, false) ?? wordsMisfit(turn, input.text);
+  const unread = heldRaise(turn, input.answers, false);
   if (unread) return unread;
   const thread = to.kind === 'thread' ? to.thread : TOP_LEVEL;
   const line = await screenForThread(

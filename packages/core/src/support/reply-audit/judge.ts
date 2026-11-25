@@ -1,8 +1,8 @@
 // The verdict on one reply a room agent audited (ISS-1250): its own reading against the one rubric
 // (`@forge/contracts/support-reply-audit`), with each line code can tell checked beside it
-// (`code-lines.ts`: grant talk, a direction to a screen, an API-host link) and the reply-language
-// reading. Code adds what the agent missed so the record is true; it decides nothing
-// about the reply, which was already posted.
+// (`code-lines.ts`: grant talk, a direction to a screen, an API-host link). The reply's language is
+// no line code tells (ISS-1451: a guess at it is a hint, never a finding). Code adds what the agent
+// missed so the record is true; it decides nothing about the reply, which was already posted.
 
 import type { SupportRoomKind } from '@forge/contracts/support-operations';
 import type {
@@ -11,7 +11,6 @@ import type {
   ReplyVerdict,
   SupportAuditRequest,
 } from '@forge/contracts/support-reply-audit';
-import { confidentLanguageOf, type ReplyLanguage } from '../../conversations/index.js';
 import { LIVE_CLAIM_RE } from '../live-claims.js';
 import {
   actClaimIn,
@@ -53,11 +52,6 @@ export interface TurnReads {
 export interface AuditedReply {
   /** The reply as posted. */
   text: string;
-  /**
-   * The language the person it answers wrote in, where that message is confidently told
-   * (`answering-language.ts`); null where it is not, and no language finding is raised (ISS-1442).
-   */
-  language: ReplyLanguage | null;
   roomKind: SupportRoomKind;
   /** The API's public hosts no person-facing link may point at (`code-lines.ts:apiHosts`). */
   apiHosts: readonly string[];
@@ -70,8 +64,6 @@ export interface Judgement {
   failed: ReplyRubricLine[];
   findings: ReplyFinding[];
 }
-
-const LANGUAGE_NAME = { vi: 'Vietnamese', en: 'English' } as const;
 
 /** The rubric lines code tells on its own, each with the words that failed it. */
 export function codeFindings(reply: AuditedReply): ReplyFinding[] {
@@ -95,15 +87,6 @@ export function codeFindings(reply: AuditedReply): ReplyFinding[] {
     found.push({
       line: 'no_ui_directions',
       why: `it sends a workaround step ("${workaround}"): a screen that needs one goes to the project's master as a UI defect`,
-      by: 'code',
-    });
-  }
-  const written = confidentLanguageOf(reply.text);
-  const held = reply.language;
-  if (written && held && written !== held) {
-    found.push({
-      line: 'language',
-      why: `it is in ${LANGUAGE_NAME[written]}, and the person it answers wrote in ${LANGUAGE_NAME[held]}`,
       by: 'code',
     });
   }

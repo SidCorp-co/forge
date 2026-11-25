@@ -7,8 +7,8 @@
 // So a raise reads the thread it posts into first: who wrote there last and what, and the bot's
 // answer since, which stands as the thread's promise. Where a person spoke within the turn and no raise
 // has answered that message yet, the raise is held, naming his message and the answer standing, until
-// it names that message as the one it answers. Its language is the reader's: the owner's own recorded
-// messages, else the thread's recent ones, never the words being posted.
+// it names that message as the one it answers. Its language is the project's content language, else a hint
+// from the reader's own recorded messages, never a ground to refuse the words being posted.
 
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { confidentLanguageOf } from '../conversations/index.js';
@@ -16,7 +16,7 @@ import { db } from '../db/client.js';
 import { supportActions } from '../db/schema-support.js';
 import { markUntrusted } from '../lib/untrusted-text.js';
 import { no, type Outcome } from './outcome.js';
-import { roomLanguage } from './report-thread.js';
+import { projectLanguageOf } from './report-thread.js';
 import type { RoomRow } from './store.js';
 
 /** How long a person's message in the technical thread holds a raise that does not answer it. */
@@ -140,10 +140,13 @@ export async function readTechnicalTurn(
 ): Promise<TechnicalTurn> {
   const rows = at ? await threadRows(at.roomId, at.thread) : [];
   const people = rows.filter((r) => r.kind === 'message_in' && r.key !== null);
+  // the project's content language decides; only for a project that never said, the reader's own
+  // recorded words are a HINT (ISS-1451): it shapes how the line is taught, never a ground to refuse one
   const language =
+    (await projectLanguageOf(room.projectId)) ??
     (await ownerLanguage(owner.key)) ??
     languageOfTexts(people.map((r) => textOf(r.input))) ??
-    (await roomLanguage(room, []));
+    'en';
   const last = people[0];
   const inTurn = last?.externalId && now.getTime() - last.at.getTime() <= RAISE_TURN_MS;
   const spoke =
@@ -189,19 +192,5 @@ export function heldRaise(
     '/answers',
     // his words, and the answer standing, are data framed in the refusal, never core's (ISS-1425)
     `${who} wrote in the technical thread ${Math.max(1, Math.round((Date.now() - spoke.at.getTime()) / 60_000))} min ago, message ${spoke.message}:\n${markUntrusted(quoted(spoke.text), { source: 'a person in the technical thread' })}\n${[standing, act].filter(Boolean).join(' ')} To post, raise again with answers: "${spoke.message}", your words ${speakTo(turn)}. Nothing was raised.`,
-  );
-}
-
-/**
- * Words the agent wrote in another language than the thread's reader reads, refused by name so it
- * rewrites them for him; null where they fit or their language cannot be told.
- */
-export function wordsMisfit(turn: TechnicalTurn, words: string): Outcome<never> | null {
-  const told = confidentLanguageOf(words);
-  if (!told || told === turn.language) return null;
-  return no(
-    'SUPPORT_RAISE_NOT_IN_THREAD_LANGUAGE',
-    '/text',
-    `the technical thread's reader writes ${LANGUAGE_NAME[turn.language]}, and your words are ${LANGUAGE_NAME[told]}: the line is posted in his language, never the language words arrive in. Write them ${speakTo(turn)}, and raise again. Nothing was raised.`,
   );
 }

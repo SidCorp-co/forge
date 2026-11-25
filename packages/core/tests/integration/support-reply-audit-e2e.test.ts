@@ -16,7 +16,6 @@ import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 import { SupportWorld } from '../helpers/support-world.js';
 
 // @direct-test-of packages/core/src/support/reply-audit/audit.ts
-// @direct-test-of packages/core/src/support/reply-audit/answering-language.ts
 // @direct-test-of packages/core/src/support/reply-audit/read.ts
 // @direct-test-of packages/core/src/support/reply-audit/route.ts
 // @direct-test-of packages/core/src/support/acts.ts
@@ -34,8 +33,8 @@ import { SupportWorld } from '../helpers/support-world.js';
 // agent audits it with support.audit. The verdict is kept per reply with what code found beside the
 // agent's own reading; a failed one is a room correction in the lessons store (REQ-50); a project
 // reader reads every verdict per bot, with the replies its agent left unaudited. Nothing blocks a post.
-// ISS-1377 (FB-789): the project writes its records in English, as sid-desk does; a reply is held to
-// the language the room is answered in (the person's, else the persona's), never that one.
+// ISS-1377 (FB-789), ISS-1451: the project writes its records in English, as sid-desk does; no reply is
+// failed for its language, whatever language the room speaks.
 
 const BAD =
   'Go to the project settings page on Forge and set it there: https://forge-api.example.test/projects/catalog/settings';
@@ -220,23 +219,14 @@ describe('a room agent audits its own reply with support.audit (ISS-1250)', () =
     const stranger = await api(w.stranger, 'GET', path);
     expect([403, 404]).toContain(stranger.status);
   }, 90_000);
-  it('fails an English reply to a Vietnamese message where the persona names no language, naming both (ISS-1377)', async () => {
+  it('raises no language finding for an English reply to a Vietnamese message: the guess is a hint (ISS-1451, ISS-1442)', async () => {
     const { audit } = await replyAndAudit(
       'Đơn hàng của em đã giao chưa ạ?', // i18n-allow: a member writing Vietnamese (ISS-1377)
       'Your order was delivered yesterday and the tracking code is in the email we sent.',
       [],
     );
     expect(audit?.status, JSON.stringify(audit?.body)).toBe(200);
-    expect(audit?.body).toMatchObject({ verdict: 'fail', failed: ['language'] });
-    const findings = (audit?.body.findings ?? []) as Array<{
-      line: string;
-      why: string;
-      by: string;
-    }>;
-    const [finding] = findings;
-    expect(finding).toMatchObject({ line: 'language', by: 'code' });
-    expect(finding?.why).toContain('English');
-    expect(finding?.why).toContain('Vietnamese');
+    expect(audit?.body).toMatchObject({ verdict: 'pass', failed: [] });
   }, 90_000);
 
   it('passes a Vietnamese reply to a Vietnamese message in a room whose project writes records in English (ISS-1377)', async () => {

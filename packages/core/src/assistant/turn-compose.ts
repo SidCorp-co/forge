@@ -1,11 +1,6 @@
 // Composing one turn's reply: the egress gate, the transport's hooks, the model, and the screen.
 
-import {
-  codeAuthored,
-  confidentLanguageOf,
-  type ReplyLanguage,
-  recordSilence,
-} from '../conversations/index.js';
+import { codeAuthored, recordSilence } from '../conversations/index.js';
 import { type TurnCredential, turnAuthorityRefusalOf } from '../credentials/turn-credential.js';
 import type { ChatStreamEvent } from '../integrations/llm/index.js';
 import { egressDeep } from '../lib/data-egress.js';
@@ -24,6 +19,7 @@ import { type AwaitReplyCapture, awaitReplyCapture } from './tools/await-reply-t
 import { type ChatToolset, mergeToolsets } from './tools/mcp-adapter.js';
 import { cachedReads } from './tools/read-cache.js';
 import { type RoomSendCapture, roomSendCapture } from './tools/room-send-tool.js';
+import { type AnswerLanguage, answerLanguageOf } from './turn-asker.js';
 import { type TurnFailureCause, turnFailureReason } from './turn-failure.js';
 import type {
   ConversationTurnRequest,
@@ -58,9 +54,9 @@ export async function silence(ctx: TurnContext, reason: string): Promise<TurnRep
   return { send: false, reason, ended: 'declined' };
 }
 
-/** The language the person asked in, where it can be told. */
-export const askedInOf = (ctx: TurnContext): ReplyLanguage | null =>
-  confidentLanguageOf(ctx.req.message);
+/** What the turn is asked to answer in: the project's content language, else a hint from the question. */
+export const answerInOf = (ctx: TurnContext): Promise<AnswerLanguage | null> =>
+  answerLanguageOf(ctx.req.venue.projectId, ctx.req.message);
 
 /** A turn that ended in an error: a coded failure the window records, never a silence it chose. */
 async function failed(ctx: TurnContext, result: ExternalChatTurnResult): Promise<TurnReply> {
@@ -188,6 +184,7 @@ export async function composeReply(ctx: TurnContext): Promise<TurnReply> {
   const held = () => (agreement?.heldThisTurn() ?? 0) > 0;
 
   ctx.setPhase('turn');
+  const answerIn = await answerInOf(ctx);
   const turn: ExternalChatTurnArgs = {
     projectId: req.venue.projectId,
     adapter: req.venue.adapter,
@@ -205,7 +202,7 @@ export async function composeReply(ctx: TurnContext): Promise<TurnReply> {
     resolveDocument: inputs.resolveDocument,
     signal: ctx.abort.signal,
     message: req.message,
-    replyLanguage: askedInOf(ctx),
+    ...(answerIn ? { replyLanguage: answerIn.language, replyLanguageBy: answerIn.by } : {}),
   };
   const first = await runExternalChatTurn({
     ...turn,
@@ -308,7 +305,7 @@ async function screenReply(
     door: req.door,
     projectId: req.venue.projectId,
     conversationId: ctx.conversationId,
-    askedIn: askedInOf(ctx),
+    askedIn: (await answerInOf(ctx))?.language ?? null,
     question: req.message,
     toolResults: () => ctx.writes?.resultTexts() ?? [],
     namedResults: () => ctx.writes?.results() ?? [],

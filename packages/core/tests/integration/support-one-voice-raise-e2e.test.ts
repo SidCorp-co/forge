@@ -217,24 +217,14 @@ describe('ISS-1299: the technical thread speaks to the owner in one voice, his l
     expect(next.ok, JSON.stringify(next)).toBe(true);
   });
 
-  it('refuses English words into the thread he writes in Vietnamese, naming his language and him', async () => {
+  it('posts English words into the thread he writes in Vietnamese: the guess is a hint, never a refusal (ISS-1451)', async () => {
     const said = await aliceSays('Em kiểm tra giúp anh xem bản mới đã lên chưa nhé');
     const before = threadLines().length;
-    const english = await raiseTechnical(room, {
-      thread: THREAD,
-      need: 'finding',
-      text: 'The new release is live on dev and every check is green.',
-      answers: said,
-    });
-    expect(codeOf(english), JSON.stringify(english)).toBe('SUPPORT_RAISE_NOT_IN_THREAD_LANGUAGE');
-    expect(detailOf(english)).toContain('Vietnamese');
-    expect(detailOf(english)).toContain('@alice');
-    expect(threadLines().length).toBe(before);
-    const vietnamese = 'Dạ anh, bản mới đã lên dev và mọi kiểm tra đều xanh rồi ạ.';
+    const english = 'The new release is live on dev and every check is green.';
     const posted = await raiseTechnical(room, {
       thread: THREAD,
       need: 'finding',
-      text: vietnamese,
+      text: english,
       answers: said,
     });
     expect(posted.ok, JSON.stringify(posted)).toBe(true);
@@ -242,7 +232,7 @@ describe('ISS-1299: the technical thread speaks to the owner in one voice, his l
       threadLines()
         .slice(before)
         .map((l) => l.text),
-    ).toEqual([vietnamese]);
+    ).toEqual([english]);
   });
 
   it('posts no raise on an item he settled a minute earlier; the act is made as him', async () => {

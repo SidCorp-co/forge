@@ -12,8 +12,7 @@ import type {
   SupportAuditRequest,
   SupportAuditView,
 } from '@forge/contracts/support-reply-audit';
-import { and, desc, eq, inArray, lte, ne, or, sql } from 'drizzle-orm';
-import type { ReplyLanguage } from '../../conversations/index.js';
+import { and, eq, inArray, lte, ne, or, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { conversations } from '../../db/schema-conversations.js';
 import { supportActions } from '../../db/schema-support.js';
@@ -26,7 +25,6 @@ import { RELEASE_READS, releaseReadInTurn } from '../live-claims.js';
 import { knownThread, no, type Outcome, threadUnknown } from '../outcome.js';
 import { sessionTurnSpan } from '../session-turns.js';
 import type { RoomRow } from '../store.js';
-import { answeringLanguageOf } from './answering-language.js';
 import { apiHosts } from './code-lines.js';
 import { type Judgement, judgeReply, type TurnReads } from './judge.js';
 
@@ -210,46 +208,6 @@ export function turnReadsOf(input: {
   };
 }
 
-const textOf = (input: unknown) => {
-  const text = (input as { text?: unknown } | null | undefined)?.text;
-  return typeof text === 'string' ? text : null;
-};
-
-/**
- * What the person the reply answers wrote: the request it named, else the thread's latest message a
- * member wrote before it. Null where no member wrote one.
- */
-async function askedOf(room: RoomRow, thread: string, reply: Posted): Promise<string | null> {
-  const [row] = await db
-    .select({ input: supportActions.input })
-    .from(supportActions)
-    .where(
-      and(
-        eq(supportActions.roomId, room.id),
-        eq(supportActions.kind, 'message_in'),
-        eq(supportActions.actorKind, 'member'),
-        ...(reply.request
-          ? [eq(supportActions.externalId, reply.request)]
-          : [eq(supportActions.thread, thread), lte(supportActions.createdAt, reply.at)]),
-      ),
-    )
-    .orderBy(desc(supportActions.createdAt))
-    .limit(1);
-  return textOf(row?.input);
-}
-
-/**
- * The language the reply is held to (ISS-1442): the one the person it answers wrote in, where that
- * message is confidently told, else none. Never the persona, the room's people or the project's content language.
- */
-async function answeringOf(
-  room: RoomRow,
-  thread: string,
-  reply: Posted,
-): Promise<ReplyLanguage | null> {
-  return answeringLanguageOf({ asked: await askedOf(room, thread, reply) });
-}
-
 async function verdictOf(roomId: string, message: string): Promise<SupportAuditView | null> {
   const [row] = await db
     .select()
@@ -346,7 +304,6 @@ export async function auditReply(
   const judgement = judgeReply(
     {
       text: posted.text,
-      language: await answeringOf(room, input.thread, posted),
       roomKind: room.kind,
       apiHosts: apiHosts(),
       reads: await readsAround(room, posted),

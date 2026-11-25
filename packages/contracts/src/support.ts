@@ -2072,8 +2072,6 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_ARCHIVE_ALREADY",
 	/** A raise into a technical thread where a person spoke within the turn, naming no answer to his message (ISS-1299). */
 	"SUPPORT_RAISE_THREAD_UNREAD",
-	/** A raise whose words are not in the language the technical thread's reader writes (ISS-1299). */
-	"SUPPORT_RAISE_NOT_IN_THREAD_LANGUAGE",
 	/** A consent naming no product the project binds, or none where it binds several (ISS-1013). */
 	"SUPPORT_OWNER_PRODUCT_UNKNOWN",
 	/** No owner credential kept for the product, or one that cannot be used (ISS-1013). */
@@ -2289,7 +2287,6 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_ARCHIVE_DEPLOY_AWAITING_CONFIRM: 409,
 	SUPPORT_ARCHIVE_ALREADY: 409,
 	SUPPORT_RAISE_THREAD_UNREAD: 409,
-	SUPPORT_RAISE_NOT_IN_THREAD_LANGUAGE: 400,
 	SUPPORT_OWNER_PRODUCT_UNKNOWN: 404,
 	SUPPORT_OWNER_CREDENTIAL_MISSING: 409,
 	SUPPORT_DIRECT_TURN_NEEDS_ADMIN: 403,

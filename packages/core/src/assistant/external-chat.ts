@@ -87,10 +87,11 @@ export interface ExternalChatTurnArgs {
    */
   questionInHistory?: boolean;
   /**
-   * The language the person wrote this message in, where it can be told: the turn is told to answer
-   * in it from its first word, beside the message, where a long English prompt cannot outweigh it.
+   * The language the turn is told to answer in from its first word, beside the message, where a long
+   * English prompt cannot outweigh it: the project's, or a hint from the message (`replyLanguageBy`).
    */
   replyLanguage?: ReplyLanguage | null | undefined;
+  replyLanguageBy?: 'project' | 'guess' | undefined;
   /**
    * An earlier attempt of this same turn — its tool rounds and the reply it wrote — set before this
    * attempt's message, so a rewrite reads the results the first attempt read instead of a digest.
@@ -230,6 +231,7 @@ async function setUpTurn(
       pageContext: args.pageContext ?? null,
       speakerContext,
       replyLanguage: args.replyLanguage ?? null,
+      replyLanguageBy: args.replyLanguageBy,
     },
   );
   const what = `conversation ${turn?.conversationId ?? 'turn'}`;

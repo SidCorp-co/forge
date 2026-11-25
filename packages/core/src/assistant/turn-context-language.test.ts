@@ -37,10 +37,20 @@ describe('the turn is told to answer in it, beside the message', () => {
     );
     const content = String(asked?.content);
     expect(content).toContain(
-      'Reply language: this message is written in Vietnamese. Write your whole reply in Vietnamese from its first word',
+      'Reply language (a hint from the words of this message): it reads as Vietnamese. Unless the person clearly wrote in another language, write your whole reply in Vietnamese from its first word',
     );
     expect(content.indexOf('Reply language')).toBeGreaterThan(content.indexOf('Page context'));
     expect(content.endsWith(SPEC_ASK)).toBe(true);
+  });
+
+  it('a project’s content language is said as the rule, not as a hint about the message', () => {
+    const [asked] = applyTurnContext([{ role: 'user', content: 'What is up with ISS-290?' }], {
+      replyLanguage: 'vi',
+      replyLanguageBy: 'project',
+    });
+    const content = String(asked?.content);
+    expect(content).toContain('Reply language: this project writes in Vietnamese. Write your whole reply in Vietnamese from its first word');
+    expect(content).not.toContain('hint');
   });
 
   it('a message whose language cannot be told carries no such line', () => {

@@ -26,17 +26,20 @@ const REPORT_THREAD_ANCHORS: Readonly<Record<'vi' | 'en', string>> = {
 /** The tool the anchor's record names. */
 const REPORT_THREAD_TOOL = 'report_thread';
 
+/** The project's content language where its document declares one, else null: the project decides first. */
+export async function projectLanguageOf(projectId: string): Promise<'vi' | 'en' | null> {
+  const setting = await readContentLanguage(projectId);
+  if (setting.source !== 'document') return null;
+  return setting.contentLanguage.toLowerCase().startsWith('vi') ? 'vi' : 'en';
+}
+
 /**
  * The room's language for a line core writes: the project's content language where its document
- * declares one, else Vietnamese where one of `texts` reads Vietnamese, else English. The project
- * decides first; the texts decide only for a project that never said.
+ * declares one, else Vietnamese where one of `texts` reads Vietnamese, else English. The texts are a
+ * HINT for a project that never said and decide nothing but the wording of a line core writes (ISS-1451).
  */
 export async function roomLanguage(room: RoomRow, texts: readonly string[]): Promise<'vi' | 'en'> {
-  const setting = await readContentLanguage(room.projectId);
-  if (setting.source === 'document') {
-    return setting.contentLanguage.toLowerCase().startsWith('vi') ? 'vi' : 'en';
-  }
-  return roomTextsLanguageOf(texts);
+  return (await projectLanguageOf(room.projectId)) ?? roomTextsLanguageOf(texts);
 }
 
 /** The room's report thread as its row holds it now, and who set it; null with none. */

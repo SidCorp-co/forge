@@ -64,31 +64,22 @@ export function declinedTail(text: string): string {
 const correctiveMessage = (refusals: readonly MessageRefusal[]): string =>
   `${CORRECTIVE_PREFIX} Your previous reply cannot be sent as-is: ${refusals.map((r) => r.why).join('; ')}. Rewrite it now, keep only verified facts, actually CALL the tools if work is needed, cite issue ids/links only exactly as tools returned them, and reply in the user's language.`;
 
-const LANGUAGE_NAME: Record<ReplyLanguage, string> = { en: 'English', vi: 'Vietnamese' };
-
 /**
- * Hold the reply to the language the person wrote in (content-language `chat`: "Answer the person
- * in the language they wrote in"), and record the judgement on every turn, matched or not, so the
- * rate is read from the log rather than guessed. Only what can be told with confidence is judged.
+ * Record, on every turn, what language the person's message and the reply read as, so how well the
+ * hint serves is read from the log. It judges nothing (ISS-1451, ISS-1442): the guess at either
+ * language is a HINT, and three rounds of tuning it as a refusal failed live (FB-841, FB-852,
+ * FB-853), so a reply is never failed or rewritten for its language. TRADED: a reply in the wrong
+ * language now reaches the person where the old refusal would have asked for a rewrite; the
+ * project's content language and the turn's language line are how the right one is asked for.
  */
-export function withReplyLanguage(
-  verdict: MessageVerdict,
+export function noteReplyLanguage(
   reply: string,
   asked: ReplyLanguage | null,
   log?: Record<string, unknown>,
-): MessageVerdict {
+): void {
   const replied = confidentLanguageOf(reply);
   const match = asked && replied ? asked === replied : null;
   logger.info({ ...log, asked, replied, match }, 'conversations: reply language');
-  if (match !== false || !asked || !replied) return verdict;
-  const refusal: MessageRefusal = {
-    rule: 'reply-language',
-    why: `the person wrote in ${LANGUAGE_NAME[asked]} and the reply is in ${LANGUAGE_NAME[replied]}`,
-    quote: null,
-    shape: 'answer in the language the person wrote in',
-    example: asked === 'vi' ? 'ISS-61 đang chờ phát hành.' : 'ISS-61 is awaiting release.', // i18n-allow: the example a Vietnamese asker is answered with
-  };
-  return { ok: false, refusals: [...(verdict.ok ? [] : verdict.refusals), refusal] };
 }
 
 const EMPTY_RETRY = {
@@ -212,8 +203,7 @@ const CUT_ROUNDS = 3;
 /**
  * The first answer with each sentence the screen refused cut whole (`reply-marks.ts`), and a false
  * opening word taken off, screened again until what is left passes, or null where a refusal names no
- * claim that can be found and named. A refusal of its language cuts nothing: the answer is true, only
- * in the other language. Empty `shown` means no sentence was left that the check passed; empty
+ * claim that can be found and named. Empty `shown` means no sentence was left that the check passed; empty
  * `held` means nothing but the opening word went.
  */
 export async function checkedPart(
@@ -229,9 +219,7 @@ export async function checkedPart(
     // a false opening word claims nothing to leave out: it is taken off, and the answer stays
     const openings = left.filter((r) => r.rule === OPENS_WITH_ITS_ANSWER.id && r.quote !== null);
     for (const o of openings) text = withoutFalseOpening(text, o.quote as string);
-    const claims = left.filter(
-      (r) => r.rule !== 'reply-language' && r.rule !== OPENS_WITH_ITS_ANSWER.id,
-    );
+    const claims = left.filter((r) => r.rule !== OPENS_WITH_ITS_ANSWER.id);
     const kinds = claims.map(heldClaimOf);
     if (claims.length === 0 && openings.length === 0) return null;
     if (claims.some((r, i) => r.quote === null || kinds[i] === null)) return null;
@@ -270,7 +258,7 @@ export interface ScreenedTurnArgs {
   toolResults?: () => readonly string[];
   /** The same results by the tool that returned each: a declared read's result grounds a figure. */
   namedResults?: () => readonly ToolResultEntry[];
-  /** The language the person wrote in, where it can be told; the reply is held to it. */
+  /** The language the turn was asked to answer in (a hint): logged against the reply, never held to. */
   askedIn?: ReplyLanguage | null;
   /** What the person asked: a figure the reply states is held to the turn's report runs, and a number they typed may be said back. */
   question?: string;
@@ -338,7 +326,8 @@ export async function screenedTurnReply(args: ScreenedTurnArgs): Promise<Screene
       ...(args.namedResults ? { namedResults: args.namedResults() } : {}),
       ...(args.question !== undefined ? { question: args.question } : {}),
     });
-    return language ? withReplyLanguage(verdict, text, args.askedIn ?? null, args.log) : verdict;
+    if (language) noteReplyLanguage(text, args.askedIn ?? null, args.log);
+    return verdict;
   };
 
   const outcome = await withRepairs(args.door, [original], {

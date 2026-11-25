@@ -14,14 +14,21 @@ export interface TurnContext {
   pageContext?: Record<string, unknown> | null | undefined;
   /** What is known about the person the newest message is from — `preference-line.ts` renders it (ISS-1034). */
   speakerContext?: string | null | undefined;
-  /** The language the newest message was written in, where it can be told. */
+  /** The language the turn answers in, where one is known (`replyLanguageBy` says who said so). */
   replyLanguage?: ReplyLanguage | null | undefined;
+  /** `project`: its content language, said as the rule. `guess`, or unset: a hint about this message, said as one. */
+  replyLanguageBy?: 'project' | 'guess' | undefined;
 }
 
 /** Said beside the message itself, so it is the last thing read before the first token. */
-function replyLanguageLine(language: ReplyLanguage): string {
+function replyLanguageLine(language: ReplyLanguage, by: 'project' | 'guess' | undefined): string {
   const name = LANGUAGE_NAME[language];
-  return `Reply language: this message is written in ${name}. Write your whole reply in ${name} from its first word, whatever language the tool results, the project knowledge or earlier replies are in. Ids, status names, refusal codes and code stay as they are.`;
+  const kept =
+    'whatever language the tool results, the project knowledge or earlier replies are in. Ids, status names, refusal codes and code stay as they are.';
+  if (by === 'project') {
+    return `Reply language: this project writes in ${name}. Write your whole reply in ${name} from its first word, ${kept}`;
+  }
+  return `Reply language (a hint from the words of this message): it reads as ${name}. Unless the person clearly wrote in another language, write your whole reply in ${name} from its first word, ${kept}`;
 }
 
 function renderTurnContext(ctx: TurnContext): string | null {
@@ -37,7 +44,7 @@ function renderTurnContext(ctx: TurnContext): string | null {
   }
   const speaker = ctx.speakerContext?.trim();
   if (speaker) sections.push(speaker);
-  if (ctx.replyLanguage) sections.push(replyLanguageLine(ctx.replyLanguage));
+  if (ctx.replyLanguage) sections.push(replyLanguageLine(ctx.replyLanguage, ctx.replyLanguageBy));
   return sections.length > 0 ? sections.join('\n\n') : null;
 }
 

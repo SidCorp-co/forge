@@ -1,16 +1,6 @@
 import { REPLY_RUBRIC_LINES, type ReplyRubricLine } from '@forge/contracts/support-reply-audit';
 import { describe, expect, it } from 'vitest';
-import {
-  ENGLISH_ROWS,
-  NOT_ENGLISH_ROWS,
-  ROOMS,
-  TOLD_ENGLISH_ROWS,
-  TOLD_VIETNAMESE_ROWS,
-  UNTOLD_ROWS,
-  VIETNAMESE_ROWS,
-} from '../../conversations/language-rows.fixture.js';
 import { mapLine } from '../act-cards.js';
-import { answeringLanguageOf } from './answering-language.js';
 import { actClaimIn, liveStateClaimIn } from './code-lines.js';
 import { AUDIT_RUBRIC_TEXT } from './index.js';
 import { type AuditedReply, judgeReply, type TurnReads } from './judge.js';
@@ -18,7 +8,6 @@ import { type AuditedReply, judgeReply, type TurnReads } from './judge.js';
 // @direct-test-of packages/core/src/support/reply-audit/judge.ts
 // @direct-test-of packages/core/src/support/reply-audit/teach.ts
 // @direct-test-of packages/core/src/support/reply-audit/index.ts
-// @direct-test-of packages/core/src/support/reply-audit/answering-language.ts
 // @direct-test-of packages/core/src/support/reply-audit/code-lines.ts
 //
 // ISS-1250 (owner 2026-11-16): the five quoted epod turns of the shared operations room, replayed
@@ -73,9 +62,8 @@ const SELF: Record<string, ReplyRubricLine[]> = {
   '15/11 15:36': ['accurate', 'answered'],
 };
 
-const reply = (text: string, language: 'vi' | 'en' | null = 'vi'): AuditedReply => ({
+const reply = (text: string): AuditedReply => ({
   text,
-  language,
   roomKind: 'operations',
   apiHosts: API,
 });
@@ -129,40 +117,15 @@ describe('support.audit keeps the verdict on a reply the agent posted (ISS-1250)
     ]);
   });
 
-  it('fails a reply in another language than the person wrote in, naming that, and passes it in that one', () => {
-    const text = 'The release is live on production now, and the import is fixed.';
-    const j = judgeReply(reply(text, 'vi'), []);
-    expect(j.failed).toEqual(['language']);
-    expect(j.findings[0]?.why).toBe(
-      'it is in English, and the person it answers wrote in Vietnamese',
-    );
-    expect(judgeReply(reply(text, 'en'), []).verdict).toBe('pass');
-    // asked with nothing to tell, the reply is held to no language at all
-    expect(judgeReply(reply(text, null), []).verdict).toBe('pass');
-  });
-
-  // ISS-1442 r6: only the asked message decides the answering language; never the persona or the room's texts
-  it('reads the answering language from the person alone, and none where the message cannot be told', () => {
-    const vi = 'Đơn hàng của em đã giao chưa ạ?'; // i18n-allow: a member writing Vietnamese
-    const en = 'Has my order been delivered yet?';
-    expect(answeringLanguageOf({ asked: vi })).toBe('vi');
-    expect(answeringLanguageOf({ asked: en })).toBe('en');
-    expect(answeringLanguageOf({ asked: 'ok' })).toBeNull();
-    expect(answeringLanguageOf({ asked: null })).toBeNull();
-  });
-
-  // ISS-1442 (FB-841): a Vietnamese reply to a short Vietnamese message is not failed for the room's English
-  it('passes a Vietnamese reply to a short Vietnamese message, and fails a wrong-language reply to a told one', () => {
-    const vi = 'Dạ, em đây ạ. Anh cần em giúp việc gì không ạ?'; // i18n-allow: a Vietnamese reply
-    const en = 'Hello, I am here. Is there anything you need help with right now?';
-    const answering = answeringLanguageOf({ asked: 'Alo sao thế' }); // i18n-allow: a short Vietnamese message
-    expect(answering).toBe('vi');
-    expect(judgeReply(reply(vi, answering), []).verdict).toBe('pass');
-    const wrong = judgeReply(reply(en, answering), []);
-    expect(wrong.failed).toEqual(['language']);
-    expect(wrong.findings[0]?.why).toBe(
-      'it is in English, and the person it answers wrote in Vietnamese',
-    );
+  // ISS-1451, ISS-1442 (FB-841, FB-852, FB-853): three rounds tuned the guess and failed live; it is a hint now
+  it('raises no language finding for a reply in either language, whoever it answers', () => {
+    const en = 'The release is live on production now, and the import is fixed.';
+    const vi = 'Dạ chưa có cập nhật ạ, em sẽ báo anh ngay khi xong.'; // i18n-allow: a Vietnamese reply
+    for (const text of [en, vi]) {
+      const j = judgeReply(reply(text), []);
+      expect(j.failed, text).not.toContain('language');
+      expect(j.verdict, text).toBe('pass');
+    }
   });
 
   it('tells no API-host link where the web app is served on that host too', () => {
@@ -249,90 +212,14 @@ describe('support.audit keeps the verdict on a reply the agent posted (ISS-1250)
   });
 });
 
-const EN_REPLY = 'No update yet, the import is still running and I will tell you when it is done.';
-const VI_REPLY = 'Dạ chưa có cập nhật ạ, em sẽ báo anh ngay khi xong.'; // i18n-allow: a Vietnamese reply
-
-describe('the language of an asker not confidently told (ISS-1442)', () => {
-  // every message the dev.812 and dev.813 judges listed, and the builder's own rows
-  it('passes a reply in either language to every English row, in a room reading English and in one reading Vietnamese', () => {
-    for (const asked of ENGLISH_ROWS) {
-      for (const room of ROOMS) {
-        const held = answeringLanguageOf({ asked, ...room });
-        if (held === 'vi') throw new Error(`${asked} is told Vietnamese`);
-        for (const text of [EN_REPLY, VI_REPLY]) {
-          const j = judgeReply(reply(text, held), []);
-          if (held === null) expect(j.failed, `${asked} / ${text}`).not.toContain('language');
-          else expect(j.failed.includes('language'), `${asked} / ${text}`).toBe(text === VI_REPLY);
-        }
-      }
-    }
-  });
-
-  it('passes a reply in either language to every Vietnamese row not read English, in either room', () => {
-    for (const asked of NOT_ENGLISH_ROWS) {
-      for (const room of ROOMS) {
-        const held = answeringLanguageOf({ asked, ...room });
-        if (held === 'en') throw new Error(`${asked} is told English`);
-        for (const text of [EN_REPLY, VI_REPLY]) {
-          const j = judgeReply(reply(text, held), []);
-          if (held === null) expect(j.failed, `${asked} / ${text}`).not.toContain('language');
-          else expect(j.failed.includes('language'), `${asked} / ${text}`).toBe(text === EN_REPLY);
-        }
-      }
-    }
-  });
-
-  it('raises no language finding for a message left untold, in either room', () => {
-    for (const asked of UNTOLD_ROWS) {
-      // i18n-allow: messages that cannot be told
-      for (const room of ROOMS) {
-        const held = answeringLanguageOf({ asked, ...room });
-        expect(held, asked).toBeNull();
-        for (const text of [EN_REPLY, VI_REPLY]) {
-          expect(judgeReply(reply(text, held), []).failed, asked).not.toContain('language');
-        }
-      }
-    }
-  });
-
-  it('still fails a wrong-language reply to a confidently told message, naming it', () => {
-    for (const room of ROOMS) {
-      for (const asked of TOLD_ENGLISH_ROWS) {
-        const held = answeringLanguageOf({ asked, ...room });
-        expect(held, asked).toBe('en');
-        expect(judgeReply(reply(VI_REPLY, held), []).findings[0]?.why, asked).toBe(
-          'it is in Vietnamese, and the person it answers wrote in English',
-        );
-        expect(judgeReply(reply(EN_REPLY, held), []).verdict, asked).toBe('pass');
-      }
-      for (const asked of TOLD_VIETNAMESE_ROWS) {
-        const held = answeringLanguageOf({ asked, ...room });
-        expect(held, asked).toBe('vi');
-        expect(judgeReply(reply(EN_REPLY, held), []).findings[0]?.why, asked).toBe(
-          'it is in English, and the person it answers wrote in Vietnamese',
-        );
-        expect(judgeReply(reply(VI_REPLY, held), []).verdict, asked).toBe('pass');
-      }
-    }
-  });
-
-  it('holds the Vietnamese rows to a Vietnamese reply', () => {
-    for (const asked of VIETNAMESE_ROWS) {
-      const held = answeringLanguageOf({ asked });
-      expect(held, asked).toBe('vi');
-      expect(judgeReply(reply(VI_REPLY, held), []).failed, asked).not.toContain('language');
-    }
-  });
-});
-
 // ISS-1416 (FB-824, forge L-168): two replies stated a setting off from a read a turn old, and one
 // told a raise landed in AdminHub API's technical thread when that raise had been refused there
 describe('an on/off state and an act taken are held to their own turn (ISS-1416)', () => {
   const earlier = new Date('2026-11-21T11:30:57Z');
-  const judged = (text: string, reads: Partial<TurnReads> = {}, language: 'vi' | 'en' = 'vi') =>
+  const judged = (text: string, reads: Partial<TurnReads> = {}) =>
     judgeReply(
       {
-        ...reply(text, language),
+        ...reply(text),
         roomKind: 'support',
         reads: { thisTurn: false, earlierAt: null, looked: false, handedOn: false, ...reads },
       },
@@ -372,13 +259,13 @@ describe('an on/off state and an act taken are held to their own turn (ISS-1416)
 
   it('fails accurate on a raise reported with no act landed behind it, and passes it after one landed', () => {
     const text = "The host step was already raised in AdminHub API's technical thread.";
-    const j = judged(text, {}, 'en');
+    const j = judged(text, {});
     expect(j.failed).toEqual(['accurate']);
     expect(j.findings[0]).toMatchObject({ line: 'accurate', by: 'code' });
     expect(j.findings[0]?.why).toContain('no act landed in this turn or earlier in this thread');
     expect(j.findings[0]?.why).toContain('refused or landed and where');
-    expect(judged(text, { handedOn: true }, 'en').verdict).toBe('pass');
-    expect(judgeReply({ ...reply(text, 'en'), roomKind: 'support' }, []).verdict).toBe('pass');
+    expect(judged(text, { handedOn: true }).verdict).toBe('pass');
+    expect(judgeReply({ ...reply(text), roomKind: 'support' }, []).verdict).toBe('pass');
   });
 });
 
@@ -387,10 +274,10 @@ describe('an on/off state and an act taken are held to their own turn (ISS-1416)
 // rule now: read it again this turn, or say plainly it is not checked now and restate nothing.
 describe('a live state is read again this turn, or said not checked now (ISS-1430)', () => {
   const earlier = new Date('2026-11-22T06:51:00Z');
-  const judged = (text: string, reads: Partial<TurnReads> = {}, language: 'vi' | 'en' = 'en') =>
+  const judged = (text: string, reads: Partial<TurnReads> = {}) =>
     judgeReply(
       {
-        ...reply(text, language),
+        ...reply(text),
         roomKind: 'support',
         reads: { thisTurn: false, earlierAt: earlier, looked: false, handedOn: false, ...reads },
       },
@@ -417,40 +304,40 @@ describe('a live state is read again this turn, or said not checked now (ISS-143
   ];
 
   it('passes a reply that read the state this turn, dated or not', () => {
-    for (const [text, language] of RESTATED) {
-      expect(judged(text, { thisTurn: true }, language).verdict, text).toBe('pass');
+    for (const [text] of RESTATED) {
+      expect(judged(text, { thisTurn: true }).verdict, text).toBe('pass');
     }
   });
 
   it('fails accurate on a restated earlier-read value, dated or not, naming the read to make', () => {
-    for (const [text, language] of RESTATED) {
-      const j = judged(text, {}, language);
+    for (const [text] of RESTATED) {
+      const j = judged(text, {});
       expect(j.failed, text).toEqual(['accurate']);
       const why = j.findings.find((f) => f.line === 'accurate')?.why ?? '';
       expect(why, text).toContain(
         'from a read made in an earlier turn (2026-11-22T06:51:00.000Z), not one made in this turn',
       );
       expect(why, text).toContain('read it again in this turn (support.read)');
-      expect(judged(text, { earlierAt: null }, language).findings[0]?.why, text).toContain(
+      expect(judged(text, { earlierAt: null }).findings[0]?.why, text).toContain(
         'with no read of it made in this turn',
       );
     }
   });
 
   it('passes a reply that says plainly it has not checked the state now', () => {
-    for (const [text, language] of NOT_CHECKED) {
-      expect(judged(text, {}, language).verdict, text).toBe('pass');
+    for (const [text] of NOT_CHECKED) {
+      expect(judged(text, {}).verdict, text).toBe('pass');
     }
   });
 
   it('fails a "not checked now" that still restates the earlier value', () => {
-    for (const [text, language] of [
+    for (const [text] of [
       ['I have not checked it now, but at 06:51 the export flag was off.', 'en'],
       ['The export flag was off at 06:51; I have not checked it again now.', 'en'],
       ['I have not checked it now; as of 06:51 the worker limit was disabled.', 'en'],
       ['Em chưa kiểm tra lại, nhưng lúc 06:51 cờ gửi mail vẫn tắt ạ.', 'vi'], // i18n-allow: a synthetic reply
     ] as const) {
-      expect(judged(text, {}, language).failed, text).toEqual(['accurate']);
+      expect(judged(text, {}).failed, text).toEqual(['accurate']);
     }
   });
 
