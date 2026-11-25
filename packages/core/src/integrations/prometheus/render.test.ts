@@ -1,9 +1,9 @@
 // ISS-1462: a probe's latency is a rule kind, `probe_slower_than`, and each wrong shape of it is
 // refused by name.
 import {
+  type MonitoringConfig,
   monitoringConfigFaults,
   monitoringConfigSchema,
-  type MonitoringConfig,
 } from '@forge/contracts/monitoring';
 import { describe, expect, it } from 'vitest';
 import { renderRuleGroup } from './render.js';
@@ -38,8 +38,18 @@ describe('probe_slower_than', () => {
     ['no threshold', { ...slow, threshold: undefined }, 'SCHEMA_VIOLATION', '/rules/0/threshold'],
     ['a zero threshold', { ...slow, threshold: 0 }, 'SCHEMA_VIOLATION', '/rules/0/threshold'],
     ['a negative threshold', { ...slow, threshold: -3 }, 'SCHEMA_VIOLATION', '/rules/0/threshold'],
-    ['a scrape target', { ...slow, target: 'api' }, 'MONITORING_RULE_TARGET_UNKNOWN', '/rules/0/target'],
-    ['the agent target', { ...slow, target: 'agent' }, 'MONITORING_RULE_TARGET_UNKNOWN', '/rules/0/target'],
+    [
+      'a scrape target',
+      { ...slow, target: 'api' },
+      'MONITORING_RULE_TARGET_UNKNOWN',
+      '/rules/0/target',
+    ],
+    [
+      'the agent target',
+      { ...slow, target: 'agent' },
+      'MONITORING_RULE_TARGET_UNKNOWN',
+      '/rules/0/target',
+    ],
   ])('refuses %s by name', (_what, rule, code, path) => {
     const config = parse({
       scrape: [{ name: 'api', url: 'https://api.example.test/metrics' }],
@@ -62,7 +72,15 @@ describe('probe_slower_than', () => {
     const config = parse({
       probe: [site],
       rules: [
-        { name: 'q', kind: 'series_above', target: 'site', metric: 'probe_duration_seconds', threshold: 10, for: '2m', severity: 'low' },
+        {
+          name: 'q',
+          kind: 'series_above',
+          target: 'site',
+          metric: 'probe_duration_seconds',
+          threshold: 10,
+          for: '2m',
+          severity: 'low',
+        },
       ],
     });
     expect(monitoringConfigFaults(config)).toMatchObject([
