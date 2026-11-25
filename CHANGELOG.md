@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.830] - 2026-11-25
+
+Withheld decline reasons named for server keys; reopened chat-answer fix re-recorded
+
+### Fixed
+
+- **A reopened fix names where its other two corrections went.** The issues card answer stays; the meaning of awaiting release and release timing moved to a requirement for the owner.
+- **A feedback server key now says when a decline reason is withheld.** A declined item on a no_egress project answers declineReasonWithheld true beside the null reason; every other read answers false, so a product can tell the two nulls apart.
+
 ## [0.4.0-dev.829] - 2026-11-25
 
 The room assistant answers whether one issue is fixed from that issue
