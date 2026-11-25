@@ -288,7 +288,9 @@ describe('a feedback server key reading back (ISS-1287)', () => {
     };
     const read = await api(secret, 'GET', at(fbKey));
     expect(read.status, JSON.stringify(read.body)).toBe(200);
-    expect(read.body).toEqual({ feedback: { ...(await asPage()), declineReason: null, declineReasonWithheld: false } });
+    expect(read.body).toEqual({
+      feedback: { ...(await asPage()), declineReason: null, declineReasonWithheld: false },
+    });
     expect(read.body.feedback).toMatchObject({ phase: 'new', chip: 'new' });
 
     const declined = await api(adminJwt, 'POST', `${at(fbKey)}/triage`, {
@@ -298,7 +300,11 @@ describe('a feedback server key reading back (ISS-1287)', () => {
     expect(declined.status, JSON.stringify(declined.body)).toBe(200);
     const after = await api(secret, 'GET', at(fbKey));
     expect(after.body).toEqual({
-      feedback: { ...(await asPage()), declineReason: 'Stock is counted nightly.', declineReasonWithheld: false },
+      feedback: {
+        ...(await asPage()),
+        declineReason: 'Stock is counted nightly.',
+        declineReasonWithheld: false,
+      },
     });
     expect(after.body.feedback).toMatchObject({ phase: 'declined', chip: 'declined' });
 
