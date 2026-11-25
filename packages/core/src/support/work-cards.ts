@@ -223,6 +223,10 @@ export const WORK_ACT_CARDS = {
         when: 'someone asks how a piece of work is going',
         do: "read support.issues { project, key } and answer from its notes and handoffs; a parked issue's `waiting` says who owes what",
       },
+      {
+        when: 'someone asks whether one issue is fixed, done or live',
+        do: 'read that issue with support.issues { project, key } and answer for it alone: its status now, what its notes say works and what it waits on; awaiting release means merged and waiting for a release, neither live nor closed, and never a release status update in its place',
+      },
     ],
     practice: ['It reads the same from any of your groups, over every project you follow.'],
     example: { project: 'epod', key: 'ISS-167' },

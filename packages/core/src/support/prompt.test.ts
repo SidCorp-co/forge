@@ -335,6 +335,18 @@ describe('every room agent brief carries the room conduct', () => {
     expect(prose).toContain('a release as shipped is neither');
   });
 
+  // ISS-1463 (FB-862, L-11): asked whether issue 652 was fixed, the agent restated a release status
+  // update; no card taught a question about one issue is answered from that issue's own state
+  it('answers whether one issue is fixed from that issue, awaiting release not read as done', () => {
+    const issues = actCard('issues')
+      .situations.map((s) => `${s.when}: ${s.do}`)
+      .join('\n');
+    expect(issues).toContain('someone asks whether one issue is fixed, done or live');
+    expect(issues).toContain('answer for it alone');
+    expect(issues).toContain('awaiting release means merged and waiting for a release');
+    expect(issues).toContain('never a release status update in its place');
+  });
+
   // ISS-1440 (FB-837, L-185): the channel agent's opening says what the guide, the cards and the audit say
   it('says a served version is read, behaviour looked at, a master’s answer his own, else not confirmed now', () => {
     const opening = agentOpening({
