@@ -16,7 +16,13 @@ import { raiseTechnical } from '../../src/support/technical-channel.js';
 import { roomAuth, threadConversationOf } from '../../src/support/thread.js';
 import { api } from '../helpers/api.js';
 import { ecosystemDoc, JOIN_HEAD, settleOutbox } from '../helpers/ecosystem-world.js';
-import { createTestRequirement, rows, seedOrg } from '../helpers/factories.js';
+import {
+  addProjectMember,
+  createTestProject,
+  createTestRequirement,
+  rows,
+  seedOrg,
+} from '../helpers/factories.js';
 import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 import { SupportWorld } from '../helpers/support-world.js';
 import { inUntrustedFrame } from '../helpers/untrusted-frame.js';
@@ -273,5 +279,89 @@ describe('ISS-1299: the technical thread speaks to the owner in one voice, his l
     expect(codeOf(out), JSON.stringify(out)).toBe('SUPPORT_FORGE_ACT_NO_DOOR');
     expect(detailOf(out)).toContain("the preview's page");
     expect(detailOf(out)).toContain('never that it is being done');
+  });
+});
+
+describe("ISS-1469: a raise lands in the thread of the project it is about, not the room's project", () => {
+  const SIBLING_THREAD = 'EPODthreadXq9Zk3';
+  const WORK_THREAD = 'WORKthreadMm4Rt7';
+  let siblingName = '';
+
+  /** A notice thread Forge opened in the room, which the agent may raise from and which is no project's own. */
+  async function noticeThread(thread: string): Promise<void> {
+    await insertAction({
+      roomId: room.id,
+      projectId: room.projectId,
+      conversationId: null,
+      thread,
+      kind: 'message_in',
+      actorKind: 'core',
+      input: { text: 'a task' },
+      externalId: thread,
+    });
+  }
+
+  beforeAll(async () => {
+    const [home] = await rows<{ org_id: string }>(
+      sql`SELECT org_id FROM projects WHERE id = ${w.projectId}::uuid`,
+    );
+    const sibling = await createTestProject(w.ownerId, {
+      orgId: String(home?.org_id),
+      name: 'Card gateway',
+    });
+    await addProjectMember(sibling.id, w.ownerId, 'owner');
+    siblingName = 'Card gateway';
+    const [{ slug: siblingSlug } = { slug: '' }] = await rows<{ slug: string }>(
+      sql`SELECT slug FROM projects WHERE id = ${sibling.id}::uuid`,
+    );
+    await db.execute(sql`
+      UPDATE integration_bindings
+         SET config = jsonb_set(config, ${`{operations,threads,${chat.rid},${siblingSlug}}`}::text[], to_jsonb(${SIBLING_THREAD}::text))
+       WHERE id = ${room.bindingId}::uuid`);
+    await noticeThread(SIBLING_THREAD);
+    await noticeThread(WORK_THREAD);
+  });
+
+  it("lands a raise citing another project's thread in that project's thread, and says whose", async () => {
+    // the room's own project thread holds a person's word: on the old code the raise went there
+    const said = await aliceSays('Khóa thử cổng thẻ của ePOD đâu rồi em?');
+    const own = threadLines().length;
+    const out = await raiseTechnical(room, {
+      thread: SIBLING_THREAD,
+      need: 'finding',
+      text: 'The card-gateway test keys are not in the vault yet.',
+      answers: said,
+    });
+    expect(out.ok, JSON.stringify(out)).toBe(true);
+    if (!out.ok) return;
+    expect(out.value.thread).toBe(SIBLING_THREAD);
+    expect(out.value.landed).toBe(`${siblingName}'s own thread of ${chat.rid}`);
+    expect(
+      chat
+        .linesIn(chat.rid)
+        .filter((l) => l.tmid === SIBLING_THREAD)
+        .map((l) => l.text),
+    ).toEqual(['The card-gateway test keys are not in the vault yet.']);
+    expect(threadLines().length, "the room's own project's thread took nothing").toBe(own);
+  });
+
+  it("lands a raise from a thread that is no project's own in the room's project thread", async () => {
+    const said = await aliceSays('Báo cáo xuất đêm qua chậm quá em ơi');
+    const own = threadLines().length;
+    const out = await raiseTechnical(room, {
+      thread: WORK_THREAD,
+      need: 'finding',
+      text: 'The nightly export is late again.',
+      answers: said,
+    });
+    expect(out.ok, JSON.stringify(out)).toBe(true);
+    if (!out.ok) return;
+    expect(out.value.thread).toBe(THREAD);
+    expect(out.value.landed).toBe(`Order desk's own thread of ${chat.rid}`);
+    expect(
+      threadLines()
+        .slice(own)
+        .map((l) => l.text),
+    ).toEqual(['The nightly export is late again.']);
   });
 });

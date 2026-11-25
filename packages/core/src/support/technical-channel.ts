@@ -21,7 +21,7 @@ import {
   sendFixedReply,
 } from '../integrations/rocketchat/index.js';
 import { readProjectDocument } from '../project-config/index.js';
-import { findProjectSlugs, projectName } from '../projects/index.js';
+import { findProjectSlugs, orgSiblingProjects, projectName } from '../projects/index.js';
 import { grantsOf, supportConfigOf } from './grants.js';
 import { no, type Outcome, threadUnknown } from './outcome.js';
 import { ownerUsername } from './owner-consent.js';
@@ -30,7 +30,14 @@ import { roomIsBound } from './rooms.js';
 import { screenForThread } from './screen.js';
 import { insertAction, type RoomRow, roomsOfProject } from './store.js';
 import { heldRaise, readTechnicalTurn, type TechnicalTurn } from './technical-turn.js';
-import { actingThread, postInThread, roomAuth, scrubbedForRoom, TOP_LEVEL } from './thread.js';
+import {
+  actingThread,
+  postInThread,
+  projectThreadOfRoom,
+  roomAuth,
+  scrubbedForRoom,
+  TOP_LEVEL,
+} from './thread.js';
 
 /** The tool a raised need is recorded under on the asker's thread. */
 export const TECHNICAL = 'technical';
@@ -113,11 +120,28 @@ async function directOf(
 }
 
 /** The project's channel for `room`, or the refusal naming the key that fixes it at `path`. */
-export async function destinationOf(room: RoomRow, path: string): Promise<Outcome<Destination>> {
-  const channel = await technicalChannelOf(room.projectId);
+export async function destinationOf(
+  room: RoomRow,
+  path: string,
+  projectId: string = room.projectId,
+): Promise<Outcome<Destination>> {
+  const channel = await technicalChannelOf(projectId);
   return channel.kind === 'thread'
-    ? sharedThreadOf(room.projectId, path)
+    ? sharedThreadOf(projectId, path)
     : directOf(room, channel, path);
+}
+
+/**
+ * The project `thread` is the own thread of, in the shared operations room `room` (ISS-1469): the
+ * project of `room`'s organization whose recorded thread it is, else `room`'s own project, so a
+ * thread that is no project's own (a member's work thread, a notice thread) raises as the room's.
+ */
+export async function projectOfThread(room: RoomRow, thread: string): Promise<string> {
+  if (room.kind !== 'operations' || room.scope !== 'forge') return room.projectId;
+  for (const sibling of await orgSiblingProjects(room.projectId)) {
+    if ((await projectThreadOfRoom(room, sibling.id)) === thread) return sibling.id;
+  }
+  return room.projectId;
 }
 
 export async function postTo(room: RoomRow, to: Destination, text: string): Promise<Raised> {
@@ -163,12 +187,13 @@ async function lineOf(
   channel: 'thread' | 'dm',
   words: string,
   mention: string | null = null,
+  projectId: string = room.projectId,
 ): Promise<string> {
   if (channel === 'thread') return technicalLine(null, words, mention);
   const project =
-    (await projectName(room.projectId)) ??
-    (await findProjectSlugs([room.projectId])).get(room.projectId) ??
-    room.projectId;
+    (await projectName(projectId)) ??
+    (await findProjectSlugs([projectId])).get(projectId) ??
+    projectId;
   return technicalLine(project, words, mention);
 }
 
@@ -232,7 +257,10 @@ export async function raiseTechnical(
   // a notice thread Forge handed a task in raises from the same door (ISS-1347)
   const conversationId = await actingThread(room, input.thread);
   if (!conversationId) return threadUnknown(input.thread);
-  const to = await destinationOf(room, '/need');
+  // an agent's raise citing a project's own thread of the shared room is about that project (ISS-1469)
+  const projectId =
+    written === 'agent' ? await projectOfThread(room, input.thread) : room.projectId;
+  const to = await destinationOf(room, '/need', projectId);
   if (!to.ok) return to;
   const at = { conversationId, thread: input.thread, tool: TECHNICAL };
   let text: string;
@@ -245,14 +273,14 @@ export async function raiseTechnical(
       room,
       conversationId,
       input.thread,
-      await lineOf(room, to.value.kind, input.text),
+      await lineOf(room, to.value.kind, input.text, null, projectId),
       'operations-reply',
       at.tool,
     );
     if (!line.ok) return line;
     text = line.value.text;
   } else {
-    text = await lineOf(room, to.value.kind, input.text);
+    text = await lineOf(room, to.value.kind, input.text, null, projectId);
   }
   const out = await postTo(room, to.value, text);
   if (!out.ok) return out;
@@ -269,7 +297,7 @@ export async function raiseTechnical(
     externalId: out.value.messageId,
   });
   // FB-824: a raise said landed in AdminHub API's thread had landed in another project's
-  const name = (await projectName(room.projectId)) ?? 'this project';
+  const name = (await projectName(projectId)) ?? 'this project';
   const landed =
     out.value.channel === 'thread'
       ? `${name}'s own thread of ${out.value.rid}`
