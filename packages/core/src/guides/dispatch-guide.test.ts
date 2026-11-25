@@ -232,6 +232,13 @@ describe('the dispatch guide names the room door a master posts its own results 
     expect(prose).toContain("whatever its binding's `readers` says");
   });
 
+  // ISS-1468: a thread no member wrote in takes the facts too, so no result is left without a route
+  it('teaches that a thread no member wrote in takes the facts and opens the agent turn', () => {
+    expect(prose).toContain('A thread no member wrote in');
+    expect(prose).toContain("they open the agent's turn there");
+    expect(prose).not.toContain('no route opens that');
+  });
+
   it("names the refusals of a post, and that a users room takes none of a master's words", () => {
     expect(prose).toContain('A room its users read** gets no words of yours');
     for (const code of [
@@ -296,9 +303,9 @@ describe("the dispatch guide teaches a master to tell a users' room through the 
       "A release line for a room only the team reads (an operations room, an agent's owner room) and a daily review are the team's own: there you post in your own words",
     );
     expect(prose).toContain(
-      "no route puts your words in a users' room instead, and none carries a file there",
+      "No route puts your words in a users' room instead, and none carries a file there",
     );
-    expect(prose).toContain("record what you hold on the issue and ask the room's owner");
+    expect(prose).not.toContain("ask the room's owner to have a member write in it");
   });
 
   it('no longer lets a master post in a users room, nor carry a screen guide file there', () => {

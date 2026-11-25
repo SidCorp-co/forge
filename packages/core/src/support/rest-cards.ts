@@ -156,8 +156,8 @@ export const SUPPORT_REST_CARDS = {
           'never write the sentence the room should read; the bot restates it with no keys or shas',
       },
       {
-        when: 'the thread is refused SUPPORT_THREAD_UNKNOWN: the room’s agent took no message of it',
-        do: 'hand nothing and post nothing: record what you hold on the issue, and ask the room’s owner to have a member write in that thread',
+        when: 'the thread is refused SUPPORT_THREAD_UNKNOWN: the chat server holds no such thread in that room',
+        do: 'hand nothing and post nothing: check the thread id and rid; a thread no member wrote in takes the facts and the agent opens its turn there',
         watch:
           'there is no route that puts your words in a users’ room instead, and none that carries a file to it: give the bot the steps in words',
       },

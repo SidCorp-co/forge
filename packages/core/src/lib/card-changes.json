@@ -610,9 +610,9 @@
     "by": "ISS-1467"
   },
   "POST /api/projects/:id/support/master-tells": {
-    "hash": "4bd19602847607a1",
+    "hash": "a24cdaebcf9943bc",
     "on": "2026-11-25",
-    "by": "ISS-1467"
+    "by": "ISS-1468"
   },
   "POST /api/projects/:id/support/technical-needs": {
     "hash": "bf54a137c60f8680",

@@ -40,7 +40,7 @@ import { reportThreadFor } from './report-thread.js';
 import { boundButUndeclared, declareSupportRooms, heldElsewhere, roomIsBound } from './rooms.js';
 import { type SessionDoor, screenForThread } from './screen.js';
 import { sharedThreadRefusal, standingIn } from './shared-thread.js';
-import { insertAction, type RoomRow, roomsOfProject, threadMembers } from './store.js';
+import { insertAction, type RoomRow, roomsOfProject } from './store.js';
 import {
   postInThread,
   projectThreadOfRoom,
@@ -234,27 +234,6 @@ export interface Placed {
   conversationId: string | null;
 }
 
-/**
- * The thread in its room, admitted where one is recorded: any thread of a room the team reads; of a
- * room the product's users read, only a thread a member wrote in, which a master's facts reach
- * (`master-tell.ts`) and its words never do (ISS-1467).
- */
-async function admitThread(
-  at: Postable,
-  thread: string,
-  conversationId: string | null,
-  nothing: string,
-): Promise<Outcome<Placed>> {
-  if (at.team || (await threadMembers(at.room.id, thread)).length > 0) {
-    return { ok: true, value: { at, conversationId } };
-  }
-  return no(
-    'SUPPORT_THREAD_UNKNOWN',
-    '/thread',
-    `no member has written in thread ${thread} of ${at.room.rid}, which the product's users read, so the room's agent took no message of it and there is no turn to hand facts to: wait for a member to write there, or record what you hold on the issue and ask the room's owner. ${nothing}`,
-  );
-}
-
 /** The chat server's word on a thread: the room its first message is in, a reply's own thread, or nothing. */
 type Root = { kind: 'root'; rid: string } | { kind: 'reply'; tmid: string } | { kind: 'unknown' };
 
@@ -286,7 +265,7 @@ export async function roomOfThread(
   const named = rid ? rooms.filter((r) => r.room.rid === rid) : rooms;
   for (const at of named) {
     const conversationId = await threadConversation(at.room.id, thread);
-    if (conversationId) return admitThread(at, thread, conversationId, nothing);
+    if (conversationId) return { ok: true, value: { at, conversationId } };
   }
   const where = rid ?? (ridsOf(named) || 'any room of this project');
   const root = await rootOf(named, thread);
@@ -299,7 +278,7 @@ export async function roomOfThread(
   }
   if (root.kind === 'root') {
     const at = named.find((r) => r.room.rid === root.rid);
-    if (at) return admitThread(at, thread, null, nothing);
+    if (at) return { ok: true, value: { at, conversationId: null } };
     return no(
       'SUPPORT_THREAD_OF_ANOTHER_ROOM',
       '/thread',

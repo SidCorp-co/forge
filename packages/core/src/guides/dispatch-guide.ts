@@ -23,7 +23,7 @@ export const DISPATCH_GUIDE: CoreGuide = {
   title: "Running a wave: a master's dispatch and fold",
   summary:
     "The method a project's master follows for one wave: read the order, triage each candidate, batch by files, give each run its tree and a brief, declare and record each dispatch, and fold what comes back — over REST and `forge-runner`; on a project that runs direct (not strict, fast delivery on), build, land, release and judge a whole batch at once instead.",
-  version: 17,
+  version: 18,
   body: `## Running a wave
 
 A wave is the set of runs one master pass sends out, and the fold is the reading of what came back.
@@ -191,10 +191,12 @@ the room's bot the facts, \`POST /api/projects/:id/support/master-tells\` \`{ th
 (\`forge-runner api projects/<projectId>/support/master-tells -X POST -d '{"thread":"<message id>","facts":"…"}'\`),
 and the bot tells the person itself, in the room's language and its own words. Write \`facts\` for
 the bot: what changed, where it runs now, what to check again, with the issue keys, shas and tooling
-words it is taught to leave out; never a draft for the room. \`SUPPORT_THREAD_UNKNOWN\` names a
-thread the room's agent took no message of (nothing to hand the facts to, and no route opens that
-thread: record what you hold on the issue and ask the room's owner to have a member write in it; no
-route puts your words in a users' room instead, and none carries a file there). A release line for a
+words it is taught to leave out; never a draft for the room. A thread no member wrote in (the
+first message is the chat server's, the room's agent took none of it) takes the facts too: they open
+the agent's turn there, and it tells the thread in the room's language and holds none of that
+thread's earlier words, so write \`facts\` to stand alone. \`SUPPORT_THREAD_UNKNOWN\` names a thread the chat
+server does not hold in that room: check the id and \`rid\`. No route puts your words in a users' room
+instead, and none carries a file there. A release line for a
 room only the team reads (an operations room, an agent's owner room) and a daily review are the
 team's own: there you post in your own words, as the room's bot, through
 \`POST /api/projects/:id/support/master-posts\` with \`{ text, rid?, thread?, attachments? }\`

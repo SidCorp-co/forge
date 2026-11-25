@@ -10,8 +10,9 @@ import { markUntrusted } from '../lib/untrusted-text.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { deliverWaiting } from './dispatch.js';
 import { masterReach, roomOfThread, roomRefusal } from './master-post.js';
-import { no, type Outcome } from './outcome.js';
+import type { Outcome } from './outcome.js';
 import { insertAction } from './store.js';
+import { roomAuth, threadConversationOf } from './thread.js';
 
 /** The tool a master's hand-over is recorded under. */
 export const TELL_TOOL = 'master_tell';
@@ -26,8 +27,9 @@ export function masterToldNote(facts: string): string {
 
 /**
  * The master's facts, handed to the session of the room holding `thread`: recorded with who and when,
- * delivered at once, nothing posted. A thread the room's session never took (no member wrote in it) or
- * a room this project does not reach is refused by name.
+ * delivered at once, nothing posted. A thread the chat server does not hold in a room, or a room this
+ * project does not reach, is refused by name; one no member wrote in is opened for the agent by the
+ * facts (ISS-1468), who reads no thread the chat server holds of it and tells it in the room's language.
  */
 export async function tellRoomAgent(
   actor: { userId: string; projectId: string },
@@ -41,14 +43,12 @@ export async function tellRoomAgent(
   }
   const found = await roomOfThread(rooms, input.rid, input.thread, nothing);
   if (!found.ok) return found;
-  const { at, conversationId } = found.value;
-  if (!conversationId) {
-    return no(
-      'SUPPORT_THREAD_UNKNOWN',
-      '/thread',
-      `the room agent of ${at.room.rid} took no message of thread ${input.thread}, so there is no turn to hand facts to: wait for a member to write there, or record what you hold on the issue and ask the room's owner. ${nothing}`,
-    );
-  }
+  const { at } = found.value;
+  // a thread the chat server holds in this room that no member wrote in has no conversation yet: the
+  // facts open the agent's turn there, as a notice thread Forge opened for it does (`thread.ts:actingThread`)
+  const conversationId =
+    found.value.conversationId ??
+    (await threadConversationOf(at.room, (await roomAuth(at.room)).namespace, input.thread)).id;
   await insertAction({
     roomId: at.room.id,
     projectId: at.room.projectId,

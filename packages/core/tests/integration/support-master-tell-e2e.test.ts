@@ -75,6 +75,39 @@ describe("ISS-1467: a master's post in a support room is refused, whatever its r
   });
 });
 
+describe("ISS-1468: a master's facts open the agent's turn in a thread no member wrote in", () => {
+  it("hands a silent thread's facts to the agent in that thread, posts nothing, and still refuses a post there", async () => {
+    await w.settleWarm();
+    // an app opened a thread in the users' room: the agent took no message of it
+    const app = chat.wroteWhileAway(chat.rid, chat.alice, 'Thư mới từ khách', new Date(), {
+      bot: true,
+    });
+    const notes: { thread: string; text: string }[] = [];
+    w.box.idleTurnsAct = false;
+    w.box.model = async (turn) => {
+      for (const m of turn.messages)
+        if (m.from === 'forge') notes.push({ thread: m.thread, text: m.text });
+    };
+    try {
+      const facts = 'The print fix is live on production since this morning.';
+      const res = await tell({ thread: app, facts });
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      expect(res.body).toMatchObject({ told: true, rid: chat.rid, thread: app });
+      await expect.poll(() => notes.length, { timeout: 15_000 }).toBe(1);
+      expect(notes[0]?.thread).toBe(app);
+      expect(inUntrustedFrame(notes[0]?.text ?? '', facts)).toBe(true);
+      expect(chat.linesIn(chat.rid).filter((l) => l.tmid === app)).toEqual([]);
+      // a master's own words are still refused there
+      const words = await post({ text: 'Bản sửa đã lên, bạn thử lại nhé.', thread: app });
+      expect(refusalCodes(words.body as Record<string, unknown>)).toEqual([
+        'SUPPORT_MASTER_POST_USERS_ROOM',
+      ]);
+    } finally {
+      w.box.idleTurnsAct = true;
+    }
+  }, 120_000);
+});
+
 describe("ISS-1466: a master hands a room's bot facts for a thread", () => {
   it("reaches the room agent's session in that thread, framed as data, posts nothing, and is handed once", async () => {
     const thread = await asked('Phiếu in vẫn lỗi, khi nào xong?');
@@ -110,25 +143,12 @@ describe("ISS-1466: a master hands a room's bot facts for a thread", () => {
     }
   }, 120_000);
 
-  it('refuses by name a thread no member wrote in, a room this project does not bind, and a caller who cannot write', async () => {
+  it('refuses by name a thread the chat server does not hold, a room this project does not bind, and a caller who cannot write', async () => {
     const unknown = await tell({ thread: 'AAAAAAAAAAAAAAAAA', facts: 'The fix is live.' });
     expect(refusalCodes(unknown.body as Record<string, unknown>)).toEqual([
       'SUPPORT_THREAD_UNKNOWN',
     ]);
     expect(JSON.stringify(unknown.body)).toContain('Nothing was handed on');
-    // ISS-1467: a thread an app opened in the users' room, which the agent took no message of, is a
-    // remaining gap: both doors refuse it by name and say what the master does instead
-    const app = chat.wroteWhileAway(chat.rid, chat.alice, 'Thư mới từ khách', new Date(), {
-      bot: true,
-    });
-    for (const door of [
-      tell({ thread: app, facts: 'The fix is live.' }),
-      post({ text: 'Bản sửa đã lên, bạn thử lại nhé.', thread: app }),
-    ]) {
-      const res = await door;
-      expect(refusalCodes(res.body as Record<string, unknown>)).toEqual(['SUPPORT_THREAD_UNKNOWN']);
-      expect(JSON.stringify(res.body)).toContain("ask the room's owner");
-    }
     const thread = await asked('Một câu hỏi khác');
     const room = await tell({ thread, facts: 'The fix is live.', rid: `nope-${randomUUID()}` });
     expect(refusalCodes(room.body as Record<string, unknown>)).toEqual(['SUPPORT_ROOM_UNKNOWN']);

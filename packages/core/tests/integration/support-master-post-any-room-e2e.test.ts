@@ -108,14 +108,14 @@ describe("ISS-943: a master posts in its project's support room", () => {
     expect(topLines()).toEqual([]);
   });
 
-  it("refuses a thread of the users' room no member wrote in", async () => {
+  it("refuses a post in a thread of the users' room no member wrote in, as in any thread (its facts go through master-tells, ISS-1468)", async () => {
     // an app's post in the room, which the chat server places there and no member answered
     const app = chat.wroteWhileAway(chat.rid, chat.alice, 'Thư mới từ khách', new Date(), {
       bot: true,
     });
     const res = await post({ text: RESULT, rid: chat.rid, thread: app });
-    expect(said(res), JSON.stringify(res.body)).toEqual([404, 'SUPPORT_THREAD_UNKNOWN']);
-    expect(refusalOf(res)?.detail).toContain("ask the room's owner");
+    expect(said(res), JSON.stringify(res.body)).toEqual([409, 'SUPPORT_MASTER_POST_USERS_ROOM']);
+    expect(refusalOf(res)?.detail).toContain('master-tells');
     expect(threadLines(app)).toEqual([]);
   });
 
