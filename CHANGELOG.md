@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.827] - 2026-11-25
+
+Judging runs no longer held to another session's processes in their worktree
+
+### Fixed
+
+- **A judge is no longer held to another session's processes in its worktree.** A process naming another Claude Code session is left to it; the refusal says how to tell your own processes and never orders a blind kill.
+
 ## [0.4.0-dev.826] - 2026-11-25
 
 Language guesses become hints, so correct Vietnamese replies are no longer failed
