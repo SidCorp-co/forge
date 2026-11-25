@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.832] - 2026-11-25
+
+Room assistants report results themselves instead of saying work was handed off
+
+### Changed
+
+- **A reply that only says the request was passed on is now a flagged fault.** For a code change the agent says what it checked and saw and that it will tell them here once there is a result.
+
 ## [0.4.0-dev.831] - 2026-11-25
 
 Room agents report results themselves instead of saying work was handed off
