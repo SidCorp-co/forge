@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.831] - 2026-11-25
+
+Room agents report results themselves instead of saying work was handed off
+
+### Changed
+
+- **A room agent no longer says work was handed to a team.** It records what it checked and saw, then tells the user the result in the same thread: what was fixed, where it runs, and to check again.
+
 ## [0.4.0-dev.830] - 2026-11-25
 
 Withheld decline reasons named for server keys; reopened chat-answer fix re-recorded
