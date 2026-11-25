@@ -23,7 +23,7 @@ export const DISPATCH_GUIDE: CoreGuide = {
   title: "Running a wave: a master's dispatch and fold",
   summary:
     "The method a project's master follows for one wave: read the order, triage each candidate, batch by files, give each run its tree and a brief, declare and record each dispatch, and fold what comes back — over REST and `forge-runner`; on a project that runs direct (not strict, fast delivery on), build, land, release and judge a whole batch at once instead.",
-  version: 14,
+  version: 15,
   body: `## Running a wave
 
 A wave is the set of runs one master pass sends out, and the fold is the reading of what came back.
@@ -185,8 +185,16 @@ core as you move it (the landing, the release, the answer on the item), and a qu
 put to you is answered with \`master-asks/:askId/answer\` (Answering a room agent's ask); both go
 into that agent's session, which says what was fixed, where it runs and asks them to check again,
 and neither is posted beside it. The record is the only hand-over, and the users never hear it
-as one. A result for a room with no agent in the thread, a release line the room's users should
-hear, a daily review: the master posts it itself, in its own words, as the room's bot, through
+as one. What you want said in a room its product's people read, which no hand-over above carries
+(a result you checked, a release that reached them), you never post in your own words: you hand
+the room's bot the facts, \`POST /api/projects/:id/support/master-tells\` \`{ thread, facts, rid? }\`
+(\`forge-runner api projects/<projectId>/support/master-tells -X POST -d '{"thread":"<message id>","facts":"…"}'\`),
+and the bot tells the person itself, in the room's language and its own words. Write \`facts\` for
+the bot: what changed, where it runs now, what to check again, with the issue keys, shas and tooling
+words it is taught to leave out; never a draft for the room. \`SUPPORT_THREAD_UNKNOWN\` names a
+thread no member wrote in. A result for a room with no agent in the thread, a release line for a
+room only the team is in, a daily review: the master posts it itself, in its own words, as the
+room's bot, through
 \`POST /api/projects/:id/support/master-posts\` with \`{ text, rid?, thread?, attachments? }\`
 (\`forge-runner api projects/<projectId>/support/master-posts -X POST -d '{"text":"…","rid":"<room id>","thread":"<message id>"}'\`).
 Never relay it by hand or through a script posting as the bot: core holds the bot's credential,
@@ -246,6 +254,10 @@ screens the words for the room's readers and records the post as the master's.
   \`SUPPORT_POST_EDIT_WINDOW_PASSED\`, \`SUPPORT_POST_DELETED\` and \`SUPPORT_POST_UNCHANGED\` (the
   chat server would not). A delete the chat server took for the post but not for a file of it is
   \`SUPPORT_POST_FILES_LEFT\`, naming the files left: the post stays deleted.
+- **A support room is never read as the team's** by a master's post: an operations room and a
+  channel agent's owner room are the team's, and any other room takes no code of core's whatever
+  its binding's \`readers\` says; a post there carrying a key, a sha or any code is refused
+  \`SUPPORT_INTERNAL_CODE\` naming the code and this door.
 - **A room its users read** takes a master's words only in an asker's thread (one a member wrote
   in), never at its top level, mentioning at most one person: the thread's asker or a member of
   the room. Plain words, things named as the user sees them on screen: no Forge issue key, MR or PR

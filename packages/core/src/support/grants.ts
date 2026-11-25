@@ -44,6 +44,16 @@ export function readersOfConfig(
 }
 
 /**
+ * Whether only the team reads the room whatever its binding's `readers` says (ISS-1466): an
+ * operations room, or a channel agent's owner room. A support room whose binding says `readers: team`
+ * is a room the product's people may still sit in, so a master's post there is read as theirs.
+ */
+export async function teamOnlyRoom(room: RoomRow): Promise<boolean> {
+  if (room.kind === 'operations') return true;
+  return room.kind === 'agent' && (await supportConfigOf(room))?.ownerRoom === room.rid;
+}
+
+/**
  * Which messages of a group reach its session: the group's own `rooms` entry (ISS-874), then the
  * binding's `answers`, every message when it names none.
  */

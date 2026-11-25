@@ -46,6 +46,34 @@ export const supportMasterAskAnswerRequestSchema = z.strictObject({
 	answer: z.string().trim().min(1).max(4000),
 });
 
+/**
+ * A master hands a room's bot plain facts for a thread (ISS-1466): the bot tells the room in its own
+ * words and the room's language. The master never speaks in a room its product's people read.
+ */
+export const supportMasterTellRequestSchema = z.strictObject({
+	thread: supportThreadIdSchema.describe(
+		"the thread's first message id, as master-posts names it",
+	),
+	facts: z
+		.string()
+		.trim()
+		.min(3)
+		.max(4000)
+		.describe(
+			"what is true now, for the bot: what changed, where it runs, what to recheck; never written for the room",
+		),
+	rid: z
+		.string()
+		.trim()
+		.min(1)
+		.max(200)
+		.optional()
+		.describe("the room, where the thread id alone does not name it"),
+});
+export type SupportMasterTellRequest = z.infer<
+	typeof supportMasterTellRequestSchema
+>;
+
 export const supportMasterAsksQuerySchema = z.strictObject({
 	state: z.enum(["open", "all"]).optional(),
 });

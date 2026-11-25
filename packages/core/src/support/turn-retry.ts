@@ -234,7 +234,11 @@ const triesOf = (m: Pick<ActionRow, 'output'>) =>
  * reached the room agent three times, each saying answer the person now (FB-723).
  */
 export function isMasterAnswer(m: Pick<ActionRow, 'actorKind' | 'input'>): boolean {
-  return m.actorKind === 'core' && typeof (m.input as { ask?: unknown } | null)?.ask === 'string';
+  const input = m.input as { ask?: unknown; tell?: unknown } | null;
+  // a master's facts handed unasked (`master-tell.ts`) are told once the same way (ISS-1466)
+  return (
+    m.actorKind === 'core' && (typeof input?.ask === 'string' || typeof input?.tell === 'string')
+  );
 }
 
 /**

@@ -13,9 +13,10 @@ export const SUPPORT_REST_CARDS = {
     purpose: 'Posts a result in a chat room as the room’s bot, in the master’s own words.',
     situations: [
       {
-        when: 'someone in a room asked for a result, or the room’s users should hear a release line',
-        do: 'post it in the asker’s thread, naming rid and thread from the rooms read',
-        watch: 'a users’ room takes it only in a thread, never at its top level',
+        when: 'a room only the team reads should hear a result or a release line',
+        do: 'post it in the thread, naming rid and thread from the rooms read',
+        watch:
+          'a room its users read gets no words of yours: hand its bot the facts (`POST …/master-tells`); a post there carrying a code is refused',
       },
       {
         when: 'you name no thread',
@@ -143,6 +144,34 @@ export const SUPPORT_REST_CARDS = {
     family: 'rooms',
     audience: ['master'],
     scenarios: ['a room agent’s ask answered first while a person waits in its thread'],
+  },
+  'POST /api/projects/:id/support/master-tells': {
+    purpose:
+      'Hands a room’s bot plain facts for a thread; the bot tells the room in its own words and language.',
+    situations: [
+      {
+        when: 'a result, a check or a release should reach people in a room its product’s users read',
+        do: 'name the asker’s thread and write the facts for the bot: what changed, where it runs, what to check again',
+        watch:
+          'never write the sentence the room should read; the bot restates it with no keys or shas',
+      },
+    ],
+    practice: [
+      'Read the thread first (`GET …/master-posts/threads/:thread`): hand over only what the bot did not already tell.',
+      'master-posts stays for a room only the team reads and for the daily review.',
+    ],
+    example: {
+      thread: 'q7XkP2mN9aB4cD8e',
+      facts:
+        'The print fix is live for every site since this morning; the asker should print again.',
+    },
+    // FB-866 (SidPeak, 2026-11-25): a master's own English report with shas, issue keys and tool
+    // words reached a users' thread as the bot's post, and the master had no way to hand the bot facts
+    redFlag:
+      'Posting your own report into a room its users read, or writing the facts as a message for the room.',
+    family: 'rooms',
+    audience: ['master'],
+    scenarios: [],
   },
   'PUT /api/projects/:id/support/rooms/:roomId/report-thread': {
     purpose: 'Names the thread a room’s reports go to, for a person’s own report thread.',

@@ -217,6 +217,16 @@ describe('the dispatch guide names the room door a master posts its own results 
     expect(prose).toContain('Never relay it by hand or through a script posting as the bot');
   });
 
+  // ISS-1466: a master never speaks in a users' room in its own words; it hands the room's bot facts
+  it("names the door that hands a room's bot facts, and that a post there carries no code whatever readers say", () => {
+    expect(prose).toContain(
+      '`POST /api/projects/:id/support/master-tells` `{ thread, facts, rid? }`',
+    );
+    expect(prose).toContain('you never post in your own words');
+    expect(prose).toContain('and the bot tells the person itself, in the room');
+    expect(prose).toContain("whatever its binding's `readers` says");
+  });
+
   it('names the rules of a room its users read, and each refusal', () => {
     expect(prose).toContain(
       "only in an asker's thread (one a member wrote in), never at its top level",

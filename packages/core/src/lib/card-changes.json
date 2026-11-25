@@ -605,9 +605,14 @@
     "by": "ISS-1251"
   },
   "POST /api/projects/:id/support/master-posts": {
-    "hash": "6e6b06939939b80b",
-    "on": "2026-11-23",
-    "by": "ISS-1433"
+    "hash": "7e789bb20c50ab1d",
+    "on": "2026-11-25",
+    "by": "ISS-1466"
+  },
+  "POST /api/projects/:id/support/master-tells": {
+    "hash": "f178eb7ba09c6de6",
+    "on": "2026-11-25",
+    "by": "ISS-1466"
   },
   "POST /api/projects/:id/support/technical-needs": {
     "hash": "bf54a137c60f8680",

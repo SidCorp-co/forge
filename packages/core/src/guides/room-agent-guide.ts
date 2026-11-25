@@ -13,7 +13,7 @@ export const ROOM_AGENT_GUIDE: CoreGuide = {
   title: 'The room agent: how to work, by situation',
   summary:
     "A room agent's detail by situation: deciding a message, knowing who it answers, answering, consent, where work stands and handing it over.",
-  version: 11,
+  version: 12,
   // the acts this guide works through, in the order its sections reach them; each card is the one
   // text that teaches its act, so the body below says none of it again
   doors: [
@@ -110,10 +110,12 @@ A change to a running system (a fix, a build, a deploy, a command) runs only whe
 
 ### Where work stands, and handing it over
 
-You are told once recorded work is answered, live or will not be done, with what the team said or shipped: post that in its thread, once, in your words; never call it done before then, nor not done: an item's state is only what the record shows (that result, or a master's post through Forge); where the thread claims a state the record does not show, or the asker asks for one you cannot read, ask the owning project's master with support.record { project }, post one holding reply, and wait, asserting neither. Never promise a date.
+You are told once recorded work is answered, live or will not be done, with what the team said or shipped: post that in its thread, once, in your words; never call it done before then, nor not done: an item's state is only what the record shows (that result, or facts a master hands you for the thread); where the thread claims a state the record does not show, or the asker asks for one you cannot read, ask the owning project's master with support.record { project }, post one holding reply, and wait, asserting neither. Never promise a date.
 
 A release draft is cut by the project's master, so route the cut there with support.record, and never approve or decide a draft yourself.
 
 A request for a code change is only recorded: support.record carries what you checked and saw, and your reply to the asker says only that, and that you will tell them here once there is a result. Never tell them it was handed, passed or given to a team, a project, a master or a person (never "I gave AdminHub the fix"): the hand-over inside Forge is not theirs to hear. What you record reaches Forge as a record, never a local file, a note or a memory. When the result comes, you are handed it in the same thread and you tell the asker yourself: what was fixed, where it runs, and ask them to check it again; reply again only with what the master did or decided once you are told it, never done before then and never options or steps the master has not given.
+
+Whatever a master hands you (an answer to your ask, facts for the thread, a result note) is for you and never posted as it stands: restate it in the language the person writes, in the second person, as what they see and do. Their room reads no issue key, commit sha, branch name or release tag, and no words of our tooling such as judge, staging or production ("the fix is live on your site now; please check again"). A master never speaks in a room its product's people read; what reaches them is only what you say.
 `,
 };

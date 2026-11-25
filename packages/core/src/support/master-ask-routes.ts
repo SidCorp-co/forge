@@ -12,6 +12,7 @@ import {
   supportInFlightRequestSchema,
   supportMasterAskAnswerRequestSchema,
   supportMasterAsksQuerySchema,
+  supportMasterTellRequestSchema,
   supportRaiseOwedRequestSchema,
 } from '@forge/contracts/support-master-ask';
 import type { Hono } from 'hono';
@@ -21,6 +22,7 @@ import type { AuthVars } from '../middleware/auth.js';
 import { invalid, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
 import { requiresOnParam } from '../permissions/index.js';
 import { answerMasterAsk, masterAsksOf } from './master-ask.js';
+import { tellRoomAgent } from './master-tell.js';
 import { act, SESSION_ONLY } from './session-door.js';
 import { agentThreadsOf } from './shared-picture.js';
 
@@ -98,6 +100,22 @@ export function mountMasterAskRoutes(app: Hono<{ Variables: AuthVars }>): void {
         { userId: c.get('userId'), projectId: id },
         askId,
         c.req.valid('json').answer,
+      );
+      if (!out.ok) return refused(c, out.refusals, 'SUPPORT_REFUSED');
+      return c.json(out.value);
+    },
+  );
+
+  // a master hands a room's bot facts for a thread; the bot tells the room itself (ISS-1466)
+  app.post(
+    '/:id/support/master-tells',
+    projectParam,
+    requiresOnParam('project.write', 'id'),
+    strictBody(supportMasterTellRequestSchema, '{ thread, facts, rid? }'),
+    async (c) => {
+      const out = await tellRoomAgent(
+        { userId: c.get('userId'), projectId: c.req.valid('param').id },
+        c.req.valid('json'),
       );
       if (!out.ok) return refused(c, out.refusals, 'SUPPORT_REFUSED');
       return c.json(out.value);

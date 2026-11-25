@@ -120,6 +120,9 @@ describe('masterWork under direct mode: the pass is told to build, not to dispat
         '`forge-runner api projects/<projectId>/support/master-posts -X POST` with `{ text, rid?, thread? }`',
       );
       expect(nudge).toContain('(Telling a room what came of it)');
+      // ISS-1466: a users' room is told through its bot, never by the master's own words
+      expect(nudge).toContain('support/master-tells -X POST');
+      expect(nudge).toContain('you hand its bot the facts');
       expect(nudge).toContain('where no channel agent owns the thread');
     }
   });

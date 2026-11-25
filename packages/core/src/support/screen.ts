@@ -19,12 +19,16 @@ import {
 } from '../messaging/internal-codes.js';
 import { screenReplyAtDoor } from '../messaging/reply-screen.js';
 import { readProjectDocument } from '../project-config/index.js';
-import { readersOf } from './grants.js';
+import { readersOf, teamOnlyRoom } from './grants.js';
 import { no, type Outcome } from './outcome.js';
 import { permissionTalkRefusal } from './permission-talk.js';
 import { isCoreThread } from './rules.js';
 import { agreedFilingsIn, insertAction, type RoomRow, threadMembers } from './store.js';
 import { TOP_LEVEL } from './thread.js';
+
+/** Where a master hands a room's bot what it wants said in the room, said by each refusal of its own post. */
+export const MASTER_TELL_DOOR =
+  '`POST /api/projects/:id/support/master-tells` with `{ thread, facts, rid? }`; the bot tells the room in its own words.';
 
 export type SessionDoor = 'support-reply' | 'operations-reply';
 
@@ -44,6 +48,11 @@ export async function codesBarredBecause(
   sharedThread: string | null = null,
 ): Promise<string | null> {
   if ((await readersOf(room)) === 'users') return `${room.rid} is read by the product's users`;
+  // ISS-1466: a master's words are the team's in a room only the team can be in; any other room's
+  // binding saying `readers: team` does not keep the product's people out of it
+  if (tool === 'master_post' && !(await teamOnlyRoom(room))) {
+    return `${room.rid} is a room the product's people may read whatever its binding's readers say, and a master's post is never the team's own report there`;
+  }
   if (thread === TOP_LEVEL && sharedThread)
     return `thread ${sharedThread} of ${room.rid} is read by everyone in the room, as its top level is`;
   if (thread === TOP_LEVEL)
@@ -89,11 +98,15 @@ export async function screenForThread(
       input: { text, door },
       output: { code: 'SUPPORT_INTERNAL_CODE', codes },
     });
+    const viaBot =
+      tool === 'master_post'
+        ? ` To tell a room what came of work, hand its bot the facts: ${MASTER_TELL_DOOR}`
+        : '';
     const ownCodes = codes.some((c) => c.kind === ISSUE_KEY) ? ` ${USER_FACING_CODES_DOOR}.` : '';
     return no(
       'SUPPORT_INTERNAL_CODE',
       '/text',
-      `nothing was posted: ${barred}, and the post holds ${codes.map((c) => `${c.kind} "${c.quote}"`).join(', ')}. ${PLAIN_WORDS_SHAPE}. Codes are shown only in a reply inside the thread of a team member who asked for the detail.${ownCodes}`,
+      `nothing was posted: ${barred}, and the post holds ${codes.map((c) => `${c.kind} "${c.quote}"`).join(', ')}. ${PLAIN_WORDS_SHAPE}. Codes are shown only in a reply inside the thread of a team member who asked for the detail.${ownCodes}${viaBot}`,
     );
   }
   const talk = await permissionTalkRefusal(room, conversationId, thread, text, tool);

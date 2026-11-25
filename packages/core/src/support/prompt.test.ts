@@ -116,6 +116,8 @@ describe('the room brief teaches an ask it cannot do to wait on the master', () 
     expect(taught(channel)).toContain(
       'once told the result, tell the asker yourself in that thread: what was fixed, where it runs, check again',
     );
+    expect(taught(channel)).toContain('restated in their language and as what they see'); // ISS-1466
+    expect(taught(channel)).toContain('is for you and never posted as it stands');
     expect(taught(channel)).not.toContain('it went to the team');
     expect(REPLY_CARD.redFlag).toContain('never that it was passed on');
     expect(taught(channel)).toContain(
@@ -154,7 +156,7 @@ describe('the room brief states an item only from the record, either way', () =>
   it('asserts neither done nor not done from what the record does not show', () => {
     for (const text of [brief, channel]) {
       expect(taught(text)).toContain(
-        "never call it done before then, nor not done: an item's state is only what the record shows (that result, or a master's post through Forge)",
+        "never call it done before then, nor not done: an item's state is only what the record shows (that result, or facts a master hands you for the thread)",
       );
       expect(taught(text)).toContain(
         "where the thread claims a state the record does not show, or the asker asks for one you cannot read, ask the owning project's master with support.record { project }, post one holding reply, and wait, asserting neither",
