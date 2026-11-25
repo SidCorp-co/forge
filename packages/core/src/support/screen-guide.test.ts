@@ -45,11 +45,12 @@ describe('a person asking about a screen is shown that screen', () => {
     }
   });
 
-  it('the dispatch guide has the master build it on test data and post one PDF in the thread', () => {
+  it('the dispatch guide has the master build it on test data and make one PDF', () => {
     expect(guide).toContain('**A screen guide a room asked for.**');
     expect(guide).toContain('non-production environment with test data');
     expect(guide).toContain("never with a customer's data");
     expect(guide).toContain('goes as one PDF with one picture per step, in one message');
-    expect(guide).toContain("post it with `attachments` in the asker's thread");
+    expect(guide).toContain('`master-tells` carries facts and no file');
+    expect(guide).toContain('post it with `attachments` in that thread');
   });
 });

@@ -23,7 +23,7 @@ export const DISPATCH_GUIDE: CoreGuide = {
   title: "Running a wave: a master's dispatch and fold",
   summary:
     "The method a project's master follows for one wave: read the order, triage each candidate, batch by files, give each run its tree and a brief, declare and record each dispatch, and fold what comes back — over REST and `forge-runner`; on a project that runs direct (not strict, fast delivery on), build, land, release and judge a whole batch at once instead.",
-  version: 15,
+  version: 16,
   body: `## Running a wave
 
 A wave is the set of runs one master pass sends out, and the fold is the reading of what came back.
@@ -192,9 +192,10 @@ the room's bot the facts, \`POST /api/projects/:id/support/master-tells\` \`{ th
 and the bot tells the person itself, in the room's language and its own words. Write \`facts\` for
 the bot: what changed, where it runs now, what to check again, with the issue keys, shas and tooling
 words it is taught to leave out; never a draft for the room. \`SUPPORT_THREAD_UNKNOWN\` names a
-thread no member wrote in. A result for a room with no agent in the thread, a release line for a
-room only the team is in, a daily review: the master posts it itself, in its own words, as the
-room's bot, through
+thread the room's agent took no message of (nothing to hand the facts to: wait for a member to
+write in it; there is no route that puts your words in a users' room instead). A release line for a
+room only the team reads (an operations room, an agent's owner room) and a daily review are the
+team's own: there you post in your own words, as the room's bot, through
 \`POST /api/projects/:id/support/master-posts\` with \`{ text, rid?, thread?, attachments? }\`
 (\`forge-runner api projects/<projectId>/support/master-posts -X POST -d '{"text":"…","rid":"<room id>","thread":"<message id>"}'\`).
 Never relay it by hand or through a script posting as the bot: core holds the bot's credential,
@@ -220,9 +221,9 @@ screens the words for the room's readers and records the post as the master's.
   Post only on that thread's own matter; a matter for the whole room goes to its report thread
   (name the room's \`reportThread\` from the rooms read as \`thread\`), never into an asker's thread. Say nothing when the room agent or another master already
   said it. Your post replaces the bot's answer to the current request, so the thread reads one voice.
-- **Once per result.** A users' thread already told an item's result takes a post only as a
-  follow-up naming the message that told it, \`followsUp\`, as the refusal
-  \`SUPPORT_MASTER_POST_ALREADY_TOLD\` names it: say there only what it did not.
+- **Once per result.** Read the thread first and hand the bot only what it did not already tell;
+  a team room's result already posted takes a follow-up only, naming the message that told it,
+  \`followsUp\`, as the refusal \`SUPPORT_MASTER_POST_ALREADY_TOLD\` names it.
 - **A report is not an answer.** A post in a thread replaces the bot's answer to the asker's current
   request, so one voice stands. A release check or any other report names itself, \`report\`
   (\`"report":"release 0.310.0"\`): it replaces nobody's answer, updates in place only your own
@@ -239,11 +240,14 @@ screens the words for the room's readers and records the post as the master's.
   link. Write the words yourself in the owner's language, one line each, the link last.
 - **A screen guide a room asked for.** A channel assistant asks for one with a request record (a
   feedback filed from the asker's thread) when a person needs to see a screen it can only describe.
-  It is answered by a post in that thread, not by a landing: make the pictures with a browser on a
+  It is answered in that thread, not by a landing: make the pictures with a browser on a
   non-production environment with test data, as the person sees the screen (the same labels, buttons
   and places), never with a customer's data; a guide of more than one step goes as one PDF with one
   picture per step, in one message, never one message per step. Attach it to the issue the request's
-  triage files, post it with \`attachments\` in the asker's thread, then close that issue.
+  triage files. \`master-tells\` carries facts and no file, so the PDF does not reach a users' room
+  through it: hand the bot the steps in words (what to press, where) and say on the issue that the
+  file itself was not delivered, then close it only when its criteria are met in scope. Where the
+  asker's room is one only the team reads, post it with \`attachments\` in that thread.
 - **Editing or deleting your own post.** Within ${SUPPORT_MASTER_POST_EDIT_WINDOW_MS / 60_000} minutes of posting,
   \`PATCH /api/projects/:id/support/master-posts/:messageId { text }\` replaces its words, screened as
   the post was, and \`DELETE\` on the same path removes it with its images or PDF; \`messageId\` is
@@ -258,12 +262,9 @@ screens the words for the room's readers and records the post as the master's.
   channel agent's owner room are the team's, and any other room takes no code of core's whatever
   its binding's \`readers\` says; a post there carrying a key, a sha or any code is refused
   \`SUPPORT_INTERNAL_CODE\` naming the code and this door.
-- **A room its users read** takes a master's words only in an asker's thread (one a member wrote
-  in), never at its top level, mentioning at most one person: the thread's asker or a member of
-  the room. Plain words, things named as the user sees them on screen: no Forge issue key, MR or PR
-  number, environment variable name, commit sha or credential word. A store's own codes, such as
-  order number RIV-68493, stay as the user reads them; a prefix that collides with a Forge one is
-  declared in the project document's \`userFacingCodes\`.
+- **A room its users read** gets no words of yours: you hand its bot the facts with
+  \`master-tells\` and it says them. A post of yours there is a defect, not a route, and carries no
+  Forge issue key, MR or PR number, environment variable name, commit sha or credential word.
 - **Refused by name, nothing posted:** \`SUPPORT_ROOM_UNKNOWN\` (no binding of the project names the
   room), \`SUPPORT_ROOM_SWITCHED_OFF\` (its binding is off or no longer names it),
   \`SUPPORT_MASTER_POST_USERS_ROOM\` (a top-level post in a room its users read),

@@ -180,7 +180,7 @@ describe("the dispatch guide names the doors of a room agent's ask and its open 
     );
     expect(section).toContain("handed into the asker's thread as a note by core as you move it");
     expect(section).toContain('master-asks/:askId/answer');
-    expect(section).toContain('A result for a room with no agent in the thread');
+    expect(section).toContain('A release line for a room only the team reads');
   });
 });
 
@@ -227,10 +227,8 @@ describe('the dispatch guide names the room door a master posts its own results 
     expect(prose).toContain("whatever its binding's `readers` says");
   });
 
-  it('names the rules of a room its users read, and each refusal', () => {
-    expect(prose).toContain(
-      "only in an asker's thread (one a member wrote in), never at its top level",
-    );
+  it("names the refusals of a post, and that a users room takes none of a master's words", () => {
+    expect(prose).toContain('A room its users read** gets no words of yours');
     for (const code of [
       'SUPPORT_ROOM_UNKNOWN',
       'SUPPORT_ROOM_SWITCHED_OFF',
@@ -281,5 +279,25 @@ describe('the dispatch guide gives the command that attaches to a channel agent'
   it('names the command that opens a master session live', () => {
     expect(DISPATCH_GUIDE.body).toContain('`forge-runner master attach <slug>`');
     expect(DISPATCH_GUIDE.body).not.toContain('attach -t forge-master-');
+  });
+});
+
+// ISS-1466 (owner, 2026-11-25, masters-speak-through-the-room-bot): a master never writes words for
+// a users' room; it hands the room's bot the facts, and posts itself only where the team alone reads
+describe("the dispatch guide teaches a master to tell a users' room through the bot only", () => {
+  it('teaches master-tells for a users room and master-posts for a team room', () => {
+    expect(prose).toContain('you hand its bot the facts with `master-tells` and it says them');
+    expect(prose).toContain(
+      "A release line for a room only the team reads (an operations room, an agent's owner room) and a daily review are the team's own: there you post in your own words",
+    );
+    expect(prose).toContain("there is no route that puts your words in a users' room instead");
+  });
+
+  it('no longer lets a master post in a users room, nor carry a screen guide file there', () => {
+    expect(prose).not.toContain("A room its users read** takes a master's words");
+    expect(prose).not.toContain('A result for a room with no agent in the thread');
+    expect(prose).not.toContain("A users' thread already told an item's result takes a post");
+    expect(prose).not.toContain("post it with `attachments` in the asker's thread, then close");
+    expect(prose).toContain('`master-tells` carries facts and no file');
   });
 });
