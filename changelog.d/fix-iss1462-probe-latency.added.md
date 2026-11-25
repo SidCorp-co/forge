@@ -1,1 +1,0 @@
-**A monitoring rule can now alert on a probe's latency.** The new `probe_slower_than` kind takes a probe target and a threshold in seconds, so a site that answers in 15 s but inside the blackbox timeout fires.

@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.828] - 2026-11-25
+
+Monitoring rules alert when a probe answers slower than a set time
+
+### Added
+
+- **A monitoring rule can now alert on a probe's latency.** The new `probe_slower_than` kind takes a probe target and a threshold in seconds, so a site that answers in 15 s but inside the blackbox timeout fires.
+
 ## [0.4.0-dev.827] - 2026-11-25
 
 Judging runs no longer held to another session's processes in their worktree
