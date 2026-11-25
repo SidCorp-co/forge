@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.833] - 2026-11-25
+
+Masters reach users' rooms only through the room bot, in its own words
+
+### Changed
+
+- **A master no longer speaks in a users' room.** Its post there carries no issue key or sha whatever the binding's readers say; `master-tells` hands the room's bot facts, which the bot tells in its own words.
+
 ## [0.4.0-dev.832] - 2026-11-25
 
 Room assistants report results themselves instead of saying work was handed off
