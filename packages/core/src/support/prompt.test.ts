@@ -462,7 +462,8 @@ describe('the room brief is a map of situations', () => {
     }
     expect(SHOW_HOW).toContain('what a feature looks like');
     expect(ROOM_AGENT_GUIDE.body).toContain('show them the screen as they see it');
-    expect(ROOM_AGENT_GUIDE.body).toContain('comes as one PDF in one message');
+    expect(ROOM_AGENT_GUIDE.body).not.toContain('guide will follow');
+    expect(ROOM_AGENT_GUIDE.body).toContain('never say a guide, a PDF or pictures will follow');
   });
 
   // ISS-1251 (owner 2026-11-16, one capability, one card): the brief repeats no act's teaching

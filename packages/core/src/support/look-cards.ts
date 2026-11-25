@@ -18,7 +18,7 @@ export const LOOK_ACT_CARDS = {
           'it reaches only your own project’s environments; where you cannot look, say in plain words you have not seen the screen yet and what you do about it, never the thing anyway',
       },
       {
-        when: 'you walk a person, or a guide, through a screen',
+        when: 'you walk a person through a screen',
         do: 'walk each step yourself with support.look { thread, box, step } (a ref from the snapshot), so its shots come from that walk',
         watch:
           'a step that needs a workaround (an address edit, a hidden tab, a field the screen hides) is a UI defect for the project’s master with support.record, never a step you send',

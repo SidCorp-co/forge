@@ -8,7 +8,6 @@ vi.hoisted(() => {
 
 import { api } from '../helpers/api.js';
 import { rows } from '../helpers/factories.js';
-import { seedProjectDocument } from '../helpers/release-world.js';
 import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 import { SupportWorld } from '../helpers/support-world.js';
 
@@ -25,9 +24,8 @@ import { SupportWorld } from '../helpers/support-world.js';
 //
 // ISS-943: sid-desk's master had no way to post its release line into a thread of #sid-email, the
 // support room its project binds, so the orchestrator relayed it by hand as the bot. The master's
-// door takes every room kind its project binds. A support room the product's users read takes a
-// master's post only in an asker's thread, held to the rules that room's bot keeps toward users,
-// never at its top level (ISS-872). A room no binding of the project names, a room whose binding is
+// door takes every room kind its project binds. A support room the product's users read takes none of
+// a master's words, in any thread or at its top level (ISS-872, ISS-1467): it is refused by name. A room no binding of the project names, a room whose binding is
 // switched off and a thread of another room are refused by name, and nothing is posted.
 
 vi.setConfig({ testTimeout: 60_000, hookTimeout: 120_000 });
@@ -73,103 +71,29 @@ beforeAll(async () => {
 afterAll(() => w.stop());
 
 describe("ISS-943: a master posts in its project's support room", () => {
-  it("answers in an asker's thread, as the room's bot, recorded as the master's", async () => {
+  // ISS-1467 (owner ruling 2026-11-25): a master never writes words for a room its users read, so the
+  // asker's thread is refused as the top level is, with what was wrong, where, and the valid route
+  it("refuses a post in an asker's thread of the users' room by name, naming master-tells, and posts nothing", async () => {
     const asked = await asks('Hộp thư của tôi hiện sai tên người gửi');
     const res = await post({ text: RESULT, rid: chat.rid, thread: asked });
-    expect(res.status, JSON.stringify(res.body)).toBe(201);
-    expect(res.body).toMatchObject({ rid: chat.rid, thread: asked });
-    expect(threadLines(asked).map((l) => l.text)).toEqual([RESULT]);
-    expect(topLines()).toEqual([]);
-    const [act] = await rows<{ kind: string; by: string }>(sql`
-      SELECT kind, input->>'by' AS by FROM support_actions
-       WHERE project_id = ${w.projectId}::uuid AND tool = 'master_post' AND thread = ${asked}`);
-    expect(act).toEqual({ kind: 'routed', by: w.ownerId });
-  });
-
-  it("finds the asker's thread with no rid named", async () => {
-    const asked = await asks('Thư gửi đi bị chậm');
-    const res = await post({ text: RESULT, thread: asked });
-    expect(res.status, JSON.stringify(res.body)).toBe(201);
-    expect(threadLines(asked).map((l) => l.text)).toEqual([RESULT]);
-  });
-
-  it("refuses an internal code in the users' room, and a mention of anyone outside the room", async () => {
-    const asked = await asks('Khi nào sửa xong?');
-    const coded = await post({ text: 'Đã xong ISS-12, commit 3971924c4.', thread: asked });
-    expect(said(coded), JSON.stringify(coded.body)).toEqual([400, 'SUPPORT_INTERNAL_CODE']);
-    const mention = await post({ text: `@mallory ${RESULT}`, thread: asked });
-    expect(said(mention), JSON.stringify(mention.body)).toEqual([409, 'SUPPORT_MENTION_REFUSED']);
-    expect(refusalOf(mention)?.detail).toContain('@mallory is neither');
+    expect(said(res), JSON.stringify(res.body)).toEqual([409, 'SUPPORT_MASTER_POST_USERS_ROOM']);
+    expect(refusalOf(res)?.detail).toContain(`thread ${asked}`);
+    expect(refusalOf(res)?.detail).toContain('master-tells');
     expect(threadLines(asked)).toEqual([]);
+    expect(topLines()).toEqual([]);
+    const acts = await rows<{ n: number }>(sql`
+      SELECT count(*)::int AS n FROM support_actions
+       WHERE project_id = ${w.projectId}::uuid AND tool = 'master_post' AND thread = ${asked}`);
+    expect(acts[0]?.n).toBe(0);
   });
 
-  // ISS-1097 (3wCm4DDmvhsCHMkir): alice started the thread where core never heard her, so core held
-  // no turn of hers; the room's own record names her the starter and a member, and both may be named
-  it("mentions the thread's starter core never heard, and a member of the room no record lists", async () => {
-    const started = chat.wroteWhileAway(
-      chat.rid,
-      chat.alice,
-      'Hộp thư của tôi không nhận thư',
-      new Date(),
-    );
-    const reply = await chat.say(chat.bob, 'Của tôi cũng vậy', started);
-    await expect
-      .poll(
-        async () =>
-          (
-            await rows<{ n: number }>(sql`
-              SELECT count(*)::int AS n FROM support_actions
-               WHERE project_id = ${w.projectId}::uuid AND thread = ${started}
-                 AND kind = 'message_in' AND external_id = ${reply}`)
-          )[0]?.n,
-        { timeout: 20_000 },
-      )
-      .toBe(1);
-    const starter = await post({ text: `@alice ${RESULT}`, thread: started });
-    expect(starter.status, JSON.stringify(starter.body)).toBe(201);
-    const member = await post({ text: `@carol ${RESULT}`, thread: started });
-    expect(member.status, JSON.stringify(member.body)).toBe(201);
-    const stranger = await post({ text: `@mallory ${RESULT}`, thread: started });
-    expect(said(stranger), JSON.stringify(stranger.body)).toEqual([409, 'SUPPORT_MENTION_REFUSED']);
-    // one voice (ISS-1243): the second post replaced the first in place, nobody having written between
-    expect(threadLines(started).map((l) => l.text)).toEqual([`@carol ${RESULT}`]);
-    expect(member.body).toMatchObject({ replaced: 'master' });
-  });
-
-  // ISS-1107 (FB-565): an issue key is read by a prefix Forge issues, never by its shape, so a
-  // store's order numbers reach the merchant as he reads them, and a code the project declares its
-  // people's own passes even where it collides with a Forge prefix
-  it("passes a store's order number, refuses a Forge key naming the door, and passes a declared code", async () => {
-    const asked = await asks('Hai đơn của tôi đâu rồi?');
-    const order = 'Mình đang xem hai đơn RIV-68493 và RIV-68340 của bạn nhé.';
-    const passed = await post({ text: order, thread: asked });
-    expect(passed.status, JSON.stringify(passed.body)).toBe(201);
-    const keyed = await post({ text: 'Mình đang xem ISS-123 cho bạn nhé.', thread: asked });
-    expect(said(keyed), JSON.stringify(keyed.body)).toEqual([400, 'SUPPORT_INTERNAL_CODE']);
-    expect(refusalOf(keyed)?.detail).toContain("project document's userFacingCodes");
-    const collides = 'Mình đang xem đơn FB-68493 của bạn nhé.';
-    expect(said(await post({ text: collides, thread: asked }))).toEqual([
-      400,
-      'SUPPORT_INTERNAL_CODE',
-    ]);
-
-    await seedProjectDocument(w.projectId, w.ownerId, { environments: {} });
-    const held = (await api(w.owner, 'GET', `/api/projects/${w.projectId}/config`)).body as {
-      revision: number;
-      document: Record<string, unknown>;
-    };
-    const declared = await api(w.owner, 'PUT', `/api/projects/${w.projectId}/config`, {
-      baseRevision: held.revision,
-      document: { ...held.document, userFacingCodes: ['FB'] },
-    });
-    expect(declared.status, JSON.stringify(declared.body)).toBe(200);
-    const own = await post({ text: collides, thread: asked });
-    expect(own.status, JSON.stringify(own.body)).toBe(201);
-    expect(said(await post({ text: 'Mình đang xem ISS-123 cho bạn nhé.', thread: asked }))).toEqual(
-      [400, 'SUPPORT_INTERNAL_CODE'],
-    );
-    // one voice (ISS-1243): the declared code's post replaced the order post in place
-    expect(threadLines(asked).map((l) => l.text)).toEqual([collides]);
+  it('refuses it with no rid named, and whatever the words: a clean text, a code, a mention', async () => {
+    const asked = await asks('Thư gửi đi bị chậm');
+    for (const text of [RESULT, 'Đã xong ISS-12, commit 3971924c4.', `@alice ${RESULT}`]) {
+      const res = await post({ text, thread: asked });
+      expect(said(res), JSON.stringify(res.body)).toEqual([409, 'SUPPORT_MASTER_POST_USERS_ROOM']);
+    }
+    expect(threadLines(asked)).toEqual([]);
   });
 
   it("refuses a top-level post in the users' room, named or not, and posts nothing", async () => {
@@ -178,7 +102,7 @@ describe("ISS-943: a master posts in its project's support room", () => {
       409,
       'SUPPORT_MASTER_POST_USERS_ROOM',
     ]);
-    expect(refusalOf(named)?.detail).toContain("only in an asker's thread");
+    expect(refusalOf(named)?.detail).toContain('master-tells');
     const unnamed = await post({ text: NEWS });
     expect(said(unnamed)).toEqual([409, 'SUPPORT_MASTER_POST_USERS_ROOM']);
     expect(topLines()).toEqual([]);
@@ -191,6 +115,7 @@ describe("ISS-943: a master posts in its project's support room", () => {
     });
     const res = await post({ text: RESULT, rid: chat.rid, thread: app });
     expect(said(res), JSON.stringify(res.body)).toEqual([404, 'SUPPORT_THREAD_UNKNOWN']);
+    expect(refusalOf(res)?.detail).toContain("ask the room's owner");
     expect(threadLines(app)).toEqual([]);
   });
 

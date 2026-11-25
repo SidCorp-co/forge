@@ -82,7 +82,8 @@ describe("ISS-1024: a master's post carries images into the text's own thread", 
   let asked = '';
 
   it("posts the text then both images in the asker's thread, and the record names them", async () => {
-    asked = (await w.hear(() => chat.say(chat.bob, 'Bản phát hành mới đã chạy chưa?'))).id;
+    // a thread of the owner's room, which only the team reads: a users' room takes none of a master's files
+    asked = await chat.sayIn(chat.rid2, chat.alice, 'Bản phát hành mới đã chạy chưa?');
     const first = await attach(issueId, 'release-home.png', 'image/png', PNG);
     const second = await attach(issueId, 'release-cart.jpg', 'image/jpeg', JPEG);
     const res = await post({
@@ -91,7 +92,7 @@ describe("ISS-1024: a master's post carries images into the text's own thread", 
       attachments: [issueImage(first), issueImage(second)],
     });
     expect(res.status, JSON.stringify(res.body)).toBe(201);
-    const lines = w.threadLines(chat.rid, asked);
+    const lines = w.threadLines(chat.rid2, asked);
     expect(lines.map((l) => [l.text, l.file?.mime ?? null])).toEqual([
       [RESULT, null],
       ['', 'image/png'],
@@ -103,7 +104,7 @@ describe("ISS-1024: a master's post carries images into the text's own thread", 
     // the uploader's file names stay out of the room; the room sees neutral ones
     expect(lines.slice(1).map((l) => l.file?.name)).toEqual(['image-1.png', 'image-2.jpg']);
     expect(res.body).toMatchObject({
-      rid: chat.rid,
+      rid: chat.rid2,
       thread: asked,
       attachments: [
         { attachmentId: first, messageId: lines[1]?.id },
@@ -154,11 +155,11 @@ describe("ISS-1024: a master's post carries images into the text's own thread", 
 
 describe("ISS-1238: a master's post carries a PDF in one message", () => {
   it("posts the text then the PDF in the asker's thread, under a neutral name, and records it", async () => {
-    const asked = (await w.hear(() => chat.say(chat.bob, 'Cho tôi xin hướng dẫn sử dụng?'))).id;
+    const asked = await chat.sayIn(chat.rid2, chat.alice, 'Cho tôi xin hướng dẫn sử dụng?');
     const guide = await attach(issueId, 'Huong dan 12 buoc.pdf', 'application/pdf', PDF);
     const res = await post({ text: RESULT, thread: asked, attachments: [issueImage(guide)] });
     expect(res.status, JSON.stringify(res.body)).toBe(201);
-    const lines = w.threadLines(chat.rid, asked);
+    const lines = w.threadLines(chat.rid2, asked);
     expect(lines.map((l) => [l.text, l.file?.name ?? null, l.file?.mime ?? null])).toEqual([
       [RESULT, null, null],
       ['', 'document-1.pdf', 'application/pdf'],
@@ -189,6 +190,21 @@ describe("ISS-1238: a master's post carries a PDF in one message", () => {
         .slice(-2)
         .map((l) => l.file?.name),
     ).toEqual(['image-1.png', 'document-1.pdf']);
+  });
+});
+
+describe("ISS-1467: a users' room takes no file of a master's, in any thread", () => {
+  it("refuses a post with a PDF in the asker's thread by name, nothing posted", async () => {
+    const asked = (await w.hear(() => chat.say(chat.bob, 'Cho tôi xin hướng dẫn sử dụng?'))).id;
+    const guide = await attach(issueId, 'guide.pdf', 'application/pdf', PDF);
+    const lines = allLines();
+    const staged = chat.media.size;
+    const res = await post({ text: RESULT, thread: asked, attachments: [issueImage(guide)] });
+    expect(res.status).toBe(409);
+    expect(refusalsOf(res).map((r) => r.code)).toEqual(['SUPPORT_MASTER_POST_USERS_ROOM']);
+    expect(refusalsOf(res)[0]?.detail).toContain('master-tells');
+    expect(allLines(), 'nothing posted').toBe(lines);
+    expect(chat.media.size, 'nothing uploaded').toBe(staged);
   });
 });
 

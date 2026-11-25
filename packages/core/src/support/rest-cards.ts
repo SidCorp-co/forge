@@ -16,7 +16,7 @@ export const SUPPORT_REST_CARDS = {
         when: 'a room only the team reads should hear a result or a release line',
         do: 'post it in the thread, naming rid and thread from the rooms read',
         watch:
-          'a room its users read gets no words of yours: hand its bot the facts (`POST …/master-tells`); a post there carrying a code is refused',
+          'a room its users read gets no words or files of yours, in any thread: it is refused SUPPORT_MASTER_POST_USERS_ROOM; hand its bot the facts (`POST …/master-tells`)',
       },
       {
         when: 'you name no thread',
@@ -35,8 +35,8 @@ export const SUPPORT_REST_CARDS = {
         watch: 'without `report` the post replaces the agent’s latest answer there',
       },
       {
-        when: 'that thread was already told the item’s result',
-        do: 'post only what it did not say, as a follow-up naming the message (`followsUp`)',
+        when: 'a team room’s thread was already told the item’s result',
+        do: 'post only what it did not say, naming the message it follows up (`followsUp`), so it stands beside it',
       },
       {
         when: 'your post landed in the wrong thread',
@@ -154,6 +154,12 @@ export const SUPPORT_REST_CARDS = {
         do: 'name the asker’s thread and write the facts for the bot: what changed, where it runs, what to check again',
         watch:
           'never write the sentence the room should read; the bot restates it with no keys or shas',
+      },
+      {
+        when: 'the thread is refused SUPPORT_THREAD_UNKNOWN: the room’s agent took no message of it',
+        do: 'hand nothing and post nothing: record what you hold on the issue, and ask the room’s owner to have a member write in that thread',
+        watch:
+          'there is no route that puts your words in a users’ room instead, and none that carries a file to it: give the bot the steps in words',
       },
     ],
     practice: [

@@ -605,14 +605,14 @@
     "by": "ISS-1251"
   },
   "POST /api/projects/:id/support/master-posts": {
-    "hash": "7e789bb20c50ab1d",
+    "hash": "aa20413e2e26049d",
     "on": "2026-11-25",
-    "by": "ISS-1466"
+    "by": "ISS-1467"
   },
   "POST /api/projects/:id/support/master-tells": {
-    "hash": "f178eb7ba09c6de6",
+    "hash": "4bd19602847607a1",
     "on": "2026-11-25",
-    "by": "ISS-1466"
+    "by": "ISS-1467"
   },
   "POST /api/projects/:id/support/technical-needs": {
     "hash": "bf54a137c60f8680",
@@ -1635,9 +1635,9 @@
     "by": "ISS-1432"
   },
   "support.look": {
-    "hash": "2b3ce61a4492e3f6",
-    "on": "2026-11-21",
-    "by": "ISS-1386"
+    "hash": "8695af10a38be7b7",
+    "on": "2026-11-25",
+    "by": "ISS-1467"
   },
   "support.member": {
     "hash": "ea1a0787ef520344",

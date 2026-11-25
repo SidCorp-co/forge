@@ -86,7 +86,7 @@ describe('ISS-872: the binding names the owner room among its groups', () => {
   });
 });
 
-describe("ISS-872: a master's post reaches a users' room only in an asker's thread", () => {
+describe("ISS-872, ISS-1467: a master's post reaches a users' room in no thread", () => {
   it('refuses the four top-level posts of the trial in the users room, posting nothing', async () => {
     const before = allLines();
     for (const text of FOUR) {
@@ -113,24 +113,24 @@ describe("ISS-872: a master's post reaches a users' room only in an asker's thre
     expect(topLines(chat.rid)).toEqual([]);
   });
 
-  it("answers in an asker's thread of the users room in plain words, and refuses a code there", async () => {
+  it("refuses an asker's thread of the users room by name, a plain text and a code alike", async () => {
     const asked = (await w.hear(() => chat.say(chat.bob, 'Nhờ gửi lại đơn PO001453760102901'))).id;
-    const coded = await post({ text: 'Đã xong ISS-89, commit 3971924c4.', thread: asked });
-    expect([coded.status, codeOf(coded)], JSON.stringify(coded.body)).toEqual([
-      400,
-      'SUPPORT_INTERNAL_CODE',
-    ]);
+    for (const text of [
+      'Đã xong ISS-89, commit 3971924c4.',
+      'Đã gửi lại đơn PO001453760102901, số 1453760102901.',
+    ]) {
+      const res = await post({ text, thread: asked });
+      expect([res.status, codeOf(res)], JSON.stringify(res.body)).toEqual([
+        409,
+        'SUPPORT_MASTER_POST_USERS_ROOM',
+      ]);
+    }
     expect(w.threadLines(chat.rid, asked)).toEqual([]);
-    const plain = 'Đã gửi lại đơn PO001453760102901, số 1453760102901.';
-    const res = await post({ text: plain, thread: asked });
-    expect(res.status, JSON.stringify(res.body)).toBe(201);
-    expect(w.threadLines(chat.rid, asked).map((l) => l.text)).toEqual([plain]);
   });
 
   // ISS-969 c1 and c4 (FB-498): the rooms read names each room's threads, whose they are and when
-  // they moved, so a master takes the thread from it; and a thread already told an item's result
-  // takes a master's post only as a follow-up naming the message that told it
-  it("names the users room's threads, and refuses a post repeating a told result unless it follows up on it", async () => {
+  // they moved, so a master takes the thread from it to hand its bot facts (master-tells)
+  it("names the users room's threads, and refuses a post in a thread told a result, a follow-up too", async () => {
     const asked = (await w.hear(() => chat.say(chat.bob, 'Đơn PO001453760102902 bị lỗi'))).id;
     const read = await api(owner, 'GET', `/api/projects/${w.projectId}/support/rooms`);
     const room = (
@@ -161,19 +161,14 @@ describe("ISS-872: a master's post reaches a users' room only in an asker's thre
       INSERT INTO support_actions (room_id, project_id, thread, kind, actor_kind, external_id, input)
       VALUES (${roomId}, ${w.projectId}, ${asked}, 'reply', 'session', 'told-msg-1', '{"text": "Đã sửa."}'::jsonb)`);
     const again = 'Bản 0.9.0 đã lên: đơn PO001453760102902 đã gửi được.';
-    const repeat = await post({ text: again, thread: asked });
-    expect([repeat.status, codeOf(repeat)], JSON.stringify(repeat.body)).toEqual([
-      409,
-      'SUPPORT_MASTER_POST_ALREADY_TOLD',
-    ]);
-    expect(JSON.stringify(repeat.body)).toContain('told-msg-1');
-    expect(JSON.stringify(repeat.body)).toContain('FB-1');
+    for (const extra of [{}, { followsUp: 'some-other-msg' }, { followsUp: 'told-msg-1' }]) {
+      const res = await post({ text: again, thread: asked, ...extra });
+      expect([res.status, codeOf(res)], JSON.stringify(res.body)).toEqual([
+        409,
+        'SUPPORT_MASTER_POST_USERS_ROOM',
+      ]);
+    }
     expect(w.threadLines(chat.rid, asked)).toEqual([]);
-    const wrong = await post({ text: again, thread: asked, followsUp: 'some-other-msg' });
-    expect(codeOf(wrong), JSON.stringify(wrong.body)).toBe('SUPPORT_MASTER_POST_ALREADY_TOLD');
-    const follow = await post({ text: again, thread: asked, followsUp: 'told-msg-1' });
-    expect(follow.status, JSON.stringify(follow.body)).toBe(201);
-    expect(w.threadLines(chat.rid, asked).map((l) => l.text)).toEqual([again]);
   });
 });
 

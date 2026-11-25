@@ -111,19 +111,21 @@ describe('ISS-1238: a master edits or deletes its own post within the window', (
     expect(second?.before).toBe(FIXED);
   });
 
-  it('screens an edit as the post was: a code a users thread may not read is refused, nothing changed', async () => {
-    const asked = (await w.hear(() => chat.say(chat.bob, 'Làm sao để đổi mật khẩu?'))).id;
+  it('screens an edit as the post was: an issue key the project does not hold is refused, nothing changed', async () => {
+    // a thread of the owner's room: a users' room takes no post of a master's to edit (ISS-1467)
+    const asked = await chat.sayIn(chat.rid2, chat.alice, 'Làm sao để đổi mật khẩu?');
     const res = await post({ text: 'Bạn vào trang Cài đặt nhé.', thread: asked });
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     const id = (res.body as { messageId: string }).messageId;
     const before = await roomState();
     const coded = await edit(id, 'Đã xong ISS-89, commit 3971924c4.');
+    // the owner room's screen refuses an issue key the project does not hold
     expect([coded.status, codeOf(coded)], JSON.stringify(coded.body)).toEqual([
-      400,
-      'SUPPORT_INTERNAL_CODE',
+      422,
+      'SUPPORT_REPLY_REFUSED',
     ]);
     expect(await roomState()).toBe(before);
-    expect(w.threadLines(chat.rid, asked).at(-1)?.text).toBe('Bạn vào trang Cài đặt nhé.');
+    expect(w.threadLines(chat.rid2, asked).at(-1)?.text).toBe('Bạn vào trang Cài đặt nhé.');
   });
 
   it('deletes its post with the image it carried, and records the delete', async () => {

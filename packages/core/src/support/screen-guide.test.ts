@@ -33,15 +33,14 @@ const briefs = [
 const guide = flat(DISPATCH_GUIDE.body);
 
 describe('a person asking about a screen is shown that screen', () => {
-  it('the room brief has the assistant offer a picture guide and ask the master for it on a yes', () => {
+  it('the room brief has the assistant say the steps in words and never promise a guide file', () => {
     for (const b of briefs) {
-      expect(taught(b)).toContain('show them the screen as they see it, not words alone');
+      expect(taught(b)).toContain('show them the screen as they see it: look first');
       expect(taught(b)).toContain(
-        'on their plain yes, ask the master of the project that owns the screen for it with support.record { kind: request, project }',
+        "no route carries one from a master into a users' room, so never say a guide, a PDF or pictures will follow",
       );
-      expect(taught(b)).toContain('say in the thread that the guide will follow');
-      expect(taught(b)).toContain('made away from production with test data');
-      expect(taught(b)).toContain('one PDF in one message, never one message per step');
+      expect(taught(b)).toContain('record it with support.record { kind: request, project }');
+      expect(taught(b)).not.toContain('the guide will follow');
     }
   });
 

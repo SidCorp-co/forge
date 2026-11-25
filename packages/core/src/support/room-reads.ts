@@ -1,11 +1,8 @@
 // What a room's record says of its threads, read for a master and the rooms read: who each recent
-// thread is whose (ISS-969), whether a thread was already told a result (FB-498) and the refusal of a
-// master's post repeating it, and what a room could not take (ISS-1046). Kept apart from `store.ts`, which writes the support tables.
+// thread is whose (ISS-969), and what a room could not take (ISS-1046). Kept apart from `store.ts`, which writes the support tables.
 
-import { and, asc, desc, eq, gte, isNotNull, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { supportActions } from '../db/schema-support.js';
-import { no, type Outcome } from './outcome.js';
 
 /**
  * A room's most recent threads, newest first and at most `limit`, each with who opened it (the first
@@ -44,50 +41,6 @@ export async function recentThreadsNamed(
 }
 
 /**
- * The newest recorded item result a thread was told, where it was told one: the item, when, and the
- * message that told it, the session's first reply in the thread since (the `result_told` act's own
- * id where it posted none yet). A master's post repeating it is refused unless it names this message.
- */
-export async function toldResultOfThread(
-  roomId: string,
-  thread: string,
-): Promise<{ message: string; feedbackKey: string | null; at: Date } | null> {
-  const [told] = await db
-    .select()
-    .from(supportActions)
-    .where(
-      and(
-        eq(supportActions.roomId, roomId),
-        eq(supportActions.thread, thread),
-        eq(supportActions.kind, 'result_told'),
-      ),
-    )
-    .orderBy(desc(supportActions.createdAt))
-    .limit(1);
-  if (!told) return null;
-  const [reply] = await db
-    .select({ externalId: supportActions.externalId })
-    .from(supportActions)
-    .where(
-      and(
-        eq(supportActions.roomId, roomId),
-        eq(supportActions.thread, thread),
-        eq(supportActions.kind, 'reply'),
-        isNotNull(supportActions.externalId),
-        gte(supportActions.createdAt, told.createdAt),
-      ),
-    )
-    .orderBy(asc(supportActions.createdAt))
-    .limit(1);
-  const key = (told.output as { feedbackKey?: unknown } | null)?.feedbackKey;
-  return {
-    message: reply?.externalId ?? told.id,
-    feedbackKey: typeof key === 'string' ? key : null,
-    at: told.createdAt,
-  };
-}
-
-/**
  * The member messages each of a project's rooms could not take in the last day (ISS-1046), one row
  * per room and cause, with how many and the newest: what the project's master is told once.
  */
@@ -116,24 +69,4 @@ export async function unhandledMessagesOf(
     count: r.n,
     lastAt: new Date(r.last_at).toISOString(),
   }));
-}
-
-/**
- * A users' thread already told a recorded item's result takes a master's post only as a follow-up
- * naming the message that told it (ISS-969, FB-498: the 0.9.0 notice reached an asker told the same
- * change seventeen hours before). A refusal, not a warning: a warning heard after the post is sent
- * does not stop the repeat, and a genuine follow-up has its one named way through.
- */
-export async function repeatRefusal(
-  roomId: string,
-  thread: string,
-  followsUp: string | undefined,
-): Promise<Outcome<never> | null> {
-  const told = await toldResultOfThread(roomId, thread);
-  if (!told || followsUp === told.message) return null;
-  return no(
-    'SUPPORT_MASTER_POST_ALREADY_TOLD',
-    followsUp === undefined ? '/thread' : '/followsUp',
-    `thread ${thread} was already told ${told.feedbackKey ?? 'a recorded item'}'s result at ${told.at.toISOString()}, in message ${told.message}, so a post there repeats it to the person who asked. Post only what that message did not say, as a follow-up naming it: \`followsUp: "${told.message}"\`. Nothing was posted.`,
-  );
 }

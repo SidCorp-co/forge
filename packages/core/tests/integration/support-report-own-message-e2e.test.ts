@@ -105,24 +105,21 @@ beforeAll(async () => {
 afterAll(() => w.stop());
 
 describe("ISS-1417: a release-check report never takes the room agent's answer", () => {
-  it("leaves the agent's answer and posts its own, then updates only that post", async () => {
+  // ISS-1467: a release-check report is a master's words in a users' room too, so it is refused there
+  // and the agent's answer is untouched; the report reaches the room as facts handed to its bot
+  it("refuses a report in a users' room's thread and leaves the agent's answer as it was", async () => {
     const thread = await answered('Đâu? Dùng kiểu gì', ANSWER);
     expect(lines(thread)).toEqual([ANSWER]);
-    // [REPORT_TOOK_THE_ANSWER] before the fix: the report replaced the agent's answer in place
-    const first = await post(CHECK, thread, 'release 0.310.0');
-    expect(first.status, JSON.stringify(first.body)).toBe(201);
-    expect(first.body).not.toHaveProperty('replaced');
-    expect(lines(thread)).toEqual([ANSWER, CHECK]);
-    // checked again: the same report updates its own post, keyed by its record, never the latest bot line
-    const again = await post(RECHECK, thread, 'release 0.310.0');
-    expect(again.status, JSON.stringify(again.body)).toBe(201);
-    expect(again.body).toMatchObject({ messageId: first.body.messageId, updated: true });
-    expect(lines(thread)).toEqual([ANSWER, RECHECK]);
-    // another release is another report: a message of its own
-    const next = await post(NEXT, thread, 'release 0.311.0');
-    expect(next.status, JSON.stringify(next.body)).toBe(201);
-    expect(next.body).not.toHaveProperty('updated');
-    expect(lines(thread)).toEqual([ANSWER, RECHECK, NEXT]);
+    for (const [text, report] of [
+      [CHECK, 'release 0.310.0'],
+      [RECHECK, 'release 0.310.0'],
+      [NEXT, 'release 0.311.0'],
+    ] as const) {
+      const res = await post(text, thread, report);
+      expect(res.status, JSON.stringify(res.body)).toBe(409);
+      expect(JSON.stringify(res.body)).toContain('SUPPORT_MASTER_POST_USERS_ROOM');
+    }
+    expect(lines(thread)).toEqual([ANSWER]);
   });
 
   it("refuses by name, inside core, a report's edit of the agent's reply, and the room is unchanged", async () => {

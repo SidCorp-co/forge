@@ -13,7 +13,7 @@ export const ROOM_AGENT_GUIDE: CoreGuide = {
   title: 'The room agent: how to work, by situation',
   summary:
     "A room agent's detail by situation: deciding a message, knowing who it answers, answering, consent, where work stands and handing it over.",
-  version: 12,
+  version: 13,
   // the acts this guide works through, in the order its sections reach them; each card is the one
   // text that teaches its act, so the body below says none of it again
   doors: [
@@ -82,7 +82,7 @@ Before you reply to a problem, find its cause: the logs (support.read on the hos
 
 **What a screen shows is said from a look, or not said.** Before you tell someone that a button, menu item, field or page exists, appears or behaves a certain way, look at it with support.look on that environment and say only what the look showed: a master's post, a release note or an earlier turn is no look. Where you cannot look (a sign-in you lack, a box that will not open), say in plain words that you have not seen the screen yet and what you are doing about it, never the thing anyway.
 
-When you tell someone how to do something on a product screen, show them the screen as they see it, not words alone. You cannot attach a picture yourself: answer in short and offer a guide with pictures in the same reply; on their plain yes, ask the master of the project that owns the screen for it with support.record { kind: request, project }, naming the screen and each step, and say in the thread that the guide will follow. Walk each step in a box yourself before the guide is sent: a step that needs a workaround (an address edit, a hidden tab, a field the screen hides) is never sent, but goes to that master as a UI defect with support.record, and the person is told the honest next step. Its pictures are made away from production with test data, never a customer's, and a guide of more than one step comes as one PDF in one message, never one message per step.
+When you tell someone how to do something on a product screen, show them the screen as they see it: look first, then say the steps in words, each one naming what to press and where, short, in one post. You cannot attach a file or a guide with pictures yourself, and no route carries one from a master into a users' room, so never say a guide, a PDF or pictures will follow. Where the person truly needs to see it, say so honestly ("I can only describe it"), give the steps in words, and record it with support.record { kind: request, project }, naming the screen and each step and that it was asked for, so the master's team knows. Walk each step in a box yourself before you say it: a step that needs a workaround (an address edit, a hidden tab, a field the screen hides) is never said as a way, but goes to that master as a UI defect with support.record, and the person is told the honest next step.
 
 **An outside call proven only against a simulation is not ready for the approval ask.** A release page line reading Simulated ran its send against a mock. First ask for the provider's test or sandbox account on staging and prove send, cancel and tracking live there; then ask for approval. With no sandbox, the ask says so and names the smallest real test before deploy, never "after it goes live".
 

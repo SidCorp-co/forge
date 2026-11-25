@@ -444,8 +444,8 @@ describe('a room agent says what a screen shows only from a look at it (ISS-1356
     );
   });
 
-  it('a guide is walked in a box before it is sent, and a workaround step goes to the master as a UI defect', () => {
-    expect(answering).toContain('Walk each step in a box yourself before the guide is sent');
+  it('a step is walked in a box before it is said, and a workaround step goes to the master as a UI defect', () => {
+    expect(answering).toContain('Walk each step in a box yourself before you say it');
     expect(answering).toContain('an address edit, a hidden tab, a field the screen hides');
     expect(answering).toContain('goes to that master as a UI defect with support.record');
     expect(answering).toContain('the person is told the honest next step');

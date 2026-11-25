@@ -8,10 +8,8 @@
 // room's own record, which the channel agent and the daily review read. A plugin posting straight to
 // the chat server would hold the bot's credential on a box, skip the screen and leave no record.
 //
-// A room the product's users read takes a master's words only in an asker's thread (a member wrote
-// in it), never at its top level (ISS-872, the owner's trial of 2026-11-02), naming nobody but the
-// thread's asker or a member of the room (ISS-1097, `mention-reach.ts`), in plain words with no
-// internal code (`screen.ts`). An operations room every project of the organization shares takes a
+// A room the product's users read takes none of a master's words, in any thread (owner 2026-11-25,
+// ISS-1467): a master hands its bot facts (`master-tell.ts`) and the bot says them. An operations room every project of the organization shares takes a
 // post naming no thread only in the project's own thread its binding records (ISS-934). No post of
 // a master lands at a room's top level (ISS-1224, owner 2026-11-12): one naming no thread goes in the
 // room's report thread, and where none can be opened it is refused by name. Images the post
@@ -27,8 +25,7 @@ import { findBindingWithConnectionById } from '../integrations/index.js';
 import { fetchMessage } from '../integrations/rocketchat/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { orgSiblingProjects } from '../projects/index.js';
-import { askerOf, mentionRefusal } from './channel.js';
-import { readersOf } from './grants.js';
+import { teamOnlyRoom } from './grants.js';
 import {
   checkPostImages,
   type PostedImage,
@@ -40,7 +37,6 @@ import { placedAs, postInOneVoice } from './one-voice.js';
 import { agentProjectSlugs } from './ops-scope.js';
 import { no, type Outcome } from './outcome.js';
 import { reportThreadFor } from './report-thread.js';
-import { repeatRefusal } from './room-reads.js';
 import { boundButUndeclared, declareSupportRooms, heldElsewhere, roomIsBound } from './rooms.js';
 import { type SessionDoor, screenForThread } from './screen.js';
 import { sharedThreadRefusal, standingIn } from './shared-thread.js';
@@ -94,7 +90,7 @@ export async function postableRoomsOf(projectId: string): Promise<Postable[]> {
   const rooms = await roomsOfProject(projectId);
   const bound = await Promise.all(
     rooms.map(async (room) =>
-      (await roomIsBound(room)) ? { room, team: (await readersOf(room)) === 'team' } : null,
+      (await roomIsBound(room)) ? { room, team: await teamOnlyRoom(room) } : null,
     ),
   );
   return bound.filter((r): r is Postable => r !== null);
@@ -135,7 +131,7 @@ async function followedRoomsOf(projectId: string): Promise<Postable[]> {
     if (home.id === projectId) continue;
     for (const room of await roomsOfProject(home.id)) {
       if (!isShared(room) && !(await agentProjectSlugs(room)).includes(self.slug)) continue;
-      if (await roomIsBound(room)) out.push({ room, team: (await readersOf(room)) === 'team' });
+      if (await roomIsBound(room)) out.push({ room, team: await teamOnlyRoom(room) });
     }
   }
   return out;
@@ -193,12 +189,21 @@ export async function roomRefusal(
 /** Why a room the users read takes no top-level post, and where one goes instead (ISS-872). */
 function usersRoomRefusal(users: readonly Postable[], team: readonly Postable[]): Outcome<never> {
   const where = team.length
-    ? `post naming no thread in a room the team reads (${ridsOf(team)}), which takes it in its report thread`
-    : "this project binds no room the team reads: a project admin names the owner's room as the binding's `agent.ownerRoom`, or binds a room with `readers: team`";
+    ? `post naming no thread goes in a room the team reads (${ridsOf(team)}), which takes it in its report thread`
+    : "post for the team needs a room only it reads: an operations room, or a channel agent's owner room, which a project admin names as the binding's `agent.ownerRoom` (a support room is never the team's, whatever its `readers` says)";
   return no(
     'SUPPORT_MASTER_POST_USERS_ROOM',
     '/rid',
-    `${ridsOf(users)} ${users.length > 1 ? 'are' : 'is'} read by the product's users, so a master posts there only in an asker's thread, named as \`thread\`; ${where}. Nothing was posted.`,
+    `${ridsOf(users)} ${users.length > 1 ? 'are' : 'is'} read by the product's users, so a master never posts there: hand its bot the facts with master-tells, naming the thread; a ${where}. Nothing was posted.`,
+  );
+}
+
+/** Why a master's post in a thread of a room the users read is refused, and the route that serves it instead. */
+function usersThreadRefusal(rid: string, thread: string): Outcome<never> {
+  return no(
+    'SUPPORT_MASTER_POST_USERS_ROOM',
+    '/thread',
+    `${rid} is read by the product's users, so a master never posts there, in thread ${thread} or any other, whatever the words or files: hand the room's bot the facts with master-tells (\`thread\`, \`facts\`), and the bot tells the person in its own words. Nothing was posted.`,
   );
 }
 
@@ -230,13 +235,15 @@ export interface Placed {
 }
 
 /**
- * The thread in its room, admitted where the room takes a master's words in it: any thread of a
- * room the team reads; only an asker's thread of a room the product's users read (ISS-872).
+ * The thread in its room, admitted where one is recorded: any thread of a room the team reads; of a
+ * room the product's users read, only a thread a member wrote in, which a master's facts reach
+ * (`master-tell.ts`) and its words never do (ISS-1467).
  */
 async function admitThread(
   at: Postable,
   thread: string,
   conversationId: string | null,
+  nothing: string,
 ): Promise<Outcome<Placed>> {
   if (at.team || (await threadMembers(at.room.id, thread)).length > 0) {
     return { ok: true, value: { at, conversationId } };
@@ -244,7 +251,7 @@ async function admitThread(
   return no(
     'SUPPORT_THREAD_UNKNOWN',
     '/thread',
-    `no member has written in thread ${thread} of ${at.room.rid}, which the product's users read: a master posts there only in an asker's thread. Nothing was posted.`,
+    `no member has written in thread ${thread} of ${at.room.rid}, which the product's users read, so the room's agent took no message of it and there is no turn to hand facts to: wait for a member to write there, or record what you hold on the issue and ask the room's owner. ${nothing}`,
   );
 }
 
@@ -279,7 +286,7 @@ export async function roomOfThread(
   const named = rid ? rooms.filter((r) => r.room.rid === rid) : rooms;
   for (const at of named) {
     const conversationId = await threadConversation(at.room.id, thread);
-    if (conversationId) return admitThread(at, thread, conversationId);
+    if (conversationId) return admitThread(at, thread, conversationId, nothing);
   }
   const where = rid ?? (ridsOf(named) || 'any room of this project');
   const root = await rootOf(named, thread);
@@ -292,7 +299,7 @@ export async function roomOfThread(
   }
   if (root.kind === 'root') {
     const at = named.find((r) => r.room.rid === root.rid);
-    if (at) return admitThread(at, thread, null);
+    if (at) return admitThread(at, thread, null, nothing);
     return no(
       'SUPPORT_THREAD_OF_ANOTHER_ROOM',
       '/thread',
@@ -327,19 +334,8 @@ async function postInNamedThread(
   if (!found.ok) return found;
   const { at, conversationId } = found.value;
   const room = at.room;
+  if (!at.team) return usersThreadRefusal(room.rid, input.thread);
   const text = await scrubbedForRoom(room, input.text);
-  if (!at.team) {
-    const repeat = await repeatRefusal(room.id, input.thread, input.followsUp);
-    if (repeat) return repeat;
-    // toward users a post names at most one person: the asker, the starter or a member of the room
-    const mentions = await mentionRefusal<never>(
-      room,
-      text,
-      (await askerOf(room, input.thread)).username,
-      input.thread,
-    );
-    if (mentions) return mentions;
-  }
   const admitted = await screenForThread(
     room,
     conversationId,

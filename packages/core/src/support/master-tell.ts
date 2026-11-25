@@ -46,7 +46,7 @@ export async function tellRoomAgent(
     return no(
       'SUPPORT_THREAD_UNKNOWN',
       '/thread',
-      `the room agent of ${at.room.rid} took no message of thread ${input.thread}, so there is no turn to hand facts to: post in it with master-posts where a team reads it, or wait for a member to write. ${nothing}`,
+      `the room agent of ${at.room.rid} took no message of thread ${input.thread}, so there is no turn to hand facts to: wait for a member to write there, or record what you hold on the issue and ask the room's owner. ${nothing}`,
     );
   }
   await insertAction({

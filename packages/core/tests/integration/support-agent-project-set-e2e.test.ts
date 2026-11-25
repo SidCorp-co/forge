@@ -498,16 +498,12 @@ describe('ISS-1230: a project the binding follows posts into the agent’s room'
     return { res, lines: chat.linesIn(chat.rid).filter((l) => l.tmid === thread), thread };
   };
 
-  it('posts a followed project’s result in an asker’s thread, recorded for it; not a sibling’s', async () => {
-    const { res, lines, thread } = await postIn(feId, 'Where do I mark an order valid?');
-    expect([res.status, lines.map((l) => l.text)], JSON.stringify(res.body)).toEqual([
-      201,
-      [RESULT],
-    ]);
-    const [act] = await rows<{ project_id: string; for: string }>(sql`
-      SELECT project_id, input->>'for' AS for FROM support_actions WHERE thread = ${thread}
-       AND tool = 'master_post'`);
-    expect(act).toEqual({ project_id: w.projectId, for: feId });
+  it('refuses a followed project’s post in an asker’s thread of the users’ group, and a sibling’s as unknown', async () => {
+    const { res, lines } = await postIn(feId, 'Where do I mark an order valid?');
+    expect(
+      [res.status, codesOf(res.body), lines.map((l) => l.text)],
+      JSON.stringify(res.body),
+    ).toEqual([409, ['SUPPORT_MASTER_POST_USERS_ROOM'], []]);
     const [docs] = await rows<{ id: string }>(sql`SELECT id FROM projects WHERE slug = ${DOCS}`);
     const other = await postIn(String(docs?.id), 'And the docs?');
     const said = [other.res.status, codesOf(other.res.body), other.lines];

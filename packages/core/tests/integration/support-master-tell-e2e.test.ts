@@ -55,23 +55,23 @@ async function asked(text: string): Promise<string> {
   return id;
 }
 
-describe("ISS-1466: a master's post in a support room carries no code, whatever its readers say", () => {
-  it('refuses a sha and an issue key by name in a readers: team support room, naming the door that tells the bot', async () => {
+describe("ISS-1467: a master's post in a support room is refused, whatever its readers say", () => {
+  it('refuses a post, a sha and an issue key alike, in a readers: team support room, naming the door that tells the bot', async () => {
     const thread = await asked('Bản 0.33.0 còn lỗi in phiếu');
     const res = await post({
       text: 'Fixed in 3971924c4 under ISS-1466; judged on staging.',
       thread,
     });
-    expect(res.status, JSON.stringify(res.body)).toBe(400);
-    expect(refusalCodes(res.body as Record<string, unknown>)).toEqual(['SUPPORT_INTERNAL_CODE']);
-    const detail = JSON.stringify(res.body);
-    expect(detail).toContain('whatever its binding');
-    expect(detail).toContain('commit sha \\"3971924c4');
-    expect(detail).toContain('master-tells');
+    expect(res.status, JSON.stringify(res.body)).toBe(409);
+    expect(refusalCodes(res.body as Record<string, unknown>)).toEqual([
+      'SUPPORT_MASTER_POST_USERS_ROOM',
+    ]);
+    expect(JSON.stringify(res.body)).toContain('master-tells');
     expect(chat.linesIn(chat.rid).filter((l) => l.tmid === thread)).toEqual([]);
-    // plain words still go
+    // plain words are refused as well
     const plain = await post({ text: 'Bản sửa đã lên, bạn thử lại giúp nhé.', thread });
-    expect(plain.status, JSON.stringify(plain.body)).toBe(201);
+    expect(plain.status, JSON.stringify(plain.body)).toBe(409);
+    expect(chat.linesIn(chat.rid).filter((l) => l.tmid === thread)).toEqual([]);
   });
 });
 
@@ -116,6 +116,19 @@ describe("ISS-1466: a master hands a room's bot facts for a thread", () => {
       'SUPPORT_THREAD_UNKNOWN',
     ]);
     expect(JSON.stringify(unknown.body)).toContain('Nothing was handed on');
+    // ISS-1467: a thread an app opened in the users' room, which the agent took no message of, is a
+    // remaining gap: both doors refuse it by name and say what the master does instead
+    const app = chat.wroteWhileAway(chat.rid, chat.alice, 'Thư mới từ khách', new Date(), {
+      bot: true,
+    });
+    for (const door of [
+      tell({ thread: app, facts: 'The fix is live.' }),
+      post({ text: 'Bản sửa đã lên, bạn thử lại nhé.', thread: app }),
+    ]) {
+      const res = await door;
+      expect(refusalCodes(res.body as Record<string, unknown>)).toEqual(['SUPPORT_THREAD_UNKNOWN']);
+      expect(JSON.stringify(res.body)).toContain("ask the room's owner");
+    }
     const thread = await asked('Một câu hỏi khác');
     const room = await tell({ thread, facts: 'The fix is live.', rid: `nope-${randomUUID()}` });
     expect(refusalCodes(room.body as Record<string, unknown>)).toEqual(['SUPPORT_ROOM_UNKNOWN']);

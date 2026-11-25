@@ -213,7 +213,12 @@ describe('the dispatch guide names the room door a master posts its own results 
     for (const code of ['SUPPORT_POST_IMAGE_NOT_AN_IMAGE', 'SUPPORT_POST_IMAGE_UNREADABLE']) {
       expect(prose).toContain(code);
     }
-    expect(prose).toContain("a support room, a channel agent's group, an operations room");
+    expect(prose).toContain(
+      "master-posts takes only a room the team alone reads: an operations room, or a channel agent's owner room",
+    );
+    expect(prose).toContain(
+      "A support room or any other group is its users', whatever its binding's `readers` says",
+    );
     expect(prose).toContain('Never relay it by hand or through a script posting as the bot');
   });
 
@@ -290,7 +295,10 @@ describe("the dispatch guide teaches a master to tell a users' room through the 
     expect(prose).toContain(
       "A release line for a room only the team reads (an operations room, an agent's owner room) and a daily review are the team's own: there you post in your own words",
     );
-    expect(prose).toContain("there is no route that puts your words in a users' room instead");
+    expect(prose).toContain(
+      "no route puts your words in a users' room instead, and none carries a file there",
+    );
+    expect(prose).toContain("record what you hold on the issue and ask the room's owner");
   });
 
   it('no longer lets a master post in a users room, nor carry a screen guide file there', () => {

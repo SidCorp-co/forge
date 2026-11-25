@@ -105,26 +105,24 @@ describe('ISS-1406: one voice in a followed channel agent group', () => {
               ${told.at}::timestamptz)`);
     await answered('Mình gửi thử rồi mà phiếu vẫn thiếu trường.', ANSWER, thread);
     expect(lines(thread)).toEqual([TOLD, ANSWER]);
-    // ten seconds later in the evidence: a followed project's master, naming the told message
+    // ISS-1467: neither a followed project's master nor the home's follows up in a users' group
+    // with its own words, and the agent's answer stands untouched
     const followed = await post(feId, FOLLOWED, thread, told.id);
-    expect(followed.status, JSON.stringify(followed.body)).toBe(201);
-    // [ONE_VOICE_FOLLOW_UP] before the fix: the follow-up stood beside the agent's newer answer
-    expect(lines(thread)).toEqual([TOLD, FOLLOWED]);
-    expect(followed.body).toMatchObject({ replaced: 'agent' });
-    // the home project's master follows up too, and replaces the follower's post
+    expect([followed.status, JSON.stringify(followed.body)]).toEqual([
+      409,
+      expect.stringContaining('SUPPORT_MASTER_POST_USERS_ROOM'),
+    ]);
     const home = await post(w.projectId, HOME, thread, told.id);
-    expect(home.status, JSON.stringify(home.body)).toBe(201);
-    expect(home.body).toMatchObject({ replaced: 'master' });
-    expect(lines(thread)).toEqual([TOLD, HOME]);
+    expect(home.status, JSON.stringify(home.body)).toBe(409);
+    expect(lines(thread)).toEqual([TOLD, ANSWER]);
   });
 
-  it('adds a follow-up after the told message where that message is still the latest answer', async () => {
+  it("leaves the agent as the thread's one voice where a master names the told message too", async () => {
     const thread = await answered('Phiếu có trường số điện thoại chưa?', TOLD);
     const told = await replyOf(thread, TOLD);
     const followed = await post(feId, FOLLOWED, thread, told.id);
-    expect(followed.status, JSON.stringify(followed.body)).toBe(201);
-    expect(followed.body).not.toHaveProperty('replaced');
-    expect(lines(thread)).toEqual([TOLD, FOLLOWED]);
+    expect(followed.status, JSON.stringify(followed.body)).toBe(409);
+    expect(lines(thread)).toEqual([TOLD]);
   });
 });
 
@@ -138,8 +136,6 @@ describe('ISS-1406: a master reads the thread before it posts', () => {
 
   it('shows who posted what and when, the replaced answer as the post that stands, and no secret', async () => {
     const thread = await answered('Biểu mẫu báo lỗi đã gửi đi chưa?', TOLD);
-    const posted = await post(feId, FOLLOWED, thread);
-    expect(posted.body, JSON.stringify(posted.body)).toMatchObject({ replaced: 'agent' });
     // a member pastes the bot's own credential: the read never hands it back
     await chat.say(chat.bob, `mã của mình là ${chat.bot.authToken}`, thread);
     await expect
@@ -151,10 +147,10 @@ describe('ISS-1406: a master reads the thread before it posts', () => {
     const posts = got.body.posts as { by: string; project?: string; name?: string; text: string }[];
     expect(posts.map((p) => [p.by, p.project ?? p.name])).toEqual([
       ['member', expect.any(String)],
-      ['master', FE],
+      ['agent', expect.any(String)],
       ['member', expect.any(String)],
     ]);
-    expect(posts[1]?.text).toBe(FOLLOWED);
+    expect(posts[1]?.text).toBe(TOLD);
     expect(JSON.stringify(got.body)).not.toContain(chat.bot.authToken);
   });
 
