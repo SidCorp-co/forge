@@ -80,6 +80,7 @@ fn standing(pid: u32, command: &str) -> Standing {
         command: command.into(),
         started_at: 0,
         run: None,
+        session: None,
     }
 }
 
@@ -89,6 +90,7 @@ fn facts<'a>(tree: &'a Path, issues: Vec<(String, Issue)>) -> Facts<'a> {
         agent: "agent-297",
         tree,
         tree_held: TreeHeld::Own,
+        session: None,
         runner: "/opt/forge runner/bin/forge-runner",
         issues,
         dirty: Ok(vec![]),
@@ -300,7 +302,78 @@ fn in_its_own_tree_a_run_is_held_to_what_it_left_and_not_to_another_runs() {
     assert!(r.contains("2 processes"), "{r}");
     assert!(r.contains("`kill 4242 4243`"), "{r}");
     assert!(!r.contains("4244"), "{r}");
-    assert!(v.unread.is_empty(), "{v:?}");
+    // what it is not held to is said where the hook prints
+    assert!(v.unread.join("\n").contains("1 process standing"), "{v:?}");
+}
+
+const JUDGE_SESSION: &str = "7c1d0e52-judge-session";
+const GATE_SESSION: &str = "b94a2f10-other-session";
+
+fn of_session(pid: u32, command: &str, session: &str) -> Standing {
+    Standing {
+        session: Some(session.into()),
+        ..standing(pid, command)
+    }
+}
+
+/// FB-857 / ISS-1459: a qa judge declared over a linked worktree (its own tree
+/// kind) that another session's full gate still uses. The gate started after
+/// the declaration, carries that session's id and no mark of this run.
+fn judge_over_a_worktree_in_use(tree: &Path) -> Facts<'_> {
+    let mut f = facts(tree, vec![]);
+    f.session = Some(JUDGE_SESSION);
+    f
+}
+
+#[test]
+fn another_sessions_gate_in_a_declared_worktree_does_not_hold_the_judge() {
+    let tree = PathBuf::from("/r/.claude/worktrees/gate-0333");
+    let mut f = judge_over_a_worktree_in_use(&tree);
+    f.standing = Ok((0..13)
+        .map(|i| of_session(9_000 + i, "pnpm verify", GATE_SESSION))
+        .collect());
+    let v = decide(&f);
+    assert_eq!(v.outcome, Outcome::Passed, "{v:?}");
+    assert!(v.conditions.is_empty(), "{v:?}");
+    let said = v.unread.join("\n");
+    assert!(said.contains("13 processes"), "{said}");
+    assert!(said.contains("another session"), "{said}");
+}
+
+#[test]
+fn a_process_the_run_marked_is_still_held_beside_another_sessions_gate() {
+    let tree = PathBuf::from("/r/.claude/worktrees/gate-0333");
+    let mut f = judge_over_a_worktree_in_use(&tree);
+    f.standing = Ok(vec![
+        of_session(9_000, "pnpm verify", GATE_SESSION),
+        // the run's own dev server: its run mark wins over any session reading
+        Standing {
+            run: Some(RUN.into()),
+            ..of_session(9_100, "pnpm dev --port 5199", GATE_SESSION)
+        },
+        // the judge's session, no run mark: ambiguous, so held as before
+        of_session(9_200, "node server.js", JUDGE_SESSION),
+        standing(9_300, "vitest"),
+    ]);
+    let v = decide(&f);
+    let r = refused(&v);
+    assert_eq!(v.conditions, vec![Condition::ProcessRunning]);
+    assert!(r.contains("`kill 9100 9200 9300`"), "{r}");
+    assert!(!r.contains("9000"), "{r}");
+}
+
+#[test]
+fn a_refusal_teaches_telling_the_runs_processes_from_others_and_never_orders_a_blind_kill() {
+    let tree = PathBuf::from("/r/wt");
+    let mut f = facts(&tree, vec![]);
+    f.standing = Ok(vec![standing(4242, "node server.js")]);
+    let r = refused(&decide(&f)).to_string();
+    assert!(
+        r.contains("only if you started it") && r.contains("FORGE_RUN"),
+        "{r}"
+    );
+    assert!(r.contains("tell your master"), "{r}");
+    assert!(!r.contains("or stop it (`kill"), "{r}");
 }
 
 #[test]

@@ -105,11 +105,15 @@ async fn judge(ctx: &Ctx, agent_id: Option<&str>, dir: Option<&Path>) -> Option<
         .and_then(|d| std::fs::read_to_string(d.join(JOURNAL)).ok())
         .map_or(0, |j| refused_in_a_row(&j, &run.run_id));
     let runner = runner_program();
+    let session = std::env::var(standing::SESSION_VAR)
+        .ok()
+        .filter(|s| !s.is_empty());
     let verdict = decide(&Facts {
         run_id: &run.run_id,
         agent: agent_id,
         tree: &run.worktree_path,
         tree_held: tree_held(&run.worktree_path).await,
+        session: session.as_deref(),
         runner: &runner,
         issues,
         dirty: dirty_in(&run.worktree_path),

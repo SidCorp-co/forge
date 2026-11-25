@@ -165,7 +165,7 @@ pub enum Issue {
 pub enum TreeHeld {
     /// A linked worktree the run was declared over: the run's own, so a process
     /// started in it since the declaration is the run's, unless its environment
-    /// names another run. A dev server backgrounded there is re-parented to
+    /// names another run or another Claude Code session (ISS-1459). A dev server backgrounded there is re-parented to
     /// init or a subreaper the moment its shell exits, and is still the run's.
     Own,
     /// A checkout the run shares, and why: the repository's main working tree,
@@ -183,6 +183,9 @@ pub struct Facts<'a> {
     pub tree: &'a Path,
     /// Whether `tree` is the run's own or a checkout it shares.
     pub tree_held: TreeHeld,
+    /// The Claude Code session the stopping run lives in (the hook's own
+    /// `CLAUDE_CODE_SESSION_ID`), where it has one.
+    pub session: Option<&'a str>,
     /// The `forge-runner` a hint names: the binary judging the stop, so the
     /// hint runs as written where `forge-runner` is not on PATH.
     pub runner: &'a str,
@@ -316,10 +319,17 @@ fn sh_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
 
-fn standing_line(tree: &Path, standing: &[Standing]) -> String {
+fn standing_line(tree: &Path, run_id: &str, standing: &[Standing]) -> String {
     let each = standing
         .iter()
-        .map(|s| format!("pid {} ({})", s.pid, s.command))
+        .map(|s| {
+            let mark = if s.run.as_deref() == Some(run_id) {
+                " marked as this run's"
+            } else {
+                ""
+            };
+            format!("pid {} ({}){mark}", s.pid, s.command)
+        })
         .collect::<Vec<_>>()
         .join(", ");
     let pids = standing
@@ -329,7 +339,12 @@ fn standing_line(tree: &Path, standing: &[Standing]) -> String {
         .join(" ");
     format!(
         "{} started since this run was declared still {} in {}: {each}.\n  Clear it: wait for it \
-         to finish, or stop it (`kill {pids}`).",
+         to finish, or, only if you started it, stop it (`kill {pids}`). A process is yours if \
+         you launched it from your own shell in this run, or its environment carries {}={run_id} \
+         (`tr '\\0' '\\n' < /proc/<pid>/environ | grep {}`); the box leaves out only a process \
+         that carries another run's or session's mark, so one listed here may still be \
+         someone else's: if you cannot show you started it, leave it running and tell your \
+         master.",
         if standing.len() == 1 {
             "A process".to_string()
         } else {
@@ -340,20 +355,28 @@ fn standing_line(tree: &Path, standing: &[Standing]) -> String {
         } else {
             "stand"
         },
-        tree.display()
+        tree.display(),
+        runner_platform::standing::RUN_VAR,
+        runner_platform::standing::RUN_VAR,
     )
 }
 
 /// Which of the processes standing in the run's tree since its declaration
-/// the run started, and how many it did not (ISS-1374). In its own tree every
-/// one but a process another run's id marks; in a checkout it shares only one
-/// whose environment names this run, because where it stands and who parents
-/// it are its master's and every other session's as much as this run's.
+/// the run started, and how many it did not (ISS-1374, ISS-1459). A process
+/// marked with a run is that run's, wherever it stands. Unmarked, in a checkout
+/// the run shares it is never the run's (where it stands and who parents it are
+/// its master's and every other session's as much as the run's); in the run's
+/// own tree it is the run's unless its environment names another Claude Code
+/// session than the stopping run's (`session`): a linked worktree another
+/// session's gate still uses is the same case as the shared checkout.
 fn runs_own(f: &Facts<'_>, standing: &[Standing]) -> (Vec<Standing>, usize) {
     let (its, others): (Vec<&Standing>, Vec<&Standing>) =
         standing.iter().partition(|s| match (&f.tree_held, &s.run) {
             (_, Some(run)) => run == f.run_id,
-            (TreeHeld::Own, None) => true,
+            (TreeHeld::Own, None) => match (&s.session, f.session) {
+                (Some(theirs), Some(ours)) => theirs == ours,
+                _ => true,
+            },
             (TreeHeld::Shared(_), None) => false,
         });
     (its.into_iter().cloned().collect(), others.len())
@@ -376,6 +399,23 @@ fn shared_line(run_id: &str, why: &str, others: usize) -> String {
          so the run owns no tree there and is held only to a process whose environment carries \
          {}={run_id}{left}",
         runner_platform::standing::RUN_VAR
+    )
+}
+
+/// What the hook says of processes in the run's own tree that another run or
+/// another session started, and the run is not held to.
+fn others_line(tree: &Path, others: usize) -> String {
+    let (n, verb) = if others == 1 {
+        ("1 process".to_string(), "carries")
+    } else {
+        (format!("{others} processes"), "carry")
+    };
+    format!(
+        "{n} standing in {} since this run was declared {verb} the mark of another run or \
+         another session and {} left to whoever started {}",
+        tree.display(),
+        if others == 1 { "is" } else { "are" },
+        if others == 1 { "it" } else { "them" }
     )
 }
 
@@ -414,10 +454,15 @@ pub fn decide(f: &Facts<'_>) -> Verdict {
         Ok(standing) => {
             let (its, others) = runs_own(f, standing);
             if !its.is_empty() {
-                lines.push((Condition::ProcessRunning, standing_line(f.tree, &its)));
+                lines.push((
+                    Condition::ProcessRunning,
+                    standing_line(f.tree, f.run_id, &its),
+                ));
             }
-            if let TreeHeld::Shared(why) = &f.tree_held {
-                unread.push(shared_line(f.run_id, why, others));
+            match &f.tree_held {
+                TreeHeld::Shared(why) => unread.push(shared_line(f.run_id, why, others)),
+                TreeHeld::Own if others > 0 => unread.push(others_line(f.tree, others)),
+                TreeHeld::Own => {}
             }
         }
         Err(why) => unread.push(format!("the process table: {why}")),

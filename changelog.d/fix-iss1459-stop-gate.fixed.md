@@ -1,0 +1,1 @@
+**A judge is no longer held to another session's processes in its worktree.** A process naming another Claude Code session is left to it; the refusal says how to tell your own processes and never orders a blind kill.

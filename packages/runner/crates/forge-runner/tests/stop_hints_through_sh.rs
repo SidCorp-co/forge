@@ -147,6 +147,7 @@ fn the_held_hint_filled_with_prose_posts_it_as_the_comment_body() {
         agent: "agent-297",
         tree: &tree,
         tree_held: TreeHeld::Own,
+        session: None,
         runner: env!("CARGO_BIN_EXE_forge-runner"),
         issues: vec![(
             "ISS-297".into(),
@@ -241,6 +242,7 @@ fn the_dirty_hint_filled_with_prose_commits_it_as_the_message() {
         agent: "agent-297",
         tree: &tree,
         tree_held: TreeHeld::Own,
+        session: None,
         runner: env!("CARGO_BIN_EXE_forge-runner"),
         // a dirty tree alone holds no stop (ISS-1251): the hint rides a held issue's refusal
         issues: vec![(
@@ -286,6 +288,7 @@ fn the_dirty_hint_commits_a_deletion_already_staged() {
         agent: "agent-297",
         tree: &tree,
         tree_held: TreeHeld::Own,
+        session: None,
         runner: env!("CARGO_BIN_EXE_forge-runner"),
         // a dirty tree alone holds no stop (ISS-1251): the hint rides a held issue's refusal
         issues: vec![(
@@ -339,6 +342,7 @@ fn the_hint_after_a_failed_commit_runs_as_written() {
             agent: "agent-297",
             tree: &tree,
             tree_held: TreeHeld::Own,
+            session: None,
             runner: env!("CARGO_BIN_EXE_forge-runner"),
             issues: vec![(
                 "ISS-297".into(),

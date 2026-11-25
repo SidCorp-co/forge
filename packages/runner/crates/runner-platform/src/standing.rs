@@ -37,7 +37,14 @@ pub struct Standing {
     /// process a run's shell started with the run's id exported carries it, and
     /// so does everything that process starts (ISS-1374).
     pub run: Option<String>,
+    /// The Claude Code session its environment names in [`SESSION_VAR`]: every
+    /// process a session starts carries its id, so one that names another
+    /// session than the stopping run's was started by that session.
+    pub session: Option<String>,
 }
+
+/// The variable Claude Code sets to its session's id in every process it starts.
+pub const SESSION_VAR: &str = "CLAUDE_CODE_SESSION_ID";
 
 /// The variable a run exports its id in (`FORGE_RUN=<id>`, the brief's own
 /// line), which every process it starts inherits.
@@ -45,8 +52,17 @@ pub const RUN_VAR: &str = "FORGE_RUN";
 
 /// The value of [`RUN_VAR`] in `pid`'s environment, where it is set and readable.
 fn run_of(root: &Path, pid: u32) -> Option<String> {
+    env_of(root, pid, RUN_VAR)
+}
+
+/// The value of [`SESSION_VAR`] in `pid`'s environment, where it is set and readable.
+fn session_of(root: &Path, pid: u32) -> Option<String> {
+    env_of(root, pid, SESSION_VAR)
+}
+
+fn env_of(root: &Path, pid: u32, var: &str) -> Option<String> {
     let raw = std::fs::read(root.join(pid.to_string()).join("environ")).ok()?;
-    let prefix = format!("{RUN_VAR}=");
+    let prefix = format!("{var}=");
     raw.split(|b| *b == 0).find_map(|kv| {
         let v = kv.strip_prefix(prefix.as_bytes())?;
         let v = String::from_utf8_lossy(v).trim().to_string();
@@ -166,6 +182,7 @@ pub fn standing_in(root: &Path, tree: &Path, since: i64, exclude: &[u32]) -> Rea
             command: command_of(root, pid),
             started_at,
             run: run_of(root, pid),
+            session: session_of(root, pid),
         });
     }
     found.sort_by_key(|s| s.pid);
@@ -261,7 +278,7 @@ mod tests {
         );
         std::fs::write(
             t.root.join("101").join("environ"),
-            "PATH=/usr/bin\0FORGE_RUN=96b0c1e2\0HOME=/h\0",
+            "PATH=/usr/bin\0FORGE_RUN=96b0c1e2\0CLAUDE_CODE_SESSION_ID=sess-9\0HOME=/h\0",
         )
         .unwrap();
         let Reading::Read(found) = standing_in(&t.root, &tree, since, &[105]) else {
@@ -274,6 +291,9 @@ mod tests {
         // ISS-1374: the run a process's environment names is read with it.
         assert_eq!(found[0].run, None);
         assert_eq!(found[1].run.as_deref(), Some("96b0c1e2"));
+        // ISS-1459: so is the Claude Code session it was started in.
+        assert_eq!(found[0].session, None);
+        assert_eq!(found[1].session.as_deref(), Some("sess-9"));
     }
 
     #[test]
