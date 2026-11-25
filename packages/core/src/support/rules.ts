@@ -102,7 +102,7 @@ export const TEAM_WORDS = "the team's words on the item";
 
 export function resultNote(r: ItemResult): string | null {
   const post =
-    "Post its result in this thread, once, in the asker's words: what changed for them, or that it will not be done. No keys, no process.";
+    "Tell them the result yourself in this thread, once, in the asker's words: what was fixed or answered, where it runs where the words above say, and ask them to check it again; or that it will not be done. Never say it was handed or passed to anyone. No keys, no process.";
   const recorded = `${r.key}${r.elsewhere ? ` of ${r.elsewhere}` : ''}, recorded from this thread,`;
   // the team's words are for the session to restate, never to paste; framed as data, since they
   // may quote a member (ISS-1425)

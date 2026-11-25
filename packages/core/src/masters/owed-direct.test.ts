@@ -120,6 +120,7 @@ describe('masterWork under direct mode: the pass is told to build, not to dispat
         '`forge-runner api projects/<projectId>/support/master-posts -X POST` with `{ text, rid?, thread? }`',
       );
       expect(nudge).toContain('(Telling a room what came of it)');
+      expect(nudge).toContain('where no channel agent owns the thread');
     }
   });
 

@@ -23,7 +23,7 @@ export const DISPATCH_GUIDE: CoreGuide = {
   title: "Running a wave: a master's dispatch and fold",
   summary:
     "The method a project's master follows for one wave: read the order, triage each candidate, batch by files, give each run its tree and a brief, declare and record each dispatch, and fold what comes back — over REST and `forge-runner`; on a project that runs direct (not strict, fast delivery on), build, land, release and judge a whole batch at once instead.",
-  version: 13,
+  version: 14,
   body: `## Running a wave
 
 A wave is the set of runs one master pass sends out, and the fold is the reading of what came back.
@@ -179,8 +179,14 @@ for the last week's). Before you post in a room or answer an ask, read its open 
 the promises, items and asks open in each, so you neither contradict nor repeat what the agent said.
 
 ### Telling a room what came of it
-A result someone asked for in a chat room, a release line the room's users should hear, a daily
-review: the master posts it itself, in its own words, as the room's bot, through
+Where a channel agent owns the thread, the agent tells its users the result, never you: a recorded
+item reaching live, confirmed, answered or declined is handed into the asker's thread as a note by
+core as you move it (the landing, the release, the answer on the item), and a question the agent
+put to you is answered with \`master-asks/:askId/answer\` (Answering a room agent's ask); both go
+into that agent's session, which says what was fixed, where it runs and asks them to check again,
+and neither is posted beside it. The record is the only hand-over, and the users never hear it
+as one. A result for a room with no agent in the thread, a release line the room's users should
+hear, a daily review: the master posts it itself, in its own words, as the room's bot, through
 \`POST /api/projects/:id/support/master-posts\` with \`{ text, rid?, thread?, attachments? }\`
 (\`forge-runner api projects/<projectId>/support/master-posts -X POST -d '{"text":"…","rid":"<room id>","thread":"<message id>"}'\`).
 Never relay it by hand or through a script posting as the bot: core holds the bot's credential,

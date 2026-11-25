@@ -170,6 +170,18 @@ describe("the dispatch guide names the doors of a room agent's ask and its open 
     );
     expect(prose).toContain('`GET /api/projects/:id/support/agent-threads`');
   });
+
+  // ISS-1465: where an agent owns the thread it tells the result; the master's result reaches it by
+  // the item's move or the ask's answer, never a master post beside it
+  it('says the agent tells its thread the result, which reaches it by the item or the ask', () => {
+    const section = prose.slice(prose.indexOf('### Telling a room what came of it'));
+    expect(section).toContain(
+      'Where a channel agent owns the thread, the agent tells its users the result, never you',
+    );
+    expect(section).toContain("handed into the asker's thread as a note by core as you move it");
+    expect(section).toContain('master-asks/:askId/answer');
+    expect(section).toContain('A result for a room with no agent in the thread');
+  });
 });
 
 // ISS-861 (owner, 2026-11-01): triage writes what helps the run, and no field is a precondition

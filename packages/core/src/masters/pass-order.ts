@@ -7,7 +7,7 @@ import { guideCall } from '../guides/index.js';
 const method = (slug: 'dispatch') => `\`${guideCall(slug)}\``;
 
 /** The room door a master posts its own results through, named on every pass (ISS-943). */
-const ROOM_POST = ` A result for a room your project binds you post yourself: \`forge-runner api projects/<projectId>/support/master-posts -X POST\` with \`{ text, rid?, thread? }\`, as ${method('dispatch')} (Telling a room what came of it) says.`;
+const ROOM_POST = ` A result for a room your project binds, where no channel agent owns the thread (an agent tells its own thread's result, handed to it as you move the item or answer its ask), you post yourself: \`forge-runner api projects/<projectId>/support/master-posts -X POST\` with \`{ text, rid?, thread? }\`, as ${method('dispatch')} (Telling a room what came of it) says.`;
 
 /** The dispatch pass names the served guide, never a skill a plugin on the pane could answer to (ISS-304). */
 export const NUDGE = `Pass. Run the wave by ${method('dispatch')}.${ROOM_POST}`;

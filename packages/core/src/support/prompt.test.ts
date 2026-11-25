@@ -105,11 +105,21 @@ describe('the room brief teaches an ask it cannot do to wait on the master', () 
     expect(taught(channel)).toContain(
       'a request with support.record { kind: request, project } for the master of the project that owns it',
     );
-    expect(taught(channel)).toContain('post one reply that it went to the team');
     expect(taught(channel)).toContain(
-      'reply again only with what that master did or decided once you are told it, never done before then and never options or steps the master has not given',
+      'post one reply of what you checked and saw, and that you will tell them here once there is a result; never that it was handed, passed or given to anyone',
     );
-    expect(taught(channel)).toContain('save the one reply that an ask went to the team');
+    // ISS-1465: a request is only recorded, and the agent tells the result itself in the same thread
+    expect(taught(channel)).toContain(
+      'never tell the asker it was handed, passed or given to anyone',
+    );
+    expect(taught(channel)).toContain(
+      'once told the result, tell the asker yourself in that thread: what was fixed, where it runs, check again',
+    );
+    expect(taught(channel)).not.toContain('it went to the team');
+    expect(taught(channel)).toContain(
+      'reply again only with what the master did or decided once you are told it, never done before then and never options or steps the master has not given',
+    );
+    expect(taught(channel)).toContain('save the one reply of what you checked and saw');
   });
 
   it('tells a result as what the team said or shipped, never done before it', () => {

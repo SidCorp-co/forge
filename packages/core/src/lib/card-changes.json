@@ -1700,9 +1700,9 @@
     "by": "ISS-1251"
   },
   "support.record": {
-    "hash": "9e562e56243a8096",
-    "on": "2026-11-18",
-    "by": "ISS-1327"
+    "hash": "aa3140602b8861e0",
+    "on": "2026-11-25",
+    "by": "ISS-1465"
   },
   "support.reference_add": {
     "hash": "4258d56c81b3aacd",
@@ -1735,9 +1735,9 @@
     "by": "ISS-1440"
   },
   "support.reply": {
-    "hash": "0bb29b9729bdf5cd",
-    "on": "2026-11-23",
-    "by": "ISS-1440"
+    "hash": "0a793d3edc5e808c",
+    "on": "2026-11-25",
+    "by": "ISS-1465"
   },
   "support.requirements": {
     "hash": "793ed91dbfb6b6d7",

@@ -73,7 +73,10 @@ describe('a group runs under limits and threads (BC-11, BC-16)', () => {
   it('tells the session a result once an item is final, and nothing for progress (r6 BC-15)', () => {
     const at = (phase: string) => resultNote({ ...SHIPPED, phase: phase as ItemResult['phase'] });
     for (const p of ['resolved', 'verified', 'declined'] as const) {
-      expect(at(p)).toContain('Post its result in this thread, once');
+      expect(at(p)).toContain('Tell them the result yourself in this thread, once');
+      // ISS-1465: what was fixed, where it runs, check again; never handed on
+      expect(at(p)).toContain('where it runs');
+      expect(at(p)).toContain('Never say it was handed or passed to anyone');
     }
     for (const p of ['new', 'triaged', 'planned', 'reopened'] as const) {
       expect(at(p)).toBeNull();
@@ -93,7 +96,7 @@ const SHIPPED: ItemResult = {
   withheld: false,
 };
 const POST =
-  "Post its result in this thread, once, in the asker's words: what changed for them, or that it will not be done. No keys, no process.";
+  "Tell them the result yourself in this thread, once, in the asker's words: what was fixed or answered, where it runs where the words above say, and ask them to check it again; or that it will not be done. Never say it was handed or passed to anyone. No keys, no process.";
 const ANSWER = 'Nothing was shared: an admin adds them under Mail, then Delegation.';
 const framed = (text: string) => markUntrusted(text, { source: TEAM_WORDS });
 

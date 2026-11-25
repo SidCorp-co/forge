@@ -390,7 +390,7 @@ describe("REQ-75 r6: #webmail's seed, and results never progress", () => {
     await expect.poll(() => notes.length, { timeout: 15_000 }).toBe(1);
     expect(notes[0]?.thread).toBe(thread);
     expect(notes[0]?.text).toBe(
-      `${key}, recorded from this thread, is live now.\nWhat the team shipped for it (restate it, never paste it):\n${markUntrusted('CSV export of invoices', { source: TEAM_WORDS })}\nPost its result in this thread, once, in the asker's words: what changed for them, or that it will not be done. No keys, no process.`,
+      `${key}, recorded from this thread, is live now.\nWhat the team shipped for it (restate it, never paste it):\n${markUntrusted('CSV export of invoices', { source: TEAM_WORDS })}\nTell them the result yourself in this thread, once, in the asker's words: what was fixed or answered, where it runs where the words above say, and ask them to check it again; or that it will not be done. Never say it was handed or passed to anyone. No keys, no process.`,
     );
     await w.settleWarm();
     const [told] = await rows<{ output: Record<string, unknown> | null }>(sql`

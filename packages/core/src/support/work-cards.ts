@@ -84,12 +84,12 @@ export const WORK_ACT_CARDS = {
       },
       {
         when: 'you lack a tool, a read, a fact or an ability',
-        do: 'record it as a request with support.record { kind: request, project } for the master of the project that owns it, and post one reply that it went to the team',
+        do: 'record it as a request with support.record { kind: request, project } for the master of the project that owns it, and post one reply of what you checked and saw, and that you will tell them here once there is a result; never that it was handed, passed or given to anyone',
       },
     ],
     practice: [
       'Name the owning project as `project`: without it the item lands in your home project and its master never sees it.',
-      'Never post progress and never promise a date; you are told once it is answered, shipped or declined.',
+      'A code change is only recorded, with what you checked and saw; never tell the asker it was handed, passed or given to anyone (a team, a project, a master). Never post progress or a date; once told the result, tell the asker yourself in that thread: what was fixed, where it runs, check again.',
       'Attach only the pictures that are evidence, by pictures [{ message, n }], each one you read with support.image; leave out any showing a secret, a password or a key.',
     ],
     example: {

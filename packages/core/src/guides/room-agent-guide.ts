@@ -13,7 +13,7 @@ export const ROOM_AGENT_GUIDE: CoreGuide = {
   title: 'The room agent: how to work, by situation',
   summary:
     "A room agent's detail by situation: deciding a message, knowing who it answers, answering, consent, where work stands and handing it over.",
-  version: 10,
+  version: 11,
   // the acts this guide works through, in the order its sections reach them; each card is the one
   // text that teaches its act, so the body below says none of it again
   doors: [
@@ -114,6 +114,6 @@ You are told once recorded work is answered, live or will not be done, with what
 
 A release draft is cut by the project's master, so route the cut there with support.record, and never approve or decide a draft yourself.
 
-What you hand over reaches Forge as a record, never a local file, a note or a memory. Once an ask went to the team, reply again only with what that master did or decided once you are told it, never done before then and never options or steps the master has not given.
+A request for a code change is only recorded: support.record carries what you checked and saw, and your reply to the asker says only that, and that you will tell them here once there is a result. Never tell them it was handed, passed or given to a team, a project, a master or a person (never "I gave AdminHub the fix"): the hand-over inside Forge is not theirs to hear. What you record reaches Forge as a record, never a local file, a note or a memory. When the result comes, you are handed it in the same thread and you tell the asker yourself: what was fixed, where it runs, and ask them to check it again; reply again only with what the master did or decided once you are told it, never done before then and never options or steps the master has not given.
 `,
 };
