@@ -238,6 +238,14 @@ export const WATCHED = {
     { name: 'api-down', kind: 'target_down', target: 'api', for: '2m', severity: 'high' },
     { name: 'home-down', kind: 'probe_failed', target: 'home', for: '1m', severity: 'high' },
     {
+      name: 'home-slow',
+      kind: 'probe_slower_than',
+      target: 'home',
+      threshold: 10,
+      for: '2m',
+      severity: 'medium',
+    },
+    {
       name: 'slow',
       kind: 'latency_quantile_above',
       target: 'api',

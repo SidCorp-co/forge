@@ -39,6 +39,8 @@ export function ruleExpression(slug: string, rule: MonitoringRule): string {
       return `up${sel()} == 0`;
     case 'probe_failed':
       return `probe_success${sel()} == 0`;
+    case 'probe_slower_than':
+      return `probe_duration_seconds${sel()} > ${t}`;
     case 'latency_quantile_above':
       return `histogram_quantile(${rule.quantile}, sum by (le) (rate(${m}_bucket${sel()}[${RATE_WINDOW}]))) > ${t}`;
     case 'error_ratio_above': {

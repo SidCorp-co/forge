@@ -7,7 +7,7 @@ export const MONITORING_GUIDE: CoreGuide = {
   title: 'Monitoring: watch production on Prometheus',
   summary:
     "Connect the Prometheus you run to Forge, follow the connection's setup list until its readiness reads clean, bind the project with role `monitoring` and register its targets and rules there; a breach that lasts past its `for` arrives as one feedback item. Internal ports reach it through a Prometheus agent on the project's host. Never a hand-built watch.",
-  version: 3,
+  version: 4,
   body: `## Monitoring: watch production on Prometheus
 
 Monitoring is an integration. You run a Prometheus (any 2.x from 2.45, or 3.x), connect it to Forge
@@ -75,9 +75,12 @@ role \`monitoring\`, and a target naming what to watch.
 - \`scrape\` is a metrics endpoint the server can reach; \`probe\` a URL your blackbox exporter
   asks (\`module\` \`http_2xx\`, the default, or \`tcp_connect\`). Names are \`[a-z0-9-]\`, up to 40,
   unique in their list.
-- A rule's \`target\` names a scrape, a probe for \`probe_failed\`, or \`agent\` for what the host
+- A rule's \`target\` names a scrape, a probe for \`probe_failed\` and \`probe_slower_than\`, or \`agent\` for what the host
   agent sends.
 - A rule's \`kind\` is one of: \`target_down\` (a scrape), \`probe_failed\` (a probe),
+  \`probe_slower_than\` (a probe, \`threshold\` in seconds above 0: it fires when the probe's
+  \`probe_duration_seconds\` stays over it for \`for\`, so a site that answers in 15 s but inside the
+  blackbox timeout alerts; \`series_above\` takes no probe target),
   \`latency_quantile_above\` (a histogram \`metric\`, \`quantile\`, seconds), \`error_ratio_above\` (a
   counter with a \`code\` or \`status\` label, 0..1), \`disk_free_below\` (node_exporter, 0..1),
   \`series_above\` (\`metric\`, \`threshold\`). Forge writes the PromQL, scoped to the project; raw

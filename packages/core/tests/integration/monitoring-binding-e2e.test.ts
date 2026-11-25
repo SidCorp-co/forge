@@ -95,6 +95,26 @@ describe('a monitoring binding is refused by name, nothing saved (c2)', () => {
       },
     ],
     [
+      'MONITORING_RULE_TARGET_UNKNOWN',
+      {
+        // a probe's latency rule naming a scrape
+        scrape: [api1],
+        rules: [
+          { name: 'p', kind: 'probe_slower_than', target: 'api', threshold: 5, for: '1m', severity: 'low' },
+        ],
+      },
+    ],
+    [
+      'MONITORING_RULE_TARGET_UNKNOWN',
+      {
+        // series_above reads a scrape or the agent, never a probe
+        probe: [{ name: 'home', url: 'https://www.example.test/' }],
+        rules: [
+          { name: 'q', kind: 'series_above', target: 'home', metric: 'm', threshold: 5, for: '1m', severity: 'low' },
+        ],
+      },
+    ],
+    [
       'MONITORING_FOR_TOO_SHORT',
       {
         scrape: [api1],
@@ -179,6 +199,9 @@ describe('what core renders for the connection (c2)', () => {
     const expr = (name: string) => group.rules.find((r) => r.alert === name)?.expr;
     expect(expr('api-down')).toBe(`up{${own},forge_target="api"} == 0`);
     expect(expr('home-down')).toBe(`probe_success{${own},forge_target="home"} == 0`);
+    expect(expr('home-slow')).toBe(
+      `probe_duration_seconds{${own},forge_target="home"} > 10`,
+    );
     expect(expr('slow')).toBe(
       `histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{${own},forge_target="api"}[5m]))) > 1.5`,
     );

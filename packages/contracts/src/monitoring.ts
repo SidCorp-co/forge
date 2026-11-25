@@ -17,6 +17,7 @@ export const MONITORING_FOR_MIN_SECONDS = 2 * MONITORING_EVALUATION_SECONDS;
 export const MONITORING_RULE_KINDS = [
 	"target_down",
 	"probe_failed",
+	"probe_slower_than",
 	"latency_quantile_above",
 	"error_ratio_above",
 	"disk_free_below",
@@ -132,10 +133,11 @@ export type MonitoringRule = z.infer<typeof ruleSchema>;
 /** What each kind needs beyond its target, and the bounds of its threshold. */
 const KIND_NEEDS: Record<
 	MonitoringRuleKind,
-	{ metric: boolean; quantile: boolean; threshold: "none" | "any" | "ratio" }
+	{ metric: boolean; quantile: boolean; threshold: "none" | "any" | "ratio" | "positive" }
 > = {
 	target_down: { metric: false, quantile: false, threshold: "none" },
 	probe_failed: { metric: false, quantile: false, threshold: "none" },
+	probe_slower_than: { metric: false, quantile: false, threshold: "positive" },
 	latency_quantile_above: { metric: true, quantile: true, threshold: "any" },
 	error_ratio_above: { metric: true, quantile: false, threshold: "ratio" },
 	disk_free_below: { metric: false, quantile: false, threshold: "ratio" },
@@ -147,6 +149,7 @@ const KIND_TARGETS: Record<MonitoringRuleKind, "scrape" | "probe" | "series"> =
 	{
 		target_down: "scrape",
 		probe_failed: "probe",
+		probe_slower_than: "probe",
 		latency_quantile_above: "series",
 		error_ratio_above: "series",
 		disk_free_below: "series",
@@ -155,11 +158,14 @@ const KIND_TARGETS: Record<MonitoringRuleKind, "scrape" | "probe" | "series"> =
 
 function thresholdFault(
 	rule: { threshold?: number | undefined },
-	wants: "none" | "any" | "ratio",
+	wants: "none" | "any" | "ratio" | "positive",
 ): string | null {
 	const t = rule.threshold;
 	if (wants === "none") return t === undefined ? null : "takes no threshold";
 	if (t === undefined) return "needs a threshold";
+	if (wants === "positive" && t <= 0) {
+		return "needs a threshold in seconds greater than 0, such as 15";
+	}
 	if (wants === "ratio" && (t < 0 || t > 1)) {
 		return "needs a threshold from 0 to 1, a ratio";
 	}
