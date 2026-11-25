@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.826] - 2026-11-25
+
+Language guesses become hints, so correct Vietnamese replies are no longer failed
+
+### Fixed
+
+- **A language guess no longer refuses or rewrites a reply.** Turns answer in the project's content language first; a message's words only hint where it never said. Replies and raises are no longer failed or retried for language.
+
 ## [0.4.0-dev.825] - 2026-11-24
 
 Plain words after a prose label are no longer redacted as secrets

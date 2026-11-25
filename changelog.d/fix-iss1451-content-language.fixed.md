@@ -1,1 +1,0 @@
-**A language guess no longer refuses or rewrites a reply.** Turns answer in the project's content language first; a message's words only hint where it never said. Replies and raises are no longer failed or retried for language.
