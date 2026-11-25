@@ -99,8 +99,8 @@ describe('a read and a master’s answer in one turn (ISS-1440)', () => {
       masterAnswered: false,
       earlierAt: null,
     });
-    expect(
-      judgeReply({ ...reply(OWN_VOICE), roomKind: 'agent', reads: none }, []).failed,
-    ).toEqual(['accurate']);
+    expect(judgeReply({ ...reply(OWN_VOICE), roomKind: 'agent', reads: none }, []).failed).toEqual([
+      'accurate',
+    ]);
   });
 });
