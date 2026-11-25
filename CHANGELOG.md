@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.837] - 2026-11-25
+
+A technical need raised from another project's thread lands in that project's thread
+
+### Fixed
+
+- **A need raised from another project's thread now lands in that project's thread.** A room agent asked in a project's own thread of the shared operations room raised into its own room's project; the reply names where it landed.
+
 ## [0.4.0-dev.836] - 2026-11-25
 
 Masters can hand the room assistant facts for a thread nobody has written in
