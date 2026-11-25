@@ -8,6 +8,7 @@ import { earlierReadLine } from './dated-reads.js';
 import { masterAnsweredNote } from './master-ask.js';
 import { operationsBrief } from './ops-prompt.js';
 import { agentOpening, grantsLine, SUPPORT_MAP_ACTS, supportBrief, toolsLine } from './prompt.js';
+import { REPLY_CARD } from './reply-card.js';
 import { linksOnWeb, ROOM_MAP_ACTS, roomConductLines, SHOW_HOW } from './room-conduct.js';
 
 // ISS-1251: a map line is its act's card's lead situation, rendered; the card is the one text
@@ -116,6 +117,7 @@ describe('the room brief teaches an ask it cannot do to wait on the master', () 
       'once told the result, tell the asker yourself in that thread: what was fixed, where it runs, check again',
     );
     expect(taught(channel)).not.toContain('it went to the team');
+    expect(REPLY_CARD.redFlag).toContain('never that it was passed on');
     expect(taught(channel)).toContain(
       'reply again only with what the master did or decided once you are told it, never done before then and never options or steps the master has not given',
     );

@@ -38,8 +38,8 @@ export const REPLY_CARD = {
   // ISS-1243, AdminHub-Support 03/11-15/11: 21 of 76 bot posts were relays ("passed to the team,
   // I will report back") instead of an answer, and a master post landed beside 14 of them
   redFlag:
-    'Relaying “passed to the team, will report back” when the answer can be had now: ask the master in the turn and answer yourself.',
+    'A reply that only says the request was passed on or will be reported back, when the answer can be had now: ask the master in the turn and answer yourself; for a code change say what you checked and saw and that you will tell them here once there is a result, never that it was passed on.',
   family: 'room.answer',
   audience: ['bot'],
-  scenarios: ['a relay posted instead of the answer: “passed to the team, will report back”'],
+  scenarios: ['a relay posted instead of the answer: only “passed on, will report back”'],
 } satisfies CapabilityCardBody;

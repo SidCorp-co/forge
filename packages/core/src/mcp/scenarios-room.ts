@@ -41,14 +41,20 @@ export const ROOM_SCENARIOS: readonly CardScenario[] = [
     teaches: [/how this channel is to be answered/i, /master/i, /ruling on the product/i],
   },
   {
-    name: 'a relay posted instead of the answer: “passed to the team, will report back”',
+    name: 'a relay posted instead of the answer: only “passed on, will report back”',
     card: 'support.reply',
     source: `${AHS}, thread jEmipdYcDKW8naEbG, 03/11 07:59 (ISS-1243: 21 of 76 replies were relays)`,
     situation: 'A user reports that a connected site’s token field cannot be saved',
     bad: 'Em đã chuyển lỗi này cho đội kỹ thuật rồi anh, khi sửa xong em sẽ báo lại trong thread này.', // i18n-allow: a recorded room turn
-    good: 'post one result: ask the master in the turn and answer from what it hands back',
+    good: 'post one result: ask the master in the turn and answer from what it hands back; for a code change, what you checked and saw, and that you will tell them here once there is a result',
     // ISS-1385 taught "the answer, or one on-it line" where the card said "results only"
-    teaches: [/post one result/i, /no other acknowledgement/i, /ask the master in the turn/i],
+    // ISS-1465: the flag teaches that a reply only saying it was passed on is the fault
+    teaches: [
+      /post one result/i,
+      /no other acknowledgement/i,
+      /ask the master in the turn/i,
+      /never that it was passed on/i,
+    ],
   },
   {
     name: 'a failure line posted on a mail request another binding holds',
