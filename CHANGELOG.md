@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.835] - 2026-11-25
+
+Masters reach users rooms only through the room bot
+
+### Changed
+
+- **A master post into a users room is refused in every thread, and the room agent no longer promises a guide file.** Facts go to the bot with master-tells; a thread the agent took no message of stays a gap.
+
 ## [0.4.0-dev.834] - 2026-11-25
 
 Masters hand room bots facts; bots tell users in their own words
