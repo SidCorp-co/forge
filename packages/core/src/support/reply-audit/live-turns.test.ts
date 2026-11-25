@@ -31,7 +31,6 @@ const judged = (reply: string) =>
   judgeReply(
     {
       text: reply,
-      language: 'vi',
       roomKind: 'operations',
       apiHosts: [],
     },
@@ -103,7 +102,7 @@ describe('the 19/11 PGPrints thread, replayed through the audit and the daily li
   // the owed mapping reply's turn looked, and filed the hidden item it reports (ISS-1416)
   const looked = { thisTurn: true, earlierAt: null, looked: true, handedOn: true };
   const judgedIn = (text: string, reads: typeof noLook) =>
-    judgeReply({ text, language: 'vi', roomKind: 'agent', apiHosts: [], reads }, []);
+    judgeReply({ text, roomKind: 'agent', apiHosts: [], reads }, []);
   const at = (s: string) => new Date(s);
   const posted = (n: number) => PGPRINTS.agent[n]?.text ?? '';
   const OWED = {

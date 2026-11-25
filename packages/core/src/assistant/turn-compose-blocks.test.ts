@@ -26,6 +26,8 @@ const asked: string[] = [];
 const judged: unknown[][] = [];
 let drawOn: BlockStage | null = null;
 
+// the language hint reads the project's document (ISS-1451); these tests have no database
+vi.mock('./turn-asker.js', () => ({ answerLanguageOf: async () => null }));
 vi.mock('../conversations/index.js', async () => {
   const replies = await import('../conversations/text-language.js');
   return {

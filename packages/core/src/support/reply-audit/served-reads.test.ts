@@ -4,9 +4,8 @@ import { describe, expect, it } from 'vitest';
 import { turnReadsOf } from './audit.js';
 import { type AuditedReply, judgeReply, type TurnReads } from './judge.js';
 
-const reply = (text: string, language: 'vi' | 'en' = 'vi'): AuditedReply => ({
+const reply = (text: string): AuditedReply => ({
   text,
-  language,
   roomKind: 'operations',
   apiHosts: [],
 });
@@ -17,7 +16,7 @@ describe('a served version, a deploy and a product’s behaviour are held to a r
   const judged = (text: string, reads: Partial<TurnReads> = {}) =>
     judgeReply(
       {
-        ...reply(text, 'vi'),
+        ...reply(text),
         roomKind: 'agent',
         reads: { thisTurn: false, earlierAt: null, looked: false, handedOn: false, ...reads },
       },
@@ -81,7 +80,7 @@ describe('a read and a master’s answer in one turn (ISS-1440)', () => {
       earlierAt: null,
     });
   const judged = (text: string, masterAnswered: boolean) =>
-    judgeReply({ ...reply(text, 'vi'), roomKind: 'agent', reads: reads(masterAnswered) }, []);
+    judgeReply({ ...reply(text), roomKind: 'agent', reads: reads(masterAnswered) }, []);
   const AS_HIS = 'Theo master lúc 02:05, Force Update hoạt động tốt ạ.'; // i18n-allow: his check said as his
   const OWN_VOICE = 'Dạ Force Update hoạt động tốt ạ.'; // i18n-allow: the same claim in the reply's own voice
 
@@ -101,7 +100,7 @@ describe('a read and a master’s answer in one turn (ISS-1440)', () => {
       earlierAt: null,
     });
     expect(
-      judgeReply({ ...reply(OWN_VOICE, 'vi'), roomKind: 'agent', reads: none }, []).failed,
+      judgeReply({ ...reply(OWN_VOICE), roomKind: 'agent', reads: none }, []).failed,
     ).toEqual(['accurate']);
   });
 });

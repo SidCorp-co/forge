@@ -5,6 +5,8 @@ const recorded: unknown[] = [];
 const OUTBOX_REFUSAL =
   'Failed query: insert into "pipeline_outbox" ("type", "payload") values ($1, $2)\nparams: conversation.pushed,{"userIds":["u-reader-1","u-reader-2"],"content":"REQ-1 reads as agreed at revision 1."} — violates foreign key constraint "pipeline_outbox_type_outbox_event_types_type_fk"';
 
+// the language hint reads the project's document (ISS-1451); these tests have no database
+vi.mock('./turn-asker.js', () => ({ answerLanguageOf: async () => null }));
 vi.mock('../conversations/index.js', () => ({
   codeAuthored: (text: string) => ({ text, authored: 'code' }),
   conversationTransport: () => ({

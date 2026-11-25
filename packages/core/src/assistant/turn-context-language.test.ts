@@ -49,7 +49,9 @@ describe('the turn is told to answer in it, beside the message', () => {
       replyLanguageBy: 'project',
     });
     const content = String(asked?.content);
-    expect(content).toContain('Reply language: this project writes in Vietnamese. Write your whole reply in Vietnamese from its first word');
+    expect(content).toContain(
+      'Reply language: this project writes in Vietnamese. Write your whole reply in Vietnamese from its first word',
+    );
     expect(content).not.toContain('hint');
   });
 

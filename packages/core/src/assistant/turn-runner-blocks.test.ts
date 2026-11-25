@@ -22,6 +22,8 @@ const recorded: { askedBy?: string | null; deliveryKey?: string }[] = [];
 let failDelivery = false;
 let ends: 'answer' | 'answer-late' | 'decline' | 'decline-late' = 'answer';
 
+// the language hint reads the project's document (ISS-1451); these tests have no database
+vi.mock('./turn-asker.js', () => ({ answerLanguageOf: async () => null }));
 vi.mock('../conversations/index.js', () => ({
   codeAuthored: (text: string) => ({ text, proof: null }),
   conversationTransport: () => ({
