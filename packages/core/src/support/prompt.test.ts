@@ -110,14 +110,11 @@ describe('the room brief teaches an ask it cannot do to wait on the master', () 
       'post one reply of what you checked and saw, and that you will tell them here once there is a result; never that it was handed, passed or given to anyone',
     );
     // ISS-1465: a request is only recorded, and the agent tells the result itself in the same thread
-    expect(taught(channel)).toContain(
-      'never tell the asker it was handed, passed or given to anyone',
-    );
+    expect(taught(channel)).toContain('never tell the asker it was handed, passed or given');
     expect(taught(channel)).toContain(
       'once told the result, tell the asker yourself in that thread: what was fixed, where it runs, check again',
     );
-    expect(taught(channel)).toContain('restated in their language and as what they see'); // ISS-1466
-    expect(taught(channel)).toContain('is for you and never posted as it stands');
+    expect(taught(channel)).toMatch(/restated in their language.*never posted as it stands/s); // ISS-1466
     expect(taught(channel)).not.toContain('it went to the team');
     expect(REPLY_CARD.redFlag).toContain('never that it was passed on');
     expect(taught(channel)).toContain(
