@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.834] - 2026-11-25
+
+Masters hand room bots facts; bots tell users in their own words
+
+### Changed
+
+- **A master tells a users room through its bot only.** The dispatch guide no longer teaches posting your own words in a users room: hand the bot facts with master-tells; post yourself only where the team alone reads.
+
 ## [0.4.0-dev.833] - 2026-11-25
 
 Masters reach users' rooms only through the room bot, in its own words
