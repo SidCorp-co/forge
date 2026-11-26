@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.838] - 2026-11-26
+
+Runners on a pre-release build are no longer refused pool jobs
+
+### Fixed
+
+- **A runner on a pre-release build now claims.** The claim floor read `0.18.0-dev.9` as below `0.13.0` and held the box as too old; it now compares the numeric `a.b.c` core and ignores a `-` or `+` suffix.
+
 ## [0.4.0-dev.837] - 2026-11-25
 
 A technical need raised from another project's thread lands in that project's thread
