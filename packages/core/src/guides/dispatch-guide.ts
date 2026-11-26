@@ -336,7 +336,7 @@ It works in batches, as §4 splits them:
 4. Before any mark, check what the build left unproven. Call each NEW route once with its intended
    caller and see it answer (a seed or secret the brief never carried refuses every caller on the first
    deploy). Name each criterion you have not run and place it on the record as a \`decision\`
-   (\`POST /api/issues/:id/events\` \`{ kind: 'decision', contract: 1, fields: { decision, why, until? } }\`) naming its
+   (\`POST /api/issues/:id/events\` \`{ kind: 'decision', contract: 1, fields: [{ key: 'decision', value }, { key: 'why', value }, { key: 'until', value }?] }\`) naming its
    number and why it is unrun, \`until\` only for a deliberate hold; never marked over. Its skipped verdict waits for step 5. Before you offer a person the option to judge on production,
    read \`delivery.judgedOn\` in the project document (\`GET /api/projects/:id/config\`, REQ-36 BC-18); never offer an option
    core refuses (\`JUDGED_ON_PRODUCTION\`). Then record each issue. Rate its impact (${guideRef('fast-delivery')}) and mark it,

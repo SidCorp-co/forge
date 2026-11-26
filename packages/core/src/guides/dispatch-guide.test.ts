@@ -333,4 +333,10 @@ describe("the dispatch guide teaches a master to tell a users' room through the 
     expect(prose).not.toContain("post it with `attachments` in the asker's thread, then close");
     expect(prose).toContain('`master-tells` carries facts and no file');
   });
+
+  // ISS-1473: the decision door takes `fields` as a list of { key, value }, never an object
+  it('teaches the decision record in the shape the door takes', () => {
+    expect(prose).toContain("fields: [{ key: 'decision', value }");
+    expect(prose).not.toContain('fields: { decision, why');
+  });
 });
