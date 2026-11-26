@@ -124,15 +124,16 @@ describe('the dispatch guide teaches batches by default', () => {
   it('asks a direct master, before the mark, to call each new route, place each unrun criterion and read a question against held refusals', () => {
     const direct = prose.slice(prose.indexOf('### Direct mode')).replace(/\s+/g, ' ');
     expect(direct).toContain('Before any mark');
-    expect(direct).toContain('Call each NEW route once with its intended caller and see it answer');
-    expect(direct).toContain('Name each criterion you have not run and place it on the record');
+    expect(direct).toContain('Every NEW route gets one request as its intended caller, and you see it answer');
+    expect(direct).toContain('Each criterion you have not run is recorded as a `decision`');
     expect(direct).toContain('never marked over');
-    expect(direct).toContain('place it on the record as a `decision`');
+    expect(direct).toContain('is recorded as a `decision`');
     expect(direct).toContain('`POST /api/issues/:id/events`');
     expect(direct).toContain('`until` only for a deliberate hold');
     expect(direct).toContain('Its skipped verdict waits for step 5');
     expect(direct).not.toContain('`PUT /api/issues/:id/criteria`), never marked over');
-    expect(direct).toContain('read `delivery.judgedOn` in the project document');
+    expect(direct).toContain('Offer a person the production judge only where the project');
+    expect(direct).toContain('`delivery.judgedOn`');
     expect(direct).toContain('`GET /api/projects/:id/config`');
     expect(direct).not.toContain('the question door');
   });
@@ -336,7 +337,7 @@ describe("the dispatch guide teaches a master to tell a users' room through the 
 
   // ISS-1473: the decision door takes `fields` as a list of { key, value }, never an object
   it('teaches the decision record in the shape the door takes', () => {
-    expect(prose).toContain("fields: [{ key: 'decision', value }");
+    expect(prose).toContain('`fields` is a list of `{ key, value }` with keys `decision`, `why` and `until`');
     expect(prose).not.toContain('fields: { decision, why');
   });
 });
