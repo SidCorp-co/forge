@@ -27,7 +27,18 @@ describe('the claim floor', () => {
   });
 
   it('still refuses a string with no valid a.b.c core', () => {
-    for (const v of ['x.y', '', '0.18', '0.18.0.1', '-dev.1', 'a.b.c-dev.1']) {
+    for (const v of [
+      'x.y',
+      '',
+      '0.18',
+      '0.18.0.1',
+      '-dev.1',
+      'a.b.c-dev.1',
+      '1-2-3',
+      '0.130',
+      '01800',
+      '1x2x3-dev',
+    ]) {
       expect(atLeastVersion(v, FLOOR)).toBe(false);
     }
     expect(atLeastVersion(undefined, FLOOR)).toBe(false);

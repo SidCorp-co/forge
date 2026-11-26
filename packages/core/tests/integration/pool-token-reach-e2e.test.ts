@@ -191,6 +191,11 @@ describe('the claim floor reads a pre-release version (ISS-1472)', () => {
       ['0.18', false],
       ['0.18.0.1', false],
       ['x.y', false],
+      // the dot is a literal dot: drizzle's sql template drops a backslash, so the pattern says [.]
+      ['1-2-3', false],
+      ['0.130', false],
+      ['01800', false],
+      ['1x2x3-dev', false],
     ];
     for (const [agentVersion, capable] of cases) {
       const device = await createTestDevice(adminId, { agentVersion });
@@ -198,6 +203,24 @@ describe('the claim floor reads a pre-release version (ISS-1472)', () => {
         sql`SELECT (${claimCapableSql('d')}) AS ok FROM devices d WHERE d.id = ${device}`,
       );
       expect((res as unknown as Array<{ ok: boolean }>)[0]?.ok, agentVersion).toBe(capable);
+    }
+  });
+});
+
+describe('the queued-gates read serves a pre-release runner (ISS-1472)', () => {
+  it('gives 0.18.0-dev.9 claim_capable and no runner_too_old, and names 1x2x3-dev too old', async () => {
+    const { gateReasonsForQueuedJobsIn } = await import('../../src/jobs/queued-gates.js');
+    for (const [agentVersion, tooOld] of [
+      ['0.18.0-dev.9', false],
+      ['1x2x3-dev', true],
+    ] as const) {
+      await db.execute(
+        sql`UPDATE devices SET agent_version = ${agentVersion} WHERE id = ${boxes.project.device}`,
+      );
+      const jobId = await queueJob('custom');
+      await serving('project');
+      const reason = (await gateReasonsForQueuedJobsIn([projectId])).get(jobId);
+      expect(reason === 'runner_too_old', `${agentVersion}: ${reason}`).toBe(tooOld);
     }
   });
 });

@@ -26,7 +26,7 @@ export function atLeastVersion(version: string | null | undefined, min: string):
 export function claimCapableSql(alias: string) {
   const version = sql.raw(`${alias}.agent_version`);
   const floor = sql.raw(`ARRAY[${CLAIM_MIN_RUNNER.split('.').join(',')}]`);
-  return sql`(${version} ~ '^[0-9]+\.[0-9]+\.[0-9]+([-+].*)?$'
+  return sql`(${version} ~ '^[0-9]+[.][0-9]+[.][0-9]+([-+].*)?$'
     AND string_to_array(split_part(split_part(${version}, '+', 1), '-', 1), '.')::int[] >= ${floor})`;
 }
 
