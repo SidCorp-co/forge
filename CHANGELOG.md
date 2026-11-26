@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.839] - 2026-11-26
+
+Pre-release runners claim jobs again; beta rows close after their dev release
+
+### Fixed
+
+- **A beta row now closes when its dev issue shipped in a release but holds no merged commit.** The beta port sends the release record's commit as the mark and says so; an issue with neither stays refused by name.
+- **A malformed runner version no longer passes the claim floor.** The database check wrote its dots unescaped, so `1-2-3` or `1x2x3-dev` matched; each dot is now a literal `[.]`, and the queued-gates read is tested.
+
 ## [0.4.0-dev.838] - 2026-11-26
 
 Runners on a pre-release build are no longer refused pool jobs
