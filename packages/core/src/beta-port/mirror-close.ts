@@ -84,7 +84,7 @@ export async function closeOnBeta(
   }
   let recorded = '';
   if (beta.marked !== true) {
-    const says = await sendMark(ctx, project, beta, dev, refused);
+    const says = await sendMark(ctx, project, beta, dev, move.release, refused);
     if (says) recorded = `, ${says}`;
     if (says && !first.ok && first.refusal.code === 'CLOSE_REQUIRES_SHIPPED') {
       const again = await transitionPeerIssue(
@@ -241,6 +241,7 @@ async function sendMark(
   project: MirrorProject,
   beta: PeerIssue,
   dev: MirroredDevIssue,
+  release: DevRelease | null,
   refused: string[],
 ): Promise<string | null> {
   const landing = await project.landing();
@@ -250,7 +251,7 @@ async function sendMark(
     refused.push(`the beta project's landing shape: ${landing.refusal.code}`);
     return null;
   }
-  const built = landingMark(dev, landing.value);
+  const built = landingMark(dev, landing.value, release);
   if (!built.ok) {
     refused.push(built.refusal);
     return null;

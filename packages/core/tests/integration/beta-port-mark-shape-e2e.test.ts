@@ -98,6 +98,21 @@ const pairOf = async (betaId: string) =>
     )
   )[0];
 
+/** A shipped dev release `version` carrying the pair's dev issue, run at `commit` (ISS-1471). */
+async function shipOnDev(projectId: string, betaIssueId: string, version: string, commit: string) {
+  const devId = (await pairOf(betaIssueId))?.dev_issue_id as string;
+  const at = new Date().toISOString();
+  const metadata = {
+    source: 'release-batch',
+    issueIds: [devId],
+    finish: { state: 'finished', commit },
+  };
+  await rows(
+    sql`INSERT INTO pipeline_runs (id, project_id, kind, status, started_at, finished_at, release_version, release_released_at, metadata)
+        VALUES (${randomUUID()}, ${projectId}, 'system', 'completed', ${at}, ${at}, ${version}, ${at}, ${JSON.stringify(metadata)}::jsonb)`,
+  );
+}
+
 /** The dev issue of a beta issue's pair, closed with the mark given; its key. */
 async function closeDev(betaIssueId: string, commit: string | null): Promise<string> {
   const pair = await pairOf(betaIssueId);
@@ -223,6 +238,36 @@ describe('a beta port mark in the twin project landing shape (ISS-923 fix forwar
     expect(beta.marks.size).toBe(marks);
     expect(again.output).toContain('PEER_FORGE_LANDING_UNDECLARED');
     beta.closeNeedsMark = false;
+  });
+});
+
+describe('an asserted dev mark with no commit takes its shipping release record (ISS-1471)', () => {
+  it('sends the release run commit, says so; a dev issue with no shipping release stays refused', async () => {
+    const git = await twinWith(gitDocument('main'));
+    const shipped = betaIssue(40);
+    const unshipped = betaIssue(41);
+    beta.issues.set(git.betaId, [shipped, unshipped]);
+    for (const b of [shipped, unshipped]) await seedTwin(say, git.dev, b);
+    const shippedKey = await closeDev(shipped.id, null);
+    const unshippedKey = await closeDev(unshipped.id, null);
+    await shipOnDev(git.dev.id, shipped.id, '0.34.0', Y);
+    beta.transitions.length = 0;
+    beta.closeNeedsMark = true;
+
+    const settled = await fire(scheduleId);
+    beta.closeNeedsMark = false;
+
+    expect(beta.marks.get(shipped.id)).toMatchObject({ commit: Y, target: 'main' });
+    expect(beta.marks.get(shipped.id)?.note).toContain('release 0.34.0');
+    expect(settled.output).toContain(
+      `${shippedKey}: open → closed (beta ISS-40), its landing recorded as commit ${Y.slice(0, 12)} on main, from the release record of forge-dev 0.34.0`,
+    );
+    expect(shipped.status).toBe('closed');
+    expect(beta.marks.has(unshipped.id)).toBe(false);
+    expect(settled.output).toContain(
+      `BETA_PORT_NO_MERGED_COMMIT: ${unshippedKey} holds no merged commit`,
+    );
+    expect(unshipped.status).toBe('awaiting_release');
   });
 });
 

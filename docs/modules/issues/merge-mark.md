@@ -63,7 +63,7 @@ was read as ISS-46's alone).
 Such a commit amends in place a mark that stands asserted, at any status, closed included, with no
 reopen (`packages/core/src/issues/merge-record.ts:recordIssueMerge`, `amendsAsserted`; ISS-1445,
 sidpeak 0.32.0: its release run marked each issue at the run's shared commit, and the beta mirror
-refused the rows for an empty `merged_commit_sha`). It fills `merged_commit_sha` and `merged_target`,
+refused the rows for an empty `merged_commit_sha`). Where an asserted mark still holds no commit, the beta port sends the commit of the dev release record that shipped the issue and says so on beta's mark; with neither it refuses `BETA_PORT_NO_MERGED_COMMIT` (`packages/core/src/beta-port/markers.ts:landingMark`; ISS-1471). It fills `merged_commit_sha` and `merged_target`,
 keeps the asserted mark's `merged_at`, so neither the status nor the order against a release moves,
 and drops the paths a box read at another commit, which the paths it names replace. Both trail records
 stand, and the answer and the mark's comment say what it wrote over

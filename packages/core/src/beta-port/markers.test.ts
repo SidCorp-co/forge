@@ -285,6 +285,29 @@ describe("beta's merge mark in its project's landing shape (ISS-923 fix forward)
     });
   });
 
+  it("sends the shipping release record's commit where the dev mark holds none, saying so; refuses with neither (ISS-1471)", () => {
+    const asserted = { ...dev, mergedCommitSha: null };
+    const RELEASE = '0123456789abcdef0123456789abcdef01234567';
+    const built = landingMark(asserted, git, { version: '0.34.0', commit: RELEASE });
+    expect(built).toMatchObject({
+      ok: true,
+      mark: { commit: RELEASE, target: 'master', mergedAt: '2026-11-03T07:45:47.000Z' },
+      says: 'its landing recorded as commit 0123456789ab on master, from the release record of forge-dev 0.34.0',
+    });
+    expect(built.ok && 'note' in built.mark && built.mark.note).toContain('release 0.34.0');
+    // its own commit wins over the release's
+    expect(landingMark(dev, git, { version: '0.34.0', commit: RELEASE })).toMatchObject({
+      mark: { commit: SHA },
+    });
+    // a release that names no commit, or none at all, is no source
+    for (const release of [null, { version: '0.34.0', commit: null }]) {
+      expect(landingMark(asserted, git, release)).toEqual({
+        ok: false,
+        refusal: expect.stringContaining('BETA_PORT_NO_MERGED_COMMIT: SD-5'),
+      });
+    }
+  });
+
   it('reads the landing from the beta project document: base branch, or deploysFrom where a release promotes into it', () => {
     const doc = (document: unknown) => peerLandingOf({ declared: true, revision: 1, document });
     const source = { type: 'git', git: { defaultBranch: 'dev' } };

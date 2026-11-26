@@ -294,8 +294,10 @@ export function landedNote(devKey: string): string {
  * Beta's merge mark for a dev issue, in the shape the beta twin project's landing takes, and how the
  * report words it. In git: the dev issue's merged commit, on the branch the beta project lands on,
  * at the dev issue's merged time, never a `landing`, which beta refuses there (LANDING_NOT_THIS_SHAPE).
- * Outside git: the `landing` naming the dev key and where its work landed. A git twin's dev issue
- * holding no merged commit is refused by name: a commit is never guessed.
+ * Outside git: the `landing` naming the dev key and where its work landed. Where a git twin's dev
+ * issue holds no merged commit (an asserted mark), the commit of the dev release record that shipped
+ * it is sent instead, and the mark says it comes from that record (ISS-1471); with neither, it is
+ * refused by name: a commit is never guessed beyond the record.
  */
 export function landingMark(
   dev: {
@@ -305,6 +307,7 @@ export function landingMark(
     mergedAt: Date | null;
   },
   landing: PeerLanding,
+  release: ReleaseNamed | null = null,
 ): { ok: true; mark: PeerMergeMark; says: string } | { ok: false; refusal: string } {
   const note = landedNote(dev.key);
   if (landing.shape === 'outside_git') {
@@ -315,9 +318,22 @@ export function landingMark(
     };
   }
   if (!dev.mergedCommitSha) {
+    if (release?.commit) {
+      const fromRelease = `the commit of forge-dev release ${release.version}, which shipped it and whose own mark holds none`;
+      return {
+        ok: true,
+        mark: {
+          commit: release.commit,
+          target: landing.target,
+          mergedAt: dev.mergedAt?.toISOString() ?? null,
+          note: `${note} Its merge mark holds no commit; this one is ${fromRelease}.`,
+        },
+        says: `its landing recorded as commit ${release.commit.slice(0, 12)} on ${landing.target}, from the release record of forge-dev ${release.version}`,
+      };
+    }
     return {
       ok: false,
-      refusal: `BETA_PORT_NO_MERGED_COMMIT: ${dev.key} holds no merged commit, and the beta project lands in git, so a mark names a commit and none was sent`,
+      refusal: `BETA_PORT_NO_MERGED_COMMIT: ${dev.key} holds no merged commit and no forge-dev release that shipped it names one, and the beta project lands in git, so a mark names a commit and none was sent`,
     };
   }
   return {
