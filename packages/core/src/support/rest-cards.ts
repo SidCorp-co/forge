@@ -177,7 +177,7 @@ export const SUPPORT_REST_CARDS = {
       'Posting your own report into a room its users read, or writing the facts as a message for the room.',
     family: 'rooms',
     audience: ['master'],
-    scenarios: [],
+    scenarios: ['a master hands the room’s bot facts, never the words for a users’ room: FB-866'],
   },
   'PUT /api/projects/:id/support/rooms/:roomId/report-thread': {
     purpose: 'Names the thread a room’s reports go to, for a person’s own report thread.',

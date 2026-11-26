@@ -173,6 +173,7 @@ export const PROJECT_CONFIG_REST_CARDS = {
     // hand with forge-ops env, through its own tool call
     redFlag:
       'Copying a variable’s value into a target with forge-ops env set from an agent’s own call.',
+    family: 'setup',
     audience: ['master', 'run'],
     scenarios: ['a production value copied by hand into a forge-ops env file: FB-758'],
   },
@@ -193,6 +194,7 @@ export const PROJECT_CONFIG_REST_CARDS = {
     // FB-758: a deploy outside Forge started the app on an env file nobody had written the new value into
     redFlag:
       'Deploying with forge-ops directly after a variable changed, then copying its value by hand.',
+    family: 'setup',
     audience: ['master', 'run'],
     scenarios: ['a forge-ops deploy that ran before the variable reached its env file: FB-758'],
   },

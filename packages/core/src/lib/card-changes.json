@@ -325,14 +325,14 @@
     "by": "ISS-1251"
   },
   "POST /api/projects/:id/environments/:environment/forge-ops/deploy": {
-    "hash": "44a9d082f47d557b",
-    "on": "2026-11-23",
-    "by": "ISS-1350"
+    "hash": "086e100321f4452a",
+    "on": "2026-11-26",
+    "by": "ISS-1475"
   },
   "POST /api/projects/:id/environments/:environment/variables/sync": {
-    "hash": "fdeddd2b7f1da427",
-    "on": "2026-11-23",
-    "by": "ISS-1350"
+    "hash": "b4743b975b37462b",
+    "on": "2026-11-26",
+    "by": "ISS-1475"
   },
   "POST /api/projects/:id/executions": {
     "hash": "4a44947781ca1aa2",
@@ -610,9 +610,9 @@
     "by": "ISS-1467"
   },
   "POST /api/projects/:id/support/master-tells": {
-    "hash": "a24cdaebcf9943bc",
-    "on": "2026-11-25",
-    "by": "ISS-1468"
+    "hash": "92e7fb6c1ca231a0",
+    "on": "2026-11-26",
+    "by": "ISS-1475"
   },
   "POST /api/projects/:id/support/technical-needs": {
     "hash": "bf54a137c60f8680",

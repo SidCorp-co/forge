@@ -108,4 +108,14 @@ export const ROOM_ACT_SCENARIOS: readonly CardScenario[] = [
     good: 'react to the message with support.react, stay silent while it works, and post one message when it is done: cause, what was done, what they must do',
     teaches: [/support\.react/, /stay silent/i, /ONE message when it is done/i],
   },
+  {
+    name: 'a master hands the room’s bot facts, never the words for a users’ room: FB-866',
+    card: 'POST /api/projects/:id/support/master-tells',
+    source:
+      'FB-866 (SidPeak, 2026-11-25): a master’s own English report with shas, issue keys and tool words reached a users’ thread as the bot’s post (ISS-1468)',
+    situation: 'A fix is live and the person who asked in a users’ room should hear it',
+    bad: 'the master wrote the sentence for the room, shas and issue keys included, and it reached the users’ thread as written',
+    good: 'name the asker’s thread and hand the bot the facts: what changed, where it runs, what to check again',
+    teaches: [/name the asker.s thread and write the facts/i, /never write the sentence the room should read/i],
+  },
 ];

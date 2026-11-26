@@ -8,6 +8,7 @@
 // @direct-test-of packages/core/src/product-door/design-describe.ts
 
 import { PERMISSIONS } from '@forge/contracts/permissions';
+import { SUPPORT_FORGE_ACTS } from '@forge/contracts/support-channel';
 import { BUILTIN_WORKFLOW_TEMPLATES } from '@forge/contracts/workflow-templates';
 import Ajv2020 from 'ajv/dist/2020.js';
 import { describe, expect, it } from 'vitest';
@@ -73,7 +74,9 @@ describe('the catalog of every served action', () => {
   // which answers MCP_ACTION_UNKNOWN; a guide naming an action a client cannot call is a dead end
   it('names, in every door guide and in the server instructions, only actions it serves', () => {
     // a permission reads the same way (`releases.approve`), and a guide names it as one
-    const permissionNames = new Set<string>(PERMISSIONS);
+    // and so does a value of support.owner_forge_act's act enum (`project.archive`): a value the
+    // tool serves, whose noun happens to be a door's name
+    const permissionNames = new Set<string>([...PERMISSIONS, ...SUPPORT_FORGE_ACTS]);
     const doors = new Set([...catalog.keys()].map((id) => id.split('.')[0] as string));
     const named = new RegExp(`\\b(${[...doors].join('|')})\\.([a-z][a-z_]*)\\b`, 'g');
     const texts = [
