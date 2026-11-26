@@ -25,7 +25,7 @@ export const ISSUE_FLOW_GUIDE: CoreGuide = {
   title: 'Taking one issue from open to awaiting_release',
   summary:
     'The method a run follows for one issue or a batch, every tracker act a REST call: read it whole, take it, write criteria (a plan where the work needs one), build in its own tree, prove it, land, mark the merge, move it to `awaiting_release`, and close it once its criteria are met in scope.',
-  version: 23,
+  version: 24,
   doors: [
     'POST /api/questions',
     'POST /api/issues/:id/transition',
@@ -351,10 +351,13 @@ is written; it is safe to resend after a lost answer.
 
 Judge each criterion at the head you will land and write its verdict as you judge it:
 \`POST /api/issues/:id/verdicts\` \`{ criterion, verdict, reason, identity: { kind: 'commit', sha }, evidence, withoutClip?, run? }\`,
-the sha whole (40 hex). A \`pass\`, \`fail\` or \`short\` cites what it was taken from: an attachment's
-name (\`POST /api/issues/:id/attachments\`, multipart, field \`file\`, uploaded first — on a runner
-box \`forge-runner api issues/<id>/attachments -F file=@<path>\`), a URL, or a path inside the
-repository at that commit. \`evidence\` is a list of strings, never one string: each item at most
+the sha whole (40 hex). A \`pass\`, \`fail\` or \`short\` cites what it was taken from: an attachment of
+this issue by its file name, its id or its \`/api/attachments/:id/download\` URL, relative or whole
+(\`POST /api/issues/:id/attachments\`, multipart, field \`file\`, uploaded first — on a runner
+box \`forge-runner api issues/<id>/attachments -F file=@<path>\`; the answer gives all three), an
+object id (a commit), another URL, or a path inside the repository at that commit. An attachment id or
+download URL this issue does not hold is kept and answered \`unresolved\` by the write, and weighs
+\`earned: false\`. \`evidence\` is a list of strings, never one string: each item at most
 ${VERDICT_EVIDENCE_ITEM_MAX} characters, so a URL fits, and at most ${VERDICT_EVIDENCE_ITEMS_MAX} items. A path on your own machine is refused. \`skipped\` cites nothing and
 says what was out of reach. A token, key or connection string in the reason or evidence is refused
 \`VERDICT_SECRET\` at its path, as a comment holding one is refused. Once the issue's merge is

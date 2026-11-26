@@ -14,7 +14,7 @@ export const QA_GUIDE: CoreGuide = {
   title: "Judging an issue's criteria on the running build",
   summary:
     'The method of a run sent to judge an issue somebody else built: the REST reads for what its verdicts are held to, where to start, the verdict history, how a criterion is exercised and recorded, and which design revision a design issue is judged on.',
-  version: 3,
+  version: 4,
   body: `## Judging an issue's criteria on the running build
 
 This is the method of a run sent to judge one issue somebody else built. It builds nothing, lands
@@ -151,8 +151,9 @@ that is missing fails it, whatever else the screen holds.
 
 ### Writing each verdict
 \`POST /api/issues/:id/verdicts\` per criterion, as ${guideRef('issue-flow')} (section 5) gives the
-body: the identity the build serves, written whole, the evidence uploaded first and cited by its name,
-its id or its download URL, the
+body: the identity the build serves, written whole, the evidence uploaded first and cited by its file
+name, its attachment id or its \`/api/attachments/:id/download\` URL (relative or whole), each held
+by this issue or answered \`unresolved\` in the write's reply, the
 probe an observable criterion keeps, and its clip or \`withoutClip\`. A server-side criterion cites the
 capture of what you ran inside the running server instead, and keeps no probe and no clip
 (\`VERDICT_CAPTURE_REQUIRED\`, \`VERDICT_PROBE_SERVER_SIDE\`). A code-property criterion is the

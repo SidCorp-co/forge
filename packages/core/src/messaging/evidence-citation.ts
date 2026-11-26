@@ -4,6 +4,7 @@
  * where whoever wrote it is still there to attach the file instead.
  */
 
+import { citedAttachmentId } from '@forge/contracts/release-page';
 import { verdictExercised } from '@forge/contracts/verdict-identity';
 import type { MessageRefusal } from './contract.js';
 import type { ForgeRecord } from './forge-record.js';
@@ -21,7 +22,7 @@ const IN_TREE = /^[\w.@-]+(?:\/[\w.@-]+)+$/u;
 const RULE = 'verdict-evidence';
 
 const SHAPE =
-  'a criterion block whose verdict was taken by looking cites what it was taken from, as `evidence: <the name of a file attached to this issue>`, a URL, or an object id — never a path on the machine that wrote it';
+  'a criterion block whose verdict was taken by looking cites what it was taken from, as `evidence: <the name, id or /api/attachments/:id/download URL of a file attached to this issue>`, a URL, or an object id — never a path on the machine that wrote it';
 
 const EXAMPLE = [
   '```forge-record: verdict · contract 1',
@@ -33,12 +34,15 @@ const EXAMPLE = [
 ].join('\n');
 
 /**
- * The first four forms are disjoint and are tried in order; `attachment` takes what they leave.
+ * An attachment's own id or `/api/attachments/:id/download` URL (host-relative, which would also read
+ * as a machine path, or whole) is `attachment` first: it is the tracker's file, held or not.
+ * The other four forms are disjoint and are tried in order; `attachment` takes what they leave.
  * The order decides their one overlap: seven to forty hexadecimal characters would also be a legal
  * file name, and is read as an object id because that is what a writer means by it.
  */
 export function citationForm(cited: string): CitationForm {
   const value = cited.trim();
+  if (citedAttachmentId(value)) return 'attachment';
   if (URL.test(value)) return 'url';
   if (MACHINE_PATH.test(value)) return 'machine-path';
   if (IDENTITY.test(value)) return 'identity';

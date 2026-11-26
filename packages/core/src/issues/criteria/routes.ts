@@ -34,6 +34,7 @@ import { idParamSchema, notFound } from '../../middleware/route-errors.js';
 import { nestedFieldShape, zValidator } from '../../middleware/zod-validator.js';
 import { requiresOnResolved } from '../../permissions/index.js';
 import { callerBoxOf } from '../caller-box.js';
+import { unresolvedEvidenceOf } from '../criteria-verdicts.js';
 import { heldIssue, ISSUE_PROJECT, projectScopeQuery } from '../issue-route-ref.js';
 import { judgedBuildOf } from '../ports.js';
 import { findIssueById } from '../read-service.js';
@@ -262,6 +263,8 @@ issueCriteriaRoutes.post(
         duplicate: written.duplicate,
         criterion,
         notCounted: written.notCounted,
+        // what this verdict cites that the weighing will not count (kept, never refused); else null
+        unresolved: await unresolvedEvidenceOf(issue.id, body.evidence ?? []),
         countedUnderCutover: written.countedUnderCutover,
       },
       written.duplicate ? 200 : 201,

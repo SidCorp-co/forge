@@ -4,7 +4,15 @@
  * `ATTACHMENT_FILE_MISSING`; a citation pointing outside the tracker is reported as not followed.
  */
 
+import { citedAttachmentId } from '@forge/contracts/release-page';
 import { citationForm } from '../messaging/evidence-citation.js';
+
+/** What the tracker holds for one issue (its comments' included): file names and attachment ids. */
+export interface HeldAttachments {
+  readonly names: ReadonlySet<string>;
+  /** Lower case. */
+  readonly ids: ReadonlySet<string>;
+}
 
 type CitationStanding = 'held' | 'dangling' | 'unreachable' | 'elsewhere';
 
@@ -13,16 +21,24 @@ export interface CitationReport {
   readonly standing: CitationStanding;
 }
 
-function citationStanding(cited: string, held: ReadonlySet<string>): CitationStanding {
+/**
+ * A citation is read in the three spellings the guides teach for an attachment: its file name, its
+ * id, or its `/api/attachments/:id/download` URL. An attachment-shaped id or URL this issue does not
+ * hold is dangling; an object-id-shaped string (a commit identity) and any other URL keep their
+ * meaning and are not followed.
+ */
+function citationStanding(cited: string, held: HeldAttachments): CitationStanding {
   const form = citationForm(cited);
   if (form === 'machine-path') return 'unreachable';
+  const id = citedAttachmentId(cited);
+  if (id) return held.ids.has(id) ? 'held' : 'dangling';
   if (form !== 'attachment') return 'elsewhere';
-  return held.has(cited.trim()) ? 'held' : 'dangling';
+  return held.names.has(cited.trim()) ? 'held' : 'dangling';
 }
 
 export function unresolvedCitations(
   cited: readonly string[],
-  held: ReadonlySet<string>,
+  held: HeldAttachments,
 ): CitationReport[] {
   const out: CitationReport[] = [];
   for (const one of cited) {

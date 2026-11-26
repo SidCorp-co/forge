@@ -16,7 +16,12 @@ import { longestSpelling } from '../messaging/verdict-identity.js';
 import { type CriterionWithVerdict, type LatestVerdict, listCriteria } from './criteria/store.js';
 import { withCurrentDrafts } from './criteria/storefront-draft.js';
 import { currentContracts, designRevisions, pinnedAnchorsOf } from './criteria-anchors.js';
-import { type CitationReport, citationSentence, unresolvedCitations } from './evidence-standing.js';
+import {
+  type CitationReport,
+  citationSentence,
+  type HeldAttachments,
+  unresolvedCitations,
+} from './evidence-standing.js';
 import { readJudge, readProjectDocument } from './ports.js';
 import { releasedLineOf } from './released-line-reads.js';
 import {
@@ -179,18 +184,34 @@ export interface IssueCriteriaReport {
   readonly landingHeld?: LandingHeld;
 }
 
-/** Every name the tracker holds an attachment under for this issue, its comments' included. */
-async function heldAttachmentNames(issueId: string): Promise<Set<string>> {
+/** Every name and id the tracker holds an attachment under for this issue, its comments' included. */
+async function heldAttachments(issueId: string): Promise<HeldAttachments> {
   const own = await db
-    .select({ name: issueAttachments.name })
+    .select({ id: issueAttachments.id, name: issueAttachments.name })
     .from(issueAttachments)
     .where(eq(issueAttachments.issueId, issueId));
   const onComments = await db
-    .select({ name: commentAttachments.name })
+    .select({ id: commentAttachments.id, name: commentAttachments.name })
     .from(commentAttachments)
     .innerJoin(comments, eq(comments.id, commentAttachments.commentId))
     .where(eq(comments.issueId, issueId));
-  return new Set([...own, ...onComments].map((row) => row.name));
+  const rows = [...own, ...onComments];
+  return {
+    names: new Set(rows.map((row) => row.name)),
+    ids: new Set(rows.map((row) => row.id.toLowerCase())),
+  };
+}
+
+/**
+ * What a verdict being written cites that the weighing will not count, in `citationSentence`'s form;
+ * null where every citation resolves or is read elsewhere. The write answers it beside the verdict.
+ */
+export async function unresolvedEvidenceOf(
+  issueId: string,
+  evidence: readonly string[],
+): Promise<string | null> {
+  const unresolved = unresolvedCitations(evidence, await heldAttachments(issueId));
+  return unresolved.length > 0 ? citationSentence(unresolved) : null;
 }
 
 const NEVER_JUDGED = 'no verdict was recorded for it';
@@ -281,7 +302,7 @@ function findingsFor(
   latest: ReadonlyMap<number, CriterionVerdict>,
   weigh: Weighed,
   identities: IssueIdentities,
-  held: ReadonlySet<string>,
+  held: HeldAttachments,
 ): CriteriaFindings {
   const unearned: UnearnedCriterion[] = [];
   const earned: EarnedCriterion[] = [];
@@ -405,7 +426,7 @@ async function reportFor(
     return { issueId: row.id, unearned: [], earned: [], broken: [], ...placed, uncorroborated: [] };
   }
   const latest = latestByNumber(criteria, stands.unverified);
-  const held = await heldAttachmentNames(row.id);
+  const held = await heldAttachments(row.id);
   const owed = owedRuntimes(row.id, weighing);
   const found = findingsFor(
     numbers,
