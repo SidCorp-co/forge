@@ -23,7 +23,7 @@ export const DISPATCH_GUIDE: CoreGuide = {
   title: "Running a wave: a master's dispatch and fold",
   summary:
     "The method a project's master follows for one wave: read the order, triage each candidate, batch by files, give each run its tree and a brief, declare and record each dispatch, and fold what comes back — over REST and `forge-runner`; on a project that runs direct (not strict, fast delivery on), build, land, release and judge a whole batch at once instead.",
-  version: 19,
+  version: 20,
   body: `## Running a wave
 
 A wave is the set of runs one master pass sends out, and the fold is the reading of what came back.
@@ -335,10 +335,11 @@ It works in batches, as §4 splits them:
    (\`POST /api/projects/:id/debts\`), never fixed inside the batch and never filed as an issue.
 4. Before any mark, check what the build left unproven. Call each NEW route once with its intended
    caller and see it answer (a seed or secret the brief never carried refuses every caller on the first
-   deploy). Name each criterion you have not run and place it on the record, a dated decision or
-   skipped with its reason (\`PUT /api/issues/:id/criteria\`), never marked over. Before you ask a person a question, read its
-   options against the refusals core holds (\`JUDGED_ON_PRODUCTION\`, REQ-36 BC-18): the question door
-   (\`POST /api/questions\`) names them. Then record each issue. Rate its impact (${guideRef('fast-delivery')}) and mark it,
+   deploy). Name each criterion you have not run and place it on the record as a \`decision\`
+   (\`POST /api/issues/:id/events\` \`{ kind: 'decision', contract: 1, fields: { decision, why, until? } }\`) naming its
+   number and why it is unrun, \`until\` only for a deliberate hold; never marked over. Its skipped verdict waits for step 5. Before you offer a person the option to judge on production,
+   read \`delivery.judgedOn\` in the project document (\`GET /api/projects/:id/config\`, REQ-36 BC-18); never offer an option
+   core refuses (\`JUDGED_ON_PRODUCTION\`). Then record each issue. Rate its impact (${guideRef('fast-delivery')}) and mark it,
    \`POST /api/issues/:id/merge\` \`{ commit: <landing sha>, target: <the branch it landed on> }\`. Move it,
    \`POST /api/issues/:id/transition\` \`{ toStatus: 'awaiting_release', reason: <landing sha> }\`.
    Record the terms and rules the work named under its module, as the mark's \`moduleMap\` says

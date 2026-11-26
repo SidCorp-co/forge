@@ -92,8 +92,8 @@ describe('masterWork under direct mode: the pass is told to build, not to dispat
       'only once you have checked it live, after landing',
       // ISS-1473: the three checks before the mark
       'call each new route once with its intended caller and see it answer',
-      'place it on the record (a dated decision, or skipped with its reason) instead of marking over it',
-      "read a question's options against the refusals core holds (`JUDGED_ON_PRODUCTION`)",
+      'place it on the record as a `decision` event (`forge-runner api issues/<id>/events -X POST`, naming its number and why it is unrun) instead of marking over it',
+      'read `delivery.judgedOn` in the project document (`projects/<id>/config`), never an option core refuses (`JUDGED_ON_PRODUCTION`)',
       'a move off a legal edge or without its reason',
       "anyone but the issue's holder",
       // ISS-1062: the holder closes from awaiting_release once met in scope, so the release no longer owns the close

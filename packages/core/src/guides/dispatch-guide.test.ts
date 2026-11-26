@@ -127,10 +127,14 @@ describe('the dispatch guide teaches batches by default', () => {
     expect(direct).toContain('Call each NEW route once with its intended caller and see it answer');
     expect(direct).toContain('Name each criterion you have not run and place it on the record');
     expect(direct).toContain('never marked over');
-    expect(direct).toContain(
-      'read its options against the refusals core holds (`JUDGED_ON_PRODUCTION`',
-    );
-    expect(direct).toContain('`POST /api/questions`');
+    expect(direct).toContain('place it on the record as a `decision`');
+    expect(direct).toContain('`POST /api/issues/:id/events`');
+    expect(direct).toContain('`until` only for a deliberate hold');
+    expect(direct).toContain('Its skipped verdict waits for step 5');
+    expect(direct).not.toContain('`PUT /api/issues/:id/criteria`), never marked over');
+    expect(direct).toContain('read `delivery.judgedOn` in the project document');
+    expect(direct).toContain('`GET /api/projects/:id/config`');
+    expect(direct).not.toContain('the question door');
   });
 
   // ISS-1366 (FB-780, epod): a master declared a run, woke a finished builder with SendMessage,
