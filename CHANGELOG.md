@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.840] - 2026-11-26
+
+Direct masters check new routes and unrun criteria before marking merged
+
+### Changed
+
+- **A direct master checks before the mark.** It calls each new route once, places every unrun criterion on the record, and reads a question's options against the refusals core holds.
+
 ## [0.4.0-dev.839] - 2026-11-26
 
 Pre-release runners claim jobs again; beta rows close after their dev release
