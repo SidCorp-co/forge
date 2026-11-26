@@ -97,4 +97,15 @@ export const ROOM_ACT_SCENARIOS: readonly CardScenario[] = [
     good: 'look at the screen on the environment first, and say only what the look showed, or that it has not seen the screen yet',
     teaches: [/look first with support\.look/i, /never the thing anyway/i],
   },
+  {
+    name: 'three posts in eleven minutes for one matter: checking, unclear, cause',
+    card: 'support.react',
+    source:
+      'AdminHub-Support, PGPrints thread Q8mjjHjyrk3u2zs89: a checking line, an unclear line, then the cause, with more to come (ISS-1475)',
+    situation:
+      'A user reports a sync that fails; the cause takes the agent several minutes to find',
+    bad: 'a post saying it is checking, another saying the cause is unclear, a third giving the cause',
+    good: 'react to the message with support.react, stay silent while it works, and post one message when it is done: cause, what was done, what they must do',
+    teaches: [/support\.react/, /stay silent/i, /ONE message when it is done/i],
+  },
 ];

@@ -63,6 +63,7 @@ import { readProjectFacts } from './project-read.js';
 import { makePromise } from './promise.js';
 import { proposeFix, proposeRecord } from './propose.js';
 import { answerHandedQuestion } from './question-task.js';
+import { type ReactActInput, reactAct } from './react-act.js';
 import { REFERENCE_ACTS, type ReferenceActInput, referenceAct } from './reference-acts.js';
 import { decideReleaseFromMessage } from './release-decision.js';
 import { auditReply } from './reply-audit/audit.js';
@@ -185,6 +186,7 @@ export type SupportActInput =
   | ReferenceActInput
   | TermActInput
   | LookActInput
+  | ReactActInput
   | {
       action: 'read';
       name: string;
@@ -280,6 +282,8 @@ const SHARED = new Set<SupportActInput['action']>([
   'secret_link',
   // and looks at a screen of its project's environment before saying what it shows (ISS-1356)
   'look',
+  // and reacts to a message of its thread instead of posting that it is on it (ISS-1475)
+  'react',
 ]);
 
 const OPERATION_ACTIONS: readonly string[] = OPERATIONS_ACTIONS;
@@ -458,6 +462,8 @@ async function act(
       return termAct(room, input);
     case 'look':
       return lookAct(room, input);
+    case 'react':
+      return reactAct(room, input);
     case 'owner_sign_in':
       return startOwnerSignIn(room, {
         thread: input.thread,

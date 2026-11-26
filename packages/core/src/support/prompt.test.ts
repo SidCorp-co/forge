@@ -107,7 +107,7 @@ describe('the room brief teaches an ask it cannot do to wait on the master', () 
       'a request with support.record { kind: request, project } for the master of the project that owns it',
     );
     expect(taught(channel)).toContain(
-      'post one reply of what you checked and saw, and that you will tell them here once there is a result; never that it was handed, passed or given to anyone',
+      'acknowledge the asker’s message with support.react; the one message comes with the result, never that it was handed, passed or given to anyone',
     );
     // ISS-1465: a request is only recorded, and the agent tells the result itself in the same thread
     expect(taught(channel)).toContain('never tell the asker it was handed, passed or given');
@@ -120,7 +120,7 @@ describe('the room brief teaches an ask it cannot do to wait on the master', () 
     expect(taught(channel)).toContain(
       'reply again only with what the master did or decided once you are told it, never done before then and never options or steps the master has not given',
     );
-    expect(taught(channel)).toContain('save the one reply of what you checked and saw');
+    expect(taught(channel)).toContain('acknowledged by a reaction (support.react)'); // ISS-1475
   });
 
   it('tells a result as what the team said or shipped, never done before it', () => {
@@ -156,7 +156,7 @@ describe('the room brief states an item only from the record, either way', () =>
         "never call it done before then, nor not done: an item's state is only what the record shows (that result, or facts a master hands you for the thread)",
       );
       expect(taught(text)).toContain(
-        "where the thread claims a state the record does not show, or the asker asks for one you cannot read, ask the owning project's master with support.record { project }, post one holding reply, and wait, asserting neither",
+        "where the thread claims a state the record does not show, or the asker asks for one you cannot read, ask the owning project's master with support.record { project }, react to the message with support.react, and wait, asserting neither",
       );
     }
   });

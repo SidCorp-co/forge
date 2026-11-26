@@ -55,6 +55,7 @@ const SUPPORT_SESSION_ROUTES = {
   term: 'terms',
   secret_link: 'secret-links',
   look: 'looks',
+  react: 'reactions',
   decide: 'decisions',
   approve: 'approvals',
   feedback: 'feedback',

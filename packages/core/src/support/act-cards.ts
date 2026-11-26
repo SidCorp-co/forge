@@ -13,6 +13,7 @@ import type { SUPPORT_ACTIONS } from '@forge/contracts/support';
 import type { OperationsAction } from '@forge/contracts/support-operations';
 import { LOOK_ACT_CARDS } from './look-cards.js';
 import { OPS_ACT_CARDS } from './ops-cards.js';
+import { REACT_ACT_CARDS } from './react-cards.js';
 import { REFERENCE_ACT_CARDS } from './reference-cards.js';
 import { ROOM_ACT_CARDS } from './room-cards.js';
 import { SECRET_ACT_CARDS } from './secret-cards.js';
@@ -29,6 +30,7 @@ export const SUPPORT_ACT_CARDS: Readonly<Partial<Record<SupportAction, Capabilit
   ...TERM_ACT_CARDS,
   ...SECRET_ACT_CARDS,
   ...LOOK_ACT_CARDS,
+  ...REACT_ACT_CARDS,
   ...OPS_ACT_CARDS,
 };
 

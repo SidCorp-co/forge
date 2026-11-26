@@ -72,6 +72,7 @@ import {
   operationsRequirementsRequestSchema,
   operationsResearchRequestSchema,
 } from '@forge/contracts/support-operations';
+import { supportReactRequestSchema } from '@forge/contracts/support-react';
 import {
   supportReferenceAddRequestSchema,
   supportReferenceCiteRequestSchema,
@@ -191,6 +192,7 @@ export const SUPPORT_ACT_REQUESTS = {
   term: supportTermRequestSchema,
   secret_link: supportSecretLinkRequestSchema,
   look: supportLookRequestSchema,
+  react: supportReactRequestSchema,
 } as const satisfies Record<(typeof ACTIONS)[number], z.ZodType>;
 
 /** Each action's request as `forge_describe` answers it, its entry below naming exactly these (ISS-1033). */
@@ -238,9 +240,7 @@ const inputSchema = z.strictObject({
   ...operationsResearchRequestSchema.partial().shape,
   ...supportDeployRequestSchema.partial().shape,
   ...supportCommandRequestSchema.partial().shape,
-  // the owner's consent or its withdrawal, for a product by its binding name (ISS-1013)
-  // and a person's release decision, read from his own message (ISS-1206)
-  // and a routing decision for a message (ISS-1243)
+  // the owner's consent (ISS-1013), a release decision (ISS-1206) and a routing decision (ISS-1243)
   decision: z
     .enum([
       'agree',
@@ -287,12 +287,12 @@ const inputSchema = z.strictObject({
   anchor: supportTermRequestSchema.shape.anchor,
   // the one secret door's slot, its environment and key widened to what other acts take too
   ...SECRET_LINK_TOOL_FIELDS,
+  emoji: supportReactRequestSchema.shape.emoji.optional(),
   // a look at a screen (ISS-1356): the fields its act takes beside the ones above
   ...supportLookRequestSchema
     .pick({ path: true, viewport: true, as: true, box: true, step: true, close: true })
     .partial().shape,
-  // a look's pictures a reply posts after its text (ISS-1386)
-  shots: supportReplyRequestSchema.shape.shots,
+  shots: supportReplyRequestSchema.shape.shots, // a look's pictures, posted after a reply's text (ISS-1386)
   // a field two acts' requests both take, each judged by its own act's request: a record's or a
   // draft's kind, or a reference source's; a page's or a source's address; a one-line why, or what a
   // source teaches
@@ -376,6 +376,7 @@ const SIGNATURES = [
   'reference_propose { kind, url, why, areas, evidence, title?, priority?, followReleases?, project? }',
   'term { thread, message, slug, title, means, module, quote, aliases?, anchor?, project? }',
   'look { thread, environment?, path?, viewport?: desktop | phone, as?, box?, step?, close? } (a first look names environment; a look again names box)',
+  'react { thread, message, emoji: eyes | hourglass_flowing_sand | white_check_mark | thumbsup }',
   'secret_link { thread, why, project?, kind: variable, environment (null: every environment), key | kind: testing, profile, actor | service | kind: integration, provider; shape?: value | file | mailbox | signin | { fields }, example?, presign? }',
 ];
 

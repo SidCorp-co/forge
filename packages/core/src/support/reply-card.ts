@@ -22,7 +22,7 @@ export const REPLY_CARD = {
     },
   ],
   practice: [
-    'An owner’s message gets the answer, or one “on it, will report at …” line within 30 minutes; no other acknowledgement, plan or progress, save the one reply of what you checked and saw, with that you will tell them here once there is a result.',
+    'A message is acknowledged by a reaction (support.react), never by a line saying you are checking; a matter asking nothing of the person stays silent until done, then ONE message: cause, what was done, what they must do.',
     // ISS-1354 (FB-763): three failed audits after ISS-1329 taught reading first, at a line the agent did not read as it wrote
     // ISS-1356 (owner 2026-11-19): a menu item confirmed to a PGPrints user from a master's post, not a look
     'What a screen shows (a button, menu item, field, page) is said only from a look this turn with support.look, its picture posted with shots; where you could not look, say you have not seen it yet, never the thing anyway.',
@@ -38,7 +38,7 @@ export const REPLY_CARD = {
   // ISS-1243, AdminHub-Support 03/11-15/11: 21 of 76 bot posts were relays ("passed to the team,
   // I will report back") instead of an answer, and a master post landed beside 14 of them
   redFlag:
-    'A reply that only says the request was passed on or will be reported back, when the answer can be had now: ask the master in the turn and answer yourself; for a code change say what you checked and saw and that you will tell them here once there is a result, never that it was passed on.',
+    'A reply that only says the request was passed on or will be reported back, when the answer can be had now: ask the master in the turn and answer yourself; for a code change react to the message with support.react and tell them the result in one message once there is one, never that it was passed on.',
   family: 'room.answer',
   audience: ['bot'],
   scenarios: ['a relay posted instead of the answer: only “passed on, will report back”'],

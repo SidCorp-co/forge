@@ -39,6 +39,8 @@ const HAND_ON = [
   'term',
   // a look at a screen before saying what it shows (ISS-1356)
   'look',
+  // a reaction in place of a line saying it is on it (ISS-1475)
+  'react',
 ] as const;
 
 /** The operations brief's map: the support brief's line for a message's decision, then the owner's acts. */

@@ -84,7 +84,7 @@ export const WORK_ACT_CARDS = {
       },
       {
         when: 'you lack a tool, a read, a fact or an ability',
-        do: 'record it as a request with support.record { kind: request, project } for the master of the project that owns it, and post one reply of what you checked and saw, and that you will tell them here once there is a result; never that it was handed, passed or given to anyone',
+        do: 'record it as a request with support.record { kind: request, project } for the master of the project that owns it, and acknowledge the asker’s message with support.react; the one message comes with the result, never that it was handed, passed or given to anyone',
       },
     ],
     practice: [

@@ -250,7 +250,7 @@ export const ROOM_ACT_CARDS = {
     ],
     practice: [
       'The channel is the project’s own thread of the organization’s shared operations room, opened the first time it is needed; a direct message to the owner only where the project names one or the organization has no such room.',
-      'The work thread hears nothing of a grant you lack; the channel hears your words alone, in its reader’s language, to him in the second person, never a “<project> asks:” lead.',
+      'The work thread hears nothing of a grant you lack; the channel hears your words alone, in its reader’s language, to him in the second person, never a “<project> asks:” lead. No intermediate message: a raise that needs his decision, or the one report when done.',
       'A raise held on his message in that thread: if he already ruled, make the act as him (support.owner_forge_act) and post no ask; if the thread promised it, say what came of it; then raise with answers.',
     ],
     example: {
@@ -371,7 +371,7 @@ export const ROOM_ACT_CARDS = {
       },
     ],
     practice: [
-      'Give the options and your recommendation, and say he can answer right there.',
+      'Give the options and your recommendation, and say he can answer right there; a question for him is the only message to him before the work is done.',
       'His reply comes back marked answersYourQuestion; name the issue it is also written on as record.',
     ],
     example: {

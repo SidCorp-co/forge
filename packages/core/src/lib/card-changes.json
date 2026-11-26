@@ -1540,9 +1540,9 @@
     "by": "ISS-1328"
   },
   "support.ask_owner": {
-    "hash": "0343f3809fdd35ae",
-    "on": "2026-11-16",
-    "by": "ISS-1251"
+    "hash": "2a58a37bdfc48e94",
+    "on": "2026-11-26",
+    "by": "ISS-1475"
   },
   "support.asker": {
     "hash": "90ef164182218ead",
@@ -1699,15 +1699,20 @@
     "on": "2026-11-18",
     "by": "ISS-1299"
   },
+  "support.react": {
+    "hash": "ef3e411d160c12d3",
+    "on": "2026-11-26",
+    "by": "ISS-1475"
+  },
   "support.read": {
     "hash": "3b3fe536972bb37d",
     "on": "2026-11-16",
     "by": "ISS-1251"
   },
   "support.record": {
-    "hash": "aa3140602b8861e0",
-    "on": "2026-11-25",
-    "by": "ISS-1465"
+    "hash": "f51671557ad0260c",
+    "on": "2026-11-26",
+    "by": "ISS-1475"
   },
   "support.reference_add": {
     "hash": "4258d56c81b3aacd",
@@ -1740,9 +1745,9 @@
     "by": "ISS-1440"
   },
   "support.reply": {
-    "hash": "a6bfa50525dd9a1e",
-    "on": "2026-11-25",
-    "by": "ISS-1465"
+    "hash": "0b78f1dee25699fa",
+    "on": "2026-11-26",
+    "by": "ISS-1475"
   },
   "support.requirements": {
     "hash": "793ed91dbfb6b6d7",
@@ -1785,9 +1790,9 @@
     "by": "ISS-1251"
   },
   "support.technical": {
-    "hash": "69a33386fd469246",
-    "on": "2026-11-22",
-    "by": "ISS-1416"
+    "hash": "6ae9a1da5f485a7a",
+    "on": "2026-11-26",
+    "by": "ISS-1475"
   },
   "support.term": {
     "hash": "5a1b14059e67bba5",

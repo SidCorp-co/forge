@@ -955,6 +955,8 @@ export const SUPPORT_ACTIONS = [
 	"secret_link",
 	// a look at a screen of the project's environment in a Forge Box, before saying what it shows (ISS-1356)
 	"look",
+	// a reaction on a message of the agent's own thread, in place of a line saying it is on it (ISS-1475)
+	"react",
 ] as const;
 
 /** The kinds of slot the one secret door opens (ISS-1348). */
@@ -1967,6 +1969,10 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_LOOK_OUTSIDE_PROJECT",
 	/** The box door refused a look's open or command, its own code and words carried (ISS-1356). */
 	"SUPPORT_LOOK_BOX_REFUSED",
+	/** A reaction naming a message no member wrote in that thread of this group (ISS-1475). */
+	"SUPPORT_REACT_MESSAGE_UNKNOWN",
+	/** The chat server took no reaction (ISS-1475). */
+	"SUPPORT_REACT_UNPOSTED",
 	/** A look names an actor its environment's testing profile does not declare (ISS-1386). */
 	"SUPPORT_LOOK_ACTOR_UNKNOWN",
 	/** A reply names a shot no look of this room took in its thread (ISS-1386). */
@@ -2236,6 +2242,8 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_LOOK_ENVIRONMENT_UNKNOWN: 400,
 	SUPPORT_LOOK_OUTSIDE_PROJECT: 403,
 	SUPPORT_LOOK_BOX_REFUSED: 409,
+	SUPPORT_REACT_MESSAGE_UNKNOWN: 404,
+	SUPPORT_REACT_UNPOSTED: 503,
 	SUPPORT_LOOK_ACTOR_UNKNOWN: 404,
 	SUPPORT_REPLY_SHOT_UNKNOWN: 404,
 	SUPPORT_REMINDER_NO_WEB: 503,

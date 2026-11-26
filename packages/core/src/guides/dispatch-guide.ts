@@ -23,7 +23,7 @@ export const DISPATCH_GUIDE: CoreGuide = {
   title: "Running a wave: a master's dispatch and fold",
   summary:
     "The method a project's master follows for one wave: read the order, triage each candidate, batch by files, give each run its tree and a brief, declare and record each dispatch, and fold what comes back — over REST and `forge-runner`; on a project that runs direct (not strict, fast delivery on), build, land, release and judge a whole batch at once instead.",
-  version: 20,
+  version: 21,
   body: `## Running a wave
 
 A wave is the set of runs one master pass sends out, and the fold is the reading of what came back.
@@ -183,8 +183,9 @@ Where a channel agent owns the thread, the agent tells its users the result, nev
 item reaching live, confirmed, answered or declined is handed into the asker's thread as a note by
 core as you move it (the landing, the release, the answer on the item), and a question the agent
 put to you is answered with \`master-asks/:askId/answer\` (Answering a room agent's ask); both go
-into that agent's session, which says what was fixed, where it runs and asks them to check again,
-and neither is posted beside it. The record is the only hand-over, and the users never hear it
+into that agent's session, which stays silent until there is a conclusion, then says in one message
+what was fixed, where it runs and asks them to check again, and neither is posted beside it. Hand
+over only a conclusion, read in this pass and never from earlier numbers, so no correction follows. The record is the only hand-over, and the users never hear it
 as one. What you want said in a room its product's people read, which no hand-over above carries
 (a result you checked, a release that reached them), you never post in your own words: you hand
 the room's bot the facts, \`POST /api/projects/:id/support/master-tells\` \`{ thread, facts, rid? }\`

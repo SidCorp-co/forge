@@ -451,23 +451,27 @@ describe('a room agent says what a screen shows only from a look at it (ISS-1356
     expect(answering).toContain('the person is told the honest next step');
   });
 
-  it('every owner message is answered or told when, within 30 minutes, and a re-ask is counted', () => {
-    expect(answering).toContain(
-      'Every message the owner writes in a thread gets its answer, or a line saying you are on it and when you will report, within 30 minutes',
-    );
-    expect(answering).toContain("one left longer shows on the room's daily line");
+  // ISS-1475 (owner 2026-11-26): the 30-minute "on it, will report" line taught a progress message
+  it('a reaction acknowledges, one message follows when done, and no 30-minute progress line stays', () => {
+    for (const said of [
+      'acknowledged by a reaction on it (support.react, eyes), never by a message saying you are checking',
+      'stays silent until it is DONE, then ONE message: the cause, what was done, what they must do',
+      'One answer is one message, never split in two.',
+      'never made from numbers an earlier read gave',
+      'told on the same cadence: a reaction, no intermediate message, one report when done',
+    ]) {
+      expect(answering).toContain(said);
+    }
     expect(answering).toContain('a question asked again is counted against your turn');
+    for (const gone of ['you are on it and when you will report', 'within 30 minutes'])
+      expect(answering + prose).not.toContain(gone);
   });
 
   // ISS-1385: the card said "Results only: no acknowledgement", against the guide's line above
   it("support.reply's card teaches the same rule as the guide's Answering section", () => {
-    expect(prose).toContain(
-      'An owner’s message gets the answer, or one “on it, will report at …” line within 30 minutes; no other acknowledgement, plan or progress',
-    );
+    expect(prose).toContain('never by a line saying you are checking; a matter asking nothing');
     expect(prose).not.toContain('Results only: no acknowledgement');
-    expect(answering).toContain(
-      'or a line saying you are on it and when you will report, within 30 minutes',
-    );
+    expect(prose).toContain('### `support.react`');
   });
 
   it("serves support.look's card beneath the guide, and support.reply's card carries the line", () => {
