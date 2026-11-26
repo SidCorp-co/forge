@@ -124,7 +124,9 @@ describe('the dispatch guide teaches batches by default', () => {
   it('asks a direct master, before the mark, to call each new route, place each unrun criterion and read a question against held refusals', () => {
     const direct = prose.slice(prose.indexOf('### Direct mode')).replace(/\s+/g, ' ');
     expect(direct).toContain('Before any mark');
-    expect(direct).toContain('Every NEW route gets one request as its intended caller, and you see it answer');
+    expect(direct).toContain(
+      'Every NEW route gets one request as its intended caller, and you see it answer',
+    );
     expect(direct).toContain('Each criterion you have not run is recorded as a `decision`');
     expect(direct).toContain('never marked over');
     expect(direct).toContain('is recorded as a `decision`');
@@ -337,7 +339,9 @@ describe("the dispatch guide teaches a master to tell a users' room through the 
 
   // ISS-1473: the decision door takes `fields` as a list of { key, value }, never an object
   it('teaches the decision record in the shape the door takes', () => {
-    expect(prose).toContain('`fields` is a list of `{ key, value }` with keys `decision`, `why` and `until`');
+    expect(prose).toContain(
+      '`fields` is a list of `{ key, value }` with keys `decision`, `why` and `until`',
+    );
     expect(prose).not.toContain('fields: { decision, why');
   });
 });
