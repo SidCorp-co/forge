@@ -181,6 +181,27 @@ describe.each(AS_THE_BOX)('a %s job, offered by what the box credential reaches'
   });
 });
 
+describe('the claim floor reads a pre-release version (ISS-1472)', () => {
+  it('serves 0.18.0-dev.9 to a claim and holds 0.12.9-dev.1 below the floor', async () => {
+    const { claimCapableSql } = await import('../../src/runners/device-cap.js');
+    const cases: Array<[string, boolean]> = [
+      ['0.18.0-dev.9', true],
+      ['0.13.0-rc.1', true],
+      ['0.12.9-dev.1', false],
+      ['0.18', false],
+      ['0.18.0.1', false],
+      ['x.y', false],
+    ];
+    for (const [agentVersion, capable] of cases) {
+      const device = await createTestDevice(adminId, { agentVersion });
+      const res = await db.execute(
+        sql`SELECT (${claimCapableSql('d')}) AS ok FROM devices d WHERE d.id = ${device}`,
+      );
+      expect((res as unknown as Array<{ ok: boolean }>)[0]?.ok, agentVersion).toBe(capable);
+    }
+  });
+});
+
 describe('a steward job, which carries its own token', () => {
   it('is offered and admitted whatever the box credential reaches', async () => {
     const jobId = await queueJob('steward');

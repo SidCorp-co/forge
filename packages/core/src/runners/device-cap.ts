@@ -7,12 +7,16 @@ import { sql } from 'drizzle-orm';
  */
 export const CLAIM_MIN_RUNNER = '0.13.0';
 
-/** Whether a reported runner version is at or above `min` (`a.b.c`). */
+/** `a.b.c` with an optional `-pre-release` or `+build` suffix; the numeric core is what a floor compares. */
+const VERSION_SHAPE = /^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/;
+
+/** Whether a reported runner version is at or above `min` (`a.b.c`); a `-dev.N` / `-rc.N` / `+build` suffix is ignored. */
 export function atLeastVersion(version: string | null | undefined, min: string): boolean {
   if (!version) return false;
-  const a = version.split('.').map(Number);
+  const m = VERSION_SHAPE.exec(version);
+  if (!m) return false;
+  const a = [Number(m[1]), Number(m[2]), Number(m[3])];
   const b = min.split('.').map(Number);
-  if (a.length !== 3 || a.some(Number.isNaN)) return false;
   for (let i = 0; i < 3; i++) {
     if ((a[i] as number) !== (b[i] as number)) return (a[i] as number) > (b[i] as number);
   }
@@ -22,8 +26,8 @@ export function atLeastVersion(version: string | null | undefined, min: string):
 export function claimCapableSql(alias: string) {
   const version = sql.raw(`${alias}.agent_version`);
   const floor = sql.raw(`ARRAY[${CLAIM_MIN_RUNNER.split('.').join(',')}]`);
-  return sql`${version} ~ '^[0-9]+\.[0-9]+\.[0-9]+$'
-    AND string_to_array(${version}, '.')::int[] >= ${floor}`;
+  return sql`(${version} ~ '^[0-9]+\.[0-9]+\.[0-9]+([-+].*)?$'
+    AND string_to_array(split_part(split_part(${version}, '+', 1), '-', 1), '.')::int[] >= ${floor})`;
 }
 
 export const CLAIM_CAPABLE_DEVICE = sql`AND EXISTS (

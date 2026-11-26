@@ -18,4 +18,18 @@ describe('the claim floor', () => {
     expect(atLeastVersion('0.18.0', FLOOR)).toBe(true);
     expect(atLeastVersion('1.0.0', FLOOR)).toBe(true);
   });
+
+  it('reads the a.b.c core of a pre-release or build suffix (ISS-1472)', () => {
+    expect(atLeastVersion('0.18.0-dev.9', FLOOR)).toBe(true);
+    expect(atLeastVersion('0.13.0-rc.1', FLOOR)).toBe(true);
+    expect(atLeastVersion('0.18.0+build.5', FLOOR)).toBe(true);
+    expect(atLeastVersion('0.12.9-dev.1', FLOOR)).toBe(false);
+  });
+
+  it('still refuses a string with no valid a.b.c core', () => {
+    for (const v of ['x.y', '', '0.18', '0.18.0.1', '-dev.1', 'a.b.c-dev.1']) {
+      expect(atLeastVersion(v, FLOOR)).toBe(false);
+    }
+    expect(atLeastVersion(undefined, FLOOR)).toBe(false);
+  });
 });
