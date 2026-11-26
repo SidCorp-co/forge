@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.843] - 2026-11-26
+
+Verdict evidence resolves by id or link; room assistant answers once when done
+
+### Changed
+
+- **A room agent now acknowledges by reaction and answers once.** The guide, brief and cards teach: react with support.react, stay silent until done, then one message with cause, action and next step; the owner's technical thread follows the same cadence.
+
+### Fixed
+
+- **A verdict citing its evidence by attachment id or download URL now resolves.** An id or `/api/attachments/:id/download` URL of an attachment the issue holds weighs as held; one it does not hold is answered `unresolved` by the write.
+
 ## [0.4.0-dev.841] - 2026-11-26
 
 Direct masters check routes and unrun criteria before marking; beta rows close after release
