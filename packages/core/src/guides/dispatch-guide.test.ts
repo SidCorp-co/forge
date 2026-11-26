@@ -119,6 +119,20 @@ describe('the dispatch guide teaches batches by default', () => {
     expect(direct).toContain('so the issue stands at `in_progress`');
   });
 
+  // ISS-1473 (FB-871, sid-desk L-11): masters marked merged over a new route never called, a
+  // criterion never run, and a question option core always refuses
+  it('asks a direct master, before the mark, to call each new route, place each unrun criterion and read a question against held refusals', () => {
+    const direct = prose.slice(prose.indexOf('### Direct mode')).replace(/\s+/g, ' ');
+    expect(direct).toContain('Before any mark');
+    expect(direct).toContain('Call each NEW route once with its intended caller and see it answer');
+    expect(direct).toContain('Name each criterion you have not run and place it on the record');
+    expect(direct).toContain('never marked over');
+    expect(direct).toContain(
+      'read its options against the refusals core holds (`JUDGED_ON_PRODUCTION`',
+    );
+    expect(direct).toContain('`POST /api/questions`');
+  });
+
   // ISS-1366 (FB-780, epod): a master declared a run, woke a finished builder with SendMessage,
   // and its next dispatch was refused as undeclared. Both the declaration step and direct mode
   // say a woken subagent takes no run, never to wake one while a declared run waits, and the way out.

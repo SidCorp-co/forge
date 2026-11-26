@@ -90,6 +90,10 @@ describe('masterWork under direct mode: the pass is told to build, not to dispat
       'a push to the base branch only where it lands by push',
       '`awaiting_release` without a recorded merge (`forge-runner api issues/<id>/merge -X POST` at the landing sha)',
       'only once you have checked it live, after landing',
+      // ISS-1473: the three checks before the mark
+      'call each new route once with its intended caller and see it answer',
+      'place it on the record (a dated decision, or skipped with its reason) instead of marking over it',
+      "read a question's options against the refusals core holds (`JUDGED_ON_PRODUCTION`)",
       'a move off a legal edge or without its reason',
       "anyone but the issue's holder",
       // ISS-1062: the holder closes from awaiting_release once met in scope, so the release no longer owns the close
