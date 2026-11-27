@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.844] - 2026-11-27
+
+The room assistant acknowledges by reaction and answers once, when the matter is done
+
+### Changed
+
+- **A room agent no longer tells a thread it is in hand.** Ask-master, route, refusal and operations texts teach a reaction, then ONE message when the result is in; a sweep fails any served text teaching a holding line.
+
 ## [0.4.0-dev.843] - 2026-11-26
 
 Verdict evidence resolves by id or link; room assistant answers once when done
