@@ -25,6 +25,7 @@
  */
 
 import type { FindGapsView, FindOpened, FindResult } from '@forge/contracts/find';
+import type { ModuleTreeResponse } from '@forge/contracts/module-map';
 import { sql } from 'drizzle-orm';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { mintPat } from '../../src/credentials/pat.js';
@@ -423,5 +424,79 @@ describe('criterion 4: a find with no hit is a gap', () => {
       { timeout: 5000 },
     );
     expect((await find({ q: 'chia slot' })).gap).toBe(false);
+  });
+});
+
+// ISS-1302 (L-121): a served find hit opens the record it NAMES, with that record's own aliases and
+// anchor. A second term shares the first's words ("chia slot" sits in its text) and leads the same
+// branch, so a lookup by the query, the first term or the branch's head opens the wrong one.
+describe('ISS-1302: every hit opens its own record, found through a name or an alias', () => {
+  const BG_ANCHOR = 'packages/runner/src/roster.rs:BgSession';
+  const bg = { id: '' };
+
+  beforeAll(async () => {
+    const [devices] = await rows<{ id: string }>(
+      sql`SELECT id FROM labels WHERE project_id = ${w.projectId} AND slug = 'devices'`,
+    );
+    bg.id = await knowledge(
+      'glossary',
+      'background-session',
+      'Background session',
+      'A session a box keeps beside the runs; never counted in a chia slot of the fair share.',
+      {
+        term: { aliases: { vi: ['phiên nền'], code: ['BgSession'], industry: [] } },
+        moduleId: devices?.id as string,
+      },
+    );
+    await db.execute(sql`
+      INSERT INTO knowledge_relations (project_id, from_entry_id, kind, to_type, to_ref, written_agency)
+      VALUES (${w.projectId}, ${bg.id}, 'anchored_at', 'code', ${BG_ANCHOR}, 'agent')`);
+  });
+
+  const OWN: Record<string, { aliases: string[]; anchor: string }> = {
+    'run-slots': { aliases: ['chia slot', 'slotsFor', 'fair-share scheduling'], anchor: ANCHOR },
+    'background-session': { aliases: ['phiên nền', 'BgSession'], anchor: BG_ANCHOR },
+  };
+
+  it('opens each term hit as the record, aliases and anchor the hit itself names', async () => {
+    const tree = (await api(w.token, 'GET', `/api/projects/${w.projectId}/modules/execution/map`))
+      .body as unknown as ModuleTreeResponse;
+    for (const q of ['chia slot', 'phiên nền', 'slotsFor', 'BgSession', 'background session']) {
+      const hits = flat(await find({ q })).filter((h) => h.type === 'term');
+      expect(hits.length, `"${q}" found no term`).toBeGreaterThan(0);
+      for (const hit of hits) {
+        const who = `query "${q}", hit ${hit.id} (${hit.key})`;
+        const res = await api(w.token, 'GET', hit.open);
+        expect(res.status, `${who}: open answered ${res.status}`).toBe(200);
+        const opened = res.body as unknown as FindOpened;
+        expect(
+          [opened.hit.id, opened.hit.key, opened.hit.title],
+          `${who}: opened ${opened.hit.id} (${opened.hit.key}) instead`,
+        ).toEqual([hit.id, hit.key, hit.title]);
+        const own = OWN[hit.key ?? ''];
+        expect(own, `${who}: no expected record`).toBeDefined();
+        const anchors = opened.relations.filter((r) => r.kind === 'anchored_at').map((r) => r.ref);
+        expect(anchors, `${who}: opened anchors of another term`).toEqual([own?.anchor]);
+        // the tree node the web walks to, found by the hit's key, carries the same term's details
+        const node = tree.branches.term.find((n) => n.ref === hit.key);
+        expect(node, `${who}: no tree node keyed ${hit.key}`).toBeDefined();
+        const aliases = Object.values(node?.aliases ?? {}).flat();
+        expect(aliases.sort(), `${who}: node ${node?.ref} shows other aliases`).toEqual(
+          [...(own?.aliases ?? [])].sort(),
+        );
+        const nodeAnchors = (node?.relations ?? [])
+          .filter((r) => r.kind === 'anchored_at')
+          .map((r) => r.other.ref);
+        expect(nodeAnchors, `${who}: node ${node?.ref} shows another anchor`).toEqual([
+          own?.anchor,
+        ]);
+        // a hit found through an alias says which, and that alias is its own
+        if (hit.match.alias) {
+          expect(own?.aliases, `${who}: matched alias ${hit.match.alias} is not its own`).toContain(
+            hit.match.alias,
+          );
+        }
+      }
+    }
   });
 });

@@ -130,7 +130,7 @@ describe("the ⌘K search", () => {
       const href = walkHref("hop", { ...RUN_SLOTS_HIT, ...c.hit, id: `${c.type}:${c.hit.ref}`, type: c.type });
       const at = new URL(href ?? "", "http://forge.test").searchParams;
       const { chosen, missing } = selectedOf(branches, c.type, at.get("node"));
-      expect([chosen?.title, missing], c.type).toEqual([`Target ${c.type}`, false]);
+      expect([chosen?.title, missing], `${c.type} hit ${c.hit.key ?? c.hit.ref} walked to ${href}, which selects ${chosen?.title ?? "nothing"}`).toEqual([`Target ${c.type}`, false]);
     }
   });
 
