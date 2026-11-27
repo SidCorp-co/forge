@@ -8,7 +8,7 @@ import type { IssueStatus } from '@forge/contracts/issue-machine';
 import { requirementKey } from '@forge/contracts/requirements';
 import { recentIssueNotes } from '../comments/index.js';
 import { projectHasLiveMaster, projectRunnerBuilds } from '../devices/index.js';
-import { listIssues } from '../issues/index.js';
+import { listIssues, readIssueAttachments } from '../issues/index.js';
 import { getIssueContexts } from '../pipeline/index.js';
 import { holdsAnAct, listReleases } from '../release-batch/index.js';
 import { listRowsOf } from '../requirements/index.js';
@@ -23,6 +23,8 @@ import { scrubbedForRoom } from './thread.js';
 /** How many of one issue's latest notes and step handoffs its read carries, and how much of each. */
 const ISSUE_NOTES = 5;
 const NOTE_CHARS = 1500;
+/** How much of one textual attachment an issue's read carries (ISS-1481). */
+const ATTACHMENT_CHARS = 6000;
 
 const clipped = (text: string) =>
   text.length > NOTE_CHARS
@@ -46,7 +48,13 @@ async function progressOf(room: RoomRow, projectId: string, issueId: string) {
     recentIssueNotes(issueId, ISSUE_NOTES),
     getIssueContexts({ projectId, issueId, kind: 'handoff', limit: ISSUE_NOTES, orderDir: 'desc' }),
   ]);
+  const attachments = await Promise.all(
+    (await readIssueAttachments(issueId, ATTACHMENT_CHARS)).map(async (a) =>
+      'text' in a ? { ...a, text: await scrubbedForRoom(room, a.text) } : a,
+    ),
+  );
   return {
+    attachments,
     notes: await Promise.all(
       notes.map(async (n) => ({
         at: n.at.toISOString(),
@@ -95,7 +103,7 @@ export async function issuesRead(
   // a parked issue says what it waits on and from whom, so the agent can tell a person what they
   // owe instead of sending them to look it up (ISS-877)
   const waits = await waitingOf(project.value.id, listed.rows);
-  // one issue asked for by its key carries its latest notes and handoffs (ISS-999)
+  // one issue asked for by its key carries its latest notes and handoffs (ISS-999) and its attachments (ISS-1481)
   const one = input.key && listed.rows.length === 1 ? listed.rows[0] : undefined;
   const progress = one ? await progressOf(room, project.value.id, one.id) : null;
   return {

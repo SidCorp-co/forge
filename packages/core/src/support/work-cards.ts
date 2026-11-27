@@ -217,11 +217,15 @@ export const WORK_ACT_CARDS = {
   },
   issues: {
     purpose:
-      'Reads a project’s issues, with who owes what on a parked one; one issue by key carries its latest notes and handoffs.',
+      'Reads a project’s issues, with who owes what on a parked one; one issue by key carries its latest notes, handoffs and attachments.',
     situations: [
       {
         when: 'someone asks how a piece of work is going',
         do: "read support.issues { project, key } and answer from its notes and handoffs; a parked issue's `waiting` says who owes what",
+      },
+      {
+        when: 'someone names a mockup, file or picture attached to an issue',
+        do: 'read that issue with support.issues { project, key } and open its `attachments` (a page or text file carries its text) before you say you cannot reach it or that none exists; say so only of one that is not listed',
       },
       {
         when: 'someone asks whether one issue is fixed, done or live',
@@ -231,7 +235,7 @@ export const WORK_ACT_CARDS = {
     practice: ['It reads the same from any of your groups, over every project you follow.'],
     example: { project: 'epod', key: 'ISS-167' },
     redFlag:
-      'Answering how work goes from an issue’s status alone, where its notes, handoffs and `waiting` say who owes what.',
+      'Answering how work goes from an issue’s status alone, where its notes, handoffs and `waiting` say who owes what; telling a person an attached mockup cannot be read or does not exist without reading the issue’s `attachments`.',
     family: 'room.facts',
     audience: ['bot'],
     scenarios: ['an issue’s state told from its notes and handoffs, the latest round named'],

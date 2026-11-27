@@ -1,7 +1,13 @@
 import { and, asc, eq, getTableColumns, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueAttachments, issues, jobs, projectMembers, usageRecords } from '../db/schema.js';
-import { emptyUsageTotals, usageSessionMatch, usageTotalsSelection } from './ports.js';
+import {
+  emptyUsageTotals,
+  getStorage,
+  isEnoent,
+  usageSessionMatch,
+  usageTotalsSelection,
+} from './ports.js';
 import { type WorkStateView, workStateViewSql } from './work-state.js';
 
 /**
@@ -88,6 +94,40 @@ export async function listIssueAttachments(issueId: string) {
     .from(issueAttachments)
     .where(eq(issueAttachments.issueId, issueId))
     .orderBy(asc(issueAttachments.createdAt));
+}
+
+/** A stored file whose bytes read as text: a page, a note, a data file. */
+const textual = (mime: string) =>
+  /^text\//.test(mime) || /^application\/(json|xml|xhtml\+xml)$/.test(mime);
+
+/**
+ * An issue's attachments as a room agent reads them: name, type and size of each, and the text
+ * of a textual one, the first `textChars` characters (ISS-1481). A picture or a binary file
+ * is listed by name; its bytes are not read here.
+ */
+export async function readIssueAttachments(issueId: string, textChars: number) {
+  const rows = await db
+    .select({
+      name: issueAttachments.name,
+      mime: issueAttachments.mime,
+      size: issueAttachments.size,
+      path: issueAttachments.path,
+    })
+    .from(issueAttachments)
+    .where(eq(issueAttachments.issueId, issueId))
+    .orderBy(asc(issueAttachments.createdAt));
+  return Promise.all(
+    rows.map(async ({ path, ...file }) => {
+      if (!textual(file.mime)) return file;
+      try {
+        const text = (await getStorage().get(path)).toString('utf8');
+        return { ...file, text: text.slice(0, textChars), truncated: text.length > textChars };
+      } catch (err) {
+        if (!isEnoent(err)) throw err;
+        return { ...file, missing: true };
+      }
+    }),
+  );
 }
 
 /** One attachment with its storage path and the project of the issue it hangs on. */

@@ -336,7 +336,7 @@ const SIGNATURES = [
   'project { project? }',
   'command { thread, host, command }',
   'projects {}',
-  'issues { project, status?, key? } (a row waiting on a person carries waiting: who, owes, questions with options, reason; one issue named by key carries its latest notes and step handoffs)',
+  'issues { project, status?, key? } (a row waiting on a person carries waiting: who, owes, questions with options, reason; one issue named by key carries its latest notes, step handoffs and attachments)',
   'releases { project }',
   'requirements { project }',
   "feedback { project, key? } (a reached project's feedback, newest first, each with where it stands; one by key)",
