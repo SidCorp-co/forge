@@ -94,7 +94,7 @@ export const ROOM_ACT_SCENARIOS: readonly CardScenario[] = [
       'AdminHub-Support, PGPrints thread, 2026-11-19 05:53 and 06:37-06:38: a menu item said to show after enabling Using API; the user did not see it, and the next post said it shows only after a sync (ISS-1356)',
     situation: 'A user asks where a menu item is, after the master said the feature is live',
     bad: 'the room agent confirmed the item from what a master said, then corrected itself in the next post',
-    good: 'look at the screen on the environment first, and say only what the look showed, or that it has not seen the screen yet',
+    good: 'look at the screen on the environment first, and say only what the look showed, or, where it cannot look, say so once with what it needs from the person',
     teaches: [/look first with support\.look/i, /never the thing anyway/i],
   },
   {

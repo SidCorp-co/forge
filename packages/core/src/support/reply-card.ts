@@ -25,7 +25,7 @@ export const REPLY_CARD = {
     'A message is acknowledged by a reaction (support.react), never by a line saying you are checking; a matter asking nothing of the person stays silent until done, then ONE message: cause, what was done, what they must do.',
     // ISS-1354 (FB-763): three failed audits after ISS-1329 taught reading first, at a line the agent did not read as it wrote
     // ISS-1356 (owner 2026-11-19): a menu item confirmed to a PGPrints user from a master's post, not a look
-    'What a screen shows (a button, menu item, field, page) is said only from a look this turn with support.look, its picture posted with shots; where you could not look, say you have not seen it yet, never the thing anyway.',
+    'What a screen shows (a button, menu item, field, page) is said only from a look this turn (support.look), its picture posted with shots; where you cannot look, say so once with what you need from the person, never a progress line, never the thing anyway.',
     // ISS-1416 (FB-824): "not enabled yet" and "still off" stated from reads a turn old, which "or said to be from an earlier read and when" let stand
     // ISS-1430 (FB-831, L-167): "as of 11:02 UTC" restated an earlier read, which the audit fails dated or not
     'A live setting, served version, behaviour (“it works”) or issue or release status is stated from a read of it this turn, or as the master’s check, or said plainly not confirmed now. An issue is closed only once its release has deployed. Each step names who does it, never “em”.',

@@ -346,7 +346,7 @@ async function recordAgreed(
       created: filed.value.created,
       project,
       ...(pictures ? { pictures } : {}),
-      what: `${changeName(fix)} was recorded as ${feedbackKey} in ${project}${picturesLine(pictures)}. You are told again once its result is final; tell the person it is recorded, in your words, and post nothing more before then.`,
+      what: `${changeName(fix)} was recorded as ${feedbackKey} in ${project}${picturesLine(pictures)}. You are told once its result is final. Acknowledge the asker's message with support.react and post nothing now; the one message to the person comes with the result.`,
     },
   };
 }

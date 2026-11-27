@@ -460,7 +460,7 @@ export const ROOM_ACT_CARDS = {
     situations: [
       {
         when: 'a person waits on work recorded or carried in another thread or project',
-        do: 'support.promise { thread, issue, environment } and tell them so in your own words; when Forge tells you that environment serves it, tell them in that thread',
+        do: 'support.promise { thread, issue, environment } and react to the asker’s message with support.react; the act is the commitment, so post no line about it, and speak once in that thread when Forge tells you the environment serves it',
       },
     ],
     practice: [

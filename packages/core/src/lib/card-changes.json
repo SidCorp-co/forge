@@ -1635,9 +1635,9 @@
     "by": "ISS-1432"
   },
   "support.look": {
-    "hash": "8695af10a38be7b7",
-    "on": "2026-11-25",
-    "by": "ISS-1467"
+    "hash": "461b34cd5efb6c39",
+    "on": "2026-11-27",
+    "by": "ISS-1475"
   },
   "support.member": {
     "hash": "ea1a0787ef520344",
@@ -1685,9 +1685,9 @@
     "by": "ISS-1251"
   },
   "support.promise": {
-    "hash": "8b9a1d248a90906e",
-    "on": "2026-11-16",
-    "by": "ISS-1251"
+    "hash": "d4d19bd86e8bf4cb",
+    "on": "2026-11-27",
+    "by": "ISS-1475"
   },
   "support.propose_fix": {
     "hash": "6bda3a9858cbea79",
@@ -1745,8 +1745,8 @@
     "by": "ISS-1440"
   },
   "support.reply": {
-    "hash": "0b78f1dee25699fa",
-    "on": "2026-11-26",
+    "hash": "badb3e6d31ac740d",
+    "on": "2026-11-27",
     "by": "ISS-1475"
   },
   "support.requirements": {

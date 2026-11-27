@@ -435,12 +435,12 @@ describe('a room agent says what a screen shows only from a look at it (ISS-1356
     prose.indexOf('### A secret you need'),
   );
 
-  it('the Answering section makes a screen claim from a look, or says the screen was not seen yet', () => {
+  it('the Answering section makes a screen claim from a look, or asks the person for what the look needs', () => {
     expect(answering).toContain('What a screen shows is said from a look, or not said.');
     expect(answering).toContain('look at it with support.look on that environment');
     expect(answering).toContain("a master's post, a release note or an earlier turn is no look");
     expect(answering).toContain(
-      'say in plain words that you have not seen the screen yet and what you are doing about it, never the thing anyway',
+      'Look first and answer once from what the look showed. Where you cannot look (a sign-in you lack, a box that will not open), say so once with what you need from the person (the sign-in or detail only they hold), never a progress line and never the thing anyway',
     );
   });
 
@@ -480,7 +480,7 @@ describe('a room agent says what a screen shows only from a look at it (ISS-1356
       'look first with support.look { thread, environment, path }, and say only what the look showed',
     );
     expect(prose).toContain(
-      'What a screen shows (a button, menu item, field, page) is said only from a look this turn with support.look',
+      'What a screen shows (a button, menu item, field, page) is said only from a look this turn (support.look)',
     );
   });
 });

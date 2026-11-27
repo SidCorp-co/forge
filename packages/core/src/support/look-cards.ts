@@ -15,7 +15,7 @@ export const LOOK_ACT_CARDS = {
         when: 'you would tell someone a button, menu item, field or page exists, appears or behaves a certain way',
         do: 'look first with support.look { thread, environment, path }, and say only what the look showed',
         watch:
-          'it reaches only your own project’s environments; where you cannot look, say in plain words you have not seen the screen yet and what you do about it, never the thing anyway',
+          'only your own project’s environments; where you cannot look, say so once with what you need from the person, never a progress line, never the thing anyway',
       },
       {
         when: 'you walk a person through a screen',

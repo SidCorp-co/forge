@@ -265,7 +265,7 @@ export async function makePromise(
       issue: { key, title: issue.title },
       environment: environment.value,
       asker: askerName,
-      next: `Nothing was posted. Tell ${askerName} in your own words that you will let them know here when "${issue.title}" reaches ${environment.value}; never promise a date. You are told once it does, or if it never will; post nothing about it before then.`,
+      next: `The promise is recorded and the record keeps it; the act is the commitment. Nothing was posted: acknowledge the asker's message with support.react and post nothing about it now. You are told once "${issue.title}" reaches ${environment.value}, or if it never will; speak once then, in your own words, never a date.`,
     },
   };
 }

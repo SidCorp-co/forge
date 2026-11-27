@@ -1,7 +1,10 @@
 // @direct-test-of packages/core/src/support/ops-prompt.ts
 // @direct-test-of packages/core/src/support/room-cards.ts
 // @direct-test-of packages/core/src/support/master-ask.ts
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import { servedGuideBody } from '../guides/index.js';
 import { ROOM_AGENT_GUIDE } from '../guides/room-agent-guide.js';
@@ -27,13 +30,35 @@ const HOLDING = [
   /once (it|the act|the raise) (is|was) raised/i,
   /after you raise/i,
   /eyes\)/i,
+  // the class by meaning (ISS-1475 fix-forward 4): an instruction to tell a person, at the act, that
+  // something is recorded, raised, promised, handed, being looked at or not yet known. A message
+  // asking the person for a decision or information is the one allowed kind and is not matched.
+  /tell (them|the person|the asker|that thread|the thread)[^.]{0,60}(is recorded|will let them know|not seen|was raised|handed)/i,
+  /you will let them know/i,
+  /post nothing more before then/i,
+  /have not seen (it|the screen) yet/i,
+  /and tell them so/i,
+  /\bsay\b[^.]{0,40}(it is recorded|you are looking|you are checking)/i,
 ];
 
 /** The name of each text that teaches a holding line, with the phrase it holds. */
 function holdingLines(texts: Record<string, string>): string[] {
   return Object.entries(texts).flatMap(([name, body]) =>
-    HOLDING.filter((re) => re.test(body)).map((re) => `${name}: ${re}`),
+    HOLDING.filter((re) => taught(re, body)).map((re) => `${name}: ${re}`),
   );
+}
+
+/** A phrase counts only where its own sentence does not forbid it ("never tell the asker it was handed"). */
+function taught(re: RegExp, body: string): boolean {
+  const g = new RegExp(re.source, 'gi');
+  for (const m of body.matchAll(g)) {
+    const before = body.slice(0, m.index);
+    const sentence = before.slice(Math.max(before.lastIndexOf('. '), before.lastIndexOf('\n')) + 1);
+    if (!/\b(never|not|no|nor|without|instead of|in place of)\b|\bnothing\b/i.test(sentence)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 provideDoorCatalog({ doorCatalog: servedDoorCatalog, doorCalls: async () => new Map() });
@@ -42,23 +67,43 @@ const role = { name: 'ops', persona: 'You are ops.', grants: ['read'] } as unkno
   typeof operationsBrief
 >[0]['role'];
 
-// the files whose string literals are act answers or scenarios an agent reads; comments are not
-const ANSWER_FILES = [
-  'support/act-deny.ts',
-  'support/master-ask.ts',
-  'support/ops-role.ts',
-  'support/permission-talk.ts',
-  'support/rest-cards.ts',
-  'support/room-cards.ts',
-  'support/technical-channel.ts',
-  'mcp/scenarios-room.ts',
-  'mcp/scenarios-support.ts',
-];
-const code = (file: string): string =>
-  readFileSync(new URL(`../${file}`, import.meta.url), 'utf8')
-    .split('\n')
-    .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
-    .join('\n');
+// EVERY string literal of every non-test .ts file under support/ (read from disk; comments are not
+// literals) plus the room scenarios, one text per file. The sweep reads the whole directory, never a list.
+const SUPPORT_DIR = fileURLToPath(new URL('.', import.meta.url));
+const EXTRA_FILES = ['mcp/scenarios-room.ts', 'mcp/scenarios-support.ts'];
+const sourceFiles = (dir: string): string[] =>
+  readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory()
+      ? sourceFiles(join(dir, e.name))
+      : e.name.endsWith('.ts') && !/\.test\.ts$/.test(e.name)
+        ? [join(dir, e.name)]
+        : [],
+  );
+const literalsOf = (file: string): string => {
+  const sf = ts.createSourceFile(file, readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true);
+  const out: string[] = [];
+  const visit = (n: ts.Node): void => {
+    if (
+      ts.isStringLiteral(n) ||
+      ts.isNoSubstitutionTemplateLiteral(n) ||
+      ts.isTemplateHead(n) ||
+      ts.isTemplateMiddle(n) ||
+      ts.isTemplateTail(n)
+    ) {
+      out.push(n.text);
+    }
+    ts.forEachChild(n, visit);
+  };
+  visit(sf);
+  return out.join('\n');
+};
+const supportLiterals = (): Record<string, string> =>
+  Object.fromEntries(
+    [
+      ...sourceFiles(SUPPORT_DIR),
+      ...EXTRA_FILES.map((f) => fileURLToPath(new URL(`../${f}`, import.meta.url))),
+    ].map((f) => [`the string literals of ${relative(join(SUPPORT_DIR, '..'), f)}`, literalsOf(f)]),
+  );
 
 const served = (): Record<string, string> => ({
   'the room agent guide': servedGuideBody(ROOM_AGENT_GUIDE),
@@ -70,7 +115,7 @@ const served = (): Record<string, string> => ({
       JSON.stringify(card),
     ]),
   ),
-  ...Object.fromEntries(ANSWER_FILES.map((f) => [`the answer texts of ${f}`, code(f)])),
+  ...supportLiterals(),
 });
 
 describe('no served text teaches a holding line (ISS-1475)', () => {
@@ -104,7 +149,34 @@ describe('no served text teaches a holding line (ISS-1475)', () => {
     ]);
   });
 
-  it('holds for the guide, the briefs, every act card and every act answer text', () => {
+  it('fails, naming the text, on the recorded, promised and not-yet-seen lines of fix-forward 4', () => {
+    expect(
+      holdingLines({
+        'the string literals of support/fixes.ts':
+          'tell the person it is recorded, in your words, and post nothing more before then',
+        'the string literals of support/promise.ts':
+          'Tell Ann that you will let them know here when it reaches staging',
+        'the card of support.look': 'say in plain words you have not seen the screen yet',
+        'the card of support.promise': 'support.promise { thread } and tell them so',
+        fine: 'react with support.react; where you cannot look, say so once with what you need from the person',
+      }).map((l) => l.split(':')[0]),
+    ).toEqual([
+      'the string literals of support/fixes.ts',
+      'the string literals of support/fixes.ts',
+      'the string literals of support/promise.ts',
+      'the card of support.look',
+      'the card of support.promise',
+    ]);
+  });
+
+  it('reads every non-test file under support/', () => {
+    const names = Object.keys(supportLiterals());
+    expect(names).toContain('the string literals of support/fixes.ts');
+    expect(names).toContain('the string literals of support/promise.ts');
+    expect(names.some((n) => n.endsWith('.test.ts'))).toBe(false);
+  });
+
+  it('holds for the guide, the briefs, every act card and every string literal under support/', () => {
     expect(holdingLines(served())).toEqual([]);
   });
 
