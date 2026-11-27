@@ -245,7 +245,7 @@ export const ROOM_ACT_CARDS = {
       {
         when: 'you need a grant or an approval, or found what only a technical person can act on',
         // ISS-1416 (FB-824): a raise told landed in AdminHub API's thread had been refused there
-        do: 'support.technical { thread, need, text } from the thread it arose in; tell that thread the answer, or where its result says it landed',
+        do: 'support.technical { thread, need, text } from the thread it arose in; tell that thread once, when the answer is in, never at the raise',
       },
     ],
     practice: [

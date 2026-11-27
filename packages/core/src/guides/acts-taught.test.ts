@@ -419,9 +419,9 @@ describe('a room agent states a live setting from a read of its own turn, and na
 
   it('the guide and the technical card have an act told from its result, refused or where it landed', () => {
     expect(prose).toContain(
-      'An act you took is told from its result: a refused raise was not raised, and a raise that landed is named where its result says it landed.',
+      'A refused raise was not raised; a raise that landed is not an answer, so say nothing at the raise.',
     );
-    expect(prose).toContain('tell that thread the answer, or where its result says it landed');
+    expect(prose).toContain('tell that thread once, when the answer is in, never at the raise');
   });
 });
 
@@ -454,7 +454,7 @@ describe('a room agent says what a screen shows only from a look at it (ISS-1356
   // ISS-1475 (owner 2026-11-26): the 30-minute "on it, will report" line taught a progress message
   it('a reaction acknowledges, one message follows when done, and no 30-minute progress line stays', () => {
     for (const said of [
-      'acknowledged by a reaction on it (support.react, eyes), never by a message saying you are checking',
+      'acknowledged by a reaction on it (support.react with hourglass_flowing_sand: core already set eyes on the incoming message), never by a message saying you are checking',
       'stays silent until it is DONE, then ONE message: the cause, what was done, what they must do',
       'One answer is one message, never split in two.',
       'never made from numbers an earlier read gave',

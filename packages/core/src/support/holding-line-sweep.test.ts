@@ -12,9 +12,22 @@ import { operationsBrief } from './ops-prompt.js';
 import { supportBrief } from './prompt.js';
 
 // ISS-1475 (owner 2026-11-26): a thread is never told "it is in hand". A reaction acknowledges and ONE
-// message follows when done. The judge of dev.843 failed two criteria because cards and answers still
-// taught the holding line beside a guide that forbade it: this sweeps every text an agent reads.
-const HOLDING = [/in hand\b/i, /done or in hand/i, /one short line that it/i];
+// message follows when done. The judges of dev.843 and dev.844 failed it because texts still taught the
+// holding line, then taught its TIMING: a message at the moment of raising, when the raise only returns
+// where it landed. This guards the class, "a message at the raise instead of when the answer is in":
+// the three holding phrases and the timing phrases found by meaning, over every text an agent reads.
+const HOLDING = [
+  /in hand\b/i,
+  /done or in hand/i,
+  /one short line that it/i,
+  /(result|act) says where it landed/i,
+  /where its result says/i,
+  /named where its result/i,
+  /tell (that|the|this) thread the answer, or/i,
+  /once (it|the act|the raise) (is|was) raised/i,
+  /after you raise/i,
+  /eyes\)/i,
+];
 
 /** The name of each text that teaches a holding line, with the phrase it holds. */
 function holdingLines(texts: Record<string, string>): string[] {
@@ -72,6 +85,22 @@ describe('no served text teaches a holding line (ISS-1475)', () => {
       'the card of support.route: /in hand\\b/i',
       'the operations brief: /in hand\\b/i',
       'the operations brief: /one short line that it/i',
+    ]);
+  });
+
+  it('fails, naming the text, on a raise told at the moment it lands', () => {
+    expect(
+      holdingLines({
+        'the card of support.technical':
+          'tell that thread the answer, or where its result says it landed',
+        'the operations brief':
+          "the thread hears ONE message once the act's result says where it landed",
+        fine: 'tell that thread once, when the answer is in',
+      }),
+    ).toEqual([
+      'the card of support.technical: /where its result says/i',
+      'the card of support.technical: /tell (that|the|this) thread the answer, or/i',
+      'the operations brief: /(result|act) says where it landed/i',
     ]);
   });
 
