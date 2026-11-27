@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.845] - 2026-11-27
+
+The room assistant acknowledges by reaction and answers once, when done
+
+### Changed
+
+- **The room agent tells a thread once, when the answer is in.** A raise returns where it landed, which is not an answer; the technical card, operations brief and guide say so, and the guide matches the react card.
+
 ## [0.4.0-dev.844] - 2026-11-27
 
 The room assistant acknowledges by reaction and answers once, when the matter is done
