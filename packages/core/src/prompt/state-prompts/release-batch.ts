@@ -75,8 +75,11 @@ a step you could not complete, a procedure that does not fit what you actually f
   it again until they act (\`heldForPerson\`). Leave it out only when a later run could get past
   what stopped you, and the next cut takes the roster again.
 → When there is nothing to release because an earlier release already shipped this roster's work,
-  name it instead of a blocker: \`"shippedIn":{"version":"<that release>","evidence":"<the git
-  command and its answer>"}\`. Each issue is recorded as shipped there and closes (\`shippedInRecorded\`);
+  name it instead of a blocker, only where that release finished and shipped: \`"shippedIn":{"version":"<that release>","evidence":"<the git
+  command and its answer>"}\`. Where the code is on production under a release whose run ended aborted, it never shipped, so
+  \`shippedIn\` cannot name it (\`RELEASE_SHIPPED_IN_UNKNOWN\`, the issue held for its agent): abort with
+  \`"promotedRoster":"return-to-gate"\` and \`carried\` naming what left the box, then write the release record
+  (\`POST /api/projects/:projectId/release-records\` with \`issueIds\`, \`version\`, \`account\`), which closes the roster. Each issue is recorded as shipped there and closes (\`shippedInRecorded\`);
   one that cannot waits on its agent's shipped-in record, never on a person (\`shippedInOwed\`).
 → Say what now carries this release's version outside Forge: \`"carried":[{"kind":"tag","name":"v1.4.0"}]\`,
   one entry per pushed tag, release commit (\`commit\`), published artifact (\`artifact\`) or notice

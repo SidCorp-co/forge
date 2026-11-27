@@ -150,6 +150,13 @@ describe('a release run hands a person only what a person owns', () => {
     );
     expect(prompt).not.toMatch(/an access grant, a decision — say so/);
   });
+
+  it('takes shippedIn only for a finished release, and names the release record for a deploy under an aborted run', () => {
+    const prompt = flat(releaseBatchStatePrompt);
+    expect(prompt).toContain('only where that release finished and shipped');
+    expect(prompt).toContain('under a release whose run ended aborted, it never shipped');
+    expect(prompt).toContain('`POST /api/projects/:projectId/release-records`');
+  });
 });
 
 describe('verdicts come from the judge after landing, unless a gate holds them before', () => {
