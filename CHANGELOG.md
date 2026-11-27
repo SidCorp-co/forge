@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.856] - 2026-11-27
+
+A room agent opens an issue's attachments before saying a mockup is unreachable
+
+### Fixed
+
+- **A room agent now reads an issue's attached mockup.** Reading one issue lists its attachments, with the text of a page or text file; the card says to open them before saying a named file cannot be reached.
+
 ## [0.4.0-dev.855] - 2026-11-27
 
 A room agent that starts without Forge tools is replaced, not left running
