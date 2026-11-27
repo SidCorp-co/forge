@@ -10,6 +10,7 @@ vi.hoisted(() => {
 
 import { randomUUID } from 'node:crypto';
 import { db } from '../../src/db/client.js';
+import { getStorage } from '../../src/integrations/index.js';
 import { encryptJson } from '../../src/integrations/vault.js';
 import { createTestIssue, createTestRequirement, rows } from '../helpers/factories.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
@@ -34,6 +35,8 @@ const w = new SupportWorld();
 let chat: StandInRocketChat;
 let slug = '';
 const OWNER_ID = 'u-alice';
+// ISS-1481: a page holding a credential, longer than the 6000 characters a read carries
+const SECRET_PAGE = `<p>token ghp_aB3dE5gH7jK9mN1pQ3sT5vW7yZ9bC1dE3fG5</p>${'y'.repeat(7000)}`;
 const DAILY = {
   name: 'daily-report',
   at: '01:30',
@@ -92,6 +95,16 @@ beforeAll(async () => {
       INSERT INTO comments (issue_id, author_id, body, created_at)
       VALUES (${seven.id}, ${w.ownerId}, ${body}, now() - make_interval(secs => ${ago}))`);
   }
+  // ISS-1481: that page and a picture, attached to the issue
+  for (const [name, mime, bytes] of [
+    ['Loai Nghi Phep.html', 'text/html', Buffer.from(SECRET_PAGE)],
+    ['mock.png', 'image/png', Buffer.from([0x89, 0x50, 0x4e, 0x47])],
+  ] as const) {
+    const { path } = await getStorage().put(`iss1481/${randomUUID()}/${name}`, bytes, mime);
+    await db.execute(sql`
+      INSERT INTO issue_attachments (issue_id, uploader_id, name, path, mime, size)
+      VALUES (${seven.id}, ${w.ownerId}, ${name}, ${path}, ${mime}, ${bytes.length})`);
+  }
   await createTestRequirement(w.projectId, 10, 'Orders sync to the warehouse nightly');
   await w.bindTarget({
     rids: [chat.rid],
@@ -146,6 +159,25 @@ describe("an owner-mode channel agent reads its own project's tracker (FB-448)",
       ],
     });
     expect(JSON.stringify(out.issues)).not.toContain('Root cause found');
+    // ISS-1481: the one-issue read lists its attachments: a page with its text cut at 6000
+    // characters and the room's secret taken out, a picture by name alone; a list carries none
+    const files = (out.one.issues as { attachments?: Record<string, unknown>[] }[])[0]?.attachments;
+    expect(files).toEqual([
+      {
+        name: 'Loai Nghi Phep.html',
+        mime: 'text/html',
+        size: Buffer.byteLength(SECRET_PAGE),
+        text: expect.stringContaining('<p>token '),
+        truncated: true,
+      },
+      { name: 'mock.png', mime: 'image/png', size: 4 },
+    ]);
+    // cut before it is scrubbed, so the secret's replacement can only shorten the text
+    const pageText = String(files?.[0]?.text);
+    expect(pageText.length).toBeGreaterThan(5900);
+    expect(pageText.length).toBeLessThanOrEqual(6000);
+    expect(JSON.stringify(files)).not.toContain('ghp_aB3dE5gH7jK9mN1pQ3sT5vW7yZ9bC1dE3fG5');
+    expect(JSON.stringify(out.issues)).not.toContain('Loai Nghi Phep');
     expect(out.releases).toMatchObject({ project: slug, releases: [] });
     expect(out.requirements).toMatchObject({
       project: slug,
