@@ -615,9 +615,9 @@
     "by": "ISS-1475"
   },
   "POST /api/projects/:id/support/technical-needs": {
-    "hash": "bf54a137c60f8680",
-    "on": "2026-11-22",
-    "by": "ISS-1405"
+    "hash": "a977de749a256f2e",
+    "on": "2026-11-26",
+    "by": "ISS-1475"
   },
   "POST /api/projects/:id/unarchive": {
     "hash": "a53de8b88d1bb254",
@@ -1535,9 +1535,9 @@
     "by": "ISS-1251"
   },
   "support.ask_master": {
-    "hash": "2e0be41547ef5163",
-    "on": "2026-11-18",
-    "by": "ISS-1328"
+    "hash": "94a0ca96fbb853bc",
+    "on": "2026-11-26",
+    "by": "ISS-1475"
   },
   "support.ask_owner": {
     "hash": "2a58a37bdfc48e94",
@@ -1700,8 +1700,8 @@
     "by": "ISS-1299"
   },
   "support.react": {
-    "hash": "ef3e411d160c12d3",
-    "on": "2026-11-26",
+    "hash": "216e270a69555cfe",
+    "on": "2026-11-27",
     "by": "ISS-1475"
   },
   "support.read": {
@@ -1760,9 +1760,9 @@
     "by": "ISS-1251"
   },
   "support.route": {
-    "hash": "c466d168fbdae484",
-    "on": "2026-11-16",
-    "by": "ISS-1251"
+    "hash": "495eac22b4bcd608",
+    "on": "2026-11-26",
+    "by": "ISS-1475"
   },
   "support.rule": {
     "hash": "a8feaa705040c520",

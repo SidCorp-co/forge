@@ -3,7 +3,7 @@
 // `agentDeny` names them (production deploy, data deletion, money movement, credential change; all
 // four when absent, none when empty). Each is refused SUPPORT_ACT_DENIED by name, before anything is
 // proposed or run, and raised in the project's technical channel (`technical-channel.ts`), so a
-// person who may decide it sees it and the work thread is told only that it is in hand. This is a
+// person who may decide it sees it and the work thread is told once, when the answer is in. This is a
 // gate on top of the grants, never around them: an act the grant does not hold is refused as before.
 
 import { AGENT_DENY_CLASSES, type AgentDenyClass } from '@forge/contracts/support-technical';
@@ -139,7 +139,7 @@ export async function deniedActRefusal(
     output: { code: 'SUPPORT_ACT_DENIED', class: found, raised: raised.ok },
   });
   const where = raised.ok
-    ? "it was raised in the project's technical channel, so tell the thread it is in hand"
+    ? "it was raised in the project's technical channel, so react to the asker's message with support.react and tell the thread once, when the answer is in"
     : `it could not be raised in the technical channel (${raised.refusals.map((r) => r.detail).join('; ')})`;
   return no(
     'SUPPORT_ACT_DENIED',

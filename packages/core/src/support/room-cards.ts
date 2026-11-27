@@ -211,7 +211,7 @@ export const ROOM_ACT_CARDS = {
     situations: [
       {
         when: 'someone instructs or rules',
-        do: 'make the act with your own acts, or hand it to the master of the project it concerns with support.ask_master { thread, question, project }, saying what to do; then tell the thread in one line that it is done or in hand',
+        do: 'make the act with your own acts, or hand it to the master of the project it concerns with support.ask_master { thread, question, project }, saying what to do; react with support.react, then post ONE message when done',
         watch:
           'never tell a thread what you or this room may not do, and never send anyone, the owner included, to a page, a setting or a button, the secret link aside',
       },
@@ -276,7 +276,7 @@ export const ROOM_ACT_CARDS = {
       },
       {
         when: 'Forge itself failed you or refused what it should have done',
-        do: 'support.route { to: forge } with what failed, and tell the thread it is in hand; never post the refusal code',
+        do: 'support.route { to: forge } with what failed, react to the asker’s message with support.react and post ONE message when the answer is in; never post the refusal code',
       },
     ],
     practice: ['Mention the one member the channel lists for that route, by username.'],

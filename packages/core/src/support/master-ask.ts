@@ -116,7 +116,7 @@ export async function askMaster(
       asked: true,
       ask: asked.id,
       project: project.value.slug,
-      next: `Nothing was posted. The ${project.value.slug} master is woken now and answers this before its other work; its answer is handed to you in this thread as a message from forge, and you answer the person yourself then. Meanwhile post one short line that it is in hand, saying only what the record already shows and never what the master owes; the answer is said once, when it is handed to you. Never say it was passed on to a team.`,
+      next: `Nothing was posted. The ${project.value.slug} master is woken now and answers this before its other work; its answer is handed to you in this thread as a message from forge, and you answer the person yourself then. Meanwhile react to the asker's message with support.react and post nothing; the answer is said once, as ONE message (the cause, what was done, what they must do), when it is handed to you. Never say it was passed on to a team.`,
     },
   };
 }

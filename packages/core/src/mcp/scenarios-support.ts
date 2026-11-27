@@ -15,7 +15,7 @@ export const SUPPORT_SCENARIOS: readonly CardScenario[] = [
       'FB-813, the sid-desk master 2026-11-22T03:11Z: support.technical refused SUPPORT_NOT_THE_ROOM_SESSION, master-posts refused SUPPORT_PERMISSION_TALK',
     situation: 'An owner-ordered production investigation needs a grant the master does not hold',
     bad: 'the master called support.technical, then posted in the room that it lacked the permission',
-    good: 'raise it here in your own words to the channel’s reader, and tell the asker’s thread only that it is in hand',
+    good: 'raise it here in your own words to the channel’s reader, react to the asker’s message with support.react, and tell its thread once, when the answer is in',
     teaches: [/raise it here/i, /refused to you/i],
   },
   {

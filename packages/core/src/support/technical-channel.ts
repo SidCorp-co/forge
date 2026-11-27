@@ -1,6 +1,6 @@
 // A project's one technical channel (ISS-1243 item 13, owner 2026-11-15): every permission or
 // approval a room agent needs, every technical finding and every ask of the owner is raised there,
-// and nowhere else, so a work thread is told only the answer or that it is in hand. By default it is
+// and nowhere else, so a work thread is told only the answer, once. By default it is
 // the project's own thread of the operations room its organization shares (`scope: forge`; at
 // SidCorp, Forge-Communicate, owner 2026-11-17, ISS-1271), opened on its first need and recorded on
 // that room's binding (`project-thread.ts`). Only where the organization has no such room is it a
@@ -243,7 +243,7 @@ async function turnAt(room: RoomRow, to: Destination): Promise<TechnicalTurn> {
 /**
  * Raise one need in the project's technical channel, from the thread it arose in: posted there
  * alone, recorded as a `routed` action of that thread naming where it went. The asker's thread is
- * posted nothing; the agent tells it the answer or that it is in hand. An agent's raise first reads
+ * posted nothing; the agent reacts to the asker's message and tells it the answer once, when it is in. An agent's raise first reads
  * the thread it posts into (ISS-1299): held while a person's message there within the turn is not the
  * one it answers, and refused where its words are not in his language; its words are posted only
  * once the whole line passed the screen. Core's own line naming an act it refused (`act-deny.ts`) is

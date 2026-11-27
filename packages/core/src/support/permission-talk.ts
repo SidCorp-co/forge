@@ -1,7 +1,7 @@
 // No permission talk in a work thread (ISS-1243 item 12, owner 2026-11-15): a room agent never tells
 // a thread that it lacks a permission or a grant, or that someone must grant or do something first;
 // such a need is raised in the project's technical channel (`technical-channel.ts`), and the thread
-// gets the answer or a short note that it is in hand. 60 replies and 54 routed posts of 01/11-15/11
+// gets the answer once, when it is in. 60 replies and 54 routed posts of 01/11-15/11
 // carried it (in Vietnamese: "I have no permission to share the mailbox yet", "this room is not
 // granted the feedback list", "please grant me access"). The screen reads the agent's own
 // first-person claim, so an answer explaining a user's own access to a screen still posts.
@@ -83,6 +83,6 @@ export async function permissionTalkRefusal(
   return no(
     'SUPPORT_PERMISSION_TALK',
     '/text',
-    `nothing was posted: the post tells the thread you lack a permission or wait on someone to grant one ("${quote}"). Raise that need with ${needDoorOf(tool)}, the project's technical channel, and tell this thread the answer, or one short note that it is in hand.`,
+    `nothing was posted: the post tells the thread you lack a permission or wait on someone to grant one ("${quote}"). Raise that need with ${needDoorOf(tool)}, the project's technical channel, react to the asker's message with support.react, and tell this thread the answer once, when it is in.`,
   );
 }

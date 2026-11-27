@@ -86,9 +86,12 @@ describe('ISS-1243: a room agent asks its master in its turn', () => {
     }));
     expect(out, JSON.stringify(out)).toMatchObject({ asked: true, project: slug });
     const askId = String(out.ask);
-    // ISS-1457: the ask's own teaching asks for one holding line, so the answer's reply is the only
-    // one that carries the answer (two replies in other words read as a double)
-    expect(String(out.next)).toContain('one short line that it is in hand');
+    // ISS-1457, ISS-1475: the ask's own teaching is a reaction and silence, so the answer's reply is
+    // the only message that carries the answer (two replies in other words read as a double)
+    expect(String(out.next)).toContain(
+      "react to the asker's message with support.react and post nothing",
+    );
+    expect(String(out.next)).not.toContain('in hand');
     expect(String(out.next)).not.toContain('answer what you can');
 
     // the ask wakes the master: its event is on the outbox for the master wake to consume

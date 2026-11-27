@@ -102,7 +102,7 @@ export const ROOM_SCENARIOS: readonly CardScenario[] = [
     situation:
       'The owner: “Ý là project chứ không phải qui tắc kênh, đang nói là ngôn ngữ của epod”', // i18n-allow: a recorded room turn
     bad: 'Phòng này không cho em sửa cài đặt dự án… Anh hoặc master ePOD vào cài đặt của dự án ePOD trên Forge… đặt thành tiếng Anh là được.', // i18n-allow: a recorded room turn
-    good: 'hand the ruling to ePOD’s master with support.ask_master, saying what to do, and tell the thread in one line it is in hand',
+    good: 'hand the ruling to ePOD’s master with support.ask_master, saying what to do, react to the asker’s message with support.react, and post one message when the master’s answer is in',
     teaches: [
       /support\.ask_master/,
       /never tell a (work )?thread/i,
@@ -116,7 +116,7 @@ export const ROOM_SCENARIOS: readonly CardScenario[] = [
       'sid-email, thread zUTfEVPNBlmgbubVq, 06/11 02:52 (ISS-1243: 60 replies and 54 routed posts)',
     situation: 'A member asks the bot to share the support@ mailbox with a colleague',
     bad: 'Dạ em chưa có quyền tự share mailbox ạ.', // i18n-allow: a recorded room turn
-    good: 'raise the grant in the project’s technical channel with support.technical; the thread hears the answer or one line it is in hand',
+    good: 'raise the grant in the project’s technical channel with support.technical; the thread hears the answer once, when it is in',
     teaches: [/support\.technical/, /hears nothing of a grant/i],
   },
   {

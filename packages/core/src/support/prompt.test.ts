@@ -319,11 +319,11 @@ describe('every room agent brief carries the room conduct', () => {
   });
 
   // ISS-1416 reopen (FB-824's transcripts): an operations room said a raise was made 3 s after it was
-  // refused, following its brief's "one short line that it is in hand" and the master's answer's
+  // refused, following its brief's holding line and the master's answer's
   // "make the act as them and say it is done"; and stated a state from a master's check as its own
   it("tells an act from its result, and a master's reported state as his dated read", () => {
     expect(operations).toContain(
-      "one short line that it is in hand once the act's result says where it landed, as a refused act was not made",
+      "the thread hears ONE message once the act's result says where it landed, as a refused act was not made; the owner is told on the same cadence (a reaction, no intermediate message, one report when done)",
     );
     const note = masterAnsweredNote('Is the drive back?', 'Still read-only at 17:05.');
     expect(note).toContain("tell it from the act's result: done once it answered");

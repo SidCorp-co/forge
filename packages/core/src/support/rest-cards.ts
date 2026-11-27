@@ -72,7 +72,7 @@ export const SUPPORT_REST_CARDS = {
     situations: [
       {
         when: 'a task the owner gave you needs a grant or an approval you do not hold',
-        do: 'raise it here in your own words to the channel’s reader, and tell the asker’s thread only that it is in hand',
+        do: 'raise it here in your own words to the channel’s reader, react to the asker’s message with support.react, and tell its thread once, when the answer is in',
         watch:
           'a room post saying you lack it is refused SUPPORT_PERMISSION_TALK; support.technical is a room session’s door, refused to you',
       },

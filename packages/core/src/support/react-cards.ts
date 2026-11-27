@@ -13,15 +13,19 @@ export const REACT_ACT_CARDS = {
     situations: [
       {
         when: 'a message needs work before you can answer, and the asker owes nothing meanwhile',
-        do: 'react with support.react { thread, message, emoji: eyes }, stay silent while you work, and post ONE message when it is done: the cause, what was done, what they must do',
+        do: 'react with support.react { thread, message, emoji: hourglass_flowing_sand }, stay silent while you work, and post ONE message when it is done: the cause, what was done, what they must do',
         watch:
-          'a message of another thread is refused SUPPORT_REACT_MESSAGE_UNKNOWN; only eyes, hourglass_flowing_sand, white_check_mark and thumbsup are taken; the same reaction twice sets nothing the second time',
+          'a message of another thread is refused SUPPORT_REACT_MESSAGE_UNKNOWN; only eyes, hourglass_flowing_sand, white_check_mark and thumbsup are taken, and core already set eyes on the incoming message, so use hourglass_flowing_sand; the same reaction twice sets nothing the second time',
       },
     ],
     practice: [
       'A reaction posts no text: never add a line saying you are checking or will report.',
     ],
-    example: { thread: '86aGqsokzYezYNdvF', message: 'Hx3kQp9mZt2LrWv8d', emoji: 'eyes' },
+    example: {
+      thread: '86aGqsokzYezYNdvF',
+      message: 'Hx3kQp9mZt2LrWv8d',
+      emoji: 'hourglass_flowing_sand',
+    },
     // ISS-1475, PGPrints thread Q8mjjHjyrk3u2zs89: "checking", "unclear", then the cause, 3 posts in 11 minutes
     redFlag:
       'A post saying you are checking or will report back, where a reaction acknowledges and one message at the end answers.',
