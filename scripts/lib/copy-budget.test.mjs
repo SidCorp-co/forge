@@ -480,6 +480,21 @@ describe('returnedCopyOf — a returned string and a code-keyed map (ISS-1477)',
       `"${text.slice(0, 57)}…"`,
     );
   });
+  it('reads a lowercase-keyed map typed by `satisfies Record<…>`, with and without `as const`', () => {
+    const text = sentence(24);
+    const long = (wrap) =>
+      `export const p = { not_found: ${JSON.stringify(text)}, unread: 'Fine.' }${wrap};`;
+    for (const wrap of [
+      ' as const satisfies Record<Outcome, string>',
+      ' satisfies Record<Outcome, string>',
+    ]) {
+      const found = returnedCopyOf(long(wrap), FILE);
+      expect(found.map((w) => [w.line, w.key])).toContainEqual([1, 'p.not_found']);
+      expect(over(long(wrap)).map((o) => o.key)).toEqual(['p.not_found']);
+      expect(faults(overBudget(found, lengthOnly))[0]).toContain(`"${text.slice(0, 57)}…"`);
+      expect(over(long(wrap).replace(JSON.stringify(text), '"Not found."'))).toEqual([]);
+    }
+  });
   it('leaves what is not copy: a class list, a path, an import, a key, a call argument, a plain object', () => {
     expect(
       over(

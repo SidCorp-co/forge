@@ -423,8 +423,8 @@ export function returnedCopyOf(source, file) {
     ((ts.isTypeReferenceNode(type) && type.typeName.getText(sf) === 'Record') ||
       ts.isMappedTypeNode(type) ||
       (ts.isTypeLiteralNode(type) && type.members.every(ts.isIndexSignatureDeclaration)));
-  const codeMap = (decl, object) => {
-    if (isMapType(decl.type)) return true;
+  const codeMap = (decl, object, wrapped = []) => {
+    if (isMapType(decl.type) || wrapped.some(isMapType)) return true;
     const props = object.properties;
     return (
       props.length > 0 &&
@@ -439,13 +439,16 @@ export function returnedCopyOf(source, file) {
       literal(node.body, nameOfFn(node));
     } else if (ts.isVariableDeclaration(node) && node.initializer && ts.isIdentifier(node.name)) {
       let init = node.initializer;
+      const wrapped = [];
       while (
         ts.isAsExpression(init) ||
         ts.isSatisfiesExpression(init) ||
         ts.isParenthesizedExpression(init)
-      )
+      ) {
+        if (!ts.isParenthesizedExpression(init)) wrapped.push(init.type);
         init = init.expression;
-      if (ts.isObjectLiteralExpression(init) && codeMap(node, init))
+      }
+      if (ts.isObjectLiteralExpression(init) && codeMap(node, init, wrapped))
         for (const prop of init.properties)
           if (ts.isPropertyAssignment(prop))
             literal(prop.initializer, `${node.name.text}.${keyName(prop.name)}`);
