@@ -267,7 +267,7 @@ function highlightMisfit(h: UiHighlight, item: ReturnType<typeof pageItemOf>, wh
   if (h.target === "step" && item?.kind !== "workflow") return `names step "${what}" and no workflow is open beside the chat`;
   if (h.target === "section" && !item) return `names section "${what}" and no record is open beside the chat`;
   if (h.target !== "row" && h.of !== undefined && item && item.kind !== "workflow" && item.key !== h.of)
-    return `names ${h.of}, but the page beside the chat shows ${item.key}; open ${h.of} first`;
+    return `names ${h.of}, but the page shows ${item.key}; open ${h.of} first`;
   return null;
 }
 

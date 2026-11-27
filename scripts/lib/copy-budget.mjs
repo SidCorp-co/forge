@@ -107,7 +107,8 @@ export function faults(over) {
           : o.kind === 'refusal'
             ? 'a refusal or confirmation'
             : 'a copy string';
-      return `${at} · ${o.key}: ${o.words} words, budget ${o.budget} for ${what}`;
+      const said = o.line ? `: "${clip(o.text)}"` : '';
+      return `${at} · ${o.key}: ${o.words} words, budget ${o.budget} for ${what}${said}`;
     });
 }
 
@@ -324,12 +325,24 @@ export function inlineFaults(written) {
 /** The plain-word share below which a string is a class list, a path or a format, not a sentence. */
 const SENTENCE_SHARE = 0.7;
 
-/** Whether `text` reads as a sentence: it opens on a capital, a digit or a placeholder, and most tokens are plain words. */
+/** A word of a sentence: a plain word, or hyphenated words (`well-known`), punctuation around it. */
+const SENTENCE_WORD = /^[("'“‘[]*[A-Za-z][A-Za-z'’]*(?:-[A-Za-z][A-Za-z'’]*)*[)"'”’\].,;:!?…]*$/;
+
+/** Words a sentence holds and a class list or a path never does; a lowercase string needs one to be read as a sentence. */
+const FUNCTION_WORD =
+  /^(?:the|a|an|is|are|was|were|be|to|of|in|on|at|for|and|or|not|no|it|its|this|that|you|your|we|our|can|cannot|could|must|may|has|have|had|with|from|by|as|but|if|than|then|so|do|does|did|will|would|should|there|they|their|them|which|who|what|when|where|why|how|all|any|only|one)$/i;
+
+/**
+ * Whether `text` reads as a sentence: most tokens are plain words, and it opens on a capital, a
+ * digit or a placeholder, or (a refusal reason is often written lowercase) holds a function word, which a
+ * class list, a path or a format never does.
+ */
 function sentenceLike(text) {
-  if (!/^[A-Z0-9{("'“‘]/.test(text)) return false;
   const tokens = text.replace(PLACEHOLDER, 'X').split(/\s+/).filter(Boolean);
-  const plain = tokens.filter((t) => t === 'X' || PLAIN_WORD.test(t));
-  return plain.length / tokens.length >= SENTENCE_SHARE;
+  const plain = tokens.filter((t) => t === 'X' || SENTENCE_WORD.test(t));
+  if (plain.length / tokens.length < SENTENCE_SHARE) return false;
+  if (/^[A-Z0-9{("'“‘]/.test(text)) return true;
+  return tokens.some((t) => FUNCTION_WORD.test(t.replace(/^[("'“‘[]+|[)"'”’\].,;:!?…]+$/g, '')));
 }
 
 /** A code or enum key: `CLOSE_REQUIRES_SHIPPED`, or an enum member `Code.Shipped`. */

@@ -365,7 +365,7 @@ describe("chat opens any record by key and highlights on it (BC-6)", () => {
     const p = page(<div data-highlight="plan" />, "/projects/demo/issues/ISS-493");
     p.send(turn());
     p.send(turn({ name: "ui_highlight", args: { target: { key: "ISS-495", section: "plan" } } }));
-    expect(screen.getByTestId("ui-action-refused")).toHaveTextContent("names ISS-495, but the page beside the chat shows ISS-493");
+    expect(screen.getByTestId("ui-action-refused")).toHaveTextContent("names ISS-495, but the page shows ISS-493");
   });
 
   it("marks the question a requirement page asks, and step check of an open workflow", () => {

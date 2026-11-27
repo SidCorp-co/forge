@@ -463,6 +463,23 @@ describe('returnedCopyOf — a returned string and a code-keyed map (ISS-1477)',
       over(`function f(x: boolean) { return x ? ${JSON.stringify(sentence(13))} : "Short."; }`),
     ).toHaveLength(1);
   });
+  it('refuses a lowercase 24-word sentence and a 22-word one full of hyphenated words', () => {
+    const lower = `the ${Array.from({ length: 21 }, () => 'cell').join(' ')} ends here`;
+    expect(wordsOf(lower)).toBe(24);
+    expect(over(fn(lower)).map((o) => o.words)).toEqual([24]);
+    const dashed = `A well-known, long-running, read-only ${Array.from({ length: 17 }, () => 'self-made').join(' ')} case.`;
+    expect(wordsOf(dashed)).toBe(22);
+    expect(over(fn(dashed)).map((o) => o.words)).toEqual([22]);
+  });
+  it('quotes the text of a returned string and of a map entry in its refusal line', () => {
+    const text = sentence(26);
+    const line = faults(overBudget(returnedCopyOf(fn(text), FILE), lengthOnly))[0];
+    expect(line).toContain(`: "${text.slice(0, 57)}…"`);
+    const map = `export const M: Record<string, string> = { A_CODE: ${JSON.stringify(text)} };`;
+    expect(faults(overBudget(returnedCopyOf(map, FILE), lengthOnly))[0]).toContain(
+      `"${text.slice(0, 57)}…"`,
+    );
+  });
   it('leaves what is not copy: a class list, a path, an import, a key, a call argument, a plain object', () => {
     expect(
       over(
