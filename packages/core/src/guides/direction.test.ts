@@ -14,6 +14,7 @@ import { provideDoorCatalog } from '../lib/door-catalog.js';
 import { servedDoorCatalog } from '../mcp/door-catalog.js';
 import { renderFact } from '../prompt/facts/registry.js';
 import { releaseBatchStatePrompt } from '../prompt/state-prompts/release-batch.js';
+import { RELEASE_REST_CARDS } from '../release-batch/cards.js';
 import { provideAssistantMethod } from './assistant-method-guide.js';
 import type { GuideSlug } from './guide-ref.js';
 import { listGuides } from './registry.js';
@@ -156,6 +157,13 @@ describe('a release run hands a person only what a person owns', () => {
     expect(prompt).toContain('only where that release finished and shipped');
     expect(prompt).toContain('under a release whose run ended aborted, it never shipped');
     expect(prompt).toContain('`POST /api/projects/:projectId/release-records`');
+    expect(prompt).toContain('each issue is recorded as shipped in that release and closes');
+    expect(prompt).not.toContain('recorded as shipped there');
+    const abort = RELEASE_REST_CARDS['POST /api/projects/:projectId/release-batches/:runId/abort'];
+    const practice = abort.practice.join(' ');
+    expect(practice).toContain('shippedIn takes only a finished, shipped release');
+    expect(practice).toContain('promotedRoster return-to-gate');
+    expect(practice).toContain('POST release-records with issueIds, version, account');
   });
 });
 

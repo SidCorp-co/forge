@@ -710,9 +710,9 @@
     "by": "ISS-1251"
   },
   "POST /api/projects/:projectId/release-batches/:runId/abort": {
-    "hash": "8fcdece3ec4842f3",
-    "on": "2026-11-17",
-    "by": "ISS-1251"
+    "hash": "48aaaf620a399433",
+    "on": "2026-11-27",
+    "by": "ISS-1479"
   },
   "POST /api/projects/:projectId/release-batches/:runId/approvals": {
     "hash": "fa6cbba42a19a11c",

@@ -72,7 +72,10 @@ export const RELEASE_REST_CARDS = {
         do: 'abort with promotedRoster return-to-gate, then record the release if it did land',
       },
     ],
-    practice: ['carried [] says nothing left; leaving it out leaves the version undecided.'],
+    practice: [
+      'carried [] says nothing left; leaving it out leaves the version undecided.',
+      'shippedIn takes only a finished, shipped release; a roster deployed under a release whose run ended aborted takes promotedRoster return-to-gate and carried, then POST release-records with issueIds, version, account.',
+    ],
     example: {
       reason: 'The deploy did not come up: /api/health 502 for 10 minutes.',
       promotedRoster: 'return-to-gate',

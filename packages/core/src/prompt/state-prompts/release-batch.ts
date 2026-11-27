@@ -79,7 +79,7 @@ a step you could not complete, a procedure that does not fit what you actually f
   command and its answer>"}\`. Where the code is on production under a release whose run ended aborted, it never shipped, so
   \`shippedIn\` cannot name it (\`RELEASE_SHIPPED_IN_UNKNOWN\`, the issue held for its agent): abort with
   \`"promotedRoster":"return-to-gate"\` and \`carried\` naming what left the box, then write the release record
-  (\`POST /api/projects/:projectId/release-records\` with \`issueIds\`, \`version\`, \`account\`), which closes the roster. Each issue is recorded as shipped there and closes (\`shippedInRecorded\`);
+  (\`POST /api/projects/:projectId/release-records\` with \`issueIds\`, \`version\`, \`account\`), which closes the roster. Where \`shippedIn\` named a finished release, each issue is recorded as shipped in that release and closes (\`shippedInRecorded\`);
   one that cannot waits on its agent's shipped-in record, never on a person (\`shippedInOwed\`).
 → Say what now carries this release's version outside Forge: \`"carried":[{"kind":"tag","name":"v1.4.0"}]\`,
   one entry per pushed tag, release commit (\`commit\`), published artifact (\`artifact\`) or notice
