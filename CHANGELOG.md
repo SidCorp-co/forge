@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.850] - 2026-11-27
+
+The copy check also reads lowercase-keyed maps typed with satisfies Record
+
+### Fixed
+
+- **The copy budget reads maps typed by a satisfies clause.** A lowercase-keyed map ending in `satisfies Record<…>`, with or without `as const`, is now read, and a sentence over the word limit is refused.
+
 ## [0.4.0-dev.849] - 2026-11-27
 
 Find hits open their own record; copy check reads returned sentences
