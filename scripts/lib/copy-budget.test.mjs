@@ -11,6 +11,7 @@ import {
   keyHasSegment,
   kindOf,
   overBudget,
+  returnedCopyOf,
   sentencesOf,
   wordsOf,
 } from './copy-budget.mjs';
@@ -388,5 +389,91 @@ describe('inlineCopyOf — copy a component writes inline (REQ-43 BC-1, BC-2)', 
         `${FILE}:1 · JSX text "Skip for now": copy written inline; move it to its feature's copy file, or delete it`,
       ],
     );
+  });
+});
+
+describe('returnedCopyOf — a returned string and a code-keyed map (ISS-1477)', () => {
+  const FILE = 'packages/web-v2/src/lib/api/said.ts';
+  const sentence = (n) =>
+    `${Array.from({ length: n }, (_, i) => `word${i}`.replace(/\d/g, (d) => 'abcdefghij'[d])).join(' ')}.`.replace(
+      /^./,
+      (c) => c.toUpperCase(),
+    );
+  const lengthOnly = {
+    ...CFG,
+    emptySegments: /(?!)/,
+    explainSegments: /(?!)/,
+    explainShapes: [],
+    emptyLead: null,
+  };
+  const over = (source) => [...overBudget(returnedCopyOf(source, FILE), lengthOnly).values()];
+  const fn = (text) => `export function said(code: string) {\n  return ${JSON.stringify(text)};\n}`;
+
+  it('passes a clean returned string and a clean map entry', () => {
+    expect(over(fn('Nothing shows this shipped.'))).toEqual([]);
+    expect(over('export const M: Record<string, string> = { A_CODE: "Not found." };')).toEqual([]);
+  });
+  it('refuses a returned 26-word sentence and a 27-word Record entry, naming file and text', () => {
+    const [returned] = over(fn(sentence(26)));
+    expect([returned.file, returned.line, returned.key, returned.words]).toEqual([
+      FILE,
+      2,
+      'said',
+      26,
+    ]);
+    expect(returned.text).toBe(sentence(26));
+    const [entry27] = over(
+      `export const M: Record<string, string> = {\n  SOME_CODE: ${JSON.stringify(sentence(27))},\n};`,
+    );
+    expect([entry27.file, entry27.line, entry27.key, entry27.words]).toEqual([
+      FILE,
+      2,
+      'M.SOME_CODE',
+      27,
+    ]);
+    expect(faults(overBudget(returnedCopyOf(fn(sentence(26)), FILE), lengthOnly))[0]).toContain(
+      `${FILE}:2 · said: 26 words, budget 12`,
+    );
+  });
+  it('holds exactly 12 and refuses 13; a refusal-keyed one holds 20 and refuses 21', () => {
+    expect(over(fn(sentence(12)))).toEqual([]);
+    expect(over(fn(sentence(13))).map((o) => o.words)).toEqual([13]);
+    const refusal = (n) =>
+      `export const REFUSED: Record<string, string> = { A_CODE: ${JSON.stringify(sentence(n))} };`.replace(
+        'REFUSED',
+        'refusal',
+      );
+    expect(over(refusal(20))).toEqual([]);
+    expect(over(refusal(21)).map((o) => [o.key, o.words, o.budget])).toEqual([
+      ['refusal.A_CODE', 21, 20],
+    ]);
+  });
+  it('reads a template literal with an interpolation (one word) and a ternary of two strings', () => {
+    const t = `${sentence(11)}`.slice(0, -1);
+    expect(over(`const a = (n: number) => \`${t} \${n}.\`;`)).toEqual([]);
+    expect(
+      over(`const a = (n: number) => \`${t} \${n} \${n} more.\`;`).map((o) => o.words),
+    ).toEqual([14]);
+    const found = returnedCopyOf(
+      `function f(x: boolean) {\n  return x ? ${JSON.stringify(sentence(13))} : ${JSON.stringify(sentence(14))};\n}`,
+      FILE,
+    );
+    expect(found.map((w) => w.key)).toEqual(['f', 'f']);
+    expect(
+      over(`function f(x: boolean) { return x ? ${JSON.stringify(sentence(13))} : "Short."; }`),
+    ).toHaveLength(1);
+  });
+  it('leaves what is not copy: a class list, a path, an import, a key, a call argument, a plain object', () => {
+    expect(
+      over(
+        [
+          'import x from "./a very long import path with many words in it that is not copy at all really.js";',
+          'export const cls = () => "flex items-center justify-between gap-2 rounded border px-2 py-1 text-sm font-medium";',
+          'export const url = () => "/api/projects/x/issues/y/transition/and/then/some/more/path/parts/here/today";',
+          `console.log(${JSON.stringify(sentence(30))});`,
+          `export const opts = { method: ${JSON.stringify(sentence(30))} };`,
+        ].join('\n'),
+      ),
+    ).toEqual([]);
   });
 });

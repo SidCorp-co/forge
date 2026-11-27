@@ -21,6 +21,7 @@ import {
   inlineCopyOf,
   inlineFaults,
   overBudget,
+  returnedCopyOf,
   sentencesOf,
 } from './lib/copy-budget.mjs';
 import { dieAs, ROOT, walkFiles } from './lib/gate.mjs';
@@ -149,9 +150,25 @@ const written = components.flatMap((file) =>
   inlineCopyOf(readFileSync(join(ROOT, file), 'utf8'), file, attributes),
 );
 
-const found = [...faults(over), ...inlineFaults(written)];
+// What a function returns and a code-keyed map holds is copy too (ISS-1477), held to the same words:
+// a key naming a refusal or confirmation gets `refusalBudget`, the rest `budget`. Only the length is
+// read here: a returned string is not an empty state or an explanation by its shape.
+const lengthOnly = {
+  ...CFG,
+  ...segments,
+  emptySegments: /(?!)/,
+  explainSegments: /(?!)/,
+  explainShapes: [],
+  emptyLead: null,
+};
+const overReturned = overBudget(
+  components.flatMap((file) => returnedCopyOf(readFileSync(join(ROOT, file), 'utf8'), file)),
+  lengthOnly,
+);
+
+const found = [...faults(over), ...inlineFaults(written), ...faults(overReturned)];
 console.log(
-  `copy-budget: ${entries.length} string(s) in ${files.length} file(s), ${sentences} sentence(s) in ${CFG.sentences.length} registry file(s) and ${components.length} source file(s) read, ${over.size} over budget, ${written.length} written inline`,
+  `copy-budget: ${entries.length} string(s) in ${files.length} file(s), ${sentences} sentence(s) in ${CFG.sentences.length} registry file(s) and ${components.length} source file(s) read, ${over.size + overReturned.size} over budget, ${written.length} written inline`,
 );
 if (found.length === 0) process.exit(0);
 console.error(

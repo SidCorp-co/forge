@@ -15,7 +15,7 @@ const FRIENDLY_CODES: Record<string, string> = {
   BAD_REQUEST: 'Invalid input — please check the fields and try again.',
   CONFLICT: 'Conflicts with the current state of the resource.',
   ILLEGAL_TRANSITION: 'That status change is not allowed from the current state.',
-  STALE_TRANSITION: 'Someone else changed this item while you were editing — refresh and retry.',
+  STALE_TRANSITION: 'Someone else changed this item — refresh and retry.',
   NO_OP: 'Already in that state.',
   NOT_IMPLEMENTED: 'This action is not implemented yet.',
   INVALID_CREDENTIALS: 'Email or password is incorrect.',
@@ -31,8 +31,8 @@ const FRIENDLY_CODES: Record<string, string> = {
   MODULE_IN_USE: 'Other modules or issues still depend on this one.',
   PRIMARY_NOT_MODULE: 'Only a module can be an issue’s primary.',
   MULTIPLE_PRIMARY: 'An issue has at most one primary module.',
-  NO_MODULES: 'This project has no modules yet — create one to draw its diagrams.',
-  NO_MODULE_FLOWS: 'No module stores a flow yet — add a mermaid block to a module’s knowledge node.',
+  NO_MODULES: 'No modules yet — create one to draw diagrams.',
+  NO_MODULE_FLOWS: 'No module stores a flow — add a mermaid block to one.',
   UNPARSABLE_MODULE_FLOW: 'A module stores a flow this generator cannot read.',
 };
 
@@ -51,10 +51,10 @@ export function isRetryableApiError(err: unknown): boolean {
 function mergeMarkSentence(err: ApiError): string | null {
   if (err.code === 'CLOSE_REQUIRES_SHIPPED') {
     // ISS-1017: any mark stands for the close, so the only thing it lacks is a mark at all
-    return 'Nothing on this issue says the work shipped, so it cannot close. Once it has, use Mark merged in the issue’s properties, then close. Use Dropped for work that turned out not to be work.';
+    return 'Nothing shows this shipped: use Mark merged, then close, or Dropped.';
   }
   if (err.code === 'MARK_ALREADY_STANDS') {
-    return 'This issue already carries a mark, and that mark stands — nothing changed. To change it, press Unmark, then Mark merged with the landing that is right.';
+    return 'A mark already stands. To change it, Unmark, then Mark merged again.';
   }
   return null;
 }
@@ -81,7 +81,7 @@ function designGapWords(gaps: readonly DesignGap[]): string | null {
  */
 function designGateSentence(err: ApiError): string | null {
   if (err.code === 'DESIGN_RECORD_MISSING') {
-    return 'This issue has no design record yet. The run building it records one; no screen shows it.';
+    return 'No design record yet; the run records it, no screen shows it.';
   }
   if (err.code !== 'DESIGN_RECORD_INCOMPLETE') return null;
   const details = refusalFact(err, 'details');

@@ -53,7 +53,7 @@ describe("a message from a tab loaded before the page item", () => {
   it("prints core's sentence, which tells the person to reload the page", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => new Response(JSON.stringify(body), { status: 400, headers: { "content-type": "application/problem+json" } })),
+      vi.fn(() => Promise.resolve(new Response(JSON.stringify(body), { status: 400, headers: { "content-type": "application/problem+json" } }))),
     );
     const err = await apiClient("/conversations/x/messages", { method: "POST", body: "{}" }).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ApiError);
@@ -85,7 +85,7 @@ describe("a move refused by the design check", () => {
   const lineFor = async (body: unknown) => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => new Response(JSON.stringify(body), { status: 422, headers: { "content-type": "application/problem+json" } })),
+      vi.fn(() => Promise.resolve(new Response(JSON.stringify(body), { status: 422, headers: { "content-type": "application/problem+json" } }))),
     );
     return formatApiError(await apiClient("/issues/i1/transition", { method: "POST", body: "{}" }).catch((e: unknown) => e));
   };
@@ -102,7 +102,7 @@ describe("a move refused by the design check", () => {
         gaps: [{ part: "design" }],
       }),
     );
-    expect(line).toBe("This issue has no design record yet. The run building it records one; no screen shows it.");
+    expect(line).toBe("No design record yet; the run records it, no screen shows it.");
     expect(line).not.toMatch(NO_HTTP);
   });
 

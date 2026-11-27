@@ -1402,7 +1402,12 @@ later). Each is refused naming file, line and the words. A literal with no plain
 address, a path, a format such as `sat_…` — is data, and a value shaped like a copy key
 (`nav.runs`, `hintIssueStatus`) names copy; neither is copy. A literal passed to a call (`t("…")`,
 `cn("…")`) is never read, and neither is one held in a variable or a property of another name and
-rendered later: that is the check's limit. `inline.skip` names each directory that is not a page, with why: the test fixtures,
+rendered later: that is the check's limit. What a function returns and a map keyed by code hold are copy too (ISS-1477,
+`scripts/lib/copy-budget.mjs:returnedCopyOf`): a string or template literal a `return` or an arrow's
+expression body gives (through `?:`, `??`, `||`, `&&`), and the values of a `Record<…, string>`,
+mapped-type or all-codes (`CLOSE_REQUIRES_SHIPPED`) object. Each is held to 12 words, or 20 where its
+key names a refusal, naming file, line and key; a string that is not sentence-like (a class list, a
+path) is data and is not read. `inline.skip` names each directory that is not a page, with why: the test fixtures,
 guides and docs, which REQ-43 scopes out, and the design gallery at `/dev/design`, whose sample data
 renders the blocks for the people building pages. A skip naming a directory that no longer exists stops
 the check.

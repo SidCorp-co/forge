@@ -66,13 +66,14 @@ function allowedFor(kind, { budget, refusalBudget, emptyBudget }) {
  */
 export function overBudget(entries, cfg) {
   const over = new Map();
-  for (const { file, key, text } of entries) {
+  for (const { file, key, text, line } of entries) {
     const words = wordsOf(text);
     const { kind, shape } = kindOf(key, text, cfg);
     const allowed = allowedFor(kind, cfg);
     if (words > allowed)
-      over.set(`${file}::${key}`, {
+      over.set(`${file}${line ? `:${line}` : ''}::${key}`, {
         file,
+        line,
         key,
         text,
         kind,
@@ -90,19 +91,23 @@ const clip = (text) => (text.length > 60 ? `${text.slice(0, 57)}…` : text);
 /** One refusal line per string over budget, naming file, key, its words and what its kind allows. */
 export function faults(over) {
   return [...over.values()]
-    .sort((a, b) => `${a.file}::${a.key}`.localeCompare(`${b.file}::${b.key}`))
+    .sort(
+      (a, b) =>
+        `${a.file}::${a.key}`.localeCompare(`${b.file}::${b.key}`) || (a.line ?? 0) - (b.line ?? 0),
+    )
     .map((o) => {
+      const at = o.line ? `${o.file}:${o.line}` : o.file;
       if (o.kind === 'explain' && o.shape)
-        return `${o.file} · ${o.key}: "${clip(o.text)}" explains (${o.shape}); keep the state, delete the explanation`;
+        return `${at} · ${o.key}: "${clip(o.text)}" explains (${o.shape}); keep the state, delete the explanation`;
       if (o.kind === 'explain')
-        return `${o.file} · ${o.key}: a string that explains a section, a button or who can see something is refused at any length; delete it, or change the control`;
+        return `${at} · ${o.key}: a string that explains a section, a button or who can see something is refused at any length; delete it, or change the control`;
       const what =
         o.kind === 'empty'
           ? 'an empty state'
           : o.kind === 'refusal'
             ? 'a refusal or confirmation'
             : 'a copy string';
-      return `${o.file} · ${o.key}: ${o.words} words, budget ${o.budget} for ${what}`;
+      return `${at} · ${o.key}: ${o.words} words, budget ${o.budget} for ${what}`;
     });
 }
 
@@ -314,4 +319,126 @@ export function inlineFaults(written) {
       w.where === 'text' ? 'JSX text' : w.where.endsWith(':') ? `property ${w.where}` : w.where;
     return `${w.file}:${w.line} · ${what} "${clip(w.text)}": copy written inline; move it to its feature's copy file, or delete it`;
   });
+}
+
+/** The plain-word share below which a string is a class list, a path or a format, not a sentence. */
+const SENTENCE_SHARE = 0.7;
+
+/** Whether `text` reads as a sentence: it opens on a capital, a digit or a placeholder, and most tokens are plain words. */
+function sentenceLike(text) {
+  if (!/^[A-Z0-9{("'“‘]/.test(text)) return false;
+  const tokens = text.replace(PLACEHOLDER, 'X').split(/\s+/).filter(Boolean);
+  const plain = tokens.filter((t) => t === 'X' || PLAIN_WORD.test(t));
+  return plain.length / tokens.length >= SENTENCE_SHARE;
+}
+
+/** A code or enum key: `CLOSE_REQUIRES_SHIPPED`, or an enum member `Code.Shipped`. */
+const CODE_KEY = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$|^[A-Z][A-Za-z0-9]*\.[A-Z][A-Za-z0-9_]*$/;
+
+/**
+ * The person-facing English a web `.ts` or `.tsx` file writes where `inlineCopyOf` never looks
+ * (ISS-1477): a string or template literal a function RETURNS (a `return` statement or an arrow's
+ * expression body, through `?:`, `??`, `||`, `&&` and parentheses), and the string values of a map
+ * keyed by code or enum: a variable declared `Record<…, string>`, a mapped or index-signature type,
+ * or an object whose every key is a code. Each is `{file, line, key, text}` for `overBudget`, `key`
+ * naming the function, or the variable and the entry's key, so a refusal's key segments read as
+ * they do in a copy file. A template's `${…}` is one word. A string that is not sentence-like (a
+ * class list, a path, a format, a lone identifier) is data and is never read, and neither are import
+ * paths, object keys, type names and anything passed to a call, `console` included.
+ */
+export function returnedCopyOf(source, file) {
+  const kind = file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+  const sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, kind);
+  const found = [];
+  const add = (node, key, raw) => {
+    const text = raw.replace(/\s+/g, ' ').trim();
+    if (!readable(text) || !sentenceLike(text)) return;
+    const line = sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
+    found.push({ file, line, key, text });
+  };
+  const literal = (node, key) => {
+    if (!node) return;
+    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node))
+      return add(node, key, node.text);
+    if (ts.isTemplateExpression(node))
+      return add(
+        node,
+        key,
+        node.head.text + node.templateSpans.map((s) => `{x}${s.literal.text}`).join(''),
+      );
+    if (
+      ts.isParenthesizedExpression(node) ||
+      ts.isAsExpression(node) ||
+      ts.isSatisfiesExpression(node)
+    )
+      return literal(node.expression, key);
+    if (ts.isConditionalExpression(node)) {
+      literal(node.whenTrue, key);
+      return literal(node.whenFalse, key);
+    }
+    if (ts.isBinaryExpression(node)) {
+      const op = node.operatorToken.kind;
+      if (op === ts.SyntaxKind.QuestionQuestionToken || op === ts.SyntaxKind.BarBarToken) {
+        literal(node.left, key);
+        return literal(node.right, key);
+      }
+      if (op === ts.SyntaxKind.AmpersandAmpersandToken) return literal(node.right, key);
+    }
+  };
+  const nameOfFn = (fn) => {
+    if (fn.name && ts.isIdentifier(fn.name)) return fn.name.text;
+    const p = fn.parent;
+    if (ts.isVariableDeclaration(p) && ts.isIdentifier(p.name)) return p.name.text;
+    if (ts.isPropertyAssignment(p) && ts.isIdentifier(p.name)) return p.name.text;
+    return 'returned';
+  };
+  const isFn = (n) =>
+    ts.isFunctionDeclaration(n) ||
+    ts.isFunctionExpression(n) ||
+    ts.isArrowFunction(n) ||
+    ts.isMethodDeclaration(n);
+  const enclosing = (node) => {
+    for (let p = node.parent; p; p = p.parent) if (isFn(p)) return p;
+    return null;
+  };
+  const keyName = (name) =>
+    ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNoSubstitutionTemplateLiteral(name)
+      ? name.text
+      : name.getText(sf).replace(/^\[|\]$/g, '');
+  const isMapType = (type) =>
+    !!type &&
+    ((ts.isTypeReferenceNode(type) && type.typeName.getText(sf) === 'Record') ||
+      ts.isMappedTypeNode(type) ||
+      (ts.isTypeLiteralNode(type) && type.members.every(ts.isIndexSignatureDeclaration)));
+  const codeMap = (decl, object) => {
+    if (isMapType(decl.type)) return true;
+    const props = object.properties;
+    return (
+      props.length > 0 &&
+      props.every((p) => ts.isPropertyAssignment(p) && CODE_KEY.test(keyName(p.name)))
+    );
+  };
+  const visit = (node) => {
+    if (ts.isReturnStatement(node) && node.expression) {
+      const fn = enclosing(node);
+      if (fn) literal(node.expression, nameOfFn(fn));
+    } else if (ts.isArrowFunction(node) && !ts.isBlock(node.body)) {
+      literal(node.body, nameOfFn(node));
+    } else if (ts.isVariableDeclaration(node) && node.initializer && ts.isIdentifier(node.name)) {
+      let init = node.initializer;
+      while (
+        ts.isAsExpression(init) ||
+        ts.isSatisfiesExpression(init) ||
+        ts.isParenthesizedExpression(init)
+      )
+        init = init.expression;
+      if (ts.isObjectLiteralExpression(init) && codeMap(node, init))
+        for (const prop of init.properties)
+          if (ts.isPropertyAssignment(prop))
+            literal(prop.initializer, `${node.name.text}.${keyName(prop.name)}`);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return found;
 }
