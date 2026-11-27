@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.849] - 2026-11-27
+
+Find hits open their own record; copy check reads returned sentences
+
+### Added
+
+- **A find hit opens its own record.** A test now fails when a served search hit, found by name or alias, opens another record, or shows another term's aliases or anchor.
+
+### Fixed
+
+- **The copy budget now reads a lowercase or hyphen-heavy returned sentence, and its refusal quotes the text.** A returned string over budget is named with its words, so the one it newly found is cut.
+
 ## [0.4.0-dev.848] - 2026-11-27
 
 The copy-budget check reads returned strings and code-keyed maps
