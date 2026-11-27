@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.853] - 2026-11-27
+
+Release prompt says shippedIn takes only a finished release
+
+### Fixed
+
+- **The release prompt says which release `shippedIn` takes.** Only a finished, shipped release; a deploy under a release whose run ended aborted never shipped, so it aborts back to the gate and takes the release record instead.
+
 ## [0.4.0-dev.852] - 2026-11-27
 
 Copy check also reads sentences in properties, enums and defaults
