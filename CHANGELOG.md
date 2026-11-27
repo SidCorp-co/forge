@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.852] - 2026-11-27
+
+Copy check also reads sentences in properties, enums and defaults
+
+### Fixed
+
+- **The copy budget reads sentences written into a variable position.** A string assigned to a property, an enum member, a class property or a parameter default now counts against the word limit.
+
 ## [0.4.0-dev.851] - 2026-11-27
 
 The copy check reads every sentence held in an object literal
