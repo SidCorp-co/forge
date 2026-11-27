@@ -1,6 +1,7 @@
 import { chatRoleSchema, operationsRoomConfigSchema } from '@forge/contracts/support-operations';
 import { describe, expect, it } from 'vitest';
 import { settleSupportRoom } from '../integrations/rocketchat/support-binding.js';
+import { actCard } from './act-cards.js';
 import { isPublicAddress, pageText, readPublicPage } from './ops-research.js';
 import { grantRefusal } from './ops-role.js';
 
@@ -132,5 +133,18 @@ describe('research reads only a public page (REQ-75 BC-24)', () => {
         '<html><head><style>p{}</style><script>alert(1)</script></head><body><h1>Title</h1><p>One &amp; two</p></body></html>',
       ),
     ).toBe('Title\nOne & two');
+  });
+});
+
+// ISS-1481 (FB-877, L-43): the agent said an attached mockup could not be reached, then that none
+// existed; the issue read listed no attachments and no card said to open them
+describe('the issues card and attachments', () => {
+  it('opens an issue’s attachments before saying a named mockup cannot be reached', () => {
+    const text = actCard('issues')
+      .situations.map((s) => `${s.when}: ${s.do}`)
+      .join('\n');
+    expect(text).toContain('someone names a mockup, file or picture attached to an issue');
+    expect(text).toContain('open its `attachments`');
+    expect(text).toContain('before you say you cannot reach it or that none exists');
   });
 });

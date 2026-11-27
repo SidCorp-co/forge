@@ -358,16 +358,6 @@ describe('every room agent brief carries the room conduct', () => {
     expect(issues).toContain('never a release status update in its place');
   });
 
-  // ISS-1481 (FB-877, L-43): the agent told a person an attached mockup could not be read, then that
-  // none existed; the issue read listed no attachments and no card said to open them
-  it('opens an issue’s attachments before saying a named mockup cannot be reached', () => {
-    const card = actCard('issues');
-    const text = card.situations.map((s) => `${s.when}: ${s.do}`).join('\n');
-    expect(text).toContain('someone names a mockup, file or picture attached to an issue');
-    expect(text).toContain('open its `attachments`');
-    expect(text).toContain('before you say you cannot reach it or that none exists');
-  });
-
   // ISS-1440 (FB-837, L-185): the channel agent's opening says what the guide, the cards and the audit say
   it('says a served version is read, behaviour looked at, a master’s answer his own, else not confirmed now', () => {
     const opening = agentOpening({
