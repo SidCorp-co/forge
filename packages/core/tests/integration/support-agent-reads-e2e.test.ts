@@ -161,7 +161,8 @@ describe("an owner-mode channel agent reads its own project's tracker (FB-448)",
     expect(JSON.stringify(out.issues)).not.toContain('Root cause found');
     // ISS-1481: the one-issue read lists its attachments: a page with its text cut at 6000
     // characters and the room's secret taken out, a picture by name alone; a list carries none
-    const files = (out.one.issues as { attachments?: Record<string, unknown>[] }[])[0]?.attachments;
+    const one = (out.one?.issues ?? []) as { attachments?: Record<string, unknown>[] }[];
+    const files = one[0]?.attachments;
     expect(files).toEqual([
       {
         name: 'Loai Nghi Phep.html',
