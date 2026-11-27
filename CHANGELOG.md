@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.846] - 2026-11-27
+
+The room agent acknowledges by reaction and reports once, when done
+
+### Changed
+
+- **The room agent speaks once, with the result.** A recorded fix, a promise and a screen it cannot look at no longer teach a message at the act; it reacts, and one message follows when the answer is in.
+
 ## [0.4.0-dev.845] - 2026-11-27
 
 The room assistant acknowledges by reaction and answers once, when done
