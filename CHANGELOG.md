@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.848] - 2026-11-27
+
+The copy-budget check reads returned strings and code-keyed maps
+
+### Fixed
+
+- **The copy-budget check now reads returned strings and code-keyed maps.** A sentence a web function returns, or a `Record<code, string>` holds, meets the same word budget; six long refusals are shortened.
+
 ## [0.4.0-dev.847] - 2026-11-27
 
 The room assistant reacts and answers once instead of posting holding lines
