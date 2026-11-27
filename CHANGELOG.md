@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.851] - 2026-11-27
+
+The copy check reads every sentence held in an object literal
+
+### Fixed
+
+- **The copy budget reads every sentence held in an object.** Any string property of an object literal, however typed or nested, now counts against the word limit; four overlong refusal texts were shortened.
+
 ## [0.4.0-dev.850] - 2026-11-27
 
 The copy check also reads lowercase-keyed maps typed with satisfies Record
