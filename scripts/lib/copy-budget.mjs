@@ -345,19 +345,21 @@ function sentenceLike(text) {
   return tokens.some((t) => FUNCTION_WORD.test(t.replace(/^[("'“‘[]+|[)"'”’\].,;:!?…]+$/g, '')));
 }
 
-/** A code or enum key: `CLOSE_REQUIRES_SHIPPED`, or an enum member `Code.Shipped`. */
-const CODE_KEY = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$|^[A-Z][A-Za-z0-9]*\.[A-Z][A-Za-z0-9_]*$/;
-
 /**
  * The person-facing English a web `.ts` or `.tsx` file writes where `inlineCopyOf` never looks
  * (ISS-1477): a string or template literal a function RETURNS (a `return` statement or an arrow's
- * expression body, through `?:`, `??`, `||`, `&&` and parentheses), and the string values of a map
- * keyed by code or enum: a variable declared `Record<…, string>`, a mapped or index-signature type,
- * or an object whose every key is a code. Each is `{file, line, key, text}` for `overBudget`, `key`
- * naming the function, or the variable and the entry's key, so a refusal's key segments read as
- * they do in a copy file. A template's `${…}` is one word. A string that is not sentence-like (a
- * class list, a path, a format, a lone identifier) is data and is never read, and neither are import
- * paths, object keys, type names and anything passed to a call, `console` included.
+ * expression body, through `?:`, `??`, `||`, `&&` and parentheses), and the string value of ANY
+ * property of an object literal, at any nesting: a map whatever its declared type (`Record`,
+ * `Partial<Record>`, an alias, `satisfies`, `as const`, none) or key style, a returned object, an
+ * `export default` object, a class getter's object, an object given to a call. Each is `{file, line,
+ * key, text}` for `overBudget`, `key` naming the function or variable and the property path, so a
+ * refusal's key segments read as they do in a copy file. A template's `${…}` is one word. A string
+ * that is not sentence-like (a class list, a path, a format, a lone identifier) is data and is never
+ * read, and neither are import paths, object keys, type names and a string passed to a call as an
+ * argument itself, `console` included. NOT read: a string held in a variable or an array and used
+ * later (`const msg = "…"; return { text: msg }`), a computed or concatenated one, an array element,
+ * a string in a `.json` or a file outside the web scan root, and a property value that is not a
+ * literal (a call, an identifier).
  */
 export function returnedCopyOf(source, file) {
   const kind = file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
@@ -399,7 +401,7 @@ export function returnedCopyOf(source, file) {
     }
   };
   const nameOfFn = (fn) => {
-    if (fn.name && ts.isIdentifier(fn.name)) return fn.name.text;
+    if (fn.name && (ts.isIdentifier(fn.name) || ts.isStringLiteral(fn.name))) return fn.name.text;
     const p = fn.parent;
     if (ts.isVariableDeclaration(p) && ts.isIdentifier(p.name)) return p.name.text;
     if (ts.isPropertyAssignment(p) && ts.isIdentifier(p.name)) return p.name.text;
@@ -409,7 +411,8 @@ export function returnedCopyOf(source, file) {
     ts.isFunctionDeclaration(n) ||
     ts.isFunctionExpression(n) ||
     ts.isArrowFunction(n) ||
-    ts.isMethodDeclaration(n);
+    ts.isMethodDeclaration(n) ||
+    ts.isGetAccessorDeclaration(n);
   const enclosing = (node) => {
     for (let p = node.parent; p; p = p.parent) if (isFn(p)) return p;
     return null;
@@ -418,18 +421,36 @@ export function returnedCopyOf(source, file) {
     ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNoSubstitutionTemplateLiteral(name)
       ? name.text
       : name.getText(sf).replace(/^\[|\]$/g, '');
-  const isMapType = (type) =>
-    !!type &&
-    ((ts.isTypeReferenceNode(type) && type.typeName.getText(sf) === 'Record') ||
-      ts.isMappedTypeNode(type) ||
-      (ts.isTypeLiteralNode(type) && type.members.every(ts.isIndexSignatureDeclaration)));
-  const codeMap = (decl, object, wrapped = []) => {
-    if (isMapType(decl.type) || wrapped.some(isMapType)) return true;
-    const props = object.properties;
-    return (
-      props.length > 0 &&
-      props.every((p) => ts.isPropertyAssignment(p) && CODE_KEY.test(keyName(p.name)))
-    );
+  /** The name an object literal is read under: its variable, `default`, or the function or getter around it. */
+  const anchorOf = (node) => {
+    const names = [];
+    let p = node;
+    for (; p; p = p.parent) {
+      if (ts.isPropertyAssignment(p) && ts.isObjectLiteralExpression(p.parent))
+        names.unshift(keyName(p.name));
+      else if (
+        ts.isObjectLiteralExpression(p) ||
+        ts.isArrayLiteralExpression(p) ||
+        ts.isParenthesizedExpression(p) ||
+        ts.isAsExpression(p) ||
+        ts.isSatisfiesExpression(p) ||
+        ts.isConditionalExpression(p) ||
+        ts.isBinaryExpression(p) ||
+        ts.isCallExpression(p) ||
+        ts.isNewExpression(p)
+      )
+        continue;
+      else break;
+    }
+    let base = 'object';
+    if (p && ts.isVariableDeclaration(p) && ts.isIdentifier(p.name)) base = p.name.text;
+    else if (p && ts.isExportAssignment(p)) base = 'default';
+    else {
+      const fn = enclosing(node);
+      if (fn) base = nameOfFn(fn);
+      else if (p && ts.isPropertyDeclaration(p) && ts.isIdentifier(p.name)) base = p.name.text;
+    }
+    return [base, ...names].join('.');
   };
   const visit = (node) => {
     if (ts.isReturnStatement(node) && node.expression) {
@@ -437,21 +458,8 @@ export function returnedCopyOf(source, file) {
       if (fn) literal(node.expression, nameOfFn(fn));
     } else if (ts.isArrowFunction(node) && !ts.isBlock(node.body)) {
       literal(node.body, nameOfFn(node));
-    } else if (ts.isVariableDeclaration(node) && node.initializer && ts.isIdentifier(node.name)) {
-      let init = node.initializer;
-      const wrapped = [];
-      while (
-        ts.isAsExpression(init) ||
-        ts.isSatisfiesExpression(init) ||
-        ts.isParenthesizedExpression(init)
-      ) {
-        if (!ts.isParenthesizedExpression(init)) wrapped.push(init.type);
-        init = init.expression;
-      }
-      if (ts.isObjectLiteralExpression(init) && codeMap(node, init, wrapped))
-        for (const prop of init.properties)
-          if (ts.isPropertyAssignment(prop))
-            literal(prop.initializer, `${node.name.text}.${keyName(prop.name)}`);
+    } else if (ts.isPropertyAssignment(node) && ts.isObjectLiteralExpression(node.parent)) {
+      literal(node.initializer, `${anchorOf(node.parent)}.${keyName(node.name)}`);
     }
     ts.forEachChild(node, visit);
   };

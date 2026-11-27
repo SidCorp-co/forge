@@ -69,7 +69,7 @@ function chartFields(b: ChartBlock): ChartFields | ChartUnsupported {
   if (!x || ys.some((y) => !y)) return { unsupported: "a field it names is not in the frame" };
   const yFields = ys as ReportField[];
   if (yFields.some((y) => unitOf(y) !== unitOf(yFields[0]))) {
-    return { unsupported: "its value fields differ in kind or unit, so they cannot share one scale" };
+    return { unsupported: "its value fields differ in kind or unit; no shared scale" };
   }
   const seriesField = b.series === undefined ? undefined : fieldOf(b, b.series);
   if (b.series !== undefined && !seriesField) return { unsupported: "its series field is not in the frame" };

@@ -495,6 +495,47 @@ describe('returnedCopyOf — a returned string and a code-keyed map (ISS-1477)',
       expect(over(long(wrap).replace(JSON.stringify(text), '"Not found."'))).toEqual([]);
     }
   });
+  it('reads a sentence held in any object literal, whatever its wrapper, type or key style', () => {
+    const text = sentence(24);
+    const q = JSON.stringify(text);
+    const cases = {
+      'Partial<Record>': [
+        `export const p: Partial<Record<Outcome, string>> = { not_found: ${q} };`,
+        'p.not_found',
+      ],
+      'a type alias': [
+        `type R = Record<Outcome, string>;\nexport const p: R = { not_found: ${q} };`,
+        'p.not_found',
+      ],
+      'Readonly satisfies': [
+        `export const p = { not_found: ${q} } as const satisfies Readonly<Record<Outcome, string>>;`,
+        'p.not_found',
+      ],
+      'a nested map': [`export const p = { a: { b: { c: ${q} } } };`, 'p.a.b.c'],
+      'camelCase keys, untyped': [
+        `export const p = { notFound: ${q}, hintText: 'Fine.' };`,
+        'p.notFound',
+      ],
+      'a returned object': [`export function f() {\n  return { title: ${q} };\n}`, 'f.title'],
+      'an export default map': [`export default { missing: ${q} };`, 'default.missing'],
+      'a class getter': [
+        `class C {\n  get said() {\n    return { reason: ${q} };\n  }\n}`,
+        'said.reason',
+      ],
+      'an object given to a call': [`toast({ description: ${q} });`, 'object.description'],
+    };
+    for (const [name, [source, key]] of Object.entries(cases)) {
+      const [hit, ...rest] = over(source);
+      expect(hit, name).toBeDefined();
+      expect(rest, name).toEqual([]);
+      expect([hit.file, hit.key, hit.words], name).toEqual([FILE, key, 24]);
+      expect(hit.line, name).toBeGreaterThan(0);
+      expect(faults(overBudget(returnedCopyOf(source, FILE), lengthOnly))[0], name).toContain(
+        `${FILE}:${hit.line} · ${key}: 24 words, budget 12 for a copy string: "${text.slice(0, 57)}…"`,
+      );
+      expect(over(source.replace(q, '"Not found."')), `${name}, short`).toEqual([]);
+    }
+  });
   it('leaves what is not copy: a class list, a path, an import, a key, a call argument, a plain object', () => {
     expect(
       over(
@@ -503,7 +544,7 @@ describe('returnedCopyOf — a returned string and a code-keyed map (ISS-1477)',
           'export const cls = () => "flex items-center justify-between gap-2 rounded border px-2 py-1 text-sm font-medium";',
           'export const url = () => "/api/projects/x/issues/y/transition/and/then/some/more/path/parts/here/today";',
           `console.log(${JSON.stringify(sentence(30))});`,
-          `export const opts = { method: ${JSON.stringify(sentence(30))} };`,
+          'export const opts = { method: "POST", mode: "cors" };',
         ].join('\n'),
       ),
     ).toEqual([]);

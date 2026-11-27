@@ -1404,10 +1404,13 @@ address, a path, a format such as `sat_…` — is data, and a value shaped like
 `cn("…")`) is never read, and neither is one held in a variable or a property of another name and
 rendered later: that is the check's limit. What a function returns and a map keyed by code hold are copy too (ISS-1477,
 `scripts/lib/copy-budget.mjs:returnedCopyOf`): a string or template literal a `return` or an arrow's
-expression body gives (through `?:`, `??`, `||`, `&&`), and the values of a `Record<…, string>`,
-mapped-type or all-codes (`CLOSE_REQUIRES_SHIPPED`) object. Each is held to 12 words, or 20 where its
+expression body gives (through `?:`, `??`, `||`, `&&`), and the string value of any property of an
+object literal at any nesting, whatever its declared type, wrapper or key style (a `Record`, an alias,
+`satisfies`, a nested map, a returned object, an `export default` object, a class getter's object, an
+object given to a call). Each is held to 12 words, or 20 where its
 key names a refusal, naming file, line and key; a string that is not sentence-like (a class list, a
-path) is data and is not read. `inline.skip` names each directory that is not a page, with why: the test fixtures,
+path) is data and is not read. Not read: a string held in a variable or array and used later, a
+computed or concatenated one, an array element, and a property value that is not a literal. `inline.skip` names each directory that is not a page, with why: the test fixtures,
 guides and docs, which REQ-43 scopes out, and the design gallery at `/dev/design`, whose sample data
 renders the blocks for the people building pages. A skip naming a directory that no longer exists stops
 the check.

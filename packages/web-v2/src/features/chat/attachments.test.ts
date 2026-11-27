@@ -41,7 +41,7 @@ describe("what a conversation's composer stages", () => {
     const out = stageFiles([file("big.md", "text/markdown", 3 * MB)], CONVERSATION_ATTACHMENTS, 0);
     expect(out.accepted).toEqual([]);
     expect(refusalSentence(out.refused[0] ?? { name: "", reason: "" })).toBe(
-      "Couldn't attach big.md — it is 3.0 MB of text/markdown, and a conversation takes text/markdown up to 2 MB — attach .png, .jpg, .jpeg, .gif, .webp, .pdf or .docx up to 10 MB; .md, .markdown, .txt, .csv or .json up to 2 MB.",
+      "Couldn't attach big.md — it is 3.0 MB; text/markdown may be 2 MB at most — attach .png, .jpg, .jpeg, .gif, .webp, .pdf or .docx up to 10 MB; .md, .markdown, .txt, .csv or .json up to 2 MB.",
     );
   });
 

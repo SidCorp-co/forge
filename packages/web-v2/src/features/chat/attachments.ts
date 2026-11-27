@@ -136,7 +136,7 @@ export function stageFiles(
       refused.push({
         name: named(file),
         reason: policy.capOf
-          ? `it is ${formatSize(file.size)} of ${type}, and a ${policy.target} takes ${type} up to ${formatAttachmentCap(cap)} — attach ${policy.takes}`
+          ? `it is ${formatSize(file.size)}; ${type} may be ${formatAttachmentCap(cap)} at most — attach ${policy.takes}`
           : `it is ${formatSize(file.size)} and a ${policy.target} takes files up to ${formatSize(cap)}`,
       });
       continue;
@@ -144,7 +144,7 @@ export function stageFiles(
     if (attachmentNameExceedsBudget(safeAttachmentName(file.name))) {
       refused.push({
         name: named(file),
-        reason: `its name is too long — shorten it to at most ${ATTACHMENT_NAME_MAX_BYTES} plain letters and digits and attach it again`,
+        reason: `its name is too long: at most ${ATTACHMENT_NAME_MAX_BYTES} letters and digits`,
       });
       continue;
     }

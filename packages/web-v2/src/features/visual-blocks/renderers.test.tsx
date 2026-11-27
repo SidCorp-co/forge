@@ -164,7 +164,7 @@ describe("chart block", () => {
 
   it("refuses value fields that differ in unit rather than put them on one scale", () => {
     const m = chartModel({ ...bar, y: ["done", "lead"] } as never);
-    expect(m).toEqual({ unsupported: "its value fields differ in kind or unit, so they cannot share one scale" });
+    expect(m).toEqual({ unsupported: "its value fields differ in kind or unit; no shared scale" });
   });
 
   it("refuses a malformed chart block by name: a text field cannot be a value", () => {
