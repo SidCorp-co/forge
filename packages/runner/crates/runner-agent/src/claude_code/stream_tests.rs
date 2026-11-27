@@ -122,6 +122,7 @@ async fn turn_ends(stream: &str, written: u32) -> Vec<usize> {
         Arc::new(Mutex::new(Outcome::default())),
         notify,
         "s".into(),
+        McpBackoff::default(),
     );
     reader.await.unwrap();
     let _ = child.wait().await;

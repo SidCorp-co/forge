@@ -124,6 +124,8 @@ pub struct ClaudeCodeRunner {
     /// Channel agents' sessions running as background sessions in rooms their owner attaches to
     /// (ISS-946, ISS-1268 BR).
     rooms: room::Rooms,
+    /// Residents that came up without `forge`, by key (ISS-1480).
+    mcp_backoff: McpBackoff,
 }
 
 /// A turn core handed this box for a session, held from the moment its frame is read until the
@@ -167,6 +169,7 @@ impl ClaudeCodeRunner {
             close_grace: CLOSE_GRACE,
             chat_turns: crate::chat_turns::ChatTurns::default(),
             rooms: Arc::default(),
+            mcp_backoff: McpBackoff::default(),
         }
     }
 
@@ -737,6 +740,7 @@ impl ClaudeCodeRunner {
             outcome.clone(),
             result_notify.clone(),
             job_id.clone(),
+            self.mcp_backoff.clone(),
         );
         tokio::spawn(stream::complete(stream::Completion {
             sessions: self.sessions.clone(),
@@ -786,6 +790,17 @@ impl Runner for ClaudeCodeRunner {
         // whatever still holds this key ends first: a closed resident's reaper reaps by it
         self.retire(&job_id).await?;
 
+        if let Some(left) = spec
+            .keep_resident
+            .then(|| self.mcp_backoff.wait_left(&job_id))
+            .flatten()
+        {
+            return Err(Error::Other(format!(
+                "[MCP_RESPAWN_BACKOFF] the resident of {job_id} last came up without its forge \
+                 server; it is not spawned again for {}s, so core is asked at a growing interval",
+                left.as_secs() + 1
+            )));
+        }
         let invoked_with_resume = spec.resume_id.is_some();
 
         let (session_permit, pending_permit) = self.permit_for(&spec).await?;

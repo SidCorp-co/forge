@@ -15,6 +15,7 @@ pub(crate) fn spawn_reader(
     outcome: Arc<Mutex<Outcome>>,
     result_notify: Arc<tokio::sync::Notify>,
     job_id: String,
+    backoff: McpBackoff,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut lines = BufReader::new(stdout).lines();
@@ -49,8 +50,9 @@ pub(crate) fn spawn_reader(
                         tracing::warn!(
                             "[claude] job={job_id} MCP servers not connected: {failed:?}"
                         );
-                        outcome.lock().await.mcp_failed = failed;
+                        outcome.lock().await.mcp_failed = failed.clone();
                     }
+                    refuse_resident_without_forge(&sessions, &job_id, &failed, &backoff).await;
                 }
             }
             if !got_limit {
@@ -107,6 +109,42 @@ pub(crate) fn spawn_reader(
             let _ = tx.send(RunnerEvent::Stdout(json)).await;
         }
     })
+}
+
+/// A resident whose `forge` server did not connect at init is stopped and handed no turn:
+/// Claude Code never reconnects that server in this process, so every turn it took would be
+/// answered without Forge for as long as it lived (ISS-1480). Its key waits out [`McpBackoff`]
+/// before the next spawn; one that came up connected clears it.
+async fn refuse_resident_without_forge(
+    sessions: &Sessions,
+    job_id: &str,
+    failed: &[String],
+    backoff: &McpBackoff,
+) {
+    let resident = sessions
+        .lock()
+        .await
+        .get(job_id)
+        .is_some_and(|s| s.keep_resident);
+    if !resident {
+        return;
+    }
+    if !forge_server_down(failed) {
+        backoff.up(job_id);
+        return;
+    }
+    backoff.down(job_id);
+    tracing::warn!(
+        "[claude] job={job_id} resident came up without its forge server ({failed:?}): stopped, \
+         handed no turn, respawned with backoff"
+    );
+    let child = sessions.lock().await.get_mut(job_id).and_then(|s| {
+        s.stdin = None;
+        s.child.take()
+    });
+    if let Some(mut child) = child {
+        graceful_kill(&mut child).await;
+    }
 }
 
 /// The tasks a session put in the background and that have not reported: a `run_in_background`

@@ -49,7 +49,15 @@ export const linksOnWeb = (web: string): string =>
 export const SHOW_HOW =
   '- When you tell someone how to do something or what a feature looks like: look first (support.look), say only what you saw, in words; never promise a file or guide.';
 
+/**
+ * A dead Forge tool set is told apart from a dead core (ISS-1480): Claude Code never reconnects a
+ * server that failed at its start, so an agent spawned during a core 503 answered "Forge 503" for a
+ * day while core was up. No act, so no card.
+ */
+export const FORGE_TOOLS_DEAD =
+  '- When the forge tools are missing, or ToolSearch lists the forge server as failed: your process lost it, not core, and a retry will not bring it back; end the turn with only that your Forge tools did not connect, and a fresh process takes the next message. A forge_call that returns a core 5xx is core down.';
+
 /** The conduct lines every room agent's brief carries: its acts' map lines, and where a link points. */
 export function roomConductLines(web: string = webBaseUrl() ?? ''): string[] {
-  return [...ROOM_MAP_ACTS.map(mapLine), SHOW_HOW, linksOnWeb(web)];
+  return [...ROOM_MAP_ACTS.map(mapLine), SHOW_HOW, FORGE_TOOLS_DEAD, linksOnWeb(web)];
 }

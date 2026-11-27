@@ -440,9 +440,9 @@ describe('the room brief is a map of situations', () => {
     for (const line of [...SUPPORT_MAP_ACTS.map(mapLine), ...roomConductLines('http://w')]) {
       expect(line).toMatch(/^- When [^:]+: /);
     }
-    // 5,000 until ISS-1328 c5 (FB-742) asked for the show-how line, and the secret link's exception
-    // to "never send anyone to a page": 5,153 with both
-    expect(brief.length).toBeLessThan(5_200);
+    // 5,000 until ISS-1328 c5 (FB-742) added the show-how line and a link exception: 5,153; 5,200
+    // until ISS-1480's dead-tools line, which only the brief can teach
+    expect(brief.length).toBeLessThan(5_550);
     expect(ROOM_AGENT_GUIDE.body).toContain('### Reading a message');
   });
 

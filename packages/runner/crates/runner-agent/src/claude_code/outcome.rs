@@ -204,6 +204,49 @@ pub(crate) fn is_transient_mcp_status(status: &str) -> bool {
         || s.eq_ignore_ascii_case("needs-restart")
 }
 
+/// Whether `forge` is among the servers `mcp_failed_servers` named: the one server a resident
+/// cannot act without, since Claude Code never reconnects a server that failed at startup
+/// (ISS-1480).
+pub(crate) fn forge_server_down(failed: &[String]) -> bool {
+    failed.iter().any(|f| f.starts_with("forge("))
+}
+
+/// Residents that came up without their `forge` server, by session key: how many in a row, and
+/// when the last one did. A key in its window is not spawned again, so a core that answers 503
+/// is asked at a growing interval and not on every turn (ISS-1480).
+#[derive(Clone, Default)]
+pub(crate) struct McpBackoff(Arc<std::sync::Mutex<HashMap<String, (u32, std::time::Instant)>>>);
+
+impl McpBackoff {
+    const BASE: Duration = Duration::from_secs(5);
+    const CAP: Duration = Duration::from_secs(120);
+
+    /// A resident of `key` came up without `forge`.
+    pub(crate) fn down(&self, key: &str) {
+        if let Ok(mut m) = self.0.lock() {
+            let n = m.get(key).map_or(0, |(n, _)| *n).saturating_add(1);
+            m.insert(key.to_string(), (n, std::time::Instant::now()));
+        }
+    }
+
+    /// A resident of `key` came up with `forge` connected.
+    pub(crate) fn up(&self, key: &str) {
+        if let Ok(mut m) = self.0.lock() {
+            m.remove(key);
+        }
+    }
+
+    /// How long `key` still waits before it may spawn, if it does.
+    pub(crate) fn wait_left(&self, key: &str) -> Option<Duration> {
+        let m = self.0.lock().ok()?;
+        let (n, at) = m.get(key)?;
+        let window = Self::BASE
+            .saturating_mul(1u32 << (n - 1).min(10))
+            .min(Self::CAP);
+        window.checked_sub(at.elapsed()).filter(|d| !d.is_zero())
+    }
+}
+
 /// From a `system`/`init` stream event, return the MCP servers that TERMINALLY
 /// failed to connect (`name(status)`) — `failed` / `needs-auth` / etc., but NOT
 /// transient `pending`/`connecting` (see [`is_transient_mcp_status`]). `None` if

@@ -295,3 +295,86 @@ async fn a_late_kill_from_an_overlapping_close_never_touches_the_replacement() {
     assert_eq!(held_pid(&runner, "s").await, Some(new));
     runner.close(&"s".to_string()).await;
 }
+
+/// ISS-1480: adminhub-api's room agent was spawned during a core 503, Claude Code marked its
+/// `forge` server failed at init and never reconnected it, and the runner fed that resident turns
+/// for 23 hours. The init line is what a stand-in prints here.
+const INIT_FORGE_FAILED: &str = r#"{"type":"system","subtype":"init","session_id":"s1","mcp_servers":[{"name":"forge","status":"failed"}]}"#;
+const INIT_FORGE_UP: &str = r#"{"type":"system","subtype":"init","session_id":"s1","mcp_servers":[{"name":"forge","status":"connected"}]}"#;
+
+async fn ends_within(pid: u32, secs: u64) -> bool {
+    for _ in 0..secs * 10 {
+        if !alive(pid) {
+            return true;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    false
+}
+
+#[tokio::test]
+async fn a_resident_whose_forge_server_failed_at_init_is_stopped_handed_no_turn_and_backed_off() {
+    let runner = ClaudeCodeRunner::new("http://127.0.0.1:9", "device-token", 1);
+    let script = format!("echo '{INIT_FORGE_FAILED}'; cat >/dev/null");
+    let pid = stand_in(&runner, "room", &script, true).await;
+    assert!(
+        ends_within(pid, 8).await,
+        "a resident without its forge server was left running to take turns"
+    );
+    let sent = runner
+        .send_resident(&"room".to_string(), "hello", None)
+        .await;
+    assert!(
+        sent.is_err(),
+        "a resident without its forge server was handed a turn"
+    );
+    assert!(
+        runner.mcp_backoff.wait_left("room").is_some(),
+        "its key may be spawned again at once, while core may still answer 503"
+    );
+    assert!(
+        runner.mcp_backoff.wait_left("other-room").is_none(),
+        "one room's failure backs off another's spawn"
+    );
+}
+
+#[tokio::test]
+async fn a_resident_whose_forge_server_connected_is_kept_and_clears_its_backoff() {
+    let runner = ClaudeCodeRunner::new("http://127.0.0.1:9", "device-token", 1);
+    runner.mcp_backoff.down("room");
+    let script = format!("echo '{INIT_FORGE_UP}'; cat >/dev/null");
+    let pid = stand_in(&runner, "room", &script, true).await;
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    assert!(alive(pid), "a resident with forge connected was stopped");
+    assert!(
+        runner.mcp_backoff.wait_left("room").is_none(),
+        "a resident that came up connected left its backoff standing"
+    );
+    runner.close(&"room".to_string()).await;
+}
+
+#[tokio::test]
+async fn a_print_session_without_forge_is_not_a_residents_to_stop() {
+    let runner = ClaudeCodeRunner::new("http://127.0.0.1:9", "device-token", 1);
+    let script = format!("echo '{INIT_FORGE_FAILED}'; cat >/dev/null");
+    let pid = stand_in(&runner, "job", &script, false).await;
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    assert!(
+        alive(pid),
+        "a non-resident job was stopped by the resident rule"
+    );
+    runner.close(&"job".to_string()).await;
+}
+
+#[test]
+fn the_backoff_grows_and_a_server_that_connected_ends_it() {
+    let b = McpBackoff::default();
+    assert!(b.wait_left("k").is_none());
+    b.down("k");
+    let first = b.wait_left("k").unwrap();
+    b.down("k");
+    let second = b.wait_left("k").unwrap();
+    assert!(second > first, "{second:?} did not outgrow {first:?}");
+    b.up("k");
+    assert!(b.wait_left("k").is_none());
+}
