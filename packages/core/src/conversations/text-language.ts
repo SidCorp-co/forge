@@ -1,5 +1,4 @@
-// The language a person wrote in, as far as a text can tell it: what a reply is held to
-// (`assistant/screened-reply.ts:withReplyLanguage`), what a turn is told to answer in, and what a
+// The language a person wrote in, as far as a text can tell it: what a turn is told to answer in and what a
 // room speaks (`room-language.ts`). Only Vietnamese and English are told apart.
 
 import { VIETNAMESE_LETTER } from '@forge/contracts/content-language';
