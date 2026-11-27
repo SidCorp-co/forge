@@ -9,6 +9,16 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.854] - 2026-11-27
+
+Abort card names shippedIn, stop gate spares sessionless processes, report-reading test
+
+### Fixed
+
+- **A report the model cannot read still joins its word-for-word repeat.** The report test now also pins that an undetermined reading beside a different open item files a new item instead of guessing a join.
+- **A run's stop is no longer held for processes no session started.** In its own worktree the gate counted git fetches, credential helpers and timer-launched gates; it now holds a run only to its session's and FORGE_RUN-marked ones.
+- **The abort door's card says which release `shippedIn` takes.** Only a finished, shipped one; a roster deployed under an aborted run's release aborts back to the gate and takes the release record. The prompt says which release it records.
+
 ## [0.4.0-dev.853] - 2026-11-27
 
 Release prompt says shippedIn takes only a finished release
