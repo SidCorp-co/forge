@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.855] - 2026-11-27
+
+A room agent that starts without Forge tools is replaced, not left running
+
+### Fixed
+
+- **A room agent spawned during a core 503 no longer lives without Forge.** The runner stops a resident whose forge server did not connect, hands it no turn, respawns with backoff; its brief tells dead tools from core down.
+
 ## [0.4.0-dev.854] - 2026-11-27
 
 Abort card names shippedIn, stop gate spares sessionless processes, report-reading test
