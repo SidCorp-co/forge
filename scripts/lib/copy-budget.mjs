@@ -345,11 +345,20 @@ function sentenceLike(text) {
   return tokens.some((t) => FUNCTION_WORD.test(t.replace(/^[("'“‘[]+|[)"'”’\].,;:!?…]+$/g, '')));
 }
 
+const ASSIGNMENTS = new Set([
+  ts.SyntaxKind.EqualsToken,
+  ts.SyntaxKind.QuestionQuestionEqualsToken,
+  ts.SyntaxKind.BarBarEqualsToken,
+  ts.SyntaxKind.AmpersandAmpersandEqualsToken,
+]);
+
 /**
  * The person-facing English a web `.ts` or `.tsx` file writes where `inlineCopyOf` never looks
  * (ISS-1477): a string or template literal a function RETURNS (a `return` statement or an arrow's
- * expression body, through `?:`, `??`, `||`, `&&` and parentheses), and the string value of ANY
- * property of an object literal, at any nesting: a map whatever its declared type (`Record`,
+ * expression body, through `?:`, `??`, `||`, `&&` and parentheses); a string written into a property
+ * or element access (`errors.email = "…"`, `errors["k"] ??= "…"`, with `=`, `??=`, `||=`, `&&=`,
+ * through `?:`); a string enum member's value, a class property's initializer and a parameter's
+ * default value; and the string value of ANY property of an object literal, at any nesting: a map whatever its declared type (`Record`,
  * `Partial<Record>`, an alias, `satisfies`, `as const`, none) or key style, a returned object, an
  * `export default` object, a class getter's object, an object given to a call. Each is `{file, line,
  * key, text}` for `overBudget`, `key` naming the function or variable and the property path, so a
@@ -452,6 +461,16 @@ export function returnedCopyOf(source, file) {
     }
     return [base, ...names].join('.');
   };
+  /** The name an assignment target is read under: `errors.email`, `errors['password']`. */
+  const targetName = (left) =>
+    ts.isPropertyAccessExpression(left)
+      ? left.getText(sf)
+      : `${left.expression.getText(sf)}.${
+          ts.isStringLiteral(left.argumentExpression) ||
+          ts.isNoSubstitutionTemplateLiteral(left.argumentExpression)
+            ? left.argumentExpression.text
+            : left.argumentExpression.getText(sf)
+        }`;
   const visit = (node) => {
     if (ts.isReturnStatement(node) && node.expression) {
       const fn = enclosing(node);
@@ -460,6 +479,24 @@ export function returnedCopyOf(source, file) {
       literal(node.body, nameOfFn(node));
     } else if (ts.isPropertyAssignment(node) && ts.isObjectLiteralExpression(node.parent)) {
       literal(node.initializer, `${anchorOf(node.parent)}.${keyName(node.name)}`);
+    } else if (
+      ts.isBinaryExpression(node) &&
+      ASSIGNMENTS.has(node.operatorToken.kind) &&
+      (ts.isPropertyAccessExpression(node.left) || ts.isElementAccessExpression(node.left))
+    ) {
+      literal(node.right, targetName(node.left));
+    } else if (ts.isEnumMember(node) && node.initializer) {
+      literal(node.initializer, `${node.parent.name.text}.${keyName(node.name)}`);
+    } else if (ts.isPropertyDeclaration(node) && node.initializer) {
+      const owner =
+        ts.isClassLike(node.parent) && node.parent.name ? `${node.parent.name.text}.` : '';
+      literal(node.initializer, `${owner}${keyName(node.name)}`);
+    } else if (ts.isParameter(node) && node.initializer) {
+      const fn = node.parent;
+      literal(
+        node.initializer,
+        `${isFn(fn) || ts.isConstructorDeclaration(fn) ? nameOfFn(fn) : 'param'}.${keyName(node.name)}`,
+      );
     }
     ts.forEachChild(node, visit);
   };

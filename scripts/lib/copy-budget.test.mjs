@@ -550,3 +550,59 @@ describe('returnedCopyOf — a returned string and a code-keyed map (ISS-1477)',
     ).toEqual([]);
   });
 });
+
+describe('returnedCopyOf — a sentence written into a variable position (ISS-1477)', () => {
+  const FILE = 'packages/web-v2/src/lib/forms/said.ts';
+  const words = (n) => `${Array.from({ length: n }, () => 'cell').join(' ')}`.replace(/^./, 'C');
+  const long = JSON.stringify(words(24));
+  const lengthOnly = {
+    ...CFG,
+    emptySegments: /(?!)/,
+    explainSegments: /(?!)/,
+    explainShapes: [],
+    emptyLead: null,
+  };
+  const over = (source) => [...overBudget(returnedCopyOf(source, FILE), lengthOnly).values()];
+  const cases = {
+    'a property assigned with =': [
+      `const e: Record<string, string> = {};\ne.email = ${long};`,
+      'e.email',
+    ],
+    'an element assigned with ??=': [
+      `const e: Record<string, string> = {};\ne['password'] ??= ${long};`,
+      'e.password',
+    ],
+    'a property assigned with ||=': [
+      `const e: Record<string, string> = {};\ne.name ||= ${long};`,
+      'e.name',
+    ],
+    'a property assigned with &&=': [
+      `const e: Record<string, string> = {};\ne.name &&= ${long};`,
+      'e.name',
+    ],
+    'a ternary branch assigned': [
+      `const e: Record<string, string> = {};\ne.name = ok ? "Fine." : ${long};`,
+      'e.name',
+    ],
+    'a string enum member': [`enum Reason {\n  Gone = ${long},\n}`, 'Reason.Gone'],
+    'a class property': [`class C {\n  message = ${long};\n}`, 'C.message'],
+    'a parameter default': [`function f(note = ${long}) {\n  return note;\n}`, 'f.note'],
+  };
+  for (const [name, [source, key]] of Object.entries(cases)) {
+    it(`refuses ${name}, naming file, line, key and the text, and passes a short one`, () => {
+      const [hit, ...rest] = over(source);
+      expect(hit).toBeDefined();
+      expect(rest).toEqual([]);
+      expect([hit.file, hit.key, hit.words]).toEqual([FILE, key, 24]);
+      expect(faults(overBudget(returnedCopyOf(source, FILE), lengthOnly))[0]).toContain(
+        `${FILE}:${hit.line} · ${key}: 24 words, budget 12 for a copy string: "${words(24).slice(0, 57)}…"`,
+      );
+      expect(over(source.replace(long, '"Not found."'))).toEqual([]);
+    });
+  }
+  it('leaves an assignment of a non-sentence, a variable and a call alone', () => {
+    expect(
+      over('e.mode = "dark"; e.cls = "flex items-center gap-2 px-2"; e.x = msg; e.y = t("a.b");'),
+    ).toEqual([]);
+  });
+});

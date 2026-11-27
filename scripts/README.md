@@ -1407,7 +1407,9 @@ rendered later: that is the check's limit. What a function returns and a map key
 expression body gives (through `?:`, `??`, `||`, `&&`), and the string value of any property of an
 object literal at any nesting, whatever its declared type, wrapper or key style (a `Record`, an alias,
 `satisfies`, a nested map, a returned object, an `export default` object, a class getter's object, an
-object given to a call). Each is held to 12 words, or 20 where its
+object given to a call), a string written into a property or element access (`errors.email = "…"`,
+`errors["k"] ??= "…"`; `=`, `??=`, `||=`, `&&=`, through `?:`), a string enum member's value, a class
+property's initializer and a parameter's default value. Each is held to 12 words, or 20 where its
 key names a refusal, naming file, line and key; a string that is not sentence-like (a class list, a
 path) is data and is not read. Not read: a string held in a variable or array and used later, a
 computed or concatenated one, an array element, and a property value that is not a literal. `inline.skip` names each directory that is not a page, with why: the test fixtures,
