@@ -166,7 +166,7 @@ export const ROOM_WORK_SCENARIOS: readonly CardScenario[] = [
     source: 'FB-730 (ISS-1313): adminhub-api 0.27.0, 18/11, message 2Pzx2SDz78PWXxSd7',
     situation: 'The owner says go on a release; his chat account maps to no Forge account',
     bad: 'the go was refused OPS_ASKER_UNMAPPED and dropped, and the refusal named a link to ask him for',
-    good: 'record it with support.release_decision: it is kept, and the room is told it waits on his admins naming his account',
+    good: 'record it with support.release_decision: it is kept; react to his message, post nothing, and speak once when it takes effect, or once to him naming the step his admins take',
     teaches: [
       /speaker-links\/named/,
       /instance admin once for every project/i,

@@ -95,7 +95,7 @@ async function feedbackRefusal(project: ScopedProject, seq: number): Promise<Out
   const carriers = (await triageOutcomesOf([feedbackId])).get(feedbackId)?.issueIds ?? [];
   if (carriers.length === 0) {
     return feedbackNotIssue(
-      `${key} is feedback ${project.slug} has not yet triaged into an issue, so no work of it can reach an environment yet. Nothing was promised: tell the person their report is with the team, and promise once its triage names an issue`,
+      `${key} is feedback ${project.slug} has not yet triaged into an issue, so no work of it can reach an environment yet. Nothing was promised, and that is no answer for the room: react to their message with support.react, post nothing, and promise once its triage names an issue; if they asked when, answering that question once is allowed`,
     );
   }
   const carrying = await db.select(ISSUE_COLUMNS).from(issues).where(inArray(issues.id, carriers));

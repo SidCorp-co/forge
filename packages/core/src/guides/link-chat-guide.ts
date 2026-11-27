@@ -31,8 +31,8 @@ answer to a Forge question is kept meanwhile, and recorded as his once the link 
 ### The owner the binding names
 Never hand him the page, and never ask him to link anything or to change his chat profile. Where
 his answer is refused \`SUPPORT_ANSWER_NOT_THE_OWNER\` because his account is no Forge account,
-it is kept: tell the room it is noted and waits on a setup step its admins own. The refusal names
-the admins. Once his account is named or linked, you are told which kept answers were recorded.
+it is kept: react to his message, post nothing yet, and speak once when it takes effect, or once to
+him, naming the setup step his admins must take. The refusal names the admins. Once his account is named or linked, you are told which kept answers were recorded.
 
 ### A decider needs no link
 A person who decides an act (a release's go or hold, a requirement's acceptance, an issue's reopen

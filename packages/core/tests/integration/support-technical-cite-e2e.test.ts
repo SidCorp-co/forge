@@ -409,7 +409,8 @@ describe("ISS-1347: the owner's word in the project's technical channel settles 
       });
     });
     expect(code(out), JSON.stringify(out)).toBe('SUPPORT_ANSWER_NOT_THE_OWNER');
-    expect(JSON.stringify(out)).toContain('noted');
+    expect(JSON.stringify(out)).toContain('Say nothing to the room now');
+    expect(JSON.stringify(out)).not.toContain('is noted');
     expect(JSON.stringify(out)).toContain('speaker-links/named');
     expect((await question(id))?.status).toBe('open');
     const kept = await rows<{ input: Record<string, unknown> }>(sql`

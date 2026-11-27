@@ -148,7 +148,7 @@ describe("ISS-1313: an unlinked owner's go on a release is kept, and decided as 
     }
   });
 
-  it('keeps his go, tells the room it waits on an admin step, and decides nothing yet', async () => {
+  it('keeps his go, tells the room nothing now, and decides nothing yet', async () => {
     const go = await goBy(chat.alice, GO);
     // [GO_DROPPED] before the fix: refused OPS_ASKER_UNMAPPED and nothing kept
     expect(code(go.out), JSON.stringify(go.out)).toBeUndefined();
@@ -157,7 +157,8 @@ describe("ISS-1313: an unlinked owner's go on a release is kept, and decided as 
     expect(said).toContain('speaker-links/named');
     expect(said).toContain('project admin');
     expect(said).toContain('instance admin');
-    expect(said).toContain('noted');
+    expect(said).toContain('Say nothing to the room now');
+    expect(said).not.toContain('is noted');
     expect(said).not.toMatch(/ask (him|them) to link it|Confirm a speaker link/);
     expect(await approvalOf(approvalId)).toMatchObject({ decision: null });
     const kept = await keptGoes();

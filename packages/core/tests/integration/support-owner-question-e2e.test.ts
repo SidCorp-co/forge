@@ -144,7 +144,8 @@ describe("ISS-871: a master's question asked of the owner through the channel", 
     const told = answer.turn.messages.find((m) => m.from === 'forge' && m.text.includes(id));
     // ISS-976: the answer is kept to record once his account is named, and the agent never asks him
     expect(told?.text).toContain('no Forge account yet');
-    expect(told?.text).toContain('noted and waits on a setup step its admins own');
+    expect(told?.text).toContain('Say nothing to the room now');
+    expect(told?.text).not.toContain('noted and waits');
     expect(told?.text).not.toContain('ask them to link');
     const kept = await rows<{ input: { questionId: string; message: string } }>(sql`
       SELECT input FROM support_actions WHERE kind = 'answer_kept' AND input ->> 'questionId' = ${id}`);

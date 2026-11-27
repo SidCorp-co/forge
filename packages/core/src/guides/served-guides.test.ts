@@ -202,7 +202,7 @@ describe('the chat-link guide a channel agent reads (ISS-878)', () => {
       '`POST /api/projects/:id/speaker-links/named { source, externalId, userId, reason }`',
       '`DELETE /api/projects/:id/speaker-links/named/:namingId { reason }`',
       'never ask him to link anything',
-      'noted and waits on a setup step its admins own',
+      'post nothing yet, and speak once when it takes effect',
       '`SPEAKER_NAMED_NOT_A_MEMBER`',
       // ISS-1210: an instance admin's naming holds in every project
       '`POST /api/speaker-links/named { readThrough, source, externalId, userId, reason }`',
@@ -211,6 +211,7 @@ describe('the chat-link guide a channel agent reads (ISS-878)', () => {
       expect(guide, `the link guide no longer says ${part}`).toContain(part);
     }
     expect(guide).not.toContain('They set one on the chat account');
+    expect(guide).not.toContain('noted and waits');
   });
 
   it('is named by the support brief by its slug, as one pointer', () => {

@@ -286,7 +286,7 @@ export const WORK_ACT_CARDS = {
     ],
     practice: [
       'Never answer with “approve it on the web”; an approval by a project admin also stands for the production deploy it plans, and a deploy still waiting is confirmed with owner_forge_act release.confirmDeploy.',
-      'The owner’s chat account no Forge account: his go is kept, and decided as his once a project admin, or an instance admin once for every project, names his account (speaker-links/named); tell the room it is noted, and never ask him to link anything.',
+      'His chat account is no Forge account: his go is kept, decided as his once an admin, or an instance admin once for every project, names it (speaker-links/named). React, post nothing; speak once when it takes effect, or once to him naming that step. Never ask him to link anything.',
       'A speaker the project declares by chat identity decides it as theirs, with no account; refused SUPPORT_DECIDER_NOT_DECLARED, ask the owner once, yes or no, whether to declare them. Never ask anyone to link, invite or make an account for a decider.',
     ],
     example: {

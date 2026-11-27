@@ -1,0 +1,487 @@
+[
+  {
+    "file": "support/access.ts",
+    "text": "handed, acts here",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/access.ts",
+    "text": "handed, or the group as `rid",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/act-deny.ts",
+    "text": "tell the thread once, when the answer",
+    "why": "the thread hears once, when the answer is in (it forbids speaking at the raise)"
+  },
+  {
+    "file": "support/asker-read.ts",
+    "text": "handed",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/audit-tool.ts",
+    "text": "handed on, and your report i",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/checks.ts",
+    "text": "handed on",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/checks.ts",
+    "text": "handed",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/dated-reads.ts",
+    "text": "handed in this turn is his c",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/direct-asker.ts",
+    "text": "handed; thread `",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/images.ts",
+    "text": "handed (`message`)",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/images.ts",
+    "text": "Tell the person in your own words, an",
+    "why": "refusal next step: the image was not kept, so the person is told and asked to post again"
+  },
+  {
+    "file": "support/inbound.ts",
+    "text": "handed over in a room was no",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/master-ask.ts",
+    "text": "handed to you in this thread",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/master-ask.ts",
+    "text": "Answer the person in this thread yourse",
+    "why": "outcome: the master has answered, the room tells the person with what it settles"
+  },
+  {
+    "file": "support/master-ask.ts",
+    "text": "handed on",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/master-tell.ts",
+    "text": "Tell the person in this thread yourse",
+    "why": "outcome: the master reports a change, the room tells the person the result"
+  },
+  {
+    "file": "support/master-tell.ts",
+    "text": "handed on.",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/master-tell.ts",
+    "text": "handed these facts in thread",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/one-raise.ts",
+    "text": "tell him nothing again. Nothin",
+    "why": "refusal next step: tells the room what not to repeat"
+  },
+  {
+    "file": "support/ops-asker.ts",
+    "text": "handed; an act runs as the m",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/ops-cards.ts",
+    "text": "tell him the product’s answer",
+    "why": "outcome: the act ran, tell him the product answer"
+  },
+  {
+    "file": "support/ops-prompt.ts",
+    "text": "handed names its `thread`; a",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/ops-prompt.ts",
+    "text": "handed it) and runs as that ",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/ops-read.ts",
+    "text": "handed",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/ops-role.ts",
+    "text": "tell the thread once, when the answer",
+    "why": "forbids speaking at the raise: once, when the answer is in"
+  },
+  {
+    "file": "support/owner-act.ts",
+    "text": "handed; an owner act is logg",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/owner-approves.ts",
+    "text": "Tell him in your own words.",
+    "why": "outcome: the act is complete when recorded (judge accepted)"
+  },
+  {
+    "file": "support/owner-confirm-deploy-act.ts",
+    "text": "tell them one of the project's ",
+    "why": "refusal next step: names who confirms"
+  },
+  {
+    "file": "support/owner-forge-act.ts",
+    "text": "handed). Nothing was done",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/owner-forge-act.ts",
+    "text": "tell him in one line that this",
+    "why": "refusal next step: names where the act is made"
+  },
+  {
+    "file": "support/owner-forge-act.ts",
+    "text": "tell him which act is missing,",
+    "why": "refusal next step: names where the act is made"
+  },
+  {
+    "file": "support/owner-git.ts",
+    "text": "handed a git credential; thi",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/owner-owed-raise.ts",
+    "text": "tell him that in one line, nev",
+    "why": "refusal next step: names where the act is made"
+  },
+  {
+    "file": "support/owner-owed-raise.ts",
+    "text": "handed on",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/owner-owed-raise.ts",
+    "text": "handed to you in; raise the ",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/owner-ruling-act.ts",
+    "text": "tell them one of the project's ",
+    "why": "refusal next step: names who gives the ruling"
+  },
+  {
+    "file": "support/permission-talk.ts",
+    "text": "tell this thread the answer once, when",
+    "why": "forbids speaking at the raise: once, when the answer is in"
+  },
+  {
+    "file": "support/promise-rules.ts",
+    "text": "tell them when the work titled ",
+    "why": "outcome: a kept promise (the work reached the environment) or one that cannot be kept"
+  },
+  {
+    "file": "support/promise-rules.ts",
+    "text": "tell them when it reaches ",
+    "why": "outcome: a kept promise (the work reached the environment) or one that cannot be kept"
+  },
+  {
+    "file": "support/promise.ts",
+    "text": "tell the person so",
+    "why": "refusal next step or outcome: names what to tell once the work reaches an environment, or that it will not be delivered"
+  },
+  {
+    "file": "support/promise.ts",
+    "text": "tell them when this issue reach",
+    "why": "refusal next step or outcome: names what to tell once the work reaches an environment, or that it will not be delivered"
+  },
+  {
+    "file": "support/prompt.ts",
+    "text": "handed names its `thread`; a",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/prompt.ts",
+    "text": "handed the messages that men",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/prompt.ts",
+    "text": "handed names its `channel` a",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/prompt.ts",
+    "text": "tell the asker it was handed, passed",
+    "why": "forbids telling the asker it was handed on"
+  },
+  {
+    "file": "support/prompt.ts",
+    "text": "handed ends in a reply or su",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/prompt.ts",
+    "text": "handed you in that turn; how",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/prompt.ts",
+    "text": "handed messages that mention",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/prompt.ts",
+    "text": "handed every message",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/question-task.ts",
+    "text": "handed",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/question-task.ts",
+    "text": "handed on",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/question-task.ts",
+    "text": "handed to this group; answer",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/react-act.ts",
+    "text": "handed",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/reference-cards.ts",
+    "text": "tell him it is added; never se",
+    "why": "outcome: the reference is added, say so"
+  },
+  {
+    "file": "support/release-decision.ts",
+    "text": "handed). Nothing was decided",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/release-notes.ts",
+    "text": "handed to the room",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/replay.ts",
+    "text": "handed the messages it misse",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/replay.ts",
+    "text": "handed with it: it owes no a",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/reply-card.ts",
+    "text": "passed on or will be reported b",
+    "why": "names the banned relay as a defect"
+  },
+  {
+    "file": "support/reply-card.ts",
+    "text": "passed on, will report back”",
+    "why": "names the banned relay as a defect"
+  },
+  {
+    "file": "support/room-cards.ts",
+    "text": "handed: answer, gather, ask ",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/room-cards.ts",
+    "text": "answer them, nobody else, at thei",
+    "why": "outcome or answer owed: speaks when the answer or result is in"
+  },
+  {
+    "file": "support/room-cards.ts",
+    "text": "handed and keeps why, so a s",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/room-cards.ts",
+    "text": "handedAgain` on its head",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/room-cards.ts",
+    "text": "handed ends in a reply or a ",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/room-cards.ts",
+    "text": "handed",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/room-cards.ts",
+    "text": "answer the person yourself from what it",
+    "why": "outcome or answer owed: speaks when the answer or result is in"
+  },
+  {
+    "file": "support/room-cards.ts",
+    "text": "tell that thread once, when the answer",
+    "why": "outcome or answer owed: speaks when the answer or result is in"
+  },
+  {
+    "file": "support/room-cards.ts",
+    "text": "handed to you (its thread st",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/room-cards.ts",
+    "text": "handed an item waiting on th",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/room-cards.ts",
+    "text": "tell them in their thread when ",
+    "why": "outcome or answer owed: speaks when the answer or result is in"
+  },
+  {
+    "file": "support/routes.ts",
+    "text": "handed to that room is answe",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/rules.ts",
+    "text": "Tell them the result yourself i",
+    "why": "outcome: the result is in, tell it once"
+  },
+  {
+    "file": "support/secret-cards.ts",
+    "text": "handed over in chat: kept, n",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/secret-flag.ts",
+    "text": "Tell the room once, in this same re",
+    "why": "outcome: the credential was kept, say what and where"
+  },
+  {
+    "file": "support/secret-keep.ts",
+    "text": "handed over in a room was no",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/secret-receipts.ts",
+    "text": "Tell the person once, in your own wor",
+    "why": "outcome: the secret was received, say what it is for"
+  },
+  {
+    "file": "support/service.ts",
+    "text": "handed it: its `thread` and ",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/speaker-link.ts",
+    "text": "Tell them if they are waiting o",
+    "why": "outcome: the account is linked and the go takes effect"
+  },
+  {
+    "file": "support/speaker-link.ts",
+    "text": "handed on",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/technical-turn.ts",
+    "text": "tell him once that it is done,",
+    "why": "outcome: the act is done, tell him once"
+  },
+  {
+    "file": "support/tool.ts",
+    "text": "handed) an act naming no thr",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/tool.ts",
+    "text": "handed to that room is answe",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/wait-reminder-post.ts",
+    "text": "handed, so it waits on nobod",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/wait-reminder.ts",
+    "text": "handed on",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/work-cards.ts",
+    "text": "post the asker sees.",
+    "why": "outcome, answer asked, or forbids telling it was handed on"
+  },
+  {
+    "file": "support/work-cards.ts",
+    "text": "handed, passed or given to a",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/work-cards.ts",
+    "text": "tell the asker it was handed, passed",
+    "why": "outcome, answer asked, or forbids telling it was handed on"
+  },
+  {
+    "file": "support/work-cards.ts",
+    "text": "tell them it will not run",
+    "why": "outcome, answer asked, or forbids telling it was handed on"
+  },
+  {
+    "file": "support/work-cards.ts",
+    "text": "handed a scheduled check (it",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "support/work-cards.ts",
+    "text": "tell them where it stands, in p",
+    "why": "outcome, answer asked, or forbids telling it was handed on"
+  },
+  {
+    "file": "support/work-cards.ts",
+    "text": "tell him what was done and wha",
+    "why": "outcome, answer asked, or forbids telling it was handed on"
+  },
+  {
+    "file": "support/work-cards.ts",
+    "text": "tell him in one line, never th",
+    "why": "outcome, answer asked, or forbids telling it was handed on"
+  },
+  {
+    "file": "mcp/scenarios-room.ts",
+    "text": "passed on, will report back”",
+    "why": "names the banned relay as a defect, or a promise kept when the environment serves it"
+  },
+  {
+    "file": "mcp/scenarios-room.ts",
+    "text": "handed to sid-desk’s session",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  },
+  {
+    "file": "mcp/scenarios-room.ts",
+    "text": "tell them with support.promise ",
+    "why": "names the banned relay as a defect, or a promise kept when the environment serves it"
+  },
+  {
+    "file": "mcp/scenarios-support.ts",
+    "text": "handed over in chat: kept, n",
+    "why": "states what a turn was handed or what was not handed on; speaks to no one"
+  }
+]

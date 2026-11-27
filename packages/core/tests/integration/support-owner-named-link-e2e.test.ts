@@ -142,7 +142,8 @@ describe('ISS-976: an unlinked named owner’s answer is kept, and the refusal n
     expect(detail).toContain('speaker-links/named');
     expect(detail).toContain('project admin');
     // what the agent may tell the room
-    expect(detail).toContain('noted');
+    expect(detail).toContain('Say nothing to the room now');
+    expect(detail).not.toContain('is noted');
     // never: ask him to link it, or to edit his chat profile
     expect(detail).not.toContain('ask them to link');
     expect(detail).not.toMatch(/set one on the chat account|edit (his|their) (chat )?profile/i);
