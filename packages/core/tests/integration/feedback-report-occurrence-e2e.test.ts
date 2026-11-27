@@ -284,6 +284,20 @@ describe('a repeat joins the open item as an occurrence, never a new item (BC-3)
       const item = ok(await say('owner', 'GET', `/api/projects/${p.open}/feedback/${key}`))
         .feedback as Doc;
       expect(item.occurrences as Doc[]).toHaveLength(1);
+      // undetermined and the nearest open item is a different problem: a new item, never a guess
+      const other = ok(
+        await report('other', p.open, {
+          said: 'The issues list shows a wrong Status column for one row',
+          whereSeen: '/projects/demo/issues',
+          kind: 'bug',
+        }),
+        201,
+      );
+      expect(other.created).toBe(true);
+      expect((other.feedback as Doc).key).not.toBe(key);
+      expect(await itemCount(p.open), 'the different sentence is its own item').toBe(
+        (before ?? 0) + 1,
+      );
     } finally {
       model.miss = null;
     }
