@@ -165,7 +165,8 @@ pub enum Issue {
 pub enum TreeHeld {
     /// A linked worktree the run was declared over: the run's own, so a process
     /// started in it since the declaration is the run's, unless its environment
-    /// names another run or another Claude Code session (ISS-1459). A dev server backgrounded there is re-parented to
+    /// names another run or another Claude Code session, or no session (ISS-1459,
+    /// ISS-1461). A dev server backgrounded there is re-parented to
     /// init or a subreaper the moment its shell exits, and is still the run's.
     Own,
     /// A checkout the run shares, and why: the repository's main working tree,
@@ -342,7 +343,7 @@ fn standing_line(tree: &Path, run_id: &str, standing: &[Standing]) -> String {
          to finish, or, only if you started it, stop it (`kill {pids}`). A process is yours if \
          you launched it from your own shell in this run, or its environment carries {}={run_id} \
          (`tr '\\0' '\\n' < /proc/<pid>/environ | grep {}`); the box leaves out only a process \
-         that carries another run's or session's mark, so one listed here may still be \
+         that carries another run's or session's mark, or no session's, so one listed here may still be \
          someone else's: if you cannot show you started it, leave it running and tell your \
          master.",
         if standing.len() == 1 {
@@ -367,14 +368,21 @@ fn standing_line(tree: &Path, run_id: &str, standing: &[Standing]) -> String {
 /// the run shares it is never the run's (where it stands and who parents it are
 /// its master's and every other session's as much as the run's); in the run's
 /// own tree it is the run's unless its environment names another Claude Code
-/// session than the stopping run's (`session`): a linked worktree another
-/// session's gate still uses is the same case as the shared checkout.
+/// session than the stopping run's (`session`), or none (`session` unread from
+/// its environment, which only a process no session started lacks): a linked
+/// worktree another session's gate still uses is the same case as the shared
+/// checkout.
 fn runs_own(f: &Facts<'_>, standing: &[Standing]) -> (Vec<Standing>, usize) {
     let (its, others): (Vec<&Standing>, Vec<&Standing>) =
         standing.iter().partition(|s| match (&f.tree_held, &s.run) {
             (_, Some(run)) => run == f.run_id,
             (TreeHeld::Own, None) => match (&s.session, f.session) {
                 (Some(theirs), Some(ours)) => theirs == ours,
+                // No session in its environment: no Claude Code session
+                // started it (systemd, a timer, a person's terminal), so it is
+                // not this run's (ISS-1461). Where the stopping run's own
+                // session is unknown too, nothing says otherwise.
+                (None, Some(_)) => false,
                 _ => true,
             },
             (TreeHeld::Shared(_), None) => false,

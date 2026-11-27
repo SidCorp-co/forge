@@ -340,6 +340,27 @@ fn another_sessions_gate_in_a_declared_worktree_does_not_hold_the_judge() {
     assert!(said.contains("another session"), "{said}");
 }
 
+/// ISS-1461 (L-175): a process that carries no Claude Code session at all (a
+/// git fetch and credential helper systemd --user starts, a gate script a
+/// person or a timer launched) was started by no session, so by none of this
+/// run's: it is not the run's, whoever parents it and wherever it stands.
+#[test]
+fn a_process_no_session_started_in_a_declared_worktree_does_not_hold_the_judge() {
+    let tree = PathBuf::from("/r/.claude/worktrees/batch-release-v1.6");
+    let mut f = judge_over_a_worktree_in_use(&tree);
+    f.standing = Ok(vec![
+        standing(6_900, "git fetch glab-resolve"),
+        standing(6_901, "git-credential-glab get"),
+        standing(6_902, "bash ./scripts/prepush.sh"),
+        standing(6_903, "docker compose up"),
+    ]);
+    let v = decide(&f);
+    assert_eq!(v.outcome, Outcome::Passed, "{v:?}");
+    assert!(v.conditions.is_empty(), "{v:?}");
+    let said = v.unread.join("\n");
+    assert!(said.contains("4 processes"), "{said}");
+}
+
 #[test]
 fn a_process_the_run_marked_is_still_held_beside_another_sessions_gate() {
     let tree = PathBuf::from("/r/.claude/worktrees/gate-0333");
@@ -353,13 +374,14 @@ fn a_process_the_run_marked_is_still_held_beside_another_sessions_gate() {
         },
         // the judge's session, no run mark: ambiguous, so held as before
         of_session(9_200, "node server.js", JUDGE_SESSION),
+        // no session at all: no session started it (ISS-1461)
         standing(9_300, "vitest"),
     ]);
     let v = decide(&f);
     let r = refused(&v);
     assert_eq!(v.conditions, vec![Condition::ProcessRunning]);
-    assert!(r.contains("`kill 9100 9200 9300`"), "{r}");
-    assert!(!r.contains("9000"), "{r}");
+    assert!(r.contains("`kill 9100 9200`"), "{r}");
+    assert!(!r.contains("9000") && !r.contains("9300"), "{r}");
 }
 
 #[test]
