@@ -63,7 +63,7 @@ async function post(token: string, body: Uint8Array) {
         'content-type': 'application/x-protobuf',
         'content-encoding': 'snappy',
       },
-      body,
+      body: body as BodyInit,
     }),
   );
   const text = await res.text();

@@ -53,7 +53,7 @@ async function call(
 ): Promise<{ status: number; text: string } | { status: null; text: string }> {
   return asProvider('prometheus', async () => {
     try {
-      const res = await fetch(url, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) });
+      const res = await fetch(url, { ...(init as RequestInit), signal: AbortSignal.timeout(TIMEOUT_MS) });
       return { status: res.status, text: await res.text() };
     } catch (err) {
       return { status: null, text: `could not be reached: ${(err as Error).message}` };
