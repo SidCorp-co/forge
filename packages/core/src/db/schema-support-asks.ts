@@ -2,7 +2,16 @@
 // kept apart only for size: a chat sender's temporary account, and a room agent's ask of a master.
 
 import { sql } from 'drizzle-orm';
-import { boolean, check, index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  check,
+  index,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { agentSessions } from './schema-agent-sessions.js';
 import { users } from './schema-auth.js';
 import { projects } from './schema-projects.js';

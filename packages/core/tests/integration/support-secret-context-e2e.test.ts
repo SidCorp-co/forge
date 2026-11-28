@@ -328,7 +328,8 @@ describe('ISS-1372: a credential handed over in a bound room is kept, not droppe
     const [note] = notesIn(id).map((n) => n.text);
     expect(note).toContain(`"AdminHub production token" (token) kept in`);
     expect(note).toContain(entry.ref);
-    expect(note).toContain('master and its runs');
+    expect(note).toContain('own work, read at');
+    expect(note).not.toContain('master and its runs');
     expect(note).toContain('revoked or replaced on its page');
     expect(note).toContain('Tell the room once, in this same reply');
     expect(note).not.toMatch(/delete (that|the) message from|You may ask|cannot delete it/);
