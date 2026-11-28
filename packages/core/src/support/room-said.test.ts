@@ -4,8 +4,8 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { NAMES_THE_HAND } from './room-voice.js';
 import { ROOM_SAID, TAUGHT_NOT_SAID } from './room-said.fixture.js';
+import { NAMES_THE_HAND } from './room-voice.js';
 
 const told = (text: string) => TAUGHT_NOT_SAID.reduce((t, ok) => t.split(ok).join(''), text);
 

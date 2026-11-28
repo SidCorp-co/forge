@@ -3,11 +3,11 @@
 // fixed the kept-key note, the judge found the release hold, then the slot link; one guard now holds the
 // class). A NEW such string joins the guard by adding one entry here: its source file and a renderer
 // returning the strings it says; a hold that needs the database is read by
-// `tests/integration/support-release-holds-e2e.test.ts`, which holds `RELAYED` to the same rule.
+// `tests/integration/support-release-holds-e2e.test.ts`, which holds every string of that read to the same rule.
 import type { KeptEntry } from '../project-config/index.js';
+import { UNSEEN } from './ops-release-holds.js';
 import { secretNote } from './secret-flag.js';
 import { slotSays } from './secret-link.js';
-import { UNSEEN } from './ops-release-holds.js';
 
 /** The instruction phrases a relayed string may hold: an act the agent makes, or the rule it is taught. */
 export const TAUGHT_NOT_SAID: readonly string[] = [
