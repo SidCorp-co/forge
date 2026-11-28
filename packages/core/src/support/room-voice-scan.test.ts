@@ -155,7 +155,11 @@ describe('the said-keys a room reads (ISS-1483)', () => {
     expect(
       literalsNaming(
         'support/x.ts',
-        "export const s = (q: string) => `${q} is owed by ${q ? 'a check' : 'the master'}.`;",
+        'export const s = (q: string) => `' +
+          '$' +
+          '{q} is owed by ' +
+          '$' +
+          "{q ? 'a check' : 'the master'}.`;",
       ),
     ).toHaveLength(1);
     for (const bad of [

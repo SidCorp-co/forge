@@ -85,7 +85,7 @@ export const ROOM_SAID: Partial<Record<SaidKey, string>> = {
   'standing.stuck.masterSilent': 'It waits on delivery work, and nothing has moved for a while.',
 };
 
-const valueOf = (v: SaidValue | undefined): string => {
+const valueText = (v: SaidValue | undefined): string => {
   if (v === null || v === undefined) return '';
   if (typeof v === 'string' || typeof v === 'number') return String(v);
   if (Array.isArray(v)) return v.map(roomSay).join(', ');
@@ -96,7 +96,7 @@ const valueOf = (v: SaidValue | undefined): string => {
 export function roomSay(s: Said): string {
   const own = ROOM_SAID[s.key];
   if (own === undefined) return sayEn(s);
-  return own.replace(/\{(\w+)\}/g, (_m, name: string) => valueOf(s.vars?.[name]));
+  return own.replace(/\{(\w+)\}/g, (_m, name: string) => valueText(s.vars?.[name]));
 }
 
 /** An actor as a room reads it: no name where it is an internal hand, else the page's. */
