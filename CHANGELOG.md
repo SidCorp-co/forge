@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.860] - 2026-11-28
+
+Room agents say what happened or what waits, never whose act it was
+
+### Changed
+
+- **A room agent no longer relays whose hand did the work.** One scan reads every sentence a room is handed and fails on any naming the master, a team or a hand-off; results now say what happened and what waits.
+
 ## [0.4.0-dev.859] - 2026-11-28
 
 Room agents say what a wait is on and keep case summaries
