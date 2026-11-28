@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.864] - 2026-11-28
+
+Room agents hear what a paused issue waits for, never an agent's question
+
+### Changed
+
+- **A room agent is handed no question an agent wrote.** A parked issue's question reaches a room as owed, its words read on its page, unless a person asked it; a wait on another issue names it by title.
+
 ## [0.4.0-dev.863] - 2026-11-28
 
 Room agents hear a plain reason for a pause, never internal notes
