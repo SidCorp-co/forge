@@ -25,7 +25,25 @@ export const supportAskMasterRequestSchema = z.strictObject({
 		.min(3)
 		.max(2000)
 		.describe(
-			"what you need from the master to answer the person now, in plain words; one question",
+			"what you need from the master next, in plain words; one question, asked again with what the last answer settled until the case names its problem and its solution",
+		),
+	problem: z
+		.string()
+		.trim()
+		.min(1)
+		.max(1000)
+		.optional()
+		.describe(
+			"the case's problem as you hold it now, in your words; leave out while you do not know it",
+		),
+	solution: z
+		.string()
+		.trim()
+		.min(1)
+		.max(1000)
+		.optional()
+		.describe(
+			"the case's solution as you hold it now, in your words; leave out while none is named",
 		),
 	project: supportProjectSlugSchema
 		.optional()

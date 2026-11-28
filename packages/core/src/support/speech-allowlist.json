@@ -36,7 +36,7 @@
   },
   {
     "file": "support/dated-reads.ts",
-    "text": "handed in this turn is his c",
+    "text": "A check handed to you in this turn",
     "why": "states what a turn was handed or what was not handed on; speaks to no one"
   },
   {
@@ -66,8 +66,8 @@
   },
   {
     "file": "support/master-ask.ts",
-    "text": "Answer the person in this thread yourse",
-    "why": "outcome: the master has answered, the room tells the person with what it settles"
+    "text": "This is what you now know of the case",
+    "why": "outcome: the master has answered, the room tells the person once the case names its problem and a solution"
   },
   {
     "file": "support/master-ask.ts",
@@ -328,11 +328,6 @@
     "file": "support/room-cards.ts",
     "text": "handed",
     "why": "states what a turn was handed or what was not handed on; speaks to no one"
-  },
-  {
-    "file": "support/room-cards.ts",
-    "text": "answer the person yourself from what it",
-    "why": "outcome or answer owed: speaks when the answer or result is in"
   },
   {
     "file": "support/room-cards.ts",

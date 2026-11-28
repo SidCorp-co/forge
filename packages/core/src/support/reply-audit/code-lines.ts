@@ -210,10 +210,6 @@ export function behaviourClaimIn(text: string): string | null {
   return firstAssertedIn(text, BEHAVIOUR_CLAIMS);
 }
 
-/** A reply that names the master as the one who checked: a state said as his, never as the agent's read. */
-const MASTER_NAMED = /(?<![\p{L}\p{N}_])(?:the\s+)?(?:master|đội|team|owner)(?![\p{L}\p{N}_])/iu; // i18n-allow: the Vietnamese "team" a master's check is told as
-export const namesMaster = (text: string): boolean => MASTER_NAMED.test(text);
-
 /**
  * A report that an act was taken somewhere else (ISS-1416, FB-824): a need raised, posted, passed or
  * asked in another thread, channel, or of a team, master or owner. "The host step was already raised

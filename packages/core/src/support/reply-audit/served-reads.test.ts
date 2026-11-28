@@ -42,24 +42,18 @@ describe('a served version, a deploy and a product’s behaviour are held to a r
     expect(j.findings[0]?.why).toContain('support.releases or support.deployment');
   });
 
-  it('fails behaviour and a count stated from a release read or a master’s answer in the reply’s own voice', () => {
-    for (const reads of [
-      { thisTurn: true, servedRead: true, behaviourRead: false },
-      { masterAnswered: true },
-    ]) {
-      const j = judged(BEHAVES, reads);
-      expect(j.failed).toEqual(['accurate']);
-      expect(j.findings[0]?.why).toContain('support.look, support.read or a run');
-    }
+  it('fails behaviour and a count stated from a release read alone', () => {
+    const j = judged(BEHAVES, { thisTurn: true, servedRead: true, behaviourRead: false });
+    expect(j.failed).toEqual(['accurate']);
+    expect(j.findings[0]?.why).toContain('support.look, support.read or a run');
   });
 
-  it('still passes each one that read the thing in its turn, said it as the master’s check, or said it is not confirmed', () => {
+  it('still passes each one that read the thing in its turn, was handed the check in it, or said it is not confirmed', () => {
     expect(judged(SERVED, { thisTurn: true, servedRead: true }).verdict).toBe('pass');
     expect(judged(DEPLOY, { thisTurn: true, servedRead: true }).verdict).toBe('pass');
     expect(judged(BEHAVES, { thisTurn: true, behaviourRead: true }).verdict).toBe('pass');
     expect(
-      judged('Theo master lúc 02:05, Force Update hoạt động tốt ạ.', { masterAnswered: true }) // i18n-allow: his check said as his
-        .verdict,
+      judged('Lúc 02:05 Force Update hoạt động tốt ạ.', { masterAnswered: true }).verdict, // i18n-allow: a check handed in the turn, said with when and no name
     ).toBe('pass');
     expect(
       judged('Em chưa kiểm tra xem site nào chạy bản này, em chưa xác nhận lúc này ạ.').verdict, // i18n-allow: not confirmed now
@@ -81,17 +75,19 @@ describe('a read and a master’s answer in one turn (ISS-1440)', () => {
     });
   const judged = (text: string, masterAnswered: boolean) =>
     judgeReply({ ...reply(text), roomKind: 'agent', reads: reads(masterAnswered) }, []);
-  const AS_HIS = 'Theo master lúc 02:05, Force Update hoạt động tốt ạ.'; // i18n-allow: his check said as his
-  const OWN_VOICE = 'Dạ Force Update hoạt động tốt ạ.'; // i18n-allow: the same claim in the reply's own voice
+  const DATED = 'Lúc 02:05 Force Update hoạt động tốt ạ.'; // i18n-allow: a check handed in the turn, said with when and no name
+  const NAMED = 'Theo master lúc 02:05, Force Update hoạt động tốt ạ.'; // i18n-allow: the same check, naming the master
+  const OWN_VOICE = 'Dạ Force Update hoạt động tốt ạ.'; // i18n-allow: the same claim with no read behind it
 
-  it('keeps the master’s answer beside the read, so his check passes a behaviour claim said as his', () => {
+  it('keeps the master’s answer beside the read, so the check handed in the turn passes a behaviour claim whether or not the reply names who made it', () => {
     expect(reads(true).masterAnswered).toBe(true);
-    expect(judged(AS_HIS, true).verdict).toBe('pass');
+    expect(judged(DATED, true).verdict).toBe('pass');
+    expect(judged(OWN_VOICE, true).verdict).toBe('pass');
   });
 
-  it('still fails a behaviour claim with no read of it and no master’s check, or one in the reply’s own voice', () => {
-    expect(judged(AS_HIS, false).failed).toEqual(['accurate']);
-    expect(judged(OWN_VOICE, true).failed).toEqual(['accurate']);
+  it('still fails a behaviour claim with no read of it and no check handed in the turn, named or not', () => {
+    expect(judged(DATED, false).failed).toEqual(['accurate']);
+    expect(judged(NAMED, false).failed).toEqual(['accurate']);
     const none = turnReadsOf({
       reads: [],
       acted: false,

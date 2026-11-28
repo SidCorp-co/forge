@@ -42,7 +42,10 @@ export function mountMasterAskRoutes(app: Hono<{ Variables: AuthVars }>): void {
     '/:id/support/session/master-asks',
     projectParam,
     SESSION_ONLY,
-    strictBody(supportAskMasterRequestSchema, '{ thread, question, project? }'),
+    strictBody(
+      supportAskMasterRequestSchema,
+      '{ thread, question, problem?, solution?, project? }',
+    ),
     (c) => act(c, c.req.valid('param').id, { action: 'ask_master', ...c.req.valid('json') }),
   );
   app.post(

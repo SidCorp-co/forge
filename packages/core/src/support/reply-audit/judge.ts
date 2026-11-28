@@ -18,7 +18,6 @@ import {
   assertedStateClaimIn,
   behaviourClaimIn,
   grantTalkIn,
-  namesMaster,
   screenClaimIn,
   servedClaimIn,
   uiDirectionIn,
@@ -32,7 +31,8 @@ import {
  * (ISS-1356), and `handedOn` whether an act landed somewhere else: a raise, a route, an ask or a
  * filing (ISS-1416, `dated-reads.ts:handedOn`), in its turn or earlier in its thread (ISS-1423).
  * `masterAnswered` is whether a master's answer to the room's ask was handed in its turn
- * (`master-ask.ts:masterAnsweredNote`): his fresh check of what he reports, said as his (ISS-1430).
+ * (`master-ask.ts:masterAnsweredNote`): a fresh check of what it reports, which the agent holds as the
+ * case's own fact (ISS-1430, ISS-1483).
  */
 export interface TurnReads {
   thisTurn: boolean;
@@ -106,32 +106,34 @@ const readOf = (reads: TurnReads, kind: 'served' | 'behaviour'): boolean =>
 const SERVED_READ =
   ': what a deployment serves is read in this turn with support.releases or support.deployment, quoting the version it returns, or said plainly not confirmed now';
 const BEHAVIOUR_READ =
-  ': how the product behaves is read in this turn (support.look, support.read or a run), or said plainly not confirmed now; a master’s answer is his report, said as his and when he made it, never as your own read';
+  ': how the product behaves is read in this turn (support.look, support.read or a run), or said plainly not confirmed now';
 
 /**
  * Why a reply's statement of a live setting, account, release, served version or product behaviour
  * rests on no read of this turn (ISS-1354, ISS-1440): one made in an earlier turn, or none, whether or
  * not the reply dates it. A state the reply says plainly it has not checked now is no statement of it.
- * A master's answer handed in the turn is his check, so it covers a claim only where the reply says
- * it as his (`namesMaster`); it is never the agent's read of a product. Null where it states none.
+ * A master's answer handed in the turn is a fresh check the case holds, so it covers a claim whether
+ * or not the reply says whose it was: the audit once covered it only where the reply named the master
+ * (ISS-1430), which taught the agent to tell users "the AdminHub side read" (ISS-1483). Null where it
+ * states none.
  */
 function staleStateClaim(reply: AuditedReply): string | null {
   const reads = reply.reads;
   if (!reads) return null;
-  const hisCheck = Boolean(reads.masterAnswered) && namesMaster(reply.text);
+  const handedCheck = Boolean(reads.masterAnswered);
   const why = (claim: string, read: string) =>
     reads.earlierAt
       ? `it states "${claim}" from a read made in an earlier turn (${reads.earlierAt.toISOString()}), not one made in this turn${read}`
       : `it states "${claim}" with no read of it made in this turn${read}`;
-  if (!reads.thisTurn && !hisCheck) {
+  if (!reads.thisTurn && !handedCheck) {
     const claim = assertedStateClaimIn(reply.text, [LIVE_CLAIM_RE]);
     if (claim) return why(claim, RECORD_HINT.test(claim) ? RECORD_READ : STATE_READ);
   }
-  if (!readOf(reads, 'served') && !hisCheck) {
+  if (!readOf(reads, 'served') && !handedCheck) {
     const claim = servedClaimIn(reply.text, [LIVE_CLAIM_RE]);
     if (claim) return why(claim, SERVED_READ);
   }
-  if (!readOf(reads, 'behaviour') && !hisCheck) {
+  if (!readOf(reads, 'behaviour') && !handedCheck) {
     const claim = behaviourClaimIn(reply.text);
     if (claim) return why(claim, BEHAVIOUR_READ);
   }

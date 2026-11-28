@@ -255,6 +255,72 @@ describe('ISS-1243: a room agent asks its master in its turn', () => {
   });
 });
 
+describe('ISS-1483: a room agent works a case with its master', () => {
+  // ISS-1483 (owner, 2026-11-28): the agent owns a case and asks again until the problem and a solution
+  // are both named; the thread's asks in order are the case, each carrying what the agent held of it
+  it("keeps a thread's asks as one case: problem and solution as held, the round, and an answer that is not yet the reply", async () => {
+    const first = await sessionDoes('Mapping không cho chọn option set', (t) => ({
+      action: 'ask_master',
+      thread: t,
+      question: 'Why does the mapping screen not offer the option set?',
+      problem: 'the option set is missing from the mapping list',
+    }));
+    expect(first.out, JSON.stringify(first.out)).toMatchObject({ asked: true, round: 1 });
+    expect(String(first.out.next)).toContain('round 1 of this thread');
+    const one = String(first.out.ask);
+    const partial = await api(
+      w.owner,
+      'POST',
+      `/api/projects/${w.projectId}/support/master-asks/${one}/answer`,
+      { answer: 'The list reads the legacy set only; I have not found why yours is absent.' },
+    );
+    expect(partial.status, JSON.stringify(partial.body)).toBe(200);
+
+    const second = await sessionDoes(
+      'Em thử lại vẫn không thấy',
+      (t) => ({
+        action: 'ask_master',
+        thread: t,
+        question: 'Is the set archived?',
+        problem: 'the option set is missing from the mapping list',
+        solution: 'unarchive the set',
+      }),
+      first.thread,
+    );
+    expect(second.out).toMatchObject({ asked: true, round: 2 });
+    const two = String(second.out.ask);
+
+    const all = await asksOf('all');
+    const asks = (all.body as { asks: Body[] }).asks.filter((a) => a.thread === first.thread);
+    expect(asks.map((a) => [a.id, a.round, a.problem, a.solution])).toEqual(
+      expect.arrayContaining([
+        [two, 2, 'the option set is missing from the mapping list', 'unarchive the set'],
+        [one, 1, 'the option set is missing from the mapping list', null],
+      ]),
+    );
+
+    // the answer is what the agent learns, held against the case: not yet a reply, never whose it was
+    const answered = await api(
+      w.owner,
+      'POST',
+      `/api/projects/${w.projectId}/support/master-asks/${two}/answer`,
+      { answer: 'Archived on 20/11; unarchiving is safe.' },
+    );
+    expect(answered.status, JSON.stringify(answered.body)).toBe(200);
+    expect(answered.body).toMatchObject({ round: 2, solution: 'unarchive the set' });
+    await expect
+      .poll(() => second.notes.some((n) => n.text.includes('Archived on 20/11')), {
+        timeout: 15_000,
+      })
+      .toBe(true);
+    const note = second.notes.find((n) => n.text.includes('Archived on 20/11'))?.text ?? '';
+    expect(note).toContain('not yet a reply');
+    expect(note).toContain('does the case now name the problem and a solution');
+    expect(note).toContain('never that a master, a team');
+    expect(note).not.toContain('is his read');
+  });
+});
+
 describe("ISS-1301: a master's answer is handed to the room's session once", () => {
   // ISS-1301 (FB-723, Forge-Communicate 2026-11-18 03:33-03:35Z): a turn that took a master's
   // answer and posted nothing left it unanswered, and it was handed again twice more, the same

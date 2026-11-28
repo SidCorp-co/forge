@@ -28,7 +28,7 @@ export const REPLY_CARD = {
     'What a screen shows (a button, menu item, field, page) is said only from a look this turn (support.look), its picture posted with shots; where you cannot look, say so once with what you need from the person, never a progress line, never the thing anyway.',
     // ISS-1416 (FB-824): "not enabled yet" and "still off" stated from reads a turn old, which "or said to be from an earlier read and when" let stand
     // ISS-1430 (FB-831, L-167): "as of 11:02 UTC" restated an earlier read, which the audit fails dated or not
-    'A live setting, served version, behaviour (“it works”) or issue or release status is stated from a read of it this turn, or as the master’s check, or said plainly not confirmed now. An issue is closed only once its release has deployed. Each step names who does it, never “em”.',
+    'A live setting, served version, behaviour (“it works”) or issue or release status is stated from a read of it this turn, or a check you were given this turn (dated), or said plainly not confirmed now. An issue is closed only once its release has deployed. Each step names who does it, never “em”.',
   ],
   example: {
     thread: THREAD,

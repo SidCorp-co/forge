@@ -14,9 +14,9 @@ import {
   SUPPORT_MASTER_ASK_BOUND_MINUTES,
   type SupportAskMasterRequest,
 } from '@forge/contracts/support-master-ask';
-import { and, asc, desc, eq, gte, isNull, or } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNull, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { supportRooms } from '../db/schema-support.js';
+import { supportActions, supportRooms } from '../db/schema-support.js';
 import { supportMasterAsks } from '../db/schema-support-asks.js';
 import { markUntrusted } from '../lib/untrusted-text.js';
 import { emitEvent } from '../outbox/index.js';
@@ -35,6 +35,12 @@ export interface MasterAskView {
   rid: string;
   thread: string;
   question: string;
+  /** The case's problem as the agent held it when it asked, or null while it did not know it. */
+  problem: string | null;
+  /** The case's solution as the agent held it when it asked, or null while none was named. */
+  solution: string | null;
+  /** Which ask of the thread's case this is, from 1: the case is the thread's asks in order. */
+  round: number;
   askedAt: string;
   answer: string | null;
   answeredAt: string | null;
@@ -47,7 +53,81 @@ export interface MasterAskView {
 
 type AskRow = typeof supportMasterAsks.$inferSelect;
 
-function viewOf(row: AskRow, rid: string, project: string, now: Date): MasterAskView {
+/** What the agent held of its case when it made an ask: kept on the ask's own act, read back by the ask's id. */
+interface CaseNote {
+  problem: string | null;
+  solution: string | null;
+}
+
+/**
+ * The case notes of these asks. The case is a thread's asks in order (`support_master_asks`, keyed by
+ * room and thread), and what the agent held of it at each ask is on that ask's act record: no table of
+ * its own, so a later reader (the agent's notes, a precedent from the owner) attaches to the same
+ * room and thread.
+ */
+async function caseNotesOf(askIds: readonly string[]): Promise<Map<string, CaseNote>> {
+  const notes = new Map<string, CaseNote>();
+  if (askIds.length === 0) return notes;
+  const rows = await db
+    .select({ input: supportActions.input, output: supportActions.output })
+    .from(supportActions)
+    .where(
+      and(
+        eq(supportActions.tool, 'ask_master'),
+        inArray(sql<string>`${supportActions.output}->>'ask'`, [...askIds]),
+      ),
+    );
+  for (const r of rows) {
+    const ask = (r.output as { ask?: string } | null)?.ask;
+    const input = (r.input ?? {}) as { problem?: unknown; solution?: unknown };
+    if (!ask) continue;
+    notes.set(ask, {
+      problem: typeof input.problem === 'string' ? input.problem : null,
+      solution: typeof input.solution === 'string' ? input.solution : null,
+    });
+  }
+  return notes;
+}
+
+/** Which ask of its thread's case each of these is, from 1, in the order they were asked. */
+async function roundsOf(askIds: readonly string[]): Promise<Map<string, number>> {
+  const rounds = new Map<string, number>();
+  if (askIds.length === 0) return rounds;
+  const ids = sql.join(
+    askIds.map((id) => sql`${id}::uuid`),
+    sql`, `,
+  );
+  const rows = (await db.execute(sql`
+    SELECT id, rn FROM (
+      SELECT id, row_number() OVER (PARTITION BY room_id, thread ORDER BY asked_at, id) AS rn
+        FROM support_master_asks
+       WHERE (room_id, thread) IN (SELECT room_id, thread FROM support_master_asks WHERE id IN (${ids}))
+    ) t WHERE id IN (${ids})
+  `)) as unknown as { id: string; rn: number | string }[];
+  for (const r of rows) rounds.set(r.id, Number(r.rn));
+  return rounds;
+}
+
+/** The views of these ask rows, each with its case note and round. */
+async function viewsOf(
+  rows: readonly { row: AskRow; rid: string; project: string }[],
+  now: Date,
+): Promise<MasterAskView[]> {
+  const ids = rows.map((r) => r.row.id);
+  const [notes, rounds] = await Promise.all([caseNotesOf(ids), roundsOf(ids)]);
+  return rows.map((r) =>
+    viewOf(r.row, r.rid, r.project, now, notes.get(r.row.id), rounds.get(r.row.id) ?? 1),
+  );
+}
+
+function viewOf(
+  row: AskRow,
+  rid: string,
+  project: string,
+  now: Date,
+  note: CaseNote | undefined,
+  round: number,
+): MasterAskView {
   const waitedMs = (row.answeredAt ?? now).getTime() - row.askedAt.getTime();
   return {
     id: row.id,
@@ -55,6 +135,9 @@ function viewOf(row: AskRow, rid: string, project: string, now: Date): MasterAsk
     rid,
     thread: row.thread,
     question: row.question,
+    problem: note?.problem ?? null,
+    solution: note?.solution ?? null,
+    round,
     askedAt: row.askedAt.toISOString(),
     answer: row.answer,
     answeredAt: row.answeredAt?.toISOString() ?? null,
@@ -73,7 +156,7 @@ export async function askMaster(
   room: RoomRow,
   input: SupportAskMasterRequest,
   turn: string | null | undefined,
-): Promise<Outcome<{ asked: true; ask: string; project: string; next: string }>> {
+): Promise<Outcome<{ asked: true; ask: string; project: string; round: number; next: string }>> {
   const conversationId = await knownThread(room, input.thread);
   if (!conversationId) return threadUnknown(input.thread);
   const project = await namedProject(room, input.project);
@@ -99,6 +182,7 @@ export async function askMaster(
     });
     return row;
   });
+  const round = (await roundsOf([asked.id])).get(asked.id) ?? 1;
   await insertAction({
     roomId: room.id,
     projectId: room.projectId,
@@ -107,7 +191,12 @@ export async function askMaster(
     kind: 'operation',
     actorKind: 'session',
     tool: 'ask_master',
-    input: { question: input.question, project: project.value.slug },
+    input: {
+      question: input.question,
+      project: project.value.slug,
+      ...(input.problem ? { problem: input.problem } : {}),
+      ...(input.solution ? { solution: input.solution } : {}),
+    },
     output: { ask: asked.id },
   });
   return {
@@ -116,7 +205,8 @@ export async function askMaster(
       asked: true,
       ask: asked.id,
       project: project.value.slug,
-      next: `Nothing was posted. The ${project.value.slug} master is woken now and answers this before its other work; its answer is handed to you in this thread as a message from forge, and you answer the person yourself then. Meanwhile react to the asker's message with support.react and post nothing; the answer is said once, as ONE message (the cause, what was done, what they must do), when it is handed to you. Never say it was passed on to a team.`,
+      round,
+      next: `Nothing was posted. This is round ${round} of this thread's case. The ${project.value.slug} master is woken now and answers this before its other work; its answer is handed to you in this thread as a note from forge. It is what you learn of the case, not yet the reply: when it comes, weigh it, and ask again with the problem and the solution as you hold them until both are named; only then tell the person, once, as ONE message in your own voice. Meanwhile react to the asker's message with support.react and post nothing. Never say a master, a team or another side has it.`,
     },
   };
 }
@@ -147,7 +237,10 @@ export async function masterAsksOf(
     )
     .orderBy(state === 'open' ? asc(supportMasterAsks.askedAt) : desc(supportMasterAsks.askedAt))
     .limit(200);
-  const asks = rows.map((r) => viewOf(r.ask, r.rid, projectId, now));
+  const asks = await viewsOf(
+    rows.map((r) => ({ row: r.ask, rid: r.rid, project: projectId })),
+    now,
+  );
   return {
     boundMinutes: SUPPORT_MASTER_ASK_BOUND_MINUTES,
     asks,
@@ -164,20 +257,25 @@ export async function asksOfThread(room: RoomRow, thread: string): Promise<Maste
     .from(supportMasterAsks)
     .where(and(eq(supportMasterAsks.roomId, room.id), eq(supportMasterAsks.thread, thread)))
     .orderBy(asc(supportMasterAsks.askedAt));
-  return rows.map((r) => viewOf(r, room.rid, r.projectId, now));
+  return viewsOf(
+    rows.map((r) => ({ row: r, rid: room.rid, project: r.projectId })),
+    now,
+  );
 }
 
 /**
- * The note a master's answer is handed to the room's session as. FB-824's transcripts (ISS-1416): a
- * reply stated "still off" in the turn that handed it the master's check, its own last read hours old
- * and of another screen, and a reply said a
- * raise was made 3 s after it was refused, following "make the act as them and say it is done". A
- * state he reports is his read, dated; an act is told from its result. The ask and the answer each
- * stand in an untrusted frame, core's teaching alone outside (ISS-1425).
+ * The note a master's answer is handed to the room's session as. Owner, 2026-11-28 (ISS-1483): the
+ * person knows one voice, the room's agent, which owns the case and works it with the master until
+ * the problem and a solution are both named; the answer is what it learns on the way, never a reply
+ * to relay. What the master checked is the case's own fact, said with when and never with who:
+ * "he reports it, say it as his" had the agent name the master and "his side" (AdminHub, 26/11 and
+ * 28/11). FB-824's transcripts (ISS-1416) stay held: a state is said from a check made this turn
+ * (the master's counts, handed in this turn), dated, and an act is told from its result. The ask
+ * and the answer each stand in an untrusted frame, core's teaching alone outside (ISS-1425).
  */
 export function masterAnsweredNote(question: string, answer: string): string {
   // the ask and the answer are words, never core's: either may quote a member (ISS-1425)
-  return `The master answered your ask.\n${markUntrusted(question, { source: 'your ask of the master' })}\n${markUntrusted(answer, { source: 'the master answer' })}\nAnswer the person in this thread yourself now, in your own words and in the language they write, to them in the second person, with what this settles; the master's words are for you, never posted as they are. What you already told them in this thread stands: say only what this adds or changes, never your earlier reply again in other words; where it adds nothing, stay silent with support.silent. A state or behaviour he reports is his read, not yours: say it as his check and when he made it, or read it yourself in this turn; never in your own voice. Where they already ruled on it, make the act as them and tell it from the act's result: done once it answered, and a refused act was not made; never ask them again.`;
+  return `The master answered your ask.\n${markUntrusted(question, { source: 'your ask of the master' })}\n${markUntrusted(answer, { source: 'the master answer' })}\nThis is what you now know of the case, not yet a reply. Hold it against what the person asked: does the case now name the problem and a solution that answers THEIR question? Where it does not, work on: read what your own acts reach, then ask again with support.ask_master, carrying the problem and the solution as you hold them and what this answer left open; where only the person holds the missing fact, ask them that one thing yourself. When both are named, tell the person in this thread yourself, in your own words and in the language they write, to them in the second person: what the problem was, what is done or comes next, what they must do. You are the one voice they know: say what the check showed and when ("at 02:05 the flag was off"), as what you checked, never that a master, a team, a project's side or anyone else told you, looked or is working on it, and never what the master wrote as it is written, nor a question or an instruction he wrote for you to put to them. What you already told them in this thread stands: say only what this adds or changes, never your earlier reply again in other words; where it adds nothing, stay silent with support.silent. Where they already ruled on it, make the act as them and tell it from the act's result: done once it answered, and a refused act was not made; never ask them again.`;
 }
 
 /**
@@ -217,7 +315,11 @@ export async function answerMasterAsk(
   }
   const room = await roomById(answered.roomId);
   if (!room) throw new Error(`support: the room of ask ${askId} is gone`);
-  const waited = viewOf(answered, room.rid, actor.projectId, new Date());
+  const [waited] = await viewsOf(
+    [{ row: answered, rid: room.rid, project: actor.projectId }],
+    new Date(),
+  );
+  if (!waited) throw new Error(`support: ask ${askId} has no view`);
   // its `ask` marks it a master's answer: a turn that completes with it ends its hand-over, posted
   // or not, and it is never handed again (ISS-1301, `turn-retry.ts:isMasterAnswer`)
   await insertAction({

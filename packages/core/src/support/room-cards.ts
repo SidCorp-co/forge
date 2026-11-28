@@ -207,7 +207,7 @@ export const ROOM_ACT_CARDS = {
   },
   ask_master: {
     purpose:
-      'Asks the master of your project, or one you follow, for a fact, a decision or an act you cannot make; its answer returns here.',
+      'Works a case with the master of your project or one you follow, for a fact, decision or act you cannot make; each answer returns here as what you learn.',
     situations: [
       {
         when: 'someone instructs or rules',
@@ -222,18 +222,21 @@ export const ROOM_ACT_CARDS = {
     ],
     practice: [
       'Say in the question what to do, so the master can act on it at once.',
-      'The master answers before its other work: answer the person yourself from what it hands back.',
+      'Carry the case: problem and solution as you hold them now, left out while unknown. The thread’s asks in order are the case (support.in_flight lists them).',
+      'Its answer is what you learn: where the problem or a solution is still open, ask again with what it settled; speak once, in your own voice, when both are named, never naming a master, team or hand-off.',
     ],
     example: {
       thread: THREAD,
       question:
         'The owner rules ePOD’s CLI and theme errors follow the user’s language, English by default: change them and tell me when it is live.',
+      problem: 'CLI and theme errors read in English for a Vietnamese user',
       project: 'epod',
     },
     // ISS-1250, 16/11 02:22 and 15/11 15:36: the bot explained what the room may not do and told the
     // owner to set ePOD's language in Forge's settings himself
+    // ISS-1483, AdminHub 26/11 and 28/11: one forwarded question, one relayed answer, "per the AdminHub side's check"
     redFlag:
-      'Explaining grants or sending the owner to a screen instead of handing the act on: on 16/11 the bot told him to set ePOD’s language in Forge’s settings himself.',
+      'Explaining grants or sending the owner to a screen instead of handing the act on: on 16/11 the bot told him to set ePOD’s language in Forge’s settings himself. Forwarding one question and relaying what came back, naming the master’s side to the user: on 26/11 and 28/11 the thread heard “per the AdminHub side’s check”.',
     family: 'room.hand-on',
     audience: ['bot'],
     scenarios: ['the owner told to set ePOD’s language in Forge’s settings himself'],
@@ -322,9 +325,9 @@ export const ROOM_ACT_CARDS = {
     ],
     practice: [
       'message is the messageId reply answered you; failed is [] where every line holds.',
-      'Name in missed each capability the reply should have reached for, by its forge_find name.',
+      'Name in missed each capability the reply should have reached for, by its forge_find name; one_voice fails a reply naming a master, team, hand-off or restart, or posting a master’s words as written.',
       // ISS-1430: the code half failed a dated earlier read the agent's own reading let pass
-      'A live state (setting, served version, behaviour, record status) stated with no read of that thing this turn fails accurate, dated or not; said as the master’s check, or “not confirmed now”, it does not.',
+      'A live state (setting, served version, behaviour, record status) stated with no read of that thing this turn fails accurate, dated or not; a check handed you this turn, said dated, or “not confirmed now”, does not.',
     ],
     example: {
       thread: THREAD,

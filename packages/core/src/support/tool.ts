@@ -362,7 +362,7 @@ const SIGNATURES = [
   'owner_act { thread, message, tool, args?, agreement? }',
   'owner_sign_in { thread, product? }',
   'release_decision { thread, message, project, version, decision: approve | return, reason? }',
-  'ask_master { thread, question, project? }',
+  'ask_master { thread, question, problem?, solution?, project? }',
   'in_flight { thread }',
   'raise_owed { thread, text, answers? }',
   'technical { thread, need: permission | approval | finding | ask, text, answers? }',

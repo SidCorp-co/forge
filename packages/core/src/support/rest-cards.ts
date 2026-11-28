@@ -131,16 +131,20 @@ export const SUPPORT_REST_CARDS = {
     situations: [
       {
         when: 'your pass names a room agent’s ask (ask_master) waiting on you',
-        do: 'answer it before any other work, from what you know or can read now',
+        do: 'answer it before any other work, from what you know or can read now: what you checked, what you did not, the problem and a solution as far as you can name them',
+        watch:
+          'the agent holds a case (problem, solution, round) and asks again until both are named; never write the person’s sentence',
       },
     ],
     practice: [
-      'The answer goes back into the agent’s session, which tells the person: never post beside it.',
+      'The answer goes back into the agent’s session, which tells the person in its own voice: never post beside it.',
+      'Your answer is facts and a proposal for the agent. Where the case is not yet solved, say what is open; a script for the agent to say, or a question for it to put to the person, is the agent’s to write.',
     ],
     example: { answer: 'ISS-640 carries the fix; it ships in tonight’s release.' },
     // the door refuses an ask already answered (SUPPORT_MASTER_ASK_ANSWERED); the dispatch guide
     // teaches it because masters had posted in the thread beside the agent
-    redFlag: 'Posting your answer in the room yourself beside the agent that asked.',
+    redFlag:
+      'Posting your answer in the room yourself beside the agent that asked, or writing it as a script for the person (“say exactly this and ask her…”): on 28/11 the agent posted such facts nearly verbatim, and answered a different question than the one asked.',
     family: 'rooms',
     audience: ['master'],
     scenarios: ['a room agent’s ask answered first while a person waits in its thread'],

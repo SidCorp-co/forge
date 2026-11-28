@@ -28,6 +28,8 @@ export const REPLY_RUBRIC = {
 	no_ui_directions:
 		"It never sends a person to click or do the act in a UI; it acts or hands it on.",
 	accurate: "Every claim it makes is true, and none is beside the point.",
+	one_voice:
+		"It speaks as the one voice the person knows: no master, team, project side, hand-off or restart is named, and nothing a master wrote stands as written.",
 	web_links:
 		"Every link for a person points at the web host, never the API host.",
 	language:

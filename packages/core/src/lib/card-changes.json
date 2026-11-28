@@ -600,9 +600,9 @@
     "by": "ISS-1251"
   },
   "POST /api/projects/:id/support/master-asks/:askId/answer": {
-    "hash": "1b52c0f9d1dec956",
-    "on": "2026-11-17",
-    "by": "ISS-1251"
+    "hash": "0a095f86da710a22",
+    "on": "2026-11-28",
+    "by": "ISS-1483"
   },
   "POST /api/projects/:id/support/master-posts": {
     "hash": "aa20413e2e26049d",
@@ -1535,9 +1535,9 @@
     "by": "ISS-1251"
   },
   "support.ask_master": {
-    "hash": "94a0ca96fbb853bc",
-    "on": "2026-11-26",
-    "by": "ISS-1475"
+    "hash": "b1c73fd1a2d4e517",
+    "on": "2026-11-28",
+    "by": "ISS-1483"
   },
   "support.ask_owner": {
     "hash": "2a58a37bdfc48e94",
@@ -1550,9 +1550,9 @@
     "by": "ISS-1251"
   },
   "support.audit": {
-    "hash": "a4989f8073f0d829",
-    "on": "2026-11-23",
-    "by": "ISS-1440"
+    "hash": "6cf0dade6e12a60a",
+    "on": "2026-11-28",
+    "by": "ISS-1483"
   },
   "support.build": {
     "hash": "e5d44f1f668912d9",
@@ -1745,9 +1745,9 @@
     "by": "ISS-1440"
   },
   "support.reply": {
-    "hash": "badb3e6d31ac740d",
-    "on": "2026-11-27",
-    "by": "ISS-1475"
+    "hash": "1128feab0ac0158f",
+    "on": "2026-11-28",
+    "by": "ISS-1483"
   },
   "support.requirements": {
     "hash": "793ed91dbfb6b6d7",

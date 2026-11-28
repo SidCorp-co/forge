@@ -118,7 +118,7 @@ describe('the room brief teaches an ask it cannot do to wait on the master', () 
     expect(taught(channel)).not.toContain('it went to the team');
     expect(REPLY_CARD.redFlag).toContain('never that it was passed on');
     expect(taught(channel)).toContain(
-      'reply again only with what the master did or decided once you are told it, never done before then and never options or steps the master has not given',
+      'reply again only with what was done or decided once you are told it, never done before then and never options or steps you were not given',
     );
     expect(taught(channel)).toContain('acknowledged by a reaction (support.react)'); // ISS-1475
   });
@@ -321,7 +321,7 @@ describe('every room agent brief carries the room conduct', () => {
   // ISS-1416 reopen (FB-824's transcripts): an operations room said a raise was made 3 s after it was
   // refused, following its brief's holding line and the master's answer's
   // "make the act as them and say it is done"; and stated a state from a master's check as its own
-  it("tells an act from its result, and a master's reported state as his dated read", () => {
+  it("tells an act from its result, and a master's check as the case's dated fact, never whose", () => {
     expect(operations).toContain(
       'the thread hears ONE message when the answer is in (a raise returns where it landed, which is not an answer), as a refused act was not made; the owner is told on the same cadence (a reaction, no intermediate message, one report when done)',
     );
@@ -330,18 +330,19 @@ describe('every room agent brief carries the room conduct', () => {
     expect(note).toContain('a refused act was not made');
     expect(note).not.toContain('say it is done');
     expect(note).toContain(
-      'A state or behaviour he reports is his read, not yours: say it as his check and when he made it',
+      'say what the check showed and when ("at 02:05 the flag was off"), as what you checked, never that a master, a team, a project\'s side or anyone else told you',
     );
+    expect(note).toContain('does the case now name the problem and a solution');
   });
 
   // ISS-1440: the guide and the cards served beneath it carry the same teaching as the opening
-  it('teaches in the guide what the brief and the audit say: read the thing, his check as his, else not confirmed', () => {
+  it('teaches in the guide what the brief and the audit say: read the thing, a handed check dated and never whose, else not confirmed', () => {
     const prose = GUIDE.split(/\s+/).join(' ');
     expect(prose).toContain(
       'What a deployment serves (the version, which sites run it) is read in this turn with support.releases or support.deployment; how the product behaves ("it works", a count) with support.look, support.read or a run: an issue read tells neither.',
     );
     expect(prose).toContain(
-      'A master\'s answer of this turn counts only said as his ("the master checked at 02:05 …"), never in your own voice as your read of a product',
+      'A check a master handed you this turn is the case\'s fact: say it dated ("at 02:05 the flag was off"), as what was checked, never who made it',
     );
     expect(prose).toContain('a release as shipped is neither');
   });
@@ -359,7 +360,7 @@ describe('every room agent brief carries the room conduct', () => {
   });
 
   // ISS-1440 (FB-837, L-185): the channel agent's opening says what the guide, the cards and the audit say
-  it('says a served version is read, behaviour looked at, a master’s answer his own, else not confirmed now', () => {
+  it('says a served version is read, behaviour looked at, a handed check dated and never whose, else not confirmed now', () => {
     const opening = agentOpening({
       projectName: 'P',
       product: null,
@@ -373,14 +374,13 @@ describe('every room agent brief carries the room conduct', () => {
       'how the product behaves now, from a look, a read or a run of the same turn',
     );
     expect(opening).toContain(
-      'A master’s answer is his report: say it as his, with when; never as your own read.',
+      'A check a master made and handed you this turn is the case’s fact: say it dated, as what was checked, never who made it.',
     );
     expect(opening).toContain('What none of these reached, say plainly is not confirmed now.');
   });
 
   // ISS-1430 (FB-831, L-167): the turn's opening line offered no way but restating an earlier read of
-  // the agent's own where it could not read again: it says read again, or not checked now. A master's
-  // answer handed in the turn is his fresh check, said as his, which the audit counts as a read.
+  // the agent's own where it could not read again: it says read again, or not checked now (a check handed in the turn counts).
   it('offers no dated earlier read of its own: the turn opening says read again or not checked now', () => {
     const opening = earlierReadLine(
       new Date('2026-11-22T06:51:00Z'),
@@ -402,7 +402,7 @@ describe('every room agent brief carries the room conduct', () => {
       new Date('2026-11-23T07:59:26Z'),
     );
     expect(opening).toContain('that a deploy is running or done, which version a site serves');
-    expect(opening).toContain("A master's answer handed in this turn is his check");
+    expect(opening).toContain('A check handed to you in this turn is yours to state');
   });
 
   // ISS-1425: the ask and the answer sat in core's own sentence, so a member line the ask quoted read
@@ -428,7 +428,7 @@ describe('every room agent brief carries the room conduct', () => {
     ]) {
       expect(outside).not.toContain(words);
     }
-    expect(outside).toContain('Answer the person in this thread yourself now');
+    expect(outside).toContain('tell the person in this thread yourself, in your own words');
     expect(outside).toContain('a refused act was not made; never ask them again.');
   });
 });

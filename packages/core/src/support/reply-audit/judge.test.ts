@@ -341,10 +341,10 @@ describe('a live state is read again this turn, or said not checked now (ISS-143
     }
   });
 
-  // the coordinator's correction: a master's answer handed in the turn is his fresh check, which the
-  // room agent usually cannot read again (it lives in another project), said as his and when
-  it('passes a state the master answered in this turn, said as his check; fails it with none', () => {
-    const text = 'The master checked at 02:05: the export flag is still off.';
+  // a master's answer handed in the turn is a fresh check the room agent usually cannot read again (it
+  // lives in another project): the case holds it, and the agent says it dated, never whose it was
+  it('passes a state the master answered in this turn, said dated with no name; fails it with none', () => {
+    const text = 'At 02:05 the export flag was still off.';
     expect(judged(text, { masterAnswered: true }).verdict).toBe('pass');
     expect(judged(text, { masterAnswered: false }).failed).toEqual(['accurate']);
     expect(judged(text).failed).toEqual(['accurate']);
