@@ -1,3 +1,4 @@
+// @direct-test-of packages/contracts/src/said-keys.ts
 // ISS-1483 (dev.857 to dev.859): a sentence a room's agent is handed to relay never names the master, a
 // team or a hand-off as the one acting, because the agent repeats what it is handed and the person
 // knows one voice. Three rounds fixed the strings a judge named and each missed the next, because the
