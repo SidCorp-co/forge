@@ -951,6 +951,8 @@ export const SUPPORT_ACTIONS = [
 	"reference_propose",
 	// a term a person names, written into the project's glossary under its module (ISS-1256)
 	"term",
+	// what the agent learned of the project, a recurring problem or a user, kept for later turns (ISS-1485)
+	"keep",
 	// a Forge link where a person enters a credential for the project's testing profile (ISS-1328)
 	"secret_link",
 	// a look at a screen of the project's environment in a Forge Box, before saying what it shows (ISS-1356)

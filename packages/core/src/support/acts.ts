@@ -76,6 +76,7 @@ import { inFlightOf } from './shared-picture.js';
 import { linkMember } from './speaker-link.js';
 import type { RoomRow } from './store.js';
 import { raiseTechnical } from './technical-channel.js';
+import { type KeepActInput, keepAct } from './keep-act.js';
 import { type TermActInput, termAct } from './term-act.js';
 import { TOP_LEVEL } from './thread.js';
 import { noteSessionAct } from './turn-acts.js';
@@ -185,6 +186,7 @@ export type SupportActInput =
   | ({ action: 'owner_forge_act' } & SupportForgeActRequest)
   | ReferenceActInput
   | TermActInput
+  | KeepActInput
   | LookActInput
   | ReactActInput
   | {
@@ -278,6 +280,8 @@ const SHARED = new Set<SupportActInput['action']>([
   ...REFERENCE_ACTS,
   // and writes a term a person names into the project's glossary (ISS-1256)
   'term',
+  // and keeps what it learned of the project, a recurring problem or a user (ISS-1485)
+  'keep',
   // and gives a person the link where they enter a credential, never in chat (ISS-1328)
   'secret_link',
   // and looks at a screen of its project's environment before saying what it shows (ISS-1356)
@@ -460,6 +464,8 @@ async function act(
       return referenceAct(room, input);
     case 'term':
       return termAct(room, input);
+    case 'keep':
+      return keepAct(room, input);
     case 'look':
       return lookAct(room, input);
     case 'react':

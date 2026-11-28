@@ -70,6 +70,7 @@ import { mountSecretLinkSessionRoutes } from './secret-link-routes.js';
 import { mountSecretPageRoutes } from './secret-page-routes.js';
 import { mountRedactRoute } from './secret-redact.js';
 import { act, SESSION_ONLY } from './session-door.js';
+import { mountKeepSessionRoutes } from './keep-routes.js';
 import { mountTermSessionRoutes } from './term-routes.js';
 import { supportTurnsOf } from './turns.js';
 
@@ -483,6 +484,7 @@ mountPromiseRoutes(supportRoutes);
 mountMasterAskRoutes(supportRoutes);
 mountReferenceSessionRoutes(supportRoutes);
 mountTermSessionRoutes(supportRoutes);
+mountKeepSessionRoutes(supportRoutes);
 mountLookSessionRoutes(supportRoutes);
 mountReactSessionRoutes(supportRoutes);
 mountSecretLinkSessionRoutes(supportRoutes);

@@ -81,6 +81,7 @@ import {
 } from '@forge/contracts/support-references';
 import { supportAuditRequestSchema } from '@forge/contracts/support-reply-audit';
 import { supportTechnicalRequestSchema } from '@forge/contracts/support-technical';
+import { supportKeepRequestSchema } from '@forge/contracts/support-keep';
 import { supportTermRequestSchema } from '@forge/contracts/support-terms';
 import { z } from 'zod';
 
@@ -190,6 +191,7 @@ export const SUPPORT_ACT_REQUESTS = {
   reference_cite: supportReferenceCiteRequestSchema,
   reference_propose: supportReferenceProposeRequestSchema,
   term: supportTermRequestSchema,
+  keep: supportKeepRequestSchema,
   secret_link: supportSecretLinkRequestSchema,
   look: supportLookRequestSchema,
   react: supportReactRequestSchema,
@@ -285,6 +287,12 @@ const inputSchema = z.strictObject({
     .shape,
   aliases: supportTermRequestSchema.shape.aliases,
   anchor: supportTermRequestSchema.shape.anchor,
+  // what the agent keeps of a case (ISS-1485): the fields its act takes beside the ones above
+  topic: supportKeepRequestSchema.shape.topic.optional(),
+  concerns: supportKeepRequestSchema.shape.concerns.optional(),
+  learned: supportKeepRequestSchema.shape.learned.optional(),
+  scope: supportKeepRequestSchema.shape.scope.optional(),
+  recheckWhen: supportKeepRequestSchema.shape.recheckWhen.optional(),
   // the one secret door's slot, its environment and key widened to what other acts take too
   ...SECRET_LINK_TOOL_FIELDS,
   emoji: supportReactRequestSchema.shape.emoji.optional(),
@@ -375,6 +383,7 @@ const SIGNATURES = [
   'reference_cite { source, ref, verdict: take | reject, why, about?, project? }',
   'reference_propose { kind, url, why, areas, evidence, title?, priority?, followReleases?, project? }',
   'term { thread, message, slug, title, means, module, quote, aliases?, anchor?, project? }',
+  'keep { thread, topic, concerns: project | problem | user, title, learned, scope, recheckWhen, project? }',
   'look { thread, environment?, path?, viewport?: desktop | phone, as?, box?, step?, close? } (a first look names environment; a look again names box)',
   'react { thread, message, emoji: eyes | hourglass_flowing_sand | white_check_mark | thumbsup }',
   'secret_link { thread, why, project?, kind: variable, environment (null: every environment), key | kind: testing, profile, actor | service | kind: integration, provider; shape?: value | file | mailbox | signin | { fields }, example?, presign? }',

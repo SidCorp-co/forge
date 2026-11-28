@@ -30,6 +30,7 @@ import { briefNews, coldBrief } from './brief-told.js';
 import { buildBaseOf, buildKeyOf } from './build.js';
 import { channelNews } from './channel-read.js';
 import { earlierReadNote } from './dated-reads.js';
+import { keptCasesNote } from './kept-cases.js';
 import {
   claimUndelivered,
   endBackOff,
@@ -179,11 +180,17 @@ export async function handTurn(
   const lessons = 'warmUp' in body && !cold ? null : await roomLessonsNews(room, cold);
   // an earlier turn's read sits undated in the session's context: name when it was (ISS-1416)
   const dated = 'warmUp' in body ? null : await earlierReadNote(session.id);
+  // what the agent kept from earlier cases that bears on these messages, by relevance (ISS-1485)
+  const kept =
+    'warmUp' in body
+      ? null
+      : await keptCasesNote(room, 'messages' in body ? body.messages : body.direct);
   if (cold) {
     const brief = await coldBrief(room, session, project.name, followed);
     parts.push(brief);
     if (lessons) parts.push(lessons);
     if (dated) parts.push(dated);
+    if (kept) parts.push(kept);
     // what the turn was given, kept as a run's is: the lessons and cards its brief carries (ISS-1251)
     noteTurnCarried(room, session.id, [brief, lessons ?? ''].join('\n\n'));
     // a channel agent re-reads every group it answers, each thread naming its channel
@@ -198,7 +205,7 @@ export async function handTurn(
     // the channel record again when it changed since it was told (BC-41)
     const retold = await briefNews(room, session, project.name, followed);
     const news = 'warmUp' in body ? null : await channelNews(room);
-    const told = [retold, news, lessons, dated].filter((p): p is string => p !== null);
+    const told = [retold, news, lessons, dated, kept].filter((p): p is string => p !== null);
     if (retold || lessons) noteTurnCarried(room, session.id, [retold, lessons].join('\n\n'));
     if (told.length > 0) {
       parts.push(...told);

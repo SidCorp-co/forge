@@ -76,7 +76,7 @@ export function referenceAct(
  * Run `fn` as the room's own agent on `projectId`: the turn's token, held by the room's account, fenced
  * to that one project of the room's reach (a followed project lies outside the turn's own fence).
  */
-function asRoomAgent<T>(room: RoomRow, projectId: string, fn: () => Promise<T>): Promise<T> {
+export function asRoomAgent<T>(room: RoomRow, projectId: string, fn: () => Promise<T>): Promise<T> {
   const turn = currentPatScope();
   if (!turn) throw new Error('support: a reference act ran with no token to act on');
   return runWithPatScope(

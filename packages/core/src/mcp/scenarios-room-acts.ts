@@ -88,6 +88,16 @@ export const ROOM_ACT_SCENARIOS: readonly CardScenario[] = [
     teaches: [/write with support\.term/i, /never pass a word on through support\.record/i],
   },
   {
+    name: 'the room agent asks its master for what an earlier case already settled',
+    card: 'support.keep',
+    source:
+      'owner ruling 2026-11-28 (REQ-107 BC-5, ISS-1485): AdminHub’s room agent’s own reads fell from 8 a day to 0 or 1, the same cases asked of the master again',
+    situation: 'A case settled with the master, or the agent learned a recurring problem of the project or a fact of a user',
+    bad: 'nothing was kept, so the next case like it was asked of the master afresh',
+    good: 'keep one summary with its scope and when to check it again, and answer a later case from the note a turn hands in',
+    teaches: [/support\.keep \{ thread, topic/i, /One topic is one summary/i],
+  },
+  {
     name: 'a user cannot find the menu item the agent said appears',
     card: 'support.look',
     source:

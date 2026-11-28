@@ -17,6 +17,7 @@ import { REACT_ACT_CARDS } from './react-cards.js';
 import { REFERENCE_ACT_CARDS } from './reference-cards.js';
 import { ROOM_ACT_CARDS } from './room-cards.js';
 import { SECRET_ACT_CARDS } from './secret-cards.js';
+import { KEEP_ACT_CARDS } from './keep-cards.js';
 import { TERM_ACT_CARDS } from './term-cards.js';
 import { WORK_ACT_CARDS } from './work-cards.js';
 
@@ -28,6 +29,7 @@ export const SUPPORT_ACT_CARDS: Readonly<Partial<Record<SupportAction, Capabilit
   ...WORK_ACT_CARDS,
   ...REFERENCE_ACT_CARDS,
   ...TERM_ACT_CARDS,
+  ...KEEP_ACT_CARDS,
   ...SECRET_ACT_CARDS,
   ...LOOK_ACT_CARDS,
   ...REACT_ACT_CARDS,
