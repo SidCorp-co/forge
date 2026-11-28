@@ -101,7 +101,7 @@ export async function ownerOwedQuestion(
     return no(
       'SUPPORT_OWNER_QUESTION_UNKNOWN',
       '/forgeQuestion',
-      `question ${questionId} is owed by ${q?.blockerKind === 'machine' ? 'a machine check' : 'the master'}, not a person, so the owner's words answer it nowhere. Nothing was recorded.`,
+      `question ${questionId} is owed by ${q?.blockerKind === 'machine' ? 'a machine check' : 'an automated step'}, not a person, so the owner's words answer it nowhere. Nothing was recorded.`,
     );
   }
   return { ok: true, value: { questionId, round: step.round } };

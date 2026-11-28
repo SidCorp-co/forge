@@ -9,14 +9,19 @@ import ts from 'typescript';
 import { NAMES_THE_HAND } from './room-voice.js';
 
 /** Where a sentence a room reads is worded: the support module, the chat-room assistant, the room agent's guide. */
-const SCOPE = [/^support\//, /^assistant\/chat-room\//, /^guides\/room-agent-guide\.ts$/];
+const SCOPE = [
+  /^support\//,
+  /^assistant\/chat-room\//,
+  /^conversations\//,
+  /^guides\/room-agent-guide\.ts$/,
+];
 
 /** A file elsewhere that imports the room-voice rule says by that import that its text reaches a room. */
 const IMPORTS_THE_RULE = /from '(?:\.\.\/support|\.)\/room-voice\.js'/;
 
 /** A name or a code is not a sentence: an act (`support.record`), a door (`master-posts`), an error code. */
 const NAMES =
-  /support\.[a-z_]+|master-(?:posts?|asks?|tells?)\w*|forge_\w+|[A-Z][A-Z0-9]+_[A-Z0-9_]+/g;
+  /forge-ops|support\.[a-z_]+|master-(?:posts?|asks?|tells?)\w*|forge_\w+|[A-Z][A-Z0-9]+_[A-Z0-9_]+/g;
 
 export interface Allowed {
   /** The file (relative to `src/`) the entry covers, or any file where absent. */
@@ -33,9 +38,37 @@ export const ALLOWED: readonly Allowed[] = [
     reason: 'the rule itself, taught to the agent; it is an instruction, never a sentence to say',
   },
   {
+    file: 'support/prompt.ts',
     phrase: 'team member',
     reason:
       "a person's role in the channel record (owner, team member, user), not a hand-off to anyone",
+  },
+  {
+    file: 'support/screen.ts',
+    phrase: 'team member',
+    reason:
+      "a person's role in the channel record (owner, team member, user), not a hand-off to anyone",
+  },
+  {
+    file: 'support/room-cards.ts',
+    phrase: 'team member',
+    reason:
+      "a person's role in the channel record (owner, team member, user), not a hand-off to anyone",
+  },
+  {
+    file: 'guides/room-agent-guide.ts',
+    phrase: 'nor "the AdminHub side"',
+    reason: 'the rule as the guide teaches it, naming the phrase the agent must not say',
+  },
+  {
+    file: 'guides/room-agent-guide.ts',
+    phrase: 'the AdminHub side is fixing it',
+    reason: 'a sentence the guide quotes to teach the agent never to say it',
+  },
+  {
+    file: 'support/room-cards.ts',
+    phrase: 'the AdminHub side’s check',
+    reason: 'a card quoting the sentence a room once heard, to teach against it',
   },
   {
     file: 'support/master-post.ts',
@@ -115,6 +148,10 @@ export function literalsNaming(file: string, source: string): Hit[] {
       ts.forEachChild(node, visit);
       return;
     }
+    // a template's `${...}` holds literals of its own (a refusal inside a call), read too
+    if (ts.isTemplateExpression(node)) {
+      for (const span of node.templateSpans) visit(span.expression);
+    }
     // a sentence has a space; one word is a name, a role or a code
     if (
       /\s/.test(text.trim()) &&
@@ -146,3 +183,37 @@ export function scanSrc(srcDir: string): Hit[] {
     return inScope(file, source) ? literalsNaming(file, source) : [];
   });
 }
+
+/**
+ * Said-keys no room read renders, by the first segment of the key: the page text of these keys is
+ * read by masters, operators and the web screens, never handed to a room agent. Everything else
+ * that names an internal role has the room's own wording in `ROOM_SAID`.
+ */
+export const NOT_ROOM_SAID: Readonly<Record<string, string>> = {
+  'standing.who':
+    "an actor's name: a room reads it only through roomWho, which says no person for an internal hand",
+  masters: "the masters' own passes, verdicts and refusals, read by masters and their screens",
+  runs: 'a run page: runs, slots and holds, read by operators and masters',
+  overview: "the project overview's slots and holds, a web screen",
+  workflows: "a workflow's own rules, read in the design screens",
+  designs: "a design revision's own wait, read in the design screens",
+  integrations: "an integration's health line, read by an admin",
+  requirements: "a requirement's own rules, read in the requirement screens",
+};
+
+/** Every said-key of `source` (the registry's text) whose English names an internal role, with its text. */
+export function saidKeysNaming(source: string): { key: string; text: string }[] {
+  const re = /\t"([^"]+)": \{\s*en:\s*(?:"((?:[^"\\]|\\.)*)"|`([^`]*)`)/g;
+  const out: { key: string; text: string }[] = [];
+  for (const m of source.matchAll(re)) {
+    const text = (m[2] ?? m[3] ?? '').replace(/\{[^}]*\}/g, '');
+    if (NAMES_THE_HAND.test(text) || /\brelease run\b/i.test(text)) {
+      out.push({ key: m[1] as string, text: m[2] ?? m[3] ?? '' });
+    }
+  }
+  return out;
+}
+
+/** Whether a key is one no room read renders. */
+export const notRoomSaid = (key: string): boolean =>
+  Object.keys(NOT_ROOM_SAID).some((group) => key.startsWith(`${group}.`));

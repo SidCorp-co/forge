@@ -13,7 +13,7 @@
 import type { ReleaseDetail, ReleaseProof } from '@forge/contracts/releases';
 import { readRelease } from '../release-batch/index.js';
 import { heldStewardOf, releaseTakerOf } from '../steward/index.js';
-import { isDeliveryWork, NO_PERSON } from './room-voice.js';
+import { isInternalHand, NO_PERSON, roomSay, roomWho } from './room-voice.js';
 
 /** What holds one release not yet shipped, in words the agent restates to a person. */
 export interface ReleaseHold {
@@ -115,29 +115,26 @@ export async function releaseHoldOf(
   const wait = r.waitingOn;
   const taker = await releaseTakerOf(projectId, wait, await heldStewardOf(projectId));
   const waitsOn =
-    taker.to === 'master'
-      ? wait.kind === 'agent' && !isDeliveryWork(wait.who)
-        ? wait.who
-        : NO_PERSON
+    taker.to === 'master' || taker.to === 'system'
+      ? NO_PERSON
       : taker.to === 'holders'
         ? names(taker.holders)
         : taker.to === 'nobody'
           ? 'nobody'
-          : wait.who;
-  const owes = taker.to === 'nobody' ? `${wait.act} (${taker.why})` : wait.act;
+          : roomWho(wait.says.who);
+  const waitAct = roomSay(wait.says.act);
+  const owes = taker.to === 'nobody' ? `${waitAct} (${taker.why})` : waitAct;
   const waited = waitedFor(r.at, now);
   const route =
     'if the person wants it moved, record that on this project with support.record, never approve or decide it yourself';
   const next =
-    taker.to === 'master'
-      ? waitsOn === NO_PERSON
-        ? `it is waiting to ${owes} and nobody has to be asked: say that and how long, and ${route}`
-        : `${waitsOn} is on it (${owes}): nothing is owed by a person`
+    taker.to === 'master' || taker.to === 'system'
+      ? `it is waiting to ${owes} and nobody has to be asked: say that and how long, and ${route}`
       : taker.to === 'holders'
         ? `ask ${waitsOn} to ${owes} in Forge; mention only the one the channel lists for it`
         : taker.to === 'nobody'
           ? `nobody can ${owes} yet: ${route}`
-          : `${waitsOn} is on it (${owes}): nothing is owed by a person`;
+          : `it is waiting to ${owes}: nothing is owed by a person`;
   return {
     waitsOn,
     owes,
@@ -150,14 +147,14 @@ export async function releaseHoldOf(
     why:
       waitsOn === NO_PERSON
         ? `merged issues wait at the release gate for this step: ${owes}`
-        : wait.rule,
+        : roomSay(wait.says.rule),
     blockers: r.gates
       .filter((g) => g.kind === 'blocker')
       .map((g) => ({
-        says: g.sentence,
-        owner: isDeliveryWork(g.owner.who)
-          ? `${NO_PERSON} owes it: ${g.owner.act}`
-          : `${g.owner.who} to ${g.owner.act}`,
+        says: roomSay(g.says.sentence),
+        owner: isInternalHand(g.owner.who)
+          ? `${NO_PERSON} owes it: ${roomSay(g.owner.says.act)}`
+          : `${g.owner.who} to ${roomSay(g.owner.says.act)}`,
         issues: g.issues,
       })),
     approval: approvalOf(r),

@@ -273,7 +273,7 @@ export async function answerFromRecord(c: {
   }
   if (!recordAnswerer) {
     throw new Error(
-      'question: no agent account is provided to record an answer from the record as; the steward module provides it at boot (provideRecordAnswerer)',
+      'question: no agent account is provided to record an answer from the record as; the module that records answers provides it at boot (provideRecordAnswerer)',
     );
   }
   const answeredAs = await recordAnswerer(c.projectId);

@@ -3,14 +3,27 @@
 // knows one voice. Three rounds fixed the strings a judge named and each missed the next, because the
 // guard was a list someone kept. This one reads the source: every literal of the files a room reads
 // is checked, so a new sentence is caught with no one remembering to list it.
+import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { SAID_ENTRIES, say } from '@forge/contracts/said';
 import { describe, expect, it } from 'vitest';
-import { NAMES_THE_HAND, TAUGHT_NOT_SAID } from './room-voice.js';
+import {
+  isInternalHand,
+  NAMES_THE_HAND,
+  NO_PERSON,
+  ROOM_SAID,
+  roomSay,
+  roomWho,
+  TAUGHT_NOT_SAID,
+} from './room-voice.js';
 import {
   ALLOWED,
   type Hit,
   literalsNaming,
+  NOT_ROOM_SAID,
+  notRoomSaid,
+  saidKeysNaming,
   scanSrc,
   stillNames,
 } from './room-voice-scan.fixture.js';
@@ -66,5 +79,95 @@ describe('the sentences a room reads', () => {
       expect(hits.filter(stillNames)).toEqual([]);
     }
     expect('the team is fixing it').toMatch(NAMES_THE_HAND);
+  });
+});
+
+describe('the said-keys a room reads (ISS-1483)', () => {
+  const source = readFileSync(resolve(SRC, '../../contracts/src/said-keys.ts'), 'utf8');
+  const naming = saidKeysNaming(source);
+
+  it('give every key that names an internal role the wording a room reads, or none is read by a room', () => {
+    const unworded = naming
+      .filter((k) => !notRoomSaid(k.key) && !(k.key in ROOM_SAID))
+      .map((k) => `${k.key}  "${k.text.slice(0, 90)}"`);
+    expect(unworded).toEqual([]);
+  });
+
+  it("keep every room wording in use, free of the roles, and with the page key's own variables", () => {
+    const names = new Set(naming.map((k) => k.key));
+    // the act of a judge, said as the room says it ('waits to have 0.4.0 judged'): no role named, a phrasing only
+    const phrasing = new Set(['standing.act.judgeReleaseOn']);
+    for (const [key, own] of Object.entries(ROOM_SAID)) {
+      if (phrasing.has(key)) continue;
+      expect(names.has(key), `${key} no longer names an internal role: delete its wording`).toBe(
+        true,
+      );
+      expect(NAMES_THE_HAND.test(own) || /\brelease run\b/i.test(own), `${key}: ${own}`).toBe(
+        false,
+      );
+      const entry = (SAID_ENTRIES as Record<string, { vars?: Record<string, string> }>)[key];
+      for (const [, v] of own.matchAll(/\{(\w+)\}/g)) {
+        expect(Object.keys(entry?.vars ?? {}), `${key} has no {${v}}`).toContain(v);
+      }
+    }
+  });
+
+  it('keep every NOT_ROOM_SAID group in use', () => {
+    for (const group of Object.keys(NOT_ROOM_SAID)) {
+      expect(
+        naming.some((k) => k.key.startsWith(`${group}.`)),
+        `${group} matches no key`,
+      ).toBe(true);
+    }
+  });
+
+  it('say no name for an actor that is an internal hand', () => {
+    for (const key of [
+      'standing.who.master',
+      'standing.who.projectMaster',
+      'standing.who.steward',
+      'standing.who.independentJudge',
+      'standing.who.releaseRun',
+      'standing.who.releaseGate',
+    ] as const) {
+      expect(roomWho(say(key)), key).toBe(NO_PERSON);
+    }
+    expect(roomWho(say('standing.who.you'))).toBe('You');
+    expect(isInternalHand('Independent judge')).toBe(true);
+  });
+
+  it('read the room wording of an act, with its variables', () => {
+    expect(roomSay(say('standing.act.judgeReleaseOn', { v: '0.4.0', environment: 'test' }))).toBe(
+      'have 0.4.0 judged on test',
+    );
+  });
+
+  it('turn red on a planted said-key, naming the key', () => {
+    const planted = saidKeysNaming(
+      '\t"issues.rule.planted": { en: "waits on Independent judge to judge {v}" },\n',
+    );
+    expect(planted.map((k) => k.key)).toEqual(['issues.rule.planted']);
+    expect((planted[0]?.key ?? '') in ROOM_SAID).toBe(false);
+    expect(notRoomSaid('issues.rule.planted')).toBe(false);
+  });
+
+  it('read a literal inside a template expression, and the words the judge found', () => {
+    expect(
+      literalsNaming(
+        'support/x.ts',
+        "export const s = (q: string) => `${q} is owed by ${q ? 'a check' : 'the master'}.`;",
+      ),
+    ).toHaveLength(1);
+    for (const bad of [
+      'the project side',
+      'passed to ops',
+      'the engineering team',
+      'ask the developers',
+    ]) {
+      expect(
+        literalsNaming('support/x.ts', `export const s = ${JSON.stringify(bad)};`),
+        bad,
+      ).toHaveLength(1);
+    }
   });
 });
