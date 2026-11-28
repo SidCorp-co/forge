@@ -368,11 +368,11 @@ describe('a room agent states a live setting from a read of its own turn, and na
       "A live setting, account, field, or an issue's or release's status is stated from a read made in this turn",
     );
     expect(answering).toContain(
-      "never from a release plan, release note, a master's earlier post or a read already in your context",
+      'never from a release plan, release note, an earlier post or a read already in your context',
     );
     // ISS-1430, ISS-1483: a check the master handed in this turn is the case's fact, said dated and never whose
     expect(answering).toContain(
-      'from a check a master handed you in this turn, said dated and never whose (it covers a deployment or product claim even when you also read something else this turn)',
+      'from a check handed you in this turn, said dated and never whose (it covers a deployment or product claim even when you also read something else this turn)',
     );
   });
 
@@ -438,7 +438,7 @@ describe('a room agent says what a screen shows only from a look at it (ISS-1356
   it('the Answering section makes a screen claim from a look, or asks the person for what the look needs', () => {
     expect(answering).toContain('What a screen shows is said from a look, or not said.');
     expect(answering).toContain('look at it with support.look on that environment');
-    expect(answering).toContain("a master's post, a release note or an earlier turn is no look");
+    expect(answering).toContain('a post, a release note or an earlier turn is no look');
     expect(answering).toContain(
       'Look first and answer once from what the look showed. Where you cannot look (a sign-in you lack, a box that will not open), say so once with what you need from the person (the sign-in or detail only they hold), never a progress line and never the thing anyway',
     );
@@ -447,7 +447,7 @@ describe('a room agent says what a screen shows only from a look at it (ISS-1356
   it('a step is walked in a box before it is said, and a workaround step goes to the master as a UI defect', () => {
     expect(answering).toContain('Walk each step in a box yourself before you say it');
     expect(answering).toContain('an address edit, a hidden tab, a field the screen hides');
-    expect(answering).toContain('goes to that master as a UI defect with support.record');
+    expect(answering).toContain('is recorded as a UI defect with support.record');
     expect(answering).toContain('the person is told the honest next step');
   });
 

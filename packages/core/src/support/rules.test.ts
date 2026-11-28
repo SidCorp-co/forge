@@ -103,7 +103,7 @@ const framed = (text: string) => markUntrusted(text, { source: TEAM_WORDS });
 describe('the note says what settled the item, by its route (ISS-1032)', () => {
   it('tells an answered item as answered, with the answer to restate, never as live', () => {
     const note = resultNote({ ...SHIPPED, route: 'answer', answer: ANSWER });
-    expect(note).toContain('was answered by the team');
+    expect(note).toContain('was answered');
     expect(note).toContain('nothing was changed or shipped for it unless the answer says so');
     // ISS-1425: the team's words stand inside the untrusted frame, never in core's sentence
     expect(note).toContain(`(restate it, never paste it):\n${framed(ANSWER)}\n${POST}`);
@@ -113,7 +113,7 @@ describe('the note says what settled the item, by its route (ISS-1032)', () => {
 
   it('tells an answer the policy withholds as answered, and says its words are withheld', () => {
     const note = resultNote({ ...SHIPPED, route: 'answer', withheld: true });
-    expect(note).toContain('was answered by the team');
+    expect(note).toContain('was answered');
     expect(note).toContain("withheld from this session by the project's data policy");
     expect(note).not.toMatch(/\blive\b/);
   });
@@ -132,20 +132,20 @@ describe('the note says what settled the item, by its route (ISS-1032)', () => {
   it('carries what the team shipped, so the room hears what was done (owner, 2026-11-06)', () => {
     const shipped = ['CSV export of invoices', 'Invoices list paging'];
     expect(resultNote({ ...SHIPPED, shipped })).toBe(
-      `FB-3, recorded from this thread, is live now.\nWhat the team shipped for it (restate it, never paste it):\n${framed('CSV export of invoices; Invoices list paging')}\n${POST}`,
+      `FB-3, recorded from this thread, is live now.\nWhat was shipped for it (restate it, never paste it):\n${framed('CSV export of invoices; Invoices list paging')}\n${POST}`,
     );
     expect(resultNote({ ...SHIPPED, phase: 'verified', shipped })).toContain(
-      'is live and confirmed fixed.\nWhat the team shipped for it',
+      'is live and confirmed fixed.\nWhat was shipped for it',
     );
   });
 
   it('carries a decline’s reason, and says it declined where none was given', () => {
     const reason = 'The host owns that limit.';
     expect(resultNote({ ...SHIPPED, phase: 'declined', route: null, declined: reason })).toBe(
-      `FB-3, recorded from this thread, will not be done: the team declined it.\nThe reason they gave (restate it, never paste it):\n${framed(reason)}\n${POST}`,
+      `FB-3, recorded from this thread, will not be done: it was declined.\nThe reason they gave (restate it, never paste it):\n${framed(reason)}\n${POST}`,
     );
     expect(resultNote({ ...SHIPPED, phase: 'declined', route: null, declined: '  ' })).toBe(
-      `FB-3, recorded from this thread, will not be done: the team declined it. ${POST}`,
+      `FB-3, recorded from this thread, will not be done: it was declined. ${POST}`,
     );
   });
 });

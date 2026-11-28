@@ -21,12 +21,12 @@ import { db } from '../db/client.js';
 import { supportActions, supportRooms } from '../db/schema-support.js';
 import { supportMasterAsks } from '../db/schema-support-asks.js';
 import { markUntrusted } from '../lib/untrusted-text.js';
-import { NEVER_NAME_THE_HAND } from './room-voice.js';
 import { emitEvent } from '../outbox/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { deliverWaiting } from './dispatch.js';
 import { namedProject } from './ops-scope.js';
 import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
+import { NEVER_NAME_THE_HAND } from './room-voice.js';
 import { insertAction, type RoomRow, roomById } from './store.js';
 
 const BOUND_MS = SUPPORT_MASTER_ASK_BOUND_MINUTES * 60_000;

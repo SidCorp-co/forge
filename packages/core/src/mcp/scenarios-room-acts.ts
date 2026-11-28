@@ -88,7 +88,7 @@ export const ROOM_ACT_SCENARIOS: readonly CardScenario[] = [
     teaches: [/write with support\.term/i, /never pass a word on through support\.record/i],
   },
   {
-    name: 'the room agent asks its master for what an earlier case already settled',
+    name: 'the room agent asks again for what an earlier case already settled',
     card: 'support.keep',
     source:
       'owner ruling 2026-11-28 (REQ-107 BC-5, ISS-1485): AdminHub’s room agent’s own reads fell from 8 a day to 0 or 1, the same cases asked of the master again',

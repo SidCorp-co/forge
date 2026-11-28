@@ -15,7 +15,8 @@ const SCOPE = [/^support\//, /^assistant\/chat-room\//, /^guides\/room-agent-gui
 const IMPORTS_THE_RULE = /from '(?:\.\.\/support|\.)\/room-voice\.js'/;
 
 /** A name or a code is not a sentence: an act (`support.record`), a door (`master-posts`), an error code. */
-const NAMES = /support\.[a-z_]+|master-(?:posts?|asks?|tells?)\w*|forge_\w+|[A-Z][A-Z0-9]+_[A-Z0-9_]+/g;
+const NAMES =
+  /support\.[a-z_]+|master-(?:posts?|asks?|tells?)\w*|forge_\w+|[A-Z][A-Z0-9]+_[A-Z0-9_]+/g;
 
 export interface Allowed {
   /** The file (relative to `src/`) the entry covers, or any file where absent. */
@@ -50,12 +51,14 @@ export const ALLOWED: readonly Allowed[] = [
   },
   {
     file: 'support/rest-cards.ts',
-    reason: "the cards of the REST doors a master calls; they teach the master, a room never reads them",
+    reason:
+      'the cards of the REST doors a master calls; they teach the master, a room never reads them',
   },
   {
     file: 'support/screen.ts',
     phrase: "a master's post is never the team's own report there",
-    reason: "the master-posts door's refusal for a room its product's people read, read by the master",
+    reason:
+      "the master-posts door's refusal for a room its product's people read, read by the master",
   },
   {
     file: 'support/audit-tool.ts',
@@ -108,9 +111,16 @@ export function literalsNaming(file: string, source: string): Hit[] {
     else if (ts.isTemplateExpression(node)) {
       text = node.head.text + node.templateSpans.map((s) => s.literal.text).join('\u0000');
     }
-    if (text === null) return ts.forEachChild(node, visit);
+    if (text === null) {
+      ts.forEachChild(node, visit);
+      return;
+    }
     // a sentence has a space; one word is a name, a role or a code
-    if (/\s/.test(text.trim()) && !loggedOrImported(node) && NAMES_THE_HAND.test(text.replace(NAMES, ''))) {
+    if (
+      /\s/.test(text.trim()) &&
+      !loggedOrImported(node) &&
+      NAMES_THE_HAND.test(text.replace(NAMES, ''))
+    ) {
       hits.push({ file, line: sf.getLineAndCharacterOfPosition(node.getStart()).line + 1, text });
     }
   };

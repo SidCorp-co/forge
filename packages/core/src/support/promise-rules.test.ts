@@ -91,7 +91,7 @@ describe('the session is told once, to say it in its own words (criteria 4, 5)',
   });
 
   it('says a dropped issue will never get there', () => {
-    expect(promiseNote('dropped', FACTS)).toMatch(/the team dropped that work/);
+    expect(promiseNote('dropped', FACTS)).toMatch(/that work was dropped/);
   });
 
   it('says an environment no longer tracked ends the promise', () => {

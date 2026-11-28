@@ -11,7 +11,7 @@ const AHS = 'AdminHub-Support';
 
 export const ROOM_WORK_SCENARIOS: readonly CardScenario[] = [
   {
-    name: 'the room told it cannot read feedback, and that no master is on',
+    name: 'the room told it cannot read feedback, and that nobody is on',
     card: 'support.feedback',
     source: `${FC}, 15/11 15:36 (ISS-1250, ISS-1243 item 11)`,
     situation: 'The owner: “@babo Check tình trạng project feedback xem”', // i18n-allow: a recorded room turn
@@ -74,7 +74,7 @@ export const ROOM_WORK_SCENARIOS: readonly CardScenario[] = [
     teaches: [/issue\.rule_production/, /ruling: \{ act, environment \}/, /citing their message/i],
   },
   {
-    name: 'a cause stated before any check: “this is a defect for the technical team”',
+    name: 'a cause stated before any check: “this is a defect to be fixed”',
     card: 'support.run',
     source: `${AHS}, thread ivSoBYdANvZAyCx6B, 11/11 10:40`,
     situation: 'thuanhtm: tracking is on the sheet since 11:30 and the Hub has not read it',

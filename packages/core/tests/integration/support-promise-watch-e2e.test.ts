@@ -285,7 +285,7 @@ describe('ISS-1012: a support room promises to tell a person when an issue reach
     expect(drop.status, JSON.stringify(drop.body)).toBe(200);
     await tellProjectPromises(w.projectId);
     await expect.poll(() => notes.length, { timeout: 15_000 }).toBe(1);
-    expect(notes[0]?.text).toContain('the team dropped that work');
+    expect(notes[0]?.text).toContain('that work was dropped');
     // the project stops declaring staging: the last open promise is answered, not left silent
     await seedProjectDocument(w.projectId, w.ownerId, { environments: environments(false) });
     expect(await tellProjectPromises(w.projectId)).toBe(1);

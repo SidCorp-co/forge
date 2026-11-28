@@ -37,7 +37,7 @@ describe('a person asking about a screen is shown that screen', () => {
     for (const b of briefs) {
       expect(taught(b)).toContain('show them the screen as they see it: look first');
       expect(taught(b)).toContain(
-        "no route carries one from a master into a users' room, so never say a guide, a PDF or pictures will follow",
+        "no route carries one into a users' room, so never say a guide, a PDF or pictures will follow",
       );
       expect(taught(b)).toContain('record it with support.record { kind: request, project }');
       expect(taught(b)).not.toContain('the guide will follow');

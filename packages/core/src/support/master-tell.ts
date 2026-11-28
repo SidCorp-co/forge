@@ -7,11 +7,11 @@
 
 import type { SupportMasterTellRequest } from '@forge/contracts/support-master-ask';
 import { markUntrusted } from '../lib/untrusted-text.js';
-import { NEVER_NAME_THE_HAND } from './room-voice.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { deliverWaiting } from './dispatch.js';
 import { masterReach, roomOfThread, roomRefusal } from './master-post.js';
 import type { Outcome } from './outcome.js';
+import { NEVER_NAME_THE_HAND } from './room-voice.js';
 import { insertAction } from './store.js';
 import { roomAuth, threadConversationOf } from './thread.js';
 

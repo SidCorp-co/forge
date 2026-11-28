@@ -104,7 +104,7 @@ describe('the room brief teaches an ask it cannot do to wait on the master', () 
 
   it('routes it to the owning project’s master, holds once, and replies only with what was done', () => {
     expect(taught(channel)).toContain(
-      'a request with support.record { kind: request, project } for the master of the project that owns it',
+      'a request with support.record { kind: request, project } for the project that owns it',
     );
     expect(taught(channel)).toContain(
       'acknowledge the asker’s message with support.react; the one message comes with the result, never that it was handed, passed or given to anyone',
@@ -126,7 +126,7 @@ describe('the room brief teaches an ask it cannot do to wait on the master', () 
   it('tells a result as what the team said or shipped, never done before it', () => {
     for (const text of [brief, channel]) {
       expect(taught(text)).toContain(
-        'You are told once recorded work is answered, live or will not be done, with what the team said or shipped',
+        'You are told once recorded work is answered, live or will not be done, with what was said or shipped',
       );
       expect(taught(text)).toContain('never call it done before then');
     }
@@ -153,10 +153,10 @@ describe('the room brief states an item only from the record, either way', () =>
   it('asserts neither done nor not done from what the record does not show', () => {
     for (const text of [brief, channel]) {
       expect(taught(text)).toContain(
-        "never call it done before then, nor not done: an item's state is only what the record shows (that result, or facts a master hands you for the thread)",
+        "never call it done before then, nor not done: an item's state is only what the record shows (that result, or facts handed you for the thread)",
       );
       expect(taught(text)).toContain(
-        "where the thread claims a state the record does not show, or the asker asks for one you cannot read, ask the owning project's master with support.record { project }, react to the message with support.react, and wait, asserting neither",
+        'where the thread claims a state the record does not show, or the asker asks for one you cannot read, record it with support.record { project } for the owning project, react to the message with support.react, and wait, asserting neither',
       );
     }
   });
@@ -330,7 +330,7 @@ describe('every room agent brief carries the room conduct', () => {
     expect(note).toContain('a refused act was not made');
     expect(note).not.toContain('say it is done');
     expect(note).toContain(
-      'say what the check showed and when ("at 02:05 the flag was off"), as what you checked, never that a master, a team, a project\'s side or anyone else told you',
+      'say what the check showed and when ("at 02:05 the flag was off"), as what you checked; never name a master, a team or a hand-off',
     );
     expect(note).toContain('does the case now name the problem and a solution');
   });
@@ -342,7 +342,7 @@ describe('every room agent brief carries the room conduct', () => {
       'What a deployment serves (the version, which sites run it) is read in this turn with support.releases or support.deployment; how the product behaves ("it works", a count) with support.look, support.read or a run: an issue read tells neither.',
     );
     expect(prose).toContain(
-      'A check a master handed you this turn is the case\'s fact: say it dated ("at 02:05 the flag was off"), as what was checked, never who made it',
+      'A check handed you this turn is the case\'s fact: say it dated ("at 02:05 the flag was off"), as what was checked, never who made it',
     );
     expect(prose).toContain('a release as shipped is neither');
   });
@@ -374,7 +374,7 @@ describe('every room agent brief carries the room conduct', () => {
       'how the product behaves now, from a look, a read or a run of the same turn',
     );
     expect(opening).toContain(
-      'A check a master made and handed you this turn is the case’s fact: say it dated, as what was checked, never who made it.',
+      'A check handed you this turn is the case’s fact: say it dated, as what was checked, never who made it.',
     );
     expect(opening).toContain('What none of these reached, say plainly is not confirmed now.');
   });
@@ -416,8 +416,8 @@ describe('every room agent brief carries the room conduct', () => {
       ...note.matchAll(/⟦UNTRUSTED_DATA source="([^"]+)"[^⟧]*⟧\n([\s\S]*?)\n⟦END_UNTRUSTED_DATA⟧/g),
     ];
     expect(frames.map(([, source, body]) => [source, body])).toEqual([
-      ['your ask of the master', question],
-      ['the master answer', answer],
+      ['your ask', question],
+      ['the answer', answer],
     ]);
     const outside = note.replace(/⟦UNTRUSTED_DATA[\s\S]*?⟦END_UNTRUSTED_DATA⟧/g, '');
     for (const words of [

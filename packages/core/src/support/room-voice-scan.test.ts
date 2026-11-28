@@ -6,14 +6,14 @@
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { NAMES_THE_HAND, TAUGHT_NOT_SAID } from './room-voice.js';
 import {
   ALLOWED,
-  literalsNaming,
   type Hit,
+  literalsNaming,
   scanSrc,
   stillNames,
 } from './room-voice-scan.fixture.js';
-import { NAMES_THE_HAND, TAUGHT_NOT_SAID } from './room-voice.js';
 
 const SRC = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const named = (hits: Hit[]) => hits.map((h) => `${h.file}:${h.line}  "${h.text.slice(0, 120)}"`);
@@ -37,7 +37,7 @@ describe('the sentences a room reads', () => {
   it('turn red on a planted sentence, naming its file and its words', () => {
     const planted = literalsNaming(
       'support/rules.ts',
-      "export const note = (key: string) => `${key} will not be done: the team declined it.`;\n",
+      'export const note = (key: string) => `${key} will not be done: the team declined it.`;\n',
     );
     expect(planted).toHaveLength(1);
     expect(stillNames(planted[0] as Hit)).toBe(true);
@@ -53,7 +53,9 @@ describe('the sentences a room reads', () => {
       'The master fixed it for new exports',
       'a restart will bring it back',
     ]) {
-      expect(literalsNaming('support/x.ts', `export const s = ${JSON.stringify(bad)};`)).toHaveLength(1);
+      expect(
+        literalsNaming('support/x.ts', `export const s = ${JSON.stringify(bad)};`),
+      ).toHaveLength(1);
     }
     for (const good of [
       'It was declined, and nothing more will come of it.',

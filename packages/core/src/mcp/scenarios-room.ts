@@ -46,13 +46,13 @@ export const ROOM_SCENARIOS: readonly CardScenario[] = [
     source: `${AHS}, thread jEmipdYcDKW8naEbG, 03/11 07:59 (ISS-1243: 21 of 76 replies were relays)`,
     situation: 'A user reports that a connected site’s token field cannot be saved',
     bad: 'Em đã chuyển lỗi này cho đội kỹ thuật rồi anh, khi sửa xong em sẽ báo lại trong thread này.', // i18n-allow: a recorded room turn
-    good: 'post one result: ask the master in the turn and answer from what it hands back; for a code change, a reaction on the message and one message with the result',
+    good: 'post one result: ask with support.ask_master in the turn and answer from what it hands back; for a code change, a reaction on the message and one message with the result',
     // ISS-1385 taught "the answer, or one on-it line" where the card said "results only"
     // ISS-1465: the flag teaches that a reply only saying it was passed on is the fault
     teaches: [
       /post one result/i,
       /acknowledged by a reaction/i,
-      /ask the master in the turn/i,
+      /ask with support\.ask_master in the turn/i,
       /never that it was passed on/i,
     ],
   },

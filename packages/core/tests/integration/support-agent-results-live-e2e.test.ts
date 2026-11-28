@@ -225,7 +225,7 @@ describe('ISS-1091: a read-only request comes back with what was found', () => {
     await expect.poll(() => handed.length, { timeout: 20_000 }).toBeGreaterThan(0);
     await w.settleWarm();
     // the planted red: the note said only that FB-91 was live, with nothing found to post
-    expect(handed.join('\n')).toContain(`What the team found or wrote last on it`);
+    expect(handed.join('\n')).toContain(`What was found or written last on it`);
     expect(handed.join('\n')).toContain(found);
     expect(handed.join('\n')).not.toContain('Reading the config now.');
   });

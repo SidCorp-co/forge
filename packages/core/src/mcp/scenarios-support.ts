@@ -135,7 +135,7 @@ export const SUPPORT_SCENARIOS: readonly CardScenario[] = [
     teaches: [/support\.propose_fix/, /support\.agree/],
   },
   {
-    name: 'a credential handed over in chat: kept, named once, nothing asked of its sender',
+    name: 'a credential sent in chat: kept, named once, nothing asked of its sender',
     card: 'support.secret_link',
     source:
       'ISS-1372, Forge-Communicate AdminHub thread of 20/11: the owner’s production token was dropped as [Filtered], then he was asked to delete his message; ISS-1328, 18/11: a delete-and-rotate ask after he declined',

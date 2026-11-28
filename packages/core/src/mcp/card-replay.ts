@@ -42,7 +42,7 @@ export interface RecordedTurn {
 export const ISS_1250_TURNS: readonly RecordedTurn[] = [
   {
     at: '15/11 15:36',
-    scenario: 'the room told it cannot read feedback, and that no master is on',
+    scenario: 'the room told it cannot read feedback, and that nobody is on',
     release: BEFORE.dev685.release,
     before: BEFORE.dev685.bot,
     bad: true,

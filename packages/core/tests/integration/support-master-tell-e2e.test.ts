@@ -148,7 +148,7 @@ describe("ISS-1466: a master hands a room's bot facts for a thread", () => {
     expect(refusalCodes(unknown.body as Record<string, unknown>)).toEqual([
       'SUPPORT_THREAD_UNKNOWN',
     ]);
-    expect(JSON.stringify(unknown.body)).toContain('Nothing was handed on');
+    expect(JSON.stringify(unknown.body)).toContain('Nothing reached the thread');
     const thread = await asked('Một câu hỏi khác');
     const room = await tell({ thread, facts: 'The fix is live.', rid: `nope-${randomUUID()}` });
     expect(refusalCodes(room.body as Record<string, unknown>)).toEqual(['SUPPORT_ROOM_UNKNOWN']);

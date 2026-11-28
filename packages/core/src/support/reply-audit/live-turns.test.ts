@@ -127,7 +127,7 @@ describe('the 19/11 PGPrints thread, replayed through the audit and the daily li
   it('fails the guide step that types ?tab=2 into the address bar, a hidden item to file, not a step to send', () => {
     const j = judgedIn(posted(1), noLook);
     expect(j.failed).toEqual(['no_ui_directions']);
-    expect(j.findings[0]?.why).toContain("goes to the project's master as a UI defect");
+    expect(j.findings[0]?.why).toContain('is recorded as a UI defect');
   });
 
   it('passes the replies the turns owed: what a look showed, or that the screen was not seen yet', () => {

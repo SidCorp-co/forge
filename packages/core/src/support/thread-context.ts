@@ -88,7 +88,6 @@ export async function openAsksOf(roomId: string, thread: string): Promise<string
       ),
     );
   return rows.map(
-    (r) =>
-      `your ask to ${r.slug}:\n${markUntrusted(r.question, { source: 'your ask' })}`,
+    (r) => `your ask to ${r.slug}:\n${markUntrusted(r.question, { source: 'your ask' })}`,
   );
 }

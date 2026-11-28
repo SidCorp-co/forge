@@ -353,7 +353,7 @@ describe('ISS-1483: a room agent works a case with its master', () => {
     const note = second.notes.find((n) => n.text.includes('Archived on 20/11'))?.text ?? '';
     expect(note).toContain('not yet a reply');
     expect(note).toContain('does the case now name the problem and a solution');
-    expect(note).toContain('never that a master, a team');
+    expect(note).toContain('never name a master, a team or a hand-off');
     expect(note).not.toContain('is his read');
   });
 });

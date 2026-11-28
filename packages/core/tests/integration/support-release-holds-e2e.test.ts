@@ -26,8 +26,7 @@ import { db } from '../../src/db/client.js';
 import { holderNames } from '../../src/permissions/index.js';
 import { readRelease } from '../../src/release-batch/index.js';
 import { releasesRead } from '../../src/support/ops-reads.js';
-import { TAUGHT_NOT_SAID } from '../../src/support/room-said.fixture.js';
-import { NAMES_THE_HAND } from '../../src/support/room-voice.js';
+import { NAMES_THE_HAND, TAUGHT_NOT_SAID } from '../../src/support/room-voice.js';
 import type { RoomRow } from '../../src/support/store.js';
 import '../helpers/api.js';
 import {

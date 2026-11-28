@@ -21,7 +21,7 @@ export function rocketChatPersona(
   return rocketChatDoorPersona(
     {
       projectName,
-      venue: "answering inside this Rocket.Chat channel",
+      venue: 'answering inside this Rocket.Chat channel',
       projectSlug: opts?.projectSlug,
       webBaseUrl: opts?.webBaseUrl,
     },
