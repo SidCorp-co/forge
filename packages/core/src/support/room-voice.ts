@@ -37,6 +37,9 @@ export const TAUGHT_NOT_SAID: readonly string[] = [NEVER_NAME_THE_HAND, 'support
 
 /** What a key no room wording covers reads as: no actor, no device, no pane, no dialog, no text anyone wrote. */
 export const NEUTRAL_WAIT = 'it is waiting on something outside this thread';
+
+/** What a parked issue reads as where its park text is an agent's own words, or its wait has no person's question. */
+export const NEUTRAL_PARK = 'it is paused and will resume when the condition it waits on is met';
 const NEUTRAL_PREDICATE = 'is waiting on something outside this thread';
 
 /** Words of the machinery that no room sentence holds either: a bare judge, a run, Forge as the actor, a pane, a device, a dialog. */
@@ -66,13 +69,16 @@ export const ROOM_SAID: Partial<Record<SaidKey, string>> = {
   'issues.rule.landedMaster': 'landed at `{status}`: it moves on to `awaiting_release`',
   'issues.rule.needsInfo': 'parked at needs_info: asked in Needs you; the answer resumes it',
   'issues.rule.noNote': 'no release note yet: it is written next',
-  'issues.rule.parked': 'it is paused and will resume when the condition it waits on is met',
+  'issues.rule.markOwed': 'a merged change is not yet recorded on the issue',
+  'issues.rule.parked': NEUTRAL_PARK,
   'issues.rule.parkedAsked': 'it is paused until a question about it is answered',
   'issues.rule.parkedBehind': 'it is paused behind {key} and resumes when that moves on',
   'issues.rule.personPaused': 'a person paused it; it resumes when they say',
   'issues.rule.releaseRunning': 'a release in progress holds it',
   'issues.rule.reopen': 'sent back with a reason; it is taken up again',
   'issues.rule.withheld': 'held back: nothing is started on it until that is cleared',
+  'issues.standing.act.markMerged': 'record the merged change on the issue',
+  'issues.standing.act.moveOnRefused': 'move it on once what stopped it is cleared',
   'issues.standing.act.landedWaitsJudge': 'landed, waits to be judged',
   'issues.standing.act.resumeOnce': 'resume once the condition it waits on is met',
   'issues.standing.who.patternReviewer': 'A person reviewing the pattern',
@@ -154,6 +160,9 @@ const JOINERS: Readonly<Record<string, string>> = {
   saidDots: ' · ',
 };
 
+/** The var names whose value is a sha or an error code: no room says one (bots-answer-users-by-name). */
+export const CODE_VARS: ReadonlySet<string> = new Set(['sha', 'code']);
+
 const roomPlain = (key: string): boolean => (ROOM_PLAIN as ReadonlySet<string>).has(key);
 
 /** Whether a room reads this key at all: it has the room's wording or is reviewed as it is. */
@@ -163,6 +172,7 @@ function valueText(key: string, name: string, kind: string, v: SaidValue | undef
   if (v === null || v === undefined) return '';
   if (Array.isArray(v)) return v.map(roomSay).join(JOINERS[kind] ?? '; ');
   if (typeof v === 'object') return roomSay(v as Said);
+  if (CODE_VARS.has(name) && !(`${key}.${name}` in ROOM_VARS)) return '';
   if (SAFE_KINDS.has(kind) || `${key}.${name}` in ROOM_VARS) return String(v);
   return '';
 }
@@ -193,8 +203,12 @@ export function roomSay(s: Said): string {
   return roomText(s) ?? NEUTRAL_WAIT;
 }
 
+const NO_NAME_KEYS: ReadonlySet<string> = new Set(['standing.who.nobody', 'standing.who.you']);
+
 /** The person a wait is on, as a room names them: a name only for a key reviewed to carry one, else null. */
 export function roomPerson(s: Said): string | null {
+  // "Nobody" and "You" name no one in a room: the read has no viewer, and nobody is not a person to wait on
+  if (NO_NAME_KEYS.has(s.key)) return null;
   const text = roomText(s);
   return text === null || text === '' || isInternalHand(text) ? null : text;
 }
@@ -203,6 +217,10 @@ export function roomPerson(s: Said): string | null {
 export function roomWho(s: Said): string {
   return roomPerson(s) ?? NO_PERSON;
 }
+
+/** An act with no one to owe it, as a clause: "wait out the limit" reads "is waiting out the limit". */
+const waitingTo = (act: string): string =>
+  /^wait (?:out|for) /.test(act) ? `is waiting ${act.slice(5)}` : `is waiting to ${act}`;
 
 /**
  * A wait as one clause a room says after its subject: "waits on Lan to answer a question" where a
@@ -215,5 +233,5 @@ export function roomWaits(who: Said, act: Said, reason: Said | null = null): str
   if (a === null || a === '') return NEUTRAL_PREDICATE;
   const person = roomPerson(who);
   const why = reason === null ? null : roomText(reason);
-  return `${person === null ? `is waiting to ${a}` : `waits on ${person} to ${a}`}${why ? ` (${why})` : ''}`;
+  return `${person === null ? waitingTo(a) : `waits on ${person} to ${a}`}${why ? ` (${why})` : ''}`;
 }

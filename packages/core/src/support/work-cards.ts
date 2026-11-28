@@ -217,11 +217,11 @@ export const WORK_ACT_CARDS = {
   },
   issues: {
     purpose:
-      'Reads a project’s issues, with who owes what on a parked one; one issue by key carries its latest notes, handoffs and attachments.',
+      'Reads a project’s issues, with what a parked one waits for and from whom; one issue by key carries its latest notes, handoffs and attachments.',
     situations: [
       {
         when: 'someone asks how a piece of work is going',
-        do: "read support.issues { project, key } and answer from its notes and handoffs; a parked issue's `waiting` says who owes what",
+        do: "read support.issues { project, key } and answer from its notes and handoffs, which are internal records: say what happened in your own words, never name who did it and never quote a key, sha or code; a parked issue's `waiting` says what it waits for and a person's part in it",
       },
       {
         when: 'someone names a mockup, file or picture attached to an issue',
@@ -235,7 +235,7 @@ export const WORK_ACT_CARDS = {
     practice: ['It reads the same from any of your groups, over every project you follow.'],
     example: { project: 'epod', key: 'ISS-167' },
     redFlag:
-      'Answering how work goes from an issue’s status alone, where its notes, handoffs and `waiting` say who owes what; telling a person an attached mockup cannot be read or does not exist without reading the issue’s `attachments`.',
+      'Answering how work goes from an issue’s status alone, where its notes, handoffs and `waiting` say what it waits for; repeating notes or handoffs as written, with who did it or a key, sha or code in it; telling a person an attached mockup cannot be read or does not exist without reading the issue’s `attachments`.',
     family: 'room.facts',
     audience: ['bot'],
     scenarios: ['an issue’s state told from its notes and handoffs, the latest round named'],

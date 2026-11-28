@@ -232,13 +232,13 @@ describe('ISS-877: a channel agent reads what a parked issue waits on, and from 
     const { forgeSupportTool } = await import('../../src/support/tool.js');
     const tool = forgeSupportTool({} as Parameters<typeof forgeSupportTool>[0]);
     // the act's entry is its card's purpose (ISS-1251), the one text that teaches it
-    expect(tool.actionEntries?.issues).toContain('who owes what on a parked one');
+    expect(tool.actionEntries?.issues).toContain('what a parked one waits for and from whom');
     // the brief the session was opened with names the room agent's guide, which points at it, one
     // clause and no more (ISS-1251: the brief is a map, its detail the guide)
     const opened = w.box.turns.map((t) => t.text).join('\n');
     expect(opened).toContain('support.guide {}');
     const briefed = `${opened}\n${servedGuideBody(ROOM_AGENT_GUIDE)}`;
     expect(briefed).toContain('support.issues { project, key }');
-    expect(briefed).toContain("a parked issue's `waiting` says who owes what");
+    expect(briefed).toContain("a parked issue's `waiting` says what it waits for");
   });
 });

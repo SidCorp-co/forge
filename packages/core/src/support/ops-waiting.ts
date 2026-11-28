@@ -9,9 +9,10 @@
 import { type SaidKey, say, sayEn } from '@forge/contracts/said';
 import { holdersWho, type WaitingOn } from '@forge/contracts/standing';
 import { isChoiceStep, type QuestionStep } from '../db/schema-questions.js';
-import { issueWaitsOf, loadIssuePark } from '../issues/index.js';
+import { issueWaitsOf, listIssues, loadIssuePark } from '../issues/index.js';
 import { holderNames } from '../permissions/index.js';
 import { type OpenPersonQuestion, readOpenPersonQuestions } from '../questions/index.js';
+import { parkReasonOf } from './room-read-words.js';
 import { NO_PERSON, roomPerson, roomSay } from './room-voice.js';
 
 /** One option of an open question: the id `answer_question` takes, and what it says. */
@@ -46,7 +47,10 @@ export interface IssueWaiting {
   owes: string;
   /** The open questions it waits on; empty where the park asked only in its thread. */
   questions: WaitingQuestion[];
-  /** What the park said it waits on, where it said: the ask itself when no question row carries it. */
+  /**
+   * What it waits on in plain terms: the ask where a person is asked and no question row carries it, the
+   * other issue by title where it waits behind one, else one fixed sentence. Never the park's own text.
+   */
   reason: string | null;
 }
 
@@ -94,6 +98,17 @@ function owedBy(wait: WaitingOn, writers: readonly string[]): { who: string; owe
   return { who: sayEn(holdersWho(writers)), owes: sayEn(say(act)) };
 }
 
+/** The issue a wait is behind, by the key and title a person knows it by; null where it names none. */
+async function behindOf(projectId: string, wait: WaitingOn) {
+  if (wait.kind !== 'issue' || !wait.ref) return null;
+  const found = await listIssues(
+    projectId,
+    { key: wait.ref },
+    { sort: 'updatedAt:desc', limit: 1, offset: 0 },
+  );
+  return { key: wait.ref, title: found.ok ? (found.rows[0]?.title ?? null) : null };
+}
+
 /**
  * Each of `rows` that waits on a person's answer — parked at `needs_info`, or holding an open
  * question a person owes — with what it waits on, keyed by issue id. Other rows are absent.
@@ -127,7 +142,11 @@ export async function waitingOf(
       out.set(r.id, {
         ...owedBy(wait, writers),
         questions: (asked.get(r.id) ?? []).map(questionOf),
-        reason: park?.threadQuestion?.prompt ?? park?.reason ?? null,
+        reason: parkReasonOf(
+          wait.kind,
+          park?.threadQuestion?.prompt ?? null,
+          await behindOf(projectId, wait),
+        ),
       });
     }),
   );

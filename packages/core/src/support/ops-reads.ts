@@ -17,6 +17,7 @@ import { projectInScope, projectsInScope, type ScopedProject } from './ops-scope
 import type { OpsOutcome } from './ops-types.js';
 import { waitingOf } from './ops-waiting.js';
 import { no } from './outcome.js';
+import { INTERNAL_RECORD, withoutReferences } from './room-read-words.js';
 import type { RoomRow } from './store.js';
 import { scrubbedForRoom } from './thread.js';
 
@@ -55,17 +56,18 @@ async function progressOf(room: RoomRow, projectId: string, issueId: string) {
   );
   return {
     attachments,
+    internal: INTERNAL_RECORD,
     notes: await Promise.all(
       notes.map(async (n) => ({
         at: n.at.toISOString(),
-        text: clipped(await scrubbedForRoom(room, n.body)),
+        text: clipped(withoutReferences(await scrubbedForRoom(room, n.body))),
       })),
     ),
     handoffs: await Promise.all(
       handoffs.map(async (h) => ({
         step: h.step,
         at: h.createdAt.toISOString(),
-        text: clipped(await scrubbedForRoom(room, handoffText(h.payload))),
+        text: clipped(withoutReferences(await scrubbedForRoom(room, handoffText(h.payload)))),
       })),
     ),
   };
