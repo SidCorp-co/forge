@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.862] - 2026-11-28
+
+Room agents hear only reviewed wording; release-gate waits read as places
+
+### Changed
+
+- **A room agent hears a wait as one plain clause, and a said-key with no room wording reads as a fixed sentence.** Nothing names a device, pane, dialog, park reason or "no person"; VISION restores understanding beside the assistant.
+
 ## [0.4.0-dev.861] - 2026-11-28
 
 Room agents speak of what waits, never of an internal role acting
