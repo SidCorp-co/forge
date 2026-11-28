@@ -222,7 +222,7 @@ export const ROOM_ACT_CARDS = {
     ],
     practice: [
       'Say in the question what to do, so the master can act on it at once.',
-      'Carry the case: problem and solution as you hold them now, left out while unknown. The thread’s asks in order are the case (support.in_flight lists them).',
+      'Carry the case: problem and solution as you hold them now, left out while unknown. A follow-up of the same need continues the case and its rounds; a different need of theirs is a new case (newCase: true). support.in_flight lists the thread’s asks.',
       'Its answer is what you learn: where the problem or a solution is still open, ask again with what it settled; speak once, in your own voice, when both are named, never naming a master, team or hand-off.',
     ],
     example: {

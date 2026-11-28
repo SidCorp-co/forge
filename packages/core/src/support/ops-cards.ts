@@ -62,7 +62,7 @@ export const OPS_ACT_CARDS = {
     example: {
       threads: [THREAD, 'k3RtYp8LmWq2ZxN5c'],
       question: 'Why does the export lose the size column?',
-      answer: 'A known defect the team is fixing; the CSV export still holds it.',
+      answer: 'A known defect that is being fixed; the CSV export still holds it.',
       feedback: 'FB-12',
     },
     redFlag: 'Answering the same question afresh in each thread instead of keeping it once.',

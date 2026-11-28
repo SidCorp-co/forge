@@ -12,6 +12,7 @@ import { isChoiceStep, type QuestionStep } from '../db/schema-questions.js';
 import { issueWaitsOf, loadIssuePark } from '../issues/index.js';
 import { holderNames } from '../permissions/index.js';
 import { type OpenPersonQuestion, readOpenPersonQuestions } from '../questions/index.js';
+import { isDeliveryWork, NO_PERSON } from './room-voice.js';
 
 /** One option of an open question: the id `answer_question` takes, and what it says. */
 interface WaitingOption {
@@ -86,7 +87,8 @@ const OWES: Readonly<Record<string, SaidKey>> = {
  * the project's writers (the answer route's floor), and the act; any other wait as it is said.
  */
 function owedBy(wait: WaitingOn, writers: readonly string[]): { who: string; owes: string } {
-  if (wait.kind !== 'answer') return { who: wait.who, owes: wait.act };
+  if (wait.kind !== 'answer')
+    return { who: isDeliveryWork(wait.who) ? NO_PERSON : wait.who, owes: wait.act };
   const act = OWES[wait.says.who.key] ?? 'issues.standing.act.answer';
   return { who: sayEn(holdersWho(writers)), owes: sayEn(say(act)) };
 }

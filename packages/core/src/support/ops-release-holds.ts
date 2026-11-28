@@ -6,26 +6,29 @@
 // (`steward/release-ask.ts:releaseTakerOf`) of that page's wait, which names the master for a draft
 // it cuts (`release-view.ts:draftTurn`, ISS-1043), as Needs you leaves it. sidpeak's rooms (FB-516, FB-517, FB-537, FB-539) read only a draft's state and
 // issue count, tried to approve an uncut draft, and asked Forge to cut it. The agent restates this in
-// the room's words: it carries no refusal code for people to read.
+// the room's words: it carries no refusal code for people to read. A wait that is the project's
+// delivery work (a cut, a record) reads as what it waits for, never whose act it is
+// (ISS-1483): the room says what is waiting and how long, and a person is named only where one owes it.
 
 import type { ReleaseDetail, ReleaseProof } from '@forge/contracts/releases';
 import { readRelease } from '../release-batch/index.js';
 import { heldStewardOf, releaseTakerOf } from '../steward/index.js';
+import { isDeliveryWork, NO_PERSON } from './room-voice.js';
 
 /** What holds one release not yet shipped, in words the agent restates to a person. */
 export interface ReleaseHold {
-  /** Who owes the next act, by name: the project's master, a person, or Forge's own release run. */
+  /** Who owes the next act, by name where a person or Forge's release run does; `no person` where it is delivery work. */
   waitsOn: string;
   /** What they owe, lower case after the name. */
   owes: string;
-  /** `waits on the project's master to cut 0.22.0, since 2026-11-06T08:45:04.000Z (35 minutes)`. */
+  /** `waits to cut 0.22.0, since 2026-11-06T08:45:04.000Z (35 minutes)`, or `waits on Lan to approve 0.22.0, since …`. */
   says: string;
   since: string;
   /** How long it has waited, in words. */
   waited: string;
   /** Why it waits so, as the release page says it. */
   why: string;
-  /** Each reason that stands against it going out, with whoever owes its act. */
+  /** Each reason that stands against it going out, with a person who owes its act where one does. */
   blockers: { says: string; owner: string; issues: string[] }[];
   /** The approval it owes or carries, who may give it, and where one said in chat goes. */
   approval: string;
@@ -40,7 +43,7 @@ export interface ReleaseHold {
  * recorded, so a hold never says nothing is happening.
  */
 export const UNSEEN =
-  "Forge reads only what is recorded on it: a deploy or release done outside Forge shows here once the project's master records it, so a release waiting here does not mean nothing is happening. Say how long it has waited and whose act it waits on, never that it is stuck or that nobody is working on it.";
+  'Forge reads only what is recorded on it: a deploy or release done outside Forge shows here once it is recorded on the project, so a release waiting here does not mean nothing is happening. Say how long it has waited and what it waits for (and a person by name where one owes it), never that it is stuck or that nobody is working on it.';
 
 const PROOF_WHY: Partial<Record<ReleaseProof, string>> = {
   failing: 'a criterion failed when it was judged',
@@ -113,9 +116,9 @@ export async function releaseHoldOf(
   const taker = await releaseTakerOf(projectId, wait, await heldStewardOf(projectId));
   const waitsOn =
     taker.to === 'master'
-      ? wait.kind === 'agent' && wait.says.who.key !== 'standing.who.master'
+      ? wait.kind === 'agent' && !isDeliveryWork(wait.who)
         ? wait.who
-        : "the project's master"
+        : NO_PERSON
       : taker.to === 'holders'
         ? names(taker.holders)
         : taker.to === 'nobody'
@@ -124,10 +127,12 @@ export async function releaseHoldOf(
   const owes = taker.to === 'nobody' ? `${wait.act} (${taker.why})` : wait.act;
   const waited = waitedFor(r.at, now);
   const route =
-    "route it to the project's master (support.record on this project), never approve or decide it yourself";
+    'if the person wants it moved, record that on this project with support.record, never approve or decide it yourself';
   const next =
     taker.to === 'master'
-      ? `ask ${waitsOn} to ${owes}: ${route}`
+      ? waitsOn === NO_PERSON
+        ? `it is waiting to ${owes} and nobody has to be asked: say that and how long, and ${route}`
+        : `${waitsOn} is on it (${owes}): nothing is owed by a person`
       : taker.to === 'holders'
         ? `ask ${waitsOn} to ${owes} in Forge; mention only the one the channel lists for it`
         : taker.to === 'nobody'
@@ -136,15 +141,23 @@ export async function releaseHoldOf(
   return {
     waitsOn,
     owes,
-    says: `waits on ${waitsOn} to ${owes}, since ${r.at} (${waited})`,
+    says:
+      waitsOn === NO_PERSON
+        ? `waits to ${owes}, since ${r.at} (${waited})`
+        : `waits on ${waitsOn} to ${owes}, since ${r.at} (${waited})`,
     since: r.at,
     waited,
-    why: wait.rule,
+    why:
+      waitsOn === NO_PERSON
+        ? `merged issues wait at the release gate for this step: ${owes}`
+        : wait.rule,
     blockers: r.gates
       .filter((g) => g.kind === 'blocker')
       .map((g) => ({
         says: g.sentence,
-        owner: `${g.owner.who} to ${g.owner.act}`,
+        owner: isDeliveryWork(g.owner.who)
+          ? `${NO_PERSON} owes it: ${g.owner.act}`
+          : `${g.owner.who} to ${g.owner.act}`,
         issues: g.issues,
       })),
     approval: approvalOf(r),

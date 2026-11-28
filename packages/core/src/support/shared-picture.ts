@@ -212,7 +212,7 @@ export async function inFlightOf(room: RoomRow, thread: string): Promise<Outcome
       items: [...items.values()],
       promises,
       asks: await asksOfThread(room, thread),
-      next: 'Nothing was posted. This is what the masters hold for this thread and its asker: say nothing that contradicts it, and ask a master (ask_master) only what it does not already answer.',
+      next: 'Nothing was posted. This is what is already in flight for this thread and its asker: say nothing that contradicts it, and use support.ask_master only for what it does not already answer.',
     },
   };
 }

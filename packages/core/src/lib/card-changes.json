@@ -1535,7 +1535,7 @@
     "by": "ISS-1251"
   },
   "support.ask_master": {
-    "hash": "ec37a73905bf48c5",
+    "hash": "c3b816d5219ff6af",
     "on": "2026-11-28",
     "by": "ISS-1483"
   },
@@ -1575,9 +1575,9 @@
     "by": "ISS-1251"
   },
   "support.common_issue": {
-    "hash": "27a330c4bf687ffc",
-    "on": "2026-11-16",
-    "by": "ISS-1251"
+    "hash": "26e48a4bde2c3b19",
+    "on": "2026-11-28",
+    "by": "ISS-1483"
   },
   "support.decide": {
     "hash": "3c5d05d1813d3db6",
@@ -1740,9 +1740,9 @@
     "by": "ISS-1475"
   },
   "support.releases": {
-    "hash": "71426517f73f159d",
-    "on": "2026-11-23",
-    "by": "ISS-1440"
+    "hash": "c80addf4ca00dcfb",
+    "on": "2026-11-28",
+    "by": "ISS-1483"
   },
   "support.reply": {
     "hash": "1128feab0ac0158f",

@@ -248,7 +248,7 @@ describe('ISS-1348: one secret act for every kind of slot', () => {
     });
     expect(asked).toMatchObject({ kind: 'variable', held: false, project: own.slug });
     // ISS-1392: at the ask, the slot is said created protected, naming which runs read it
-    expect(asked.says).toContain(`${asked.readBy}. Any other master or run reads it as withheld`);
+    expect(asked.says).toContain(`${asked.readBy}. Any other use reads it as withheld`);
     expect(asked.readBy).toContain('only a run with an issue merged on `main`');
     expect(asked.write).toMatchObject({ method: 'PUT', minutes: 15 });
     expect(asked.write?.command).toContain(`curl -X PUT --data-binary @`);

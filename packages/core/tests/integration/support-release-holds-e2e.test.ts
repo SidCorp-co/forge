@@ -26,6 +26,8 @@ import { db } from '../../src/db/client.js';
 import { holderNames } from '../../src/permissions/index.js';
 import { readRelease } from '../../src/release-batch/index.js';
 import { releasesRead } from '../../src/support/ops-reads.js';
+import { TAUGHT_NOT_SAID } from '../../src/support/room-said.fixture.js';
+import { NAMES_THE_HAND } from '../../src/support/room-voice.js';
 import type { RoomRow } from '../../src/support/store.js';
 import '../helpers/api.js';
 import {
@@ -69,9 +71,23 @@ interface HeldRelease {
   };
 }
 
+/** Every sentence of one read, which the room's agent relays: none may name the master, a team or a hand-off. */
+function relayed(value: unknown): string[] {
+  if (typeof value === 'string') return [value];
+  if (Array.isArray(value)) return value.flatMap(relayed);
+  if (value && typeof value === 'object') return Object.values(value).flatMap(relayed);
+  return [];
+}
+
 async function read(): Promise<{ releases: HeldRelease[]; unseen?: string }> {
   const out = await releasesRead(room(), slug);
   if (!out.ok) throw new Error(JSON.stringify(out.refusals));
+  // ISS-1483 (dev.858): the hold said "waits on the project's master"; the guard holds every read of it
+  for (const text of relayed(out.value))
+    expect(
+      TAUGHT_NOT_SAID.reduce((t, ok) => t.split(ok).join(''), text),
+      `a release read says: ${text}`,
+    ).not.toMatch(NAMES_THE_HAND);
   return out.value as { releases: HeldRelease[]; unseen?: string };
 }
 
@@ -93,7 +109,7 @@ beforeEach(async () => {
 });
 
 describe("a room's release read says what holds a draft (sidpeak 0.22.0, FB-537)", () => {
-  it("a draft waiting on its cut waits on the project's master, since when and for how long", async () => {
+  it('a draft waiting on its cut says what it waits for, since when and for how long, naming no one', async () => {
     await fx.insertIssue('awaiting_release', {
       section: 'Added',
       title: 'Visit reminders',
@@ -102,17 +118,17 @@ describe("a room's release read says what holds a draft (sidpeak 0.22.0, FB-537)
     const { releases, unseen } = await read();
     const draft = releases.find((r) => r.state === 'draft');
     expect(draft?.holds?.says).toMatch(
-      /^waits on the project's master to cut 0\.1\.0, since \d{4}-\d\d-\d\dT[\d:.]+Z \(\d+ minutes?\)$/,
+      /^waits to cut 0\.1\.0, since \d{4}-\d\d-\d\dT[\d:.]+Z \(\d+ minutes?\)$/,
     );
     expect(draft?.holds?.notReady).toEqual([]);
-    expect(draft?.holds?.next).toContain("route it to the project's master");
+    expect(draft?.holds?.next).toContain('record that on this project with support.record');
     // never claims nothing is happening: what Forge cannot read is said by name
     expect(unseen).toContain('does not mean nothing is happening');
   });
 
   // ISS-1043: the page said "an admin cuts the version" while every other surface left the cut to the
   // master, and the room read appended "on this project the master takes that act" to patch it
-  it("the release page itself names the project's master as the cutter, and the room read restates it unpatched", async () => {
+  it("the release page itself names the project's master as the cutter, and the room read says only what waits", async () => {
     await fx.insertIssue('awaiting_release', {
       section: 'Added',
       title: 'Visit reminders',
@@ -131,9 +147,9 @@ describe("a room's release read says what holds a draft (sidpeak 0.22.0, FB-537)
       });
     }
     const draft = (await read()).releases.find((r) => r.state === 'draft');
-    expect(draft?.holds?.says).toContain("waits on the project's master to cut 0.1.0");
+    expect(draft?.holds?.says).toContain('waits to cut 0.1.0');
     expect(draft?.holds?.why).toBe(
-      `merged issues wait at the release gate; the master cuts with POST /api/projects/${projectId}/release-batches`,
+      'merged issues wait at the release gate for this step: cut 0.1.0',
     );
     expect(draft?.holds?.why).not.toContain('takes that act');
   });

@@ -155,7 +155,7 @@ export const WORK_ACT_CARDS = {
   },
   releases: {
     purpose:
-      'Reads a project’s releases: what each holds, where it is live, and what holds a draft and whose approval it waits on.',
+      'Reads a project’s releases: what each holds, where it is live, and what a draft waits for and the approval it owes.',
     situations: [
       {
         when: 'you would say done, fixed, live or released',
@@ -163,7 +163,7 @@ export const WORK_ACT_CARDS = {
       },
       {
         when: 'someone asks why a release has not shipped',
-        do: "answer from support.releases' `holds` for it: whose act it waits on and since when, and each issue not ready and why",
+        do: "answer from support.releases' `holds` for it: what it waits for and since when (a person by name only where one owes it), and each issue not ready and why",
       },
     ],
     practice: [
