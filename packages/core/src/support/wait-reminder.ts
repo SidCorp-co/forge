@@ -24,6 +24,7 @@ import { grantsOf, supportConfigOf } from './grants.js';
 import { no, type Outcome } from './outcome.js';
 import { sharedRoomOf } from './project-thread.js';
 import { type Refusal, refusalOf } from './refusals.js';
+import { titleWords } from './room-read-words.js';
 import { checkThreadOf } from './rules.js';
 import { insertAction, type RoomRow, roomsOfProject } from './store.js';
 import { technicalChannelOf } from './technical-channel.js';
@@ -138,7 +139,7 @@ export function reminderNote(
       ? `the project's own thread of this operations room`
       : `a direct message to the project's owner`;
   return [
-    `Morning reminder for ${project.name} (${project.slug}): ${waits.length} waits on a person have stood 12 hours or more.`,
+    `Morning reminder for ${titleWords(project.name, 'project')} (${project.slug}): ${waits.length} waits on a person have stood 12 hours or more.`,
     `Answer it with support.check_result { check: "${thread}", finding }: one post, in ${where}, once this morning; finding null when nothing is left to remind, and nothing is posted.`,
     `First re-read each with support.issues, support.requirements and support.releases { project: "${project.slug}" }, and leave out what the record already settles; settle it with the act that fits where you can. In the reader's language and your own words, each wait oldest first: how long it waited, its ask in one line, the recommended option, @-mention whoever owes it, and its link behind your own words, [what it is](link), never the bare address or an id.`,
     'A reply to it in the thread is the answer of whoever wrote it: take it as them, citing their message, with the act that fits.',

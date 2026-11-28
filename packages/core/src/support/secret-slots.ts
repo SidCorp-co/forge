@@ -19,6 +19,7 @@ import {
   variableHeld,
 } from '../project-config/index.js';
 import { no, type Outcome } from './outcome.js';
+import { titleWords } from './room-read-words.js';
 
 /** The fields of the act that name a slot: the act's own, and the page's. */
 export type SlotNamed = Pick<
@@ -183,7 +184,9 @@ async function integrationSlot(
     );
   }
   if (connections.length > 1) {
-    const names = connections.map((c) => c.displayName ?? c.provider).join(', ');
+    const names = connections
+      .map((c) => titleWords(c.displayName ?? c.provider, 'connection'))
+      .join(', ');
     return no(
       'SUPPORT_SECRET_INTEGRATION_AMBIGUOUS',
       '/provider',

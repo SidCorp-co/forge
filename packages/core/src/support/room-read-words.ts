@@ -61,7 +61,7 @@ export function withoutReferences(text: string): string {
 }
 
 /** What each kind of record reads as in a room where its own title or name would name an internal hand. */
-const KIND_LABEL = {
+export const KIND_LABEL = {
   issue: 'an issue',
   requirement: 'a requirement',
   release: 'a release',
@@ -69,8 +69,12 @@ const KIND_LABEL = {
   project: 'a project',
   step: 'a step',
   file: 'an attachment',
-  runner: 'a runner',
+  runner: 'a machine',
   reason: 'a reason a person gave',
+  decision: 'a decision waiting on a person',
+  question: 'a question waiting on a person',
+  connection: 'a connection',
+  knowledge: 'a knowledge entry',
 } as const;
 
 /**

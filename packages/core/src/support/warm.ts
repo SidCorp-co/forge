@@ -14,6 +14,7 @@ import { briefStale } from './brief-told.js';
 import { hasReady, roomsOfProjects, roomsToWarm } from './delivery.js';
 import { deliverWaiting, followedCheckouts, handTurn, noteTurn } from './dispatch.js';
 import { replayPlacedRooms } from './replay.js';
+import { titleWords } from './room-read-words.js';
 import { roomWithSession, sessionToHand } from './room-session.js';
 import {
   declareSupportRooms,
@@ -91,7 +92,11 @@ async function warmOnce(roomId: string, why: WarmReason): Promise<WarmOutcome> {
     // the warm-up carries the brief again, since a binding change may have changed it (`brief-told.ts`)
     const [project] = await forgeReads().projectsByIds([room.projectId]);
     const followed = await followedCheckouts(room, box.deviceId);
-    if (!project || !(await briefStale(room, session, project.name, followed))) return 'resident';
+    if (
+      !project ||
+      !(await briefStale(room, session, titleWords(project.name, 'project'), followed))
+    )
+      return 'resident';
     noteTurn(room.id, new Date());
     if (await startedBeside(handTurn(room, session, box, { warmUp: WARM_UP_LINE }))) return 'busy';
     return 'retold';

@@ -18,6 +18,7 @@ import {
 } from '../integrations/rocketchat/index.js';
 import { grantsOf, supportConfigOf } from './grants.js';
 import { agentProjectSlugs } from './ops-scope.js';
+import { titleWords } from './room-read-words.js';
 import { bindingNamesRoom } from './rooms.js';
 import type { RoomRow } from './store.js';
 import { roomAuth } from './thread.js';
@@ -133,7 +134,7 @@ export async function roomHealth(
   if (box && box.lacks.length > 0) {
     add(
       'BOX_TOO_OLD',
-      `the box ${box.name} does not declare ${box.lacks.join(', ')}, which this room's grant needs; update its forge-runner`,
+      `the box ${titleWords(box.name, 'runner')} does not declare ${box.lacks.join(', ')}, which this room's grant needs; update its forge-runner`,
     );
   }
   const resident =

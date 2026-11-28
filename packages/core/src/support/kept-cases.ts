@@ -14,6 +14,7 @@ import { scrubLogText } from '@forge/observability';
 import { findRecords } from '../knowledge/index.js';
 import { logger } from '../lib/logger.js';
 import { markUntrusted } from '../lib/untrusted-text.js';
+import { titleWords } from './room-read-words.js';
 import type { RoomRow } from './store.js';
 
 /** How far into a turn's messages the relevance read goes, and how many records it ranks. */
@@ -57,7 +58,7 @@ export async function keptCasesNote(
   const lines: string[] = [];
   let size = LEAD.length;
   for (const r of kept) {
-    const line = `- ${r.title} (${r.key}): ${markUntrusted(scrubLogText(r.text, []).slice(0, ENTRY_CHARS), { source: 'kept case summary' })}`;
+    const line = `- ${titleWords(r.title, 'knowledge')} (${r.key}): ${markUntrusted(scrubLogText(r.text, []).slice(0, ENTRY_CHARS), { source: 'kept case summary' })}`;
     if (size + line.length > SUPPORT_KEPT_NOTE_MAX_CHARS) break;
     lines.push(line);
     size += line.length;

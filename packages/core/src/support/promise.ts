@@ -23,6 +23,7 @@ import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
 import { environmentNamed, environmentNames, untrackedWhy } from './promise-rules.js';
 import { askerOf } from './propose.js';
 import { threadLink } from './record.js';
+import { titleWords } from './room-read-words.js';
 import { insertAction, type RoomRow } from './store.js';
 import { noteInThread } from './thread.js';
 
@@ -100,7 +101,7 @@ async function feedbackRefusal(project: ScopedProject, seq: number): Promise<Out
   }
   const carrying = await db.select(ISSUE_COLUMNS).from(issues).where(inArray(issues.id, carriers));
   const named = carrying
-    .map((i) => `${keyOf(project, i.issSeq)} ("${i.title}", ${i.status})`)
+    .map((i) => `${keyOf(project, i.issSeq)} ("${titleWords(i.title, 'issue')}", ${i.status})`)
     .join(', ');
   return feedbackNotIssue(
     `${key} is feedback, not an issue: its triage carries it on ${named}. Promise on that issue instead; nothing was promised`,
@@ -147,7 +148,7 @@ async function promisedIssue(
     return no(
       'SUPPORT_PROMISE_ISSUE_DROPPED',
       '/issue',
-      `${key} ("${issue.title}") is dropped: it will not be delivered, so it will reach no environment. Nothing was promised; tell the person so`,
+      `${key} ("${titleWords(issue.title, 'issue')}") is dropped: it will not be delivered, so it will reach no environment. Nothing was promised; tell the person so`,
     );
   }
   return { ok: true, value: { project: project.value, issue, key } };
@@ -199,6 +200,7 @@ export async function makePromise(
   const { project, issue, key } = named.value;
   const environment = await promisedEnvironment(project, input.environment);
   if (!environment.ok) return environment;
+  const roomTitle = titleWords(issue.title, 'issue');
   const asker = asked.asker;
   const askerName = asker.label ?? asker.key;
   const [made] = await db
@@ -262,10 +264,10 @@ export async function makePromise(
       promised: true,
       created: Boolean(made),
       promise: standing.id,
-      issue: { key, title: issue.title },
+      issue: { key, title: roomTitle },
       environment: environment.value,
       asker: askerName,
-      next: `The promise is recorded and the record keeps it; the act is the commitment. Nothing was posted: acknowledge the asker's message with support.react and post nothing about it now. You are told once "${issue.title}" reaches ${environment.value}, or if it never will; speak once then, in your own words, never a date.`,
+      next: `The promise is recorded and the record keeps it; the act is the commitment. Nothing was posted: acknowledge the asker's message with support.react and post nothing about it now. You are told once "${roomTitle}" reaches ${environment.value}, or if it never will; speak once then, in your own words, never a date.`,
     },
   };
 }

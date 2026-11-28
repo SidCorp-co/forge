@@ -51,6 +51,7 @@ import { ownViewOf } from './owner-git.js';
 import { coldThreads, roomMessages } from './prompt.js';
 import { roomLessonsNews } from './reply-audit/lessons-news.js';
 import { noteTurnCarried } from './room-reaches.js';
+import { titleWords } from './room-read-words.js';
 import { roomWithSession, type SessionRow, sessionOf, sessionToHand } from './room-session.js';
 import { agentMarkerOf } from './rooms.js';
 import { openSessionTurn } from './session-turns.js';
@@ -186,7 +187,7 @@ export async function handTurn(
       ? null
       : await keptCasesNote(room, 'messages' in body ? body.messages : body.direct);
   if (cold) {
-    const brief = await coldBrief(room, session, project.name, followed);
+    const brief = await coldBrief(room, session, titleWords(project.name, 'project'), followed);
     parts.push(brief);
     if (lessons) parts.push(lessons);
     if (dated) parts.push(dated);
@@ -203,7 +204,7 @@ export async function handTurn(
   } else {
     // a resident session is told its brief again once this build renders it otherwise (ISS-1251), and
     // the channel record again when it changed since it was told (BC-41)
-    const retold = await briefNews(room, session, project.name, followed);
+    const retold = await briefNews(room, session, titleWords(project.name, 'project'), followed);
     const news = 'warmUp' in body ? null : await channelNews(room);
     const told = [retold, news, lessons, dated, kept].filter((p): p is string => p !== null);
     if (retold || lessons) noteTurnCarried(room, session.id, [retold, lessons].join('\n\n'));

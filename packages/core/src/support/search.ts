@@ -11,6 +11,7 @@ import type { Found } from '../run-context/index.js';
 import { namedProject } from './ops-scope.js';
 import type { Outcome } from './outcome.js';
 import { noteRoomReached } from './room-reaches.js';
+import { titleWords } from './room-read-words.js';
 import type { RoomRow } from './store.js';
 import { scrubbedForRoom } from './thread.js';
 
@@ -132,7 +133,7 @@ export async function search(
     ...records.map((c) => ({
       cite:
         c.type === 'reference' ? `reference:${from}${c.ref}` : `knowledge:${from}${c.key ?? c.ref}`,
-      title: c.title,
+      title: titleWords(c.title, 'knowledge'),
       excerpt: c.text.slice(0, 1200),
     })),
     ...api,

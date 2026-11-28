@@ -381,3 +381,59 @@ describe('ISS-1275: a promise names an issue by a key the project numbers it wit
     expect(await promises()).toHaveLength(before);
   });
 });
+
+describe('ISS-1483: support.promise hands a room no internal role through an issue title', () => {
+  // dev.865 judge, criterion 1: the dropped refusal, the feedback refusal and the promise's own reply
+  // quoted an issue's raw title, and 45 of 165 dropped issues name an internal role in theirs.
+  it('words a dropped issue, a feedback carrying issues and a made promise without the poison', async () => {
+    const POISON =
+      'the master hands the orchestrator, judge and steward a qa run: ISS-9999 9e174d4534ab';
+    const WORDS = /\b(?:master|orchestrator|judge|steward|qa run)\b/i;
+    const HANDLES = /ISS-9999|9e174d4534ab/;
+    const slug = String(
+      (
+        await rows<{ slug: string }>(sql`SELECT slug FROM projects WHERE id = ${w.projectId}::uuid`)
+      )[0]?.slug,
+    );
+    const dropped = await createTestIssue(w.projectId, w.ownerId, 90, {
+      status: 'dropped',
+      createdAt: new Date(),
+    });
+    const open = await createTestIssue(w.projectId, w.ownerId, 91, {
+      status: 'in_progress',
+      createdAt: new Date(),
+    });
+    await rows(
+      sql`UPDATE issues SET title = ${POISON} WHERE id IN (${dropped.id}::uuid, ${open.id}::uuid)`,
+    );
+    await createTestFeedback(w.projectId, w.ownerId, 90, [open.id, dropped.id]);
+    const out: Record<string, unknown>[] = [];
+    await onNextAsk(
+      () => w.chat.say(w.chat.bob, 'Mấy việc kia bao giờ xong?'),
+      async (turn, act) => {
+        const m = turn.messages.find((x) => x.from !== 'forge');
+        const ask = (extra: Record<string, unknown>) =>
+          act({ action: 'promise', thread: m?.thread, environment: 'staging', ...extra });
+        out.push(await ask({ issue: 'ISS-90' }));
+        out.push(await ask({ issue: 'FB-90', project: slug }));
+        out.push(
+          await ask({ issue: 'ISS-91', asker: (m?.from as { id: string } | undefined)?.id }),
+        );
+        await act({ action: 'reply', thread: m?.thread, text: 'Mình ghi nhận rồi nhé.' });
+      },
+    );
+    expect(out.map((o) => refusalCodes(o).join())).toEqual([
+      'SUPPORT_PROMISE_ISSUE_DROPPED',
+      'SUPPORT_PROMISE_FEEDBACK_NOT_ISSUE',
+      '',
+    ]);
+    expect(out[2]).toMatchObject({ promised: true, issue: { key: 'ISS-91', title: 'an issue' } });
+    for (const o of out) {
+      const said = JSON.stringify(o);
+      expect(said).not.toMatch(WORDS);
+      expect(said).not.toMatch(HANDLES);
+    }
+    expect(JSON.stringify(out[0])).toContain('ISS-90 (\\"an issue\\") is dropped');
+    expect(JSON.stringify(out[1])).toContain('ISS-91 (\\"an issue\\"');
+  });
+});

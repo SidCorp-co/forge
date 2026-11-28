@@ -5,6 +5,7 @@
 import { SUPPORT_BOX_CAPABILITIES } from '@forge/contracts/support';
 import { boxLacks, sessionRowById } from '../agent-sessions/index.js';
 import { no, type Outcome } from './outcome.js';
+import { titleWords } from './room-read-words.js';
 import type { RoomRow } from './store.js';
 
 export async function boxOfRoom(
@@ -29,7 +30,7 @@ export async function boxOfRoom(
     return no(
       'SUPPORT_COMMAND_FAILED',
       '/action',
-      `the box ${box.name} this room runs on does not declare ${capability}: its forge-runner predates it (\`forge-runner update\` on the box)`,
+      `the box ${titleWords(box.name, 'runner')} this room runs on does not declare ${capability}: its forge-runner predates it (\`forge-runner update\` on the box)`,
     );
   }
   return { ok: true, value: deviceId };

@@ -23,6 +23,7 @@ import { paramTakes } from './ops-read-args.js';
 import { answersOf } from './owner-answer.js';
 import { ownerOwedNote } from './owner-owed.js';
 import { OWNER_MAP_ACTS, roomConductLines } from './room-conduct.js';
+import { titleWords } from './room-read-words.js';
 import { NEVER_NAME_THE_HAND } from './room-voice.js';
 import { type RoutingSignals, routingSignalsOf } from './routing-signals.js';
 import type { ActionRow, RoomRow } from './store.js';
@@ -144,8 +145,8 @@ export function agentOpening(input: {
 export function followedLine(followed: readonly FollowedCheckout[]): string {
   const each = followed.map((f) =>
     f.path
-      ? `${f.slug} (${f.name}): its checkout, read-only, at ${f.path}`
-      : `${f.slug} (${f.name}): its code is not on this box`,
+      ? `${f.slug} (${titleWords(f.name, 'project')}): its checkout, read-only, at ${f.path}`
+      : `${f.slug} (${titleWords(f.name, 'project')}): its code is not on this box`,
   );
   return `You also follow ${followed.length === 1 ? 'this project' : 'these projects'} of the same product: ${each.join('; ')}. Name it as \`project\` on support.search, project, issues, releases, requirements and record; with none they read and file for your own project. A need for one of them is support.record { project } on that one, so it reaches that project. You change none of their code.`;
 }

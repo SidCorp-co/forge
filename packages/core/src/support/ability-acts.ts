@@ -20,6 +20,7 @@ import type { OpsOutcome } from './ops-types.js';
 import { move } from './ops-writes.js';
 import { knownThread, no, threadUnknown } from './outcome.js';
 import { offerChange } from './propose.js';
+import { titleWords } from './room-read-words.js';
 import { insertAction, latestThreadWriter, type RoomRow } from './store.js';
 import { scrubbedForRoom } from './thread.js';
 
@@ -157,7 +158,10 @@ export async function proposeDeploy(
       `${input.target} is named in this room's grant and is no active deploy binding of this project any more, so nothing can be deployed through it`,
     );
   }
-  const label = bound.binding.label || bound.connection.displayName || input.target;
+  const label = titleWords(
+    bound.binding.label || bound.connection.displayName || input.target,
+    'connection',
+  );
   const asker = await askingMember(room, input.thread);
   if (!asker) return threadUnknown(input.thread);
   const out = await offerChange({

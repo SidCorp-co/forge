@@ -17,7 +17,7 @@ import { ROOM_PLAIN } from './room-plain-keys.js';
 
 /** What a sentence the agent relays must never hold: an internal role acting, or a hand-off, a restart or "their side". */
 export const NAMES_THE_HAND =
-  /\bmasters?\b|\bteams?\b|\bhand-?(?:ed|s)?[ -]?(?:off|on|over)\b|\brestart|\b(?:independent judge|a judge|the judge|judges)\b|\bstewards?\b|\borchestrator|\breviewer|\bbuilders?\b|\bQA\b|\b(?:project|AdminHub|their|our|other) side\b|\b(?:to|by|the|from) ops\b(?! tools?)|\bengineering\b|\bdevelopers?\b|\b(?:passed|handed|forwarded|given) (?:it |this |that |them )?(?:on |over )?to (?:the |another |other )?(?:project|other|another|different)\b/i;
+  /\bmasters?\b|\bteams?\b|\bhand-?(?:ed|s)?[ -]?(?:off|on|over)\b|\brestart|\b(?:independent judge|a judge|the judge|judges)\b|\bstewards?\b|\borchestrator|\breviewer|\bbuilders?\b|\bQA\b|\b(?:project|AdminHub|their|our|other) side\b|\b(?:to|by|the|from) ops\b(?! tools?)|\bengineering\b|\bdevelopers?\b|\b(?:passed|handed|forwarded|given) (?:it |this |that |them )?(?:on |over )?to (?:the |another |other )?(?:project|other|another|different)\b|(?<![\p{L}\p{N}_])(?:bên (?:AdminHub|kỹ thuật|phát triển|dev|vận hành|kia)|đội (?:ngũ )?(?:kỹ thuật|phát triển|vận hành|dev)|trợ lý nội bộ|kỹ thuật viên|lập trình viên|phía (?:kỹ thuật|dự án|bên kia)|chuyển (?:cho|sang) (?:đội|bên))(?![\p{L}\p{N}_])/iu; // i18n-allow: the Vietnamese words for a hand, withheld from a room
 
 /** An actor's name on a page that is an internal hand (a master, the judge, the steward, a release run or gate), never said to a room. */
 export const isInternalHand = (who: string): boolean =>

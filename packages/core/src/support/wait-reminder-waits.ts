@@ -21,6 +21,7 @@ import { webBaseUrl } from '../lib/web-base-url.js';
 import { zonedClock } from '../lib/zoned-clock.js';
 import { namedHolders } from '../permissions/index.js';
 import { waitedToPropose } from '../questions/index.js';
+import { plainWords, titleWords } from './room-read-words.js';
 
 /** One person a wait is on: their name, and the chat name they are mentioned by where one is known. */
 export interface Ower {
@@ -191,17 +192,23 @@ export async function projectWaits(
   const held = [...byId.values()];
   const issueOf = await questionIssues(held.map(({ d }) => d.key));
   const mentions = await mentionsOf([...people.keys()], namespace);
-  return held.map(({ d, owes }) => ({
-    id: d.id,
-    ask: d.entity === 'question' ? d.question : d.title,
-    recommended: d.answers.find((a) => a.id === d.recommended?.answerId)?.label ?? null,
-    since: d.touchedAt,
-    owes: owes.map((userId) => ({
-      userId,
-      name: people.get(userId) ?? userId,
-      mention: mentions.get(userId) ?? null,
-    })),
-    link: linkOf(slug, d, issueOf),
-    escalated: waitedToPropose(d.touchedAt, now),
-  }));
+  return held.map(({ d, owes }) => {
+    const recommendedLabel = d.answers.find((a) => a.id === d.recommended?.answerId)?.label;
+    return {
+      id: d.id,
+      ask:
+        d.entity === 'question'
+          ? titleWords(d.question, 'question')
+          : titleWords(d.title, 'decision'),
+      recommended: recommendedLabel ? plainWords(recommendedLabel, 'its recommended answer') : null,
+      since: d.touchedAt,
+      owes: owes.map((userId) => ({
+        userId,
+        name: people.get(userId) ?? userId,
+        mention: mentions.get(userId) ?? null,
+      })),
+      link: linkOf(slug, d, issueOf),
+      escalated: waitedToPropose(d.touchedAt, now),
+    };
+  });
 }
