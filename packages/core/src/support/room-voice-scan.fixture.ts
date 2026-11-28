@@ -5,8 +5,9 @@
 // `ALLOWED` list below, each entry with its reason, and an entry that no longer matches anything fails.
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
+import type { SaidEntry } from '@forge/contracts/said';
 import ts from 'typescript';
-import { NAMES_THE_HAND } from './room-voice.js';
+import { INTERNAL_WORDS, NAMES_THE_HAND, ROOM_SAID, ROOM_VARS } from './room-voice.js';
 
 /** Where a sentence a room reads is worded: the support module, the chat-room assistant, the room agent's guide. */
 const SCOPE = [
@@ -184,36 +185,76 @@ export function scanSrc(srcDir: string): Hit[] {
   });
 }
 
-/**
- * Said-keys no room read renders, by the first segment of the key: the page text of these keys is
- * read by masters, operators and the web screens, never handed to a room agent. Everything else
- * that names an internal role has the room's own wording in `ROOM_SAID`.
- */
-export const NOT_ROOM_SAID: Readonly<Record<string, string>> = {
-  'standing.who':
-    "an actor's name: a room reads it only through roomWho, which says no person for an internal hand",
-  masters: "the masters' own passes, verdicts and refusals, read by masters and their screens",
-  runs: 'a run page: runs, slots and holds, read by operators and masters',
-  overview: "the project overview's slots and holds, a web screen",
-  workflows: "a workflow's own rules, read in the design screens",
-  designs: "a design revision's own wait, read in the design screens",
-  integrations: "an integration's health line, read by an admin",
-  requirements: "a requirement's own rules, read in the requirement screens",
-};
+/** The groups of keys a room read renders: waits, acts, rules and reasons of the standing, issue, release, feedback and forecast reads. */
+export const ROOM_GROUPS =
+  /^(?:standing\.(?:who|act|gate|stuck|risk|effect)|issues\.(?:standing|blocker|rule|gate|pause)|releases\.rule|forecast\.(?:reason|act|event)|feedback\.rule)\./;
 
-/** Every said-key of `source` (the registry's text) whose English names an internal role, with its text. */
-export function saidKeysNaming(source: string): { key: string; text: string }[] {
-  const re = /\t"([^"]+)": \{\s*en:\s*(?:"((?:[^"\\]|\\.)*)"|`([^`]*)`)/g;
-  const out: { key: string; text: string }[] = [];
-  for (const m of source.matchAll(re)) {
-    const text = (m[2] ?? m[3] ?? '').replace(/\{[^}]*\}/g, '');
-    if (NAMES_THE_HAND.test(text) || /\brelease run\b/i.test(text)) {
-      out.push({ key: m[1] as string, text: m[2] ?? m[3] ?? '' });
-    }
-  }
-  return out;
+/**
+ * Whether a key's page text may be said to a room as it is: in a group a room reads, no role, run,
+ * device or actor in its words, and no var that carries a name or words someone wrote (but those
+ * `ROOM_VARS` names as said). `ROOM_PLAIN` lists exactly these and the test holds the list to this.
+ */
+export function isPlainCandidate(key: string, entry: SaidEntry): boolean {
+  if (!ROOM_GROUPS.test(key) || key in ROOM_SAID) return false;
+  if (NAMES_THE_HAND.test(entry.en) || INTERNAL_WORDS.test(entry.en)) return false;
+  if (/\brelease (?:gate|run)\b|\bno person\b/i.test(entry.en)) return false;
+  return Object.entries(entry.vars ?? {}).every(
+    ([name, kind]) => !['text', 'name', 'health'].includes(kind) || `${key}.${name}` in ROOM_VARS,
+  );
 }
 
-/** Whether a key is one no room read renders. */
-export const notRoomSaid = (key: string): boolean =>
-  Object.keys(NOT_ROOM_SAID).some((group) => key.startsWith(`${group}.`));
+/** Where a room's text is built: a direct render of a said-key in these reads skips `roomSay`'s fail-closed rule. */
+const RENDER_SCOPE = [/^support\//, /^assistant\/chat-room\//, /^conversations\//, /^forecast\//];
+
+export interface AllowedRender {
+  file: string;
+  reason: string;
+}
+
+/** The files that render a said-key with `sayEn` or `renderSaid` and may, each with why no room reads the result as it is. */
+export const ALLOWED_RENDERS: readonly AllowedRender[] = [
+  {
+    file: 'support/ops-waiting.ts',
+    reason:
+      "owedBy's answer branch: the act is one of three fixed keys (answer, decide, supply) and the who is the people holding project.write, so no role, device or text a run wrote is rendered",
+  },
+  {
+    file: 'forecast/model.ts',
+    reason:
+      "the forecast API's own English fields beside `says`, read by the web screens; a room reads only `says`, through roomWaits (shared-picture.ts:etaOf)",
+  },
+  {
+    file: 'forecast/delivery.ts',
+    reason:
+      "the forecast API's own English fields beside `says`, read by the web screens; a room reads only `says`, through roomWaits (shared-picture.ts:etaOf)",
+  },
+];
+
+/** Every direct `sayEn(...)` or `renderSaid(...)` call under `srcDir` in the files a room's text comes from, outside the room wording itself. */
+export function directRenders(srcDir: string): Hit[] {
+  return sourceFilesOf(srcDir)
+    .filter((file) => RENDER_SCOPE.some((re) => re.test(file)) && file !== 'support/room-voice.ts')
+    .flatMap((file) => directRendersIn(file, readFileSync(join(srcDir, file), 'utf8')));
+}
+
+/** The direct renders in one file's source. */
+export function directRendersIn(file: string, source: string): Hit[] {
+  const sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
+  const hits: Hit[] = [];
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      (node.expression.text === 'sayEn' || node.expression.text === 'renderSaid')
+    ) {
+      hits.push({
+        file,
+        line: sf.getLineAndCharacterOfPosition(node.getStart()).line + 1,
+        text: node.getText().slice(0, 100),
+      });
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return hits;
+}

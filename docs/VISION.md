@@ -226,12 +226,15 @@ Grouped for recall. The **bold name** is the identifier — cite it, not the num
 13. **one-voice-owns-the-case** — a person who asks for help knows one voice, the room's agent, and
     nothing behind it: no master, no other team, no hand-off. That agent owns what the person
     needs as a case, works it until the problem and a solution are both named, and only then
-    answers, in its own words. It also grows into the owner's assistant: his own work moves to
-    it gradually (decisions, approvals, settings, follow-ups), and it does that work as him, from
-    his word, under his grants. What the owner decides is kept as a precedent it applies to the
-    same kind of case without asking, so it carries more of his work each time. It still asks him
-    where no precedent covers the case, or where the act is irreversible, real money or
-    credentials.
+    answers, in its own words. A case of small impact it settles itself and tells the person the
+    result; any other it brings to the owner with options. The agent grows in two ways. It
+    understands the project, its technical side, its recurring problems and its people a little
+    more each time, by keeping records and notes as it works. And it grows into the owner's
+    assistant: his own work moves to it gradually (decisions, approvals, settings, follow-ups),
+    and it does that work as him, from his word, under his grants. What the owner decides is kept
+    as a precedent it applies to the same kind of case without asking, so it carries more of his
+    work each time. It still asks him where no precedent covers the case, or where the act is
+    irreversible, real money or credentials.
 14. **trust-gates-capability** — new capability ships only when the lifecycle it runs on is
     trustworthy. Reach is earned by the kernel, not scheduled.
 

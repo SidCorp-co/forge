@@ -11,7 +11,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { asksOfThread, type MasterAskView } from './master-ask.js';
 import { knownThread, type Outcome, threadUnknown } from './outcome.js';
-import { roomSay, roomWho } from './room-voice.js';
+import { roomWaits } from './room-voice.js';
 import { type RoomRow, roomsOfProject, threadMembers } from './store.js';
 import { TOP_LEVEL } from './thread.js';
 
@@ -45,7 +45,7 @@ export function etaOf(f: Forecast | null): IssueEta {
       return {
         likelyBy: null,
         latestBy: null,
-        says: `no date: it waits on ${roomWho(f.says.who)} to ${roomSay(f.says.act)} (${roomSay(f.says.reason)})`,
+        says: `no date: it ${roomWaits(f.says.who, f.says.act, f.says.reason)}`,
       };
     case 'not_enough_history':
       return {

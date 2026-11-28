@@ -13,11 +13,11 @@
 import type { ReleaseDetail, ReleaseProof } from '@forge/contracts/releases';
 import { readRelease } from '../release-batch/index.js';
 import { heldStewardOf, releaseTakerOf } from '../steward/index.js';
-import { isInternalHand, NO_PERSON, roomSay, roomWho } from './room-voice.js';
+import { NO_PERSON, roomPerson, roomSay, roomWaits } from './room-voice.js';
 
 /** What holds one release not yet shipped, in words the agent restates to a person. */
 export interface ReleaseHold {
-  /** Who owes the next act, by name where a person or Forge's release run does; `no person` where it is delivery work. */
+  /** Who owes the next act, by name where a person or Forge's release run does; `nobody needs to be asked` where it is delivery work. */
   waitsOn: string;
   /** What they owe, lower case after the name. */
   owes: string;
@@ -43,7 +43,7 @@ export interface ReleaseHold {
  * recorded, so a hold never says nothing is happening.
  */
 export const UNSEEN =
-  'Forge reads only what is recorded on it: a deploy or release done outside Forge shows here once it is recorded on the project, so a release waiting here does not mean nothing is happening. Say how long it has waited and what it waits for (and a person by name where one owes it), never that it is stuck or that nobody is working on it.';
+  'A deploy or release done outside Forge shows here only once it is recorded on the project, so a release waiting here does not mean nothing is happening. Say how long it has waited and what it waits for (and a person by name where one owes it), never that it is stuck or that nobody is working on it.';
 
 const PROOF_WHY: Partial<Record<ReleaseProof, string>> = {
   failing: 'a criterion failed when it was judged',
@@ -121,7 +121,7 @@ export async function releaseHoldOf(
         ? names(taker.holders)
         : taker.to === 'nobody'
           ? 'nobody'
-          : roomWho(wait.says.who);
+          : (roomPerson(wait.says.who) ?? NO_PERSON);
   const waitAct = roomSay(wait.says.act);
   const owes = taker.to === 'nobody' ? `${waitAct} (${taker.why})` : waitAct;
   const waited = waitedFor(r.at, now);
@@ -152,9 +152,7 @@ export async function releaseHoldOf(
       .filter((g) => g.kind === 'blocker')
       .map((g) => ({
         says: roomSay(g.says.sentence),
-        owner: isInternalHand(g.owner.who)
-          ? `${NO_PERSON} owes it: ${roomSay(g.owner.says.act)}`
-          : `${g.owner.who} to ${roomSay(g.owner.says.act)}`,
+        owner: roomWaits(g.owner.says.who, g.owner.says.act),
         issues: g.issues,
       })),
     approval: approvalOf(r),
