@@ -17,6 +17,8 @@ import {
   verbatim,
 } from '@forge/contracts/said';
 import { describe, expect, it } from 'vitest';
+import { notReadyOf } from './ops-release-holds.js';
+import { INTERNAL_RECORD, parkReasonOf, withoutReferences } from './room-read-words.js';
 import {
   INTERNAL_WORDS,
   isInternalHand,
@@ -45,8 +47,6 @@ import {
   scanSrc,
   stillNames,
 } from './room-voice-scan.fixture.js';
-import { notReadyOf } from './ops-release-holds.js';
-import { INTERNAL_RECORD, parkReasonOf, withoutReferences } from './room-read-words.js';
 import { etaOf } from './shared-picture.js';
 import * as workCards from './work-cards.js';
 
@@ -232,102 +232,6 @@ describe('the wording a room reads (ISS-1483)', () => {
     expect(roomWho(say('standing.who.you'))).toBe(NO_PERSON);
   });
 
-  it('read a wait on Nobody for the usage limit as waiting it out, never "on Nobody"', () => {
-    const wait = (act: Said) => roomWaits(say('standing.who.nobody'), act);
-    expect(wait(say('forecast.act.waitUsage'))).toBe(
-      'is waiting for the usage limit to reset',
-    );
-    expect(wait(say('forecast.act.waitOut', { reason: 'rate limit' }))).toBe(
-      'is waiting out the rate limit',
-    );
-    expect(roomPerson(say('standing.who.nobody'))).toBeNull();
-    expect(roomPerson(say('standing.who.named', { name: 'Lan' }))).toBe('Lan');
-  });
-
-  it('say no sha and no error code to a room, whichever key carries one', () => {
-    const planted = {
-      key: 'issues.standing.act.moveOnRefused' as SaidKey,
-      vars: { code: 'RELEASE_RECORD_MISSING' },
-    };
-    const mark = {
-      key: 'issues.rule.markOwed' as SaidKey,
-      vars: { n: 4, sha: '9e174d4534ab' },
-    };
-    const merged = {
-      key: 'issues.standing.act.markMerged' as SaidKey,
-      vars: { n: 4, sha: '9e174d4534ab' },
-    };
-    for (const s of [planted, mark, merged]) {
-      expect(roomSay(s), s.key).not.toMatch(/RELEASE_RECORD|9e174d4|\{|!4/);
-      expect(roomReads(s.key), s.key).toBe(true);
-    }
-    // the registry-wide rule: a room-read template names no {sha} or {code}, so a key added tomorrow cannot
-    const templates = [
-      ...[...ROOM_PLAIN].map((k) => [k, (SAID_ENTRIES as Record<string, SaidEntry>)[k]?.en ?? '']),
-      ...Object.entries(ROOM_SAID),
-    ];
-    for (const [key, text] of templates) {
-      expect(text, `${key} says a sha or a code to a room`).not.toMatch(/\{(?:sha|code)\}/);
-    }
-    // and a plain candidate that carries one is not plain
-    expect(
-      isPlainCandidate('issues.rule.planted', {
-        en: 'merged at {sha}',
-        vars: { sha: 'code' },
-      } as SaidEntry),
-    ).toBe(false);
-  });
-
-  it('hand a parked issue no park text, only its kind in plain terms', () => {
-    const written = 'the orchestrator runs it; their masters; builder read every path';
-    expect(parkReasonOf('master', written, null)).toBe(NEUTRAL_PARK);
-    expect(parkReasonOf('run', written, null)).toBe(NEUTRAL_PARK);
-    expect(parkReasonOf('issue', written, { key: 'ISS-12', title: 'Sign-in page' })).toBe(
-      'it is waiting for "Sign-in page" (ISS-12) to move on',
-    );
-    // a person's question is addressed to them and stays
-    expect(parkReasonOf('answer', 'Which tour do you want?', null)).toBe('Which tour do you want?');
-    expect(parkReasonOf('answer', null, null)).toBe(NEUTRAL_PARK);
-    for (const kind of ['master', 'judge', 'gate', 'machine', 'system', 'none', 'project']) {
-      const said = parkReasonOf(kind, written, null);
-      expect(NAMES_THE_HAND.test(said) || INTERNAL_WORDS.test(said), kind).toBe(false);
-    }
-  });
-
-  it('mark a note as an internal record and strip its handles', () => {
-    expect(INTERNAL_RECORD).toMatch(/internal record/);
-    expect(INTERNAL_RECORD).toMatch(/never name who did it/);
-    const note = 'ISS-1483 landed at 9e174d4534 (RELEASE_RECORD_MISSING), packages/core/src/x.ts, BC-3';
-    const clean = withoutReferences(note);
-    for (const handle of ['ISS-1483', '9e174d4534', 'RELEASE_RECORD_MISSING', 'x.ts', 'BC-3']) {
-      expect(clean, handle).not.toContain(handle);
-    }
-    expect(withoutReferences('it works now')).toBe('it works now');
-  });
-
-  it('teach the internal-record rule on the issues card the agent reads', () => {
-    const card = JSON.stringify(workCards.WORK_ACT_CARDS.issues);
-    expect(card).toMatch(/internal records/);
-    expect(card).toMatch(/never quote a key, sha or code/);
-    expect(card).not.toMatch(/says who owes what/);
-  });
-
-  it('say one rendering of a release gate, in the notReady reasons as in the blockers', () => {
-    const gate = {
-      kind: 'blocker',
-      sentence: 'Blocked by ISS-9, landed and waiting for the independent judge',
-      says: { sentence: say('issues.blocker.landedOne', { keys: 'ISS-9' }) },
-      issues: ['ISS-4'],
-    };
-    const detail = {
-      gates: [gate],
-      contents: [{ issues: [{ key: 'ISS-4', title: 'T', proof: 'proven' }] }],
-    } as unknown as Parameters<typeof notReadyOf>[0];
-    const [row] = notReadyOf(detail);
-    expect(row?.why).toBe(roomSay(gate.says.sentence));
-    expect(row?.why).not.toMatch(NAMES_THE_HAND);
-  });
-
   it('hold ROOM_PLAIN to the rule that lists it, every key real', () => {
     for (const key of ROOM_PLAIN) {
       const entry = (SAID_ENTRIES as Record<string, SaidEntry>)[key];
@@ -430,5 +334,102 @@ describe('the wording a room reads (ISS-1483)', () => {
         bad,
       ).toHaveLength(1);
     }
+  });
+});
+
+describe('what a room read hands the agent (ISS-1483)', () => {
+  it('read a wait on Nobody for the usage limit as waiting it out, never "on Nobody"', () => {
+    const wait = (act: Said) => roomWaits(say('standing.who.nobody'), act);
+    expect(wait(say('forecast.act.waitUsage'))).toBe('is waiting for the usage limit to reset');
+    expect(wait(say('forecast.act.waitOut', { reason: 'rate limit' }))).toBe(
+      'is waiting out the rate limit',
+    );
+    expect(roomPerson(say('standing.who.nobody'))).toBeNull();
+    expect(roomPerson(say('standing.who.named', { name: 'Lan' }))).toBe('Lan');
+  });
+
+  it('say no sha and no error code to a room, whichever key carries one', () => {
+    const planted = {
+      key: 'issues.standing.act.moveOnRefused' as SaidKey,
+      vars: { code: 'RELEASE_RECORD_MISSING' },
+    };
+    const mark = {
+      key: 'issues.rule.markOwed' as SaidKey,
+      vars: { n: 4, sha: '9e174d4534ab' },
+    };
+    const merged = {
+      key: 'issues.standing.act.markMerged' as SaidKey,
+      vars: { n: 4, sha: '9e174d4534ab' },
+    };
+    for (const s of [planted, mark, merged]) {
+      expect(roomSay(s), s.key).not.toMatch(/RELEASE_RECORD|9e174d4|\{|!4/);
+      expect(roomReads(s.key), s.key).toBe(true);
+    }
+    // the registry-wide rule: a room-read template names no {sha} or {code}, so a key added tomorrow cannot
+    const templates = [
+      ...[...ROOM_PLAIN].map((k) => [k, (SAID_ENTRIES as Record<string, SaidEntry>)[k]?.en ?? '']),
+      ...Object.entries(ROOM_SAID),
+    ];
+    for (const [key, text] of templates) {
+      expect(text, `${key} says a sha or a code to a room`).not.toMatch(/\{(?:sha|code)\}/);
+    }
+    // and a plain candidate that carries one is not plain
+    expect(
+      isPlainCandidate('issues.rule.planted', {
+        en: 'merged at {sha}',
+        vars: { sha: 'code' },
+      } as SaidEntry),
+    ).toBe(false);
+  });
+
+  it('hand a parked issue no park text, only its kind in plain terms', () => {
+    const written = 'the orchestrator runs it; their masters; builder read every path';
+    expect(parkReasonOf('master', written, null)).toBe(NEUTRAL_PARK);
+    expect(parkReasonOf('run', written, null)).toBe(NEUTRAL_PARK);
+    expect(parkReasonOf('issue', written, { key: 'ISS-12', title: 'Sign-in page' })).toBe(
+      'it is waiting for "Sign-in page" (ISS-12) to move on',
+    );
+    // a person's question is addressed to them and stays
+    expect(parkReasonOf('answer', 'Which tour do you want?', null)).toBe('Which tour do you want?');
+    expect(parkReasonOf('answer', null, null)).toBe(NEUTRAL_PARK);
+    for (const kind of ['master', 'judge', 'gate', 'machine', 'system', 'none', 'project']) {
+      const said = parkReasonOf(kind, written, null);
+      expect(NAMES_THE_HAND.test(said) || INTERNAL_WORDS.test(said), kind).toBe(false);
+    }
+  });
+
+  it('mark a note as an internal record and strip its handles', () => {
+    expect(INTERNAL_RECORD).toMatch(/internal record/);
+    expect(INTERNAL_RECORD).toMatch(/never name who did it/);
+    const note =
+      'ISS-1483 landed at 9e174d4534 (RELEASE_RECORD_MISSING), packages/core/src/x.ts, BC-3';
+    const clean = withoutReferences(note);
+    for (const handle of ['ISS-1483', '9e174d4534', 'RELEASE_RECORD_MISSING', 'x.ts', 'BC-3']) {
+      expect(clean, handle).not.toContain(handle);
+    }
+    expect(withoutReferences('it works now')).toBe('it works now');
+  });
+
+  it('teach the internal-record rule on the issues card the agent reads', () => {
+    const card = JSON.stringify(workCards.WORK_ACT_CARDS.issues);
+    expect(card).toMatch(/internal records/);
+    expect(card).toMatch(/never quote a key, sha or code/);
+    expect(card).not.toMatch(/says who owes what/);
+  });
+
+  it('say one rendering of a release gate, in the notReady reasons as in the blockers', () => {
+    const gate = {
+      kind: 'blocker',
+      sentence: 'Blocked by ISS-9, landed and waiting for the independent judge',
+      says: { sentence: say('issues.blocker.landedOne', { keys: 'ISS-9' }) },
+      issues: ['ISS-4'],
+    };
+    const detail = {
+      gates: [gate],
+      contents: [{ issues: [{ key: 'ISS-4', title: 'T', proof: 'proven' }] }],
+    } as unknown as Parameters<typeof notReadyOf>[0];
+    const [row] = notReadyOf(detail);
+    expect(row?.why).toBe(roomSay(gate.says.sentence));
+    expect(row?.why).not.toMatch(NAMES_THE_HAND);
   });
 });

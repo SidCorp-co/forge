@@ -97,7 +97,9 @@ export function notReadyOf(r: ReleaseDetail): ReleaseHold['notReady'] {
   return r.contents.flatMap((group) =>
     group.issues.flatMap((issue) => {
       const why = [
-        ...blockers.filter((g) => g.issues.includes(issue.key)).map((g) => roomSay(g.says.sentence)),
+        ...blockers
+          .filter((g) => g.issues.includes(issue.key))
+          .map((g) => roomSay(g.says.sentence)),
         ...(PROOF_WHY[issue.proof] ? [PROOF_WHY[issue.proof] as string] : []),
       ];
       return why.length > 0 ? [{ issue: issue.key, title: issue.title, why: why.join('; ') }] : [];
