@@ -32,7 +32,7 @@ export async function termAct(room: RoomRow, input: TermActInput): Promise<OpsOu
         actorFor(asker.value.userId),
         'project.write',
         projectResource(id),
-        'recording a term they named (hand it to the master with support.ask_master instead)',
+        'recording a term they named (send it with support.ask_master instead)',
       );
       const written = await upsertKnowledgeEntry(
         {

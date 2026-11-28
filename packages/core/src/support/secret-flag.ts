@@ -23,6 +23,7 @@ import { supportActions } from '../db/schema-support.js';
 import type { RocketChatIncomingMessage } from '../integrations/rocketchat/index.js';
 import { webBaseUrl } from '../lib/web-base-url.js';
 import { type KeptEntry, SECRET_VALUE_MAX, slotKeyOf } from '../project-config/index.js';
+import { NEVER_NAME_THE_HAND } from './room-voice.js';
 import { threadOf } from './rules.js';
 import { againOf, openAskIn, recordAsk } from './secret-asks.js';
 import type { KeptHere, NotKept, NotKeptWhy } from './secret-keep.js';
@@ -233,7 +234,7 @@ export function secretNote(input: {
             `Not kept, so the record reads [Filtered] there and no vault holds it: ${missedOf(missed)}.`,
           ]
         : []),
-      `Tell the room once, in this same reply and in your own words: what was kept, under which name, for which project, what happens to it (it is usable now, or waits for a project admin's approval), what they need to do (nothing, unless they want it revoked or replaced, and where), and the page${missed.length > 0 ? ', and what was not kept and why' : ''}. Say it as what you did and know, in the second person, and never name a master, a team or a hand-off. Then go on with what they sent it for.`,
+      `Tell the room once, in this same reply and in your own words: what was kept, under which name, for which project, what happens to it (it is usable now, or waits for a project admin's approval), what they need to do (nothing, unless they want it revoked or replaced, and where), and the page${missed.length > 0 ? ', and what was not kept and why' : ''}. Say it as what you did and know, in the second person, and ${NEVER_NAME_THE_HAND}. Then go on with what they sent it for.`,
       `Where the person wants something done with it, ask with support.ask_master naming its secret:// name, never the value; that act is yours, never something to say.`,
       NOTHING_ASKED,
     ].join(' ');

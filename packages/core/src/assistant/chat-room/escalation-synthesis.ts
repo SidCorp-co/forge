@@ -105,7 +105,7 @@ const EMPTY_SYNTHESIS = {
   why: 'empty synthesis reply',
   quote: null,
   shape: 'the synthesis carries text',
-  example: 'The team has the answer and will reply here shortly.',
+  example: 'The answer is on its way and will be posted here shortly.',
 } as const;
 
 const correctiveSynthesis = (refusals: readonly MessageRefusal[]): string =>

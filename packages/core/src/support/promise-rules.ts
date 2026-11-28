@@ -60,7 +60,7 @@ export function promiseNote(state: Exclude<SupportPromiseState, 'open'>, f: Prom
     case 'reached':
       return `${what}It has: ${f.environment} now runs a build holding that work. Tell ${f.asker} it is on ${f.environment} now. ${HOW}`;
     case 'dropped':
-      return `${what}It never will: the team dropped that work. Tell ${f.asker} it will not reach ${f.environment}, and that nothing more will come of this promise. ${HOW}`;
+      return `${what}It never will: that work was dropped. Tell ${f.asker} it will not reach ${f.environment}, and that nothing more will come of this promise. ${HOW}`;
     case 'untracked':
       return `${what}The project no longer tracks ${f.environment}, so Forge cannot see when the work gets there and this promise cannot be kept. Tell ${f.asker} you can no longer tell them when it reaches ${f.environment}. ${HOW}`;
   }

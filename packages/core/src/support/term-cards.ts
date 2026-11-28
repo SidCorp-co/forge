@@ -21,7 +21,7 @@ export const TERM_ACT_CARDS = {
       },
       {
         when: 'support.term is refused because the person may not write the project',
-        do: 'hand the word to the master with support.ask_master: the word, what it names and their quote',
+        do: 'send the word with support.ask_master: the word, what it names and their quote',
       },
     ],
     practice: [

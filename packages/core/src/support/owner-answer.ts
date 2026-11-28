@@ -386,7 +386,7 @@ async function answerForgeQuestion(
     kind: 'message_in',
     actorKind: 'core',
     input: {
-      note: `The owner's answer (message ${message.id}) was not recorded on Forge question ${questionId}: ${why}. The master who asked still waits.`,
+      note: `The owner's answer (message ${message.id}) was not recorded on Forge question ${questionId}: ${why}. Whoever asked still waits.`,
     },
     externalId: `owner-answer-unrecorded:${ask.id}:${message.id}`,
   });

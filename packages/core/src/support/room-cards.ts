@@ -8,6 +8,7 @@
 import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
 import type { SupportAction } from './act-cards.js';
 import { REPLY_CARD } from './reply-card.js';
+import { NEVER_NAME_THE_HAND } from './room-voice.js';
 
 const THREAD = '86aGqsokzYezYNdvF';
 const MESSAGE = 'pX4cQe9TnB2wLs7Rk';
@@ -37,7 +38,7 @@ export const ROOM_ACT_CARDS = {
       project: 'epod',
       signals: ['thread_history', 'sender'],
       confidence: 'high',
-      why: 'the thread is about the ePOD release its master just posted',
+      why: 'the thread is about the ePOD release just posted',
     },
     // ISS-1243: sid-desk filed mail-server work (FB-2, FB-3) that sidcorp-mail owned, chosen from
     // the message text alone; all 35 cross-project records carried no key
@@ -103,7 +104,7 @@ export const ROOM_ACT_CARDS = {
     situations: [
       {
         when: 'a confirmed team member or the owner says how this channel is to be answered',
-        do: "keep it with support.rule { thread, message, text } in their words; a ruling naming who decides an act also goes to the project's master with support.record, since the project's rulings hold that",
+        do: "keep it with support.rule { thread, message, text } in their words; a ruling naming who decides an act also goes with support.record to the project, since the project's rulings hold that",
       },
     ],
     practice: [
@@ -207,23 +208,23 @@ export const ROOM_ACT_CARDS = {
   },
   ask_master: {
     purpose:
-      'Works a case with the master of your project or one you follow, for a fact, decision or act you cannot make; each answer returns here as what you learn.',
+      'Works a case with your project or one you follow, for a fact, decision or act you cannot make; each answer returns here as what you learn.',
     situations: [
       {
         when: 'someone instructs or rules',
-        do: 'make the act with your own acts, or hand it to the master of the project it concerns with support.ask_master { thread, question, project }, saying what to do (new need: newCase: true); react with support.react, then post ONE message when done',
+        do: 'make the act with your own acts, or send it with support.ask_master to the project it concerns { thread, question, project }, saying what to do (new need: newCase: true); react with support.react, then post ONE message when done',
         watch:
           'never tell a thread what you or this room may not do, and never send anyone, the owner included, to a page, a setting or a button, the secret link aside',
       },
       {
         when: 'Forge refuses an act, or your role does not hold it',
-        do: 'hand the act to the master with support.ask_master (a grant you need goes to support.technical); a refusal is a problem to solve, never a line to repeat',
+        do: 'send the act with support.ask_master (a grant you need goes to support.technical); a refusal is a problem to solve, never a line to repeat',
       },
     ],
     practice: [
-      'Say in the question what to do, so the master can act on it at once.',
+      'Say in the question what to do, so it can be acted on at once.',
       'Carry the case: problem and solution as you hold them now, left out while unknown. A follow-up of the same need continues the case and its rounds; a different need of theirs is a new case (newCase: true). support.in_flight lists the thread’s asks.',
-      'Its answer is what you learn: where the problem or a solution is still open, ask again with what it settled; speak once, in your own voice, when both are named, never naming a master, team or hand-off.',
+      `Its answer is what you learn: where the problem or a solution is still open, ask again with what it settled; speak once, in your own voice, when both are named, ${NEVER_NAME_THE_HAND}.`,
     ],
     example: {
       thread: THREAD,
@@ -236,7 +237,7 @@ export const ROOM_ACT_CARDS = {
     // owner to set ePOD's language in Forge's settings himself
     // ISS-1483, AdminHub 26/11 and 28/11: one forwarded question, one relayed answer, "per the AdminHub side's check"
     redFlag:
-      'Explaining grants or sending the owner to a screen instead of handing the act on: on 16/11 the bot told him to set ePOD’s language in Forge’s settings himself. Forwarding one question and relaying what came back, naming the master’s side to the user: on 26/11 and 28/11 the thread heard “per the AdminHub side’s check”.',
+      'Explaining grants or sending the owner to a screen instead of handing the act on: on 16/11 the bot told him to set ePOD’s language in Forge’s settings himself. Forwarding one question and relaying what came back, naming another side to the user: on 26/11 and 28/11 the thread heard “per the AdminHub side’s check”.',
     family: 'room.hand-on',
     audience: ['bot'],
     scenarios: ['the owner told to set ePOD’s language in Forge’s settings himself'],
@@ -297,11 +298,11 @@ export const ROOM_ACT_CARDS = {
   },
   in_flight: {
     purpose:
-      'Reads what the masters have in flight for a thread and its asker: items, issues with status and forecast, promises and asks.',
+      'Reads what is in flight for a thread and its asker: items, issues with status and forecast, promises and asks.',
     situations: [
       {
         when: 'someone asks where work stands',
-        do: 'read support.in_flight for the thread, or ask the owning master with support.ask_master; never assert what the record does not show',
+        do: 'read support.in_flight for the thread, or ask with support.ask_master; never assert what the record does not show',
       },
     ],
     practice: ['Repeat an ETA only as the forecast holds it, never a date it does not.'],
@@ -325,7 +326,7 @@ export const ROOM_ACT_CARDS = {
     ],
     practice: [
       'message is the messageId reply answered you; failed is [] where every line holds.',
-      'Name in missed each capability the reply should have reached for, by its forge_find name; one_voice fails a reply naming a master, team, hand-off or restart, or posting a master’s words as written.',
+      'Name in missed each capability the reply should have reached for, by its forge_find name; one_voice fails a reply that breaks the room’s one voice, or posts words handed to it as written.',
       // ISS-1430: the code half failed a dated earlier read the agent's own reading let pass
       'A live state (setting, served version, behaviour, record status) stated with no read of that thing this turn fails accurate, dated or not; a check handed you this turn, said dated, or “not confirmed now”, does not.',
     ],
@@ -370,7 +371,7 @@ export const ROOM_ACT_CARDS = {
     situations: [
       {
         when: 'only the owner can answer a question',
-        do: 'support.ask_owner { thread, question } from the thread it arose in, once, in plain words with no issue key or sha; asking for a master, name its open Forge question as forgeQuestion',
+        do: 'support.ask_owner { thread, question } from the thread it arose in, once, in plain words with no issue key or sha; when it answers an open Forge question, name it as forgeQuestion',
       },
     ],
     practice: [

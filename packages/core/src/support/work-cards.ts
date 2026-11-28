@@ -29,7 +29,7 @@ export const WORK_ACT_CARDS = {
       'Saying what is wrong before a check confirmed it, or giving what you could not check as a guess.',
     family: 'room.diagnose',
     audience: ['bot'],
-    scenarios: ['a cause stated before any check: “this is a defect for the technical team”'],
+    scenarios: ['a cause stated before any check: “this is a defect to be fixed”'],
   },
   read: {
     purpose:
@@ -76,20 +76,20 @@ export const WORK_ACT_CARDS = {
   },
   record: {
     purpose:
-      'Proposes filing work for the team as Feedback on the project that owns it; the asker’s own request is their agreement.',
+      'Proposes filing work as Feedback on the project that owns it; the asker’s own request is their agreement.',
     situations: [
       {
-        when: 'work is for the team (a defect, a feature or a request)',
+        when: 'work is a change to make (a defect, a feature or a request)',
         do: "support.record on the project that owns it, citing the asker's own request with support.agree; post its result once you are told it, never before",
       },
       {
         when: 'you lack a tool, a read, a fact or an ability',
-        do: 'record it as a request with support.record { kind: request, project } for the master of the project that owns it, and acknowledge the asker’s message with support.react; the one message comes with the result, never that it was handed, passed or given to anyone',
+        do: 'record it as a request with support.record { kind: request, project } for the project that owns it, and acknowledge the asker’s message with support.react; the one message comes with the result, never that it was handed, passed or given to anyone',
       },
     ],
     practice: [
-      'Name the owning project as `project`: without it the item lands in your home project and its master never sees it.',
-      'A code change is only recorded, with what you checked and saw; never tell the asker it was handed, passed or given to anyone (a team, a project, a master). Never post progress or a date; once told the result, tell the asker yourself in that thread: what was fixed, where it runs, check again.',
+      'Name the owning project as `project`: without it the item lands in your home project and the owning project never sees it.',
+      'A code change is only recorded, with what you checked and saw; never tell the asker it was handed, passed or given to anyone. Never post progress or a date; once told the result, tell the asker yourself in that thread: what was fixed, where it runs, check again.',
       'Attach only the pictures that are evidence, by pictures [{ message, n }], each one you read with support.image; leave out any showing a secret, a password or a key.',
     ],
     example: {
@@ -257,7 +257,7 @@ export const WORK_ACT_CARDS = {
       'Telling the owner the room cannot read feedback: on 15/11 the bot said so and named a settings change that does not exist.',
     family: 'room.facts',
     audience: ['bot'],
-    scenarios: ['the room told it cannot read feedback, and that no master is on'],
+    scenarios: ['the room told it cannot read feedback, and that nobody is on'],
   },
   link: {
     purpose:

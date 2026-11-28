@@ -147,7 +147,7 @@ async function promisedIssue(
     return no(
       'SUPPORT_PROMISE_ISSUE_DROPPED',
       '/issue',
-      `${key} ("${issue.title}") is dropped: the team will not deliver it, so it will reach no environment. Nothing was promised; tell the person so`,
+      `${key} ("${issue.title}") is dropped: it will not be delivered, so it will reach no environment. Nothing was promised; tell the person so`,
     );
   }
   return { ok: true, value: { project: project.value, issue, key } };

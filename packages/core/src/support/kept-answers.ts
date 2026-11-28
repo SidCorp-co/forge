@@ -172,7 +172,7 @@ async function recordKept(
   return {
     outcome,
     line: outcome.recorded
-      ? `His kept answer (message ${kept.message}) to Forge question ${kept.questionId} is now recorded as his; the master who asked is woken.`
+      ? `His kept answer (message ${kept.message}) to Forge question ${kept.questionId} is now recorded as his; whoever asked that question is woken.`
       : `His kept answer (message ${kept.message}) to Forge question ${kept.questionId} was not recorded: ${outcome.why}.`,
   };
 }

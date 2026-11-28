@@ -33,14 +33,14 @@ export const KEEP_ACT_CARDS = {
       concerns: 'problem',
       title: 'CSV export drops the size column',
       learned:
-        'The export drops size when the product has no variants. Cause: the variant join. The master fixed it for new exports; old files are re-exported.',
+        'The export drops size when the product has no variants. Cause: the variant join. New exports are fixed; old files are re-exported.',
       scope: 'AdminHub CSV export, products without variants',
       recheckWhen: 'the export or the variant model changes',
     },
     redFlag:
-      'Asking the master again for what an earlier case already settled and was kept, or keeping a guess as a fact.',
+      'Asking again for what an earlier case already settled and was kept, or keeping a guess as a fact.',
     family: 'room.record',
     audience: ['bot'],
-    scenarios: ['the room agent asks its master for what an earlier case already settled'],
+    scenarios: ['the room agent asks again for what an earlier case already settled'],
   },
 } satisfies Partial<Record<SupportAction, CapabilityCardBody>>;

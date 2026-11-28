@@ -38,7 +38,7 @@ export const REPLY_CARD = {
   // ISS-1243, AdminHub-Support 03/11-15/11: 21 of 76 bot posts were relays ("passed to the team,
   // I will report back") instead of an answer, and a master post landed beside 14 of them
   redFlag:
-    'A reply that only says the request was passed on or will be reported back, when the answer can be had now: ask the master in the turn and answer yourself; for a code change react to the message with support.react and tell them the result in one message once there is one, never that it was passed on.',
+    'A reply that only says the request was passed on or will be reported back, when the answer can be had now: ask with support.ask_master in the turn and answer yourself; for a code change react to the message with support.react and tell them the result in one message once there is one, never that it was passed on.',
   family: 'room.answer',
   audience: ['bot'],
   scenarios: ['a relay posted instead of the answer: only “passed on, will report back”'],

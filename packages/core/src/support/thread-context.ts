@@ -41,7 +41,7 @@ export interface ThreadAround {
 export const SUPPORT_MEMBER_SOURCE = 'support group member';
 
 /** The source a thread's bot post carries inside its frame: the session's own, or a master's (ISS-1425). */
-export const THREAD_BOT_SOURCE = "a bot post in this thread, yours or a master's";
+export const THREAD_BOT_SOURCE = "a bot post in this thread, yours or another's";
 
 // a member's line, and a bot's that may be a master's quoting one, are data, framed (ISS-1425)
 const saidOf = (m: ThreadLine): SaidLine => ({
@@ -89,6 +89,6 @@ export async function openAsksOf(roomId: string, thread: string): Promise<string
     );
   return rows.map(
     (r) =>
-      `to the ${r.slug} master:\n${markUntrusted(r.question, { source: 'your ask of the master' })}`,
+      `your ask to ${r.slug}:\n${markUntrusted(r.question, { source: 'your ask' })}`,
   );
 }

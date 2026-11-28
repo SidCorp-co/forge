@@ -118,7 +118,7 @@ export const OPS_ACT_CARDS = {
       'Proposes pushing the room’s working copy as a build on a branch of its own, reviewed into the development branch.',
     situations: [
       {
-        when: 'a change made in the room’s working copy is to reach the team, and the room grants build',
+        when: 'a change made in the room’s working copy is to reach the project’s code, and the room grants build',
         do: 'support.build with a branch of its own, a title and a summary, then cite the confirmer’s go with support.agree',
       },
     ],

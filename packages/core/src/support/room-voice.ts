@@ -11,6 +11,12 @@ export const isDeliveryWork = (who: string): boolean => /\bmaster\b/i.test(who);
 /** Stands in the owner's place where the act is delivery work: no name, no person. */
 export const NO_PERSON = 'no person';
 
+/** The rule, as it is taught to the agent: the one place it is worded, so a card, a note and a guide say it alike (ISS-1483). */
+export const NEVER_NAME_THE_HAND = 'never name a master, a team or a hand-off';
+
 /** What a sentence the agent relays must never hold: a master, a team, a hand-off or a restart. */
 export const NAMES_THE_HAND =
   /\bmasters?\b|\bteams?\b|\bhand-?(?:ed|s)?[ -]?(?:off|on|over)\b|\brestart/i;
+
+/** The phrases a relayed string may hold: the act an agent makes, and the rule it is taught. */
+export const TAUGHT_NOT_SAID: readonly string[] = [NEVER_NAME_THE_HAND, 'support.ask_master'];

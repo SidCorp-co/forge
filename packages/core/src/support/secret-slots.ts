@@ -122,7 +122,7 @@ async function testingSlot(
     return no(
       'SUPPORT_SECRET_PROFILE_UNKNOWN',
       '/profile',
-      `${project.slug} declares no testing profile ${profileId}; it declares ${ids.join(', ') || 'none'}. A profile is declared by a project admin; ask the master with support.ask_master. No link was made.`,
+      `${project.slug} declares no testing profile ${profileId}; it declares ${ids.join(', ') || 'none'}. A profile is declared by a project admin; ask with support.ask_master. No link was made.`,
     );
   }
   const { actors, services } = held.document;
@@ -139,7 +139,7 @@ async function testingSlot(
     return no(
       'SUPPORT_SECRET_SLOT_UNKNOWN',
       input.actor !== undefined ? '/actor' : '/service',
-      `testing profile ${profileId} declares no ${asked}; it declares ${names.join(', ') || 'none'}. One is declared on the profile by a project admin; ask the master with support.ask_master. No link was made.`,
+      `testing profile ${profileId} declares no ${asked}; it declares ${names.join(', ') || 'none'}. One is declared on the profile by a project admin; ask with support.ask_master. No link was made.`,
     );
   }
   if (!parseSecretRef(declared.credential)) {
@@ -179,7 +179,7 @@ async function integrationSlot(
     return no(
       'SUPPORT_SECRET_INTEGRATION_UNKNOWN',
       '/provider',
-      `${project.slug} binds no ${provider} connection; it binds ${providers.join(', ') || 'none'}. A connection is added by a project admin; ask the master with support.ask_master. No link was made.`,
+      `${project.slug} binds no ${provider} connection; it binds ${providers.join(', ') || 'none'}. A connection is added by a project admin; ask with support.ask_master. No link was made.`,
     );
   }
   if (connections.length > 1) {
@@ -187,7 +187,7 @@ async function integrationSlot(
     return no(
       'SUPPORT_SECRET_INTEGRATION_AMBIGUOUS',
       '/provider',
-      `${project.slug} binds ${connections.length} ${provider} connections (${names}), so one link cannot say which; ask the master with support.ask_master. No link was made.`,
+      `${project.slug} binds ${connections.length} ${provider} connections (${names}), so one link cannot say which; ask with support.ask_master. No link was made.`,
     );
   }
   const [connection] = connections as [(typeof connections)[number]];
@@ -195,7 +195,7 @@ async function integrationSlot(
     return no(
       'SUPPORT_SECRET_INTEGRATION_NOT_BY_HAND',
       '/provider',
-      `a ${provider} connection takes no credential a person types: it is installed or minted from its own page. Ask the master with support.ask_master. No link was made.`,
+      `a ${provider} connection takes no credential a person types: it is installed or minted from its own page. Ask with support.ask_master. No link was made.`,
     );
   }
   return {

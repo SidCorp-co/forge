@@ -98,7 +98,7 @@ export interface ItemResult {
  * hears what the master did or decided. Null for a phase that is progress, never posted.
  */
 /** The source a result note's team words are framed under (ISS-1425). */
-export const TEAM_WORDS = "the team's words on the item";
+export const TEAM_WORDS = "the item's own words";
 
 export function resultNote(r: ItemResult): string | null {
   const post =
@@ -116,20 +116,20 @@ export function resultNote(r: ItemResult): string | null {
     ? " Its words are withheld from this session by the project's data policy."
     : '';
   const shipped =
-    quoted('What the team shipped for it', r.shipped.join('; ')) +
-    quoted('What the team found or wrote last on it', r.found ?? null);
+    quoted('What was shipped for it', r.shipped.join('; ')) +
+    quoted('What was found or written last on it', r.found ?? null);
   switch (r.phase) {
     case 'resolved':
       if (r.route === 'answer') {
-        const answer = quoted("The team's answer", r.answer) || hidden;
-        return `${recorded} was answered by the team: nothing was changed or shipped for it unless the answer says so.${then(answer)}`;
+        const answer = quoted('The answer', r.answer) || hidden;
+        return `${recorded} was answered: nothing was changed or shipped for it unless the answer says so.${then(answer)}`;
       }
       return `${recorded} is live now.${then(shipped)}`;
     case 'verified':
       return `${recorded} is live and confirmed fixed.${then(shipped)}`;
     case 'declined': {
       const reason = quoted('The reason they gave', r.declined) || hidden;
-      return `${recorded} will not be done: the team declined it.${then(reason)}`;
+      return `${recorded} will not be done: it was declined.${then(reason)}`;
     }
     default:
       return null;

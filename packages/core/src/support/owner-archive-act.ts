@@ -65,7 +65,7 @@ export async function archiveProjectAsOwner(
     ok: true,
     value: {
       key: at.projectSlug,
-      recorded: `${at.projectSlug} archived: ${w.runs} run(s) and ${w.jobs} job(s) stopped, ${w.questionsVoided} question(s) withdrawn, ${w.groups} group(s) and ${w.deploys} deploy binding(s) switched off; its master retires with the archive. Left alone: its repository and every deployed site (nothing was deployed or torn down), and ${kept === 0 ? 'no question' : `${kept} question(s) its own door keeps open (${w.questionsKept.map((q) => q.code).join(', ')})`}; nothing was deleted, and unarchive restores it`,
+      recorded: `${at.projectSlug} archived: ${w.runs} run(s) and ${w.jobs} job(s) stopped, ${w.questionsVoided} question(s) withdrawn, ${w.groups} group(s) and ${w.deploys} deploy binding(s) switched off; its resident run retires with the archive. Left alone: its repository and every deployed site (nothing was deployed or torn down), and ${kept === 0 ? 'no question' : `${kept} question(s) its own door keeps open (${w.questionsKept.map((q) => q.code).join(', ')})`}; nothing was deleted, and unarchive restores it`,
     },
   };
 }

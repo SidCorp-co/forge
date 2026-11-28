@@ -38,7 +38,7 @@ export const agentProjectsGate: AgentProjectsGate = {
         out.push({
           code: 'SUPPORT_AGENT_PROJECT_NOT_ADMIN',
           path,
-          detail: `following ${slug} lets this binding's agent read its tracker and code and file to its master, so it is named by an admin of ${slug}, and you are not one; ask an admin of ${slug} to add it`,
+          detail: `following ${slug} lets this binding's agent read its tracker and code and file work to it, so it is named by an admin of ${slug}, and you are not one; ask an admin of ${slug} to add it`,
         });
       }
     }

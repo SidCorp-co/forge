@@ -207,7 +207,7 @@ export async function postInOneVoice(input: {
     return no(
       'SUPPORT_POST_UNCHANGED',
       '/text',
-      `this thread's answer to its current request is message ${answer.messageId}, which a master's post replaces so the asker reads one voice, and the chat server did not change it (${out.why}). Nothing was posted; post again.`,
+      `this thread's answer to its current request is message ${answer.messageId}, which a post replaces so the asker reads one voice, and the chat server did not change it (${out.why}). Nothing was posted; post again.`,
     );
   }
   return {

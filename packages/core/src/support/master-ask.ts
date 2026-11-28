@@ -21,6 +21,7 @@ import { db } from '../db/client.js';
 import { supportActions, supportRooms } from '../db/schema-support.js';
 import { supportMasterAsks } from '../db/schema-support-asks.js';
 import { markUntrusted } from '../lib/untrusted-text.js';
+import { NEVER_NAME_THE_HAND } from './room-voice.js';
 import { emitEvent } from '../outbox/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { deliverWaiting } from './dispatch.js';
@@ -184,7 +185,7 @@ export async function askMaster(
         opensCase: input.newCase === true,
       })
       .returning();
-    if (!row) throw new Error('support: an ask of a master was not recorded');
+    if (!row) throw new Error('support: the ask was not recorded');
     await emitEvent(tx, 'support.masterAsked', {
       askId: row.id,
       projectId: project.value.id,
@@ -218,7 +219,7 @@ export async function askMaster(
       ask: asked.id,
       project: project.value.slug,
       round,
-      next: `Nothing was posted. This is round ${round} of this case${round === 1 ? '' : ' (a different need of theirs is a new case: ask with newCase: true)'}. The ${project.value.slug} master is woken now and answers this before its other work; its answer is handed to you in this thread as a note from forge. It is what you learn of the case, not yet the reply: when it comes, weigh it, and ask again with the problem and the solution as you hold them until both are named; only then tell the person, once, as ONE message in your own voice. Meanwhile react to the asker's message with support.react and post nothing. Never say a master, a team or another side has it.`,
+      next: `Nothing was posted. This is round ${round} of this case${round === 1 ? '' : ' (a different need of theirs is a new case: ask with newCase: true)'}. It is taken up now and answered before other work; the answer reaches you in this thread as a note from forge. It is what you learn of the case, not yet the reply: when it comes, weigh it, and ask again with the problem and the solution as you hold them until both are named; only then tell the person, once, as ONE message in your own voice. Meanwhile react to the asker's message with support.react and post nothing; ${NEVER_NAME_THE_HAND}.`,
     },
   };
 }
@@ -287,7 +288,7 @@ export async function asksOfThread(room: RoomRow, thread: string): Promise<Maste
  */
 export function masterAnsweredNote(question: string, answer: string): string {
   // the ask and the answer are words, never core's: either may quote a member (ISS-1425)
-  return `The master answered your ask.\n${markUntrusted(question, { source: 'your ask of the master' })}\n${markUntrusted(answer, { source: 'the master answer' })}\nThis is what you now know of the case, not yet a reply. Hold it against what the person asked: does the case now name the problem and a solution that answers THEIR question? Where it does not, work on: read what your own acts reach, then ask again with support.ask_master, carrying the problem and the solution as you hold them and what this answer left open; where only the person holds the missing fact, ask them that one thing yourself. When both are named, tell the person in this thread yourself, in your own words and in the language they write, to them in the second person: what the problem was, what is done or comes next, what they must do. You are the one voice they know: say what the check showed and when ("at 02:05 the flag was off"), as what you checked, never that a master, a team, a project's side or anyone else told you, looked or is working on it, and never what the master wrote as it is written, nor a question or an instruction he wrote for you to put to them. What you already told them in this thread stands: say only what this adds or changes, never your earlier reply again in other words; where it adds nothing, stay silent with support.silent. Where the owner agreed a case like this one, it is a precedent (support.search, slugs starting ${SUPPORT_PRECEDENT_PREFIX}): apply it and ask no one again; a case outside [knowledge:${SUPPORT_LOW_IMPACT_SLUG}] is not for you and the master to settle alone, and goes to the owner with support.ask_owner as options and your recommendation. Where they already ruled on it, make the act as them and tell it from the act's result: done once it answered, and a refused act was not made; never ask them again.`;
+  return `Your ask is answered.\n${markUntrusted(question, { source: 'your ask' })}\n${markUntrusted(answer, { source: 'the answer' })}\nThis is what you now know of the case, not yet a reply. Hold it against what the person asked: does the case now name the problem and a solution that answers THEIR question? Where it does not, work on: read what your own acts reach, then ask again with support.ask_master, carrying the problem and the solution as you hold them and what this answer left open; where only the person holds the missing fact, ask them that one thing yourself. When both are named, tell the person in this thread yourself, in your own words and in the language they write, to them in the second person: what the problem was, what is done or comes next, what they must do. You are the one voice they know: say what the check showed and when ("at 02:05 the flag was off"), as what you checked; ${NEVER_NAME_THE_HAND}, and never what the answer says as it is written, nor a question or an instruction in it for you to put to them. What you already told them in this thread stands: say only what this adds or changes, never your earlier reply again in other words; where it adds nothing, stay silent with support.silent. Where the owner agreed a case like this one, it is a precedent (support.search, slugs starting ${SUPPORT_PRECEDENT_PREFIX}): apply it and ask no one again; a case outside [knowledge:${SUPPORT_LOW_IMPACT_SLUG}] is not yours to settle alone, and goes to the owner with support.ask_owner as options and your recommendation. Where they already ruled on it, make the act as them and tell it from the act's result: done once it answered, and a refused act was not made; never ask them again.`;
 }
 
 /**
@@ -310,7 +311,7 @@ export async function answerMasterAsk(
     return no(
       'SUPPORT_MASTER_ASK_UNKNOWN',
       '/askId',
-      `no room agent asked this project's master ${askId}; GET /api/projects/${actor.projectId}/support/master-asks lists the asks waiting on you. Nothing was handed on`,
+      `no room agent made ask ${askId} of this project; GET /api/projects/${actor.projectId}/support/master-asks lists the asks waiting on you. Nothing reached the room`,
     );
   }
   const [answered] = await db
@@ -322,7 +323,7 @@ export async function answerMasterAsk(
     return no(
       'SUPPORT_MASTER_ASK_ANSWERED',
       '/askId',
-      `ask ${askId} was already answered at ${row.answeredAt?.toISOString()}; the room's session has that answer. Nothing was handed on`,
+      `ask ${askId} was already answered at ${row.answeredAt?.toISOString()}; the room's session has that answer. Nothing reached the room`,
     );
   }
   const room = await roomById(answered.roomId);

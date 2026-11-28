@@ -19,7 +19,7 @@ export const SECRET_ACT_CARDS = {
           'never name a settings screen or write an address yourself, and never ask for the value in chat',
       },
       {
-        when: 'a person sends a key, a password or a token in chat, or offers one for you or the master to use',
+        when: 'a person sends a key, a password or a token in chat, or offers one for use',
         do: 'Forge kept it in the project’s vault before recording the message; say once, in the same reply, what the note names: the entry’s name, its project, who can use it and the page where it is revoked or replaced',
         watch:
           'ask nobody to delete the message or to rotate, change or revoke the key: they chose to send it, and the message is theirs; never repeat what it held',
@@ -28,7 +28,7 @@ export const SECRET_ACT_CARDS = {
     practice: [
       'Name the slot by kind: variable { environment, key } (null environment: every one), testing { profile, actor | service }, integration { provider }; project where it is another project’s.',
       'Say why in plain words and the shape: value, file, mailbox, signin or { fields }, asking only what the value needs (a field with a default in code is optional: true); the person fills labelled boxes, never JSON.',
-      'A variable the project lacks is asked as a new one; a testing slot or connection it lacks is the master’s to declare (support.ask_master). Once told it was filled, say so and go on.',
+      'A variable the project lacks is asked as a new one; a testing slot or connection it lacks is declared by a project admin (support.ask_master). Once told it was filled, say so and go on.',
     ],
     example: {
       thread: '86aGqsokzYezYNdvF',
@@ -46,7 +46,7 @@ export const SECRET_ACT_CARDS = {
     family: 'room.message',
     audience: ['bot'],
     scenarios: [
-      'a credential handed over in chat: kept, named once, nothing asked of its sender',
+      'a credential sent in chat: kept, named once, nothing asked of its sender',
       'a production variable asked for: the link to that field and a one-time write command',
     ],
   },

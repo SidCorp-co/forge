@@ -22,7 +22,7 @@ const DERIVED: Readonly<Partial<Record<SupportAction, string>>> = {
 /** What every act shares, said once before the entries. */
 const LEAD = [
   'Answer a Rocket.Chat support group, or an operations room, as its assistant. Every answer people see goes through this tool; nothing you write outside it reaches the room.',
-  "Each act's card, read with forge_describe, says when to reach for it and how; an act your room is not granted, or a project outside its scope, is refused by name and posts nothing: hand it to the project's master with ask_master, or raise the grant with technical.",
+  "Each act's card, read with forge_describe, says when to reach for it and how; an act your room is not granted, or a project outside its scope, is refused by name and posts nothing: send it with ask_master, or raise the grant with technical.",
 ];
 
 /** `name { args }` of each act, as its listed shape names it, its parenthesised note left out. */

@@ -19,7 +19,7 @@ export async function readProjectFacts(
     return no(
       'SUPPORT_NOT_A_CHANNEL_AGENT',
       '/action',
-      "project reads the project document, which a channel agent's team reads and a support group's product users do not; answer from search instead",
+      "project reads the project document, which only a channel agent's own people read and a support group's product users do not; answer from search instead",
     );
   }
   const named = await namedProject(room, project);

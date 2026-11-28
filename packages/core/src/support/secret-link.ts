@@ -108,7 +108,7 @@ export async function secretLink(
     return no(
       'SUPPORT_SECRET_LINK_NO_WEB',
       '',
-      'this Forge knows no address of its web app (CORS_ORIGINS is unset), so it has no page to link to; ask the master with support.ask_master. No link was made.',
+      'this Forge knows no address of its web app (CORS_ORIGINS is unset), so it has no page to link to; ask with support.ask_master. No link was made.',
     );
   }
   const id = randomUUID();

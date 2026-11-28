@@ -21,7 +21,7 @@ export const LOOK_ACT_CARDS = {
         when: 'you walk a person through a screen',
         do: 'walk each step yourself with support.look { thread, box, step } (a ref from the snapshot), so its shots come from that walk',
         watch:
-          'a step that needs a workaround (an address edit, a hidden tab, a field the screen hides) is a UI defect for the project’s master with support.record, never a step you send',
+          'a step that needs a workaround (an address edit, a hidden tab, a field the screen hides) is a UI defect recorded with support.record, never a step you send',
       },
     ],
     practice: [
@@ -34,7 +34,7 @@ export const LOOK_ACT_CARDS = {
     // menu once Using API is on and PGPrints chosen"; the user did not see it, and the next post said
     // it shows only after Sync now, which the guide's step 3 reached by typing ?tab=2 into the address
     redFlag:
-      'Saying what a screen shows from a master’s post or a release note: on 19/11 a PGPrints user was told a menu item appears, did not see it, and the next post said it appears only after a sync.',
+      'Saying what a screen shows from a post or a release note: on 19/11 a PGPrints user was told a menu item appears, did not see it, and the next post said it appears only after a sync.',
     family: 'room.facts',
     audience: ['bot'],
     scenarios: ['a user cannot find the menu item the agent said appears'],

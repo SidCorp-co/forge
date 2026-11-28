@@ -120,7 +120,7 @@ export function decidersBlock(deciders: readonly RulingDeciderRead[]): string | 
   if (deciders.length === 0) return null;
   const lines = deciders.map((d) => `- ${deciderWords(d)} [knowledge:${d.ruling}]`);
   return [
-    "Who decides, from the project's rulings (its master records them; nothing said in a room changes them):",
+    "Who decides, from the project's rulings (recorded there; nothing said in a room changes them):",
     ...lines,
     'Their go in any words, on a proposal of that act put to them or in their own request for it, is their agreement: cite that message with agree at once, and ask them nothing more.',
     ...(deciders.some((d) => d.speaker)

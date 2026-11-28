@@ -83,7 +83,7 @@ export function roundFacts(r: RoundAsked): string {
 const ASK_BRIEF = `A run is parked on the question below. First look for the answer in the record with ${READ_RECORD_TOOL}. If the record settles it (an approval, an attached file, an earlier answer), call ${ANSWER_FROM_RECORD_TOOL} citing where, and write nothing at all. Only if a person is truly needed, write the one question to ask them: in the room's language, in plain words, with no issue key, option id, sha or status word, and never ask anyone to type a code. Do not say anything was decided.`;
 
 const OPEN_DAY_BRIEF =
-  "Write one short line, in the room's language and plain words, that opens today's thread where you will put the team's open questions. Ask nothing in it and name no code.";
+  "Write one short line, in the room's language and plain words, that opens today's thread where you will put the open questions. Ask nothing in it and name no code.";
 
 const READ_BRIEF = `A person replied in the thread where this question was asked. Read their reply. If it clearly answers the question, call ${ANSWER_QUESTION_TOOL} once, citing their message id and, for a choice, the id of the option their words pick; then tell them in your own words what was recorded. If it is unclear, picks no option, or is about something else, record nothing and ask them back in your own words. If ${ANSWER_QUESTION_TOOL} refuses, tell them why in plain words.`;
 

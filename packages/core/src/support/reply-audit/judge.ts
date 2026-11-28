@@ -86,7 +86,7 @@ export function codeFindings(reply: AuditedReply): ReplyFinding[] {
   if (workaround) {
     found.push({
       line: 'no_ui_directions',
-      why: `it sends a workaround step ("${workaround}"): a screen that needs one goes to the project's master as a UI defect`,
+      why: `it sends a workaround step ("${workaround}"): a screen that needs one is recorded as a UI defect`,
       by: 'code',
     });
   }

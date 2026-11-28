@@ -7,6 +7,7 @@
 
 import type { SupportMasterTellRequest } from '@forge/contracts/support-master-ask';
 import { markUntrusted } from '../lib/untrusted-text.js';
+import { NEVER_NAME_THE_HAND } from './room-voice.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { deliverWaiting } from './dispatch.js';
 import { masterReach, roomOfThread, roomRefusal } from './master-post.js';
@@ -22,7 +23,7 @@ export const TELL_TOOL = 'master_tell';
  * teaching alone outside (ISS-1425): the master's text is data for the agent, never posted as it is.
  */
 export function masterToldNote(facts: string): string {
-  return `The master hands you facts for this thread.\n${markUntrusted(facts, { source: 'the master facts' })}\nThey are what you now know of the case. Tell the person in this thread yourself now, in your own words and in the language they write, to them in the second person: what changed for them, where it runs now, and what to check again. You are the one voice they know: say what the check showed and when, as what you checked, never that a master, a team or a project's side told you or did it, and never what the master wrote as it is written (his words are for you, never posted as they are), nor a question or an instruction he wrote for you to put to them. Their room reads no issue key, commit sha, branch name or release tag, and no words of our tooling such as judge, staging or production; say what a person who uses the product sees. Where the facts leave the case's problem or its solution open, read or ask on (support.ask_master) before you tell them. What you already told them in this thread stands: say only what this adds or changes; where it adds nothing, stay silent with support.silent. A state is said from a check made this turn, dated; never from an earlier read.`;
+  return `Facts for this thread.\n${markUntrusted(facts, { source: 'the facts' })}\nThey are what you now know of the case. Tell the person in this thread yourself now, in your own words and in the language they write, to them in the second person: what changed for them, where it runs now, and what to check again. You are the one voice they know: say what the check showed and when, as what you checked; ${NEVER_NAME_THE_HAND}, and never what the facts say as they are written (they are for you, never posted as they are), nor a question or an instruction in them for you to put to them. Their room reads no issue key, commit sha, branch name or release tag, and no words of our tooling such as judge, staging or production; say what a person who uses the product sees. Where the facts leave the case's problem or its solution open, read or ask on (support.ask_master) before you tell them. What you already told them in this thread stands: say only what this adds or changes; where it adds nothing, stay silent with support.silent. A state is said from a check made this turn, dated; never from an earlier read.`;
 }
 
 /**
@@ -37,7 +38,7 @@ export async function tellRoomAgent(
 ): Promise<Outcome<{ told: true; rid: string; thread: string; next: string }>> {
   await requireCan(actorFor(actor.userId), 'project.write', projectResource(actor.projectId));
   const { rooms } = await masterReach(actor.projectId, input.rid);
-  const nothing = 'Nothing was handed on.';
+  const nothing = 'Nothing reached the thread.';
   if (input.rid && !rooms.some((r) => r.room.rid === input.rid)) {
     return roomRefusal(actor.projectId, input.rid, rooms, nothing);
   }

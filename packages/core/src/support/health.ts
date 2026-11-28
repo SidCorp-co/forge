@@ -142,7 +142,7 @@ export async function roomHealth(
   if (!resident) {
     add(
       'SESSION_NOT_LISTENING',
-      `the session is not resident on its box (it is ${session.status}${session.failureReason ? `: ${session.failureReason}` : ''}); the warm-up sweep restarts it within a minute`,
+      `the session is not resident on its box (it is ${session.status}${session.failureReason ? `: ${session.failureReason}` : ''}); the warm-up sweep brings it back within a minute`,
     );
   }
   return { health: done(causes), name };

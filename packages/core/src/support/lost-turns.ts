@@ -84,7 +84,7 @@ async function handOnOrTell(roomId: string, messages: ActionRow[], now: Date): P
     await retryOrTell(
       room,
       messages,
-      'the turn went silent with no end reported (a runner or core restart); core read it lost',
+      'the turn went silent with no end reported (a runner or core went down); core read it lost',
       { now },
     );
     return;
