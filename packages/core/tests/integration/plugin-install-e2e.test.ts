@@ -102,7 +102,10 @@ beforeAll(() => {
       if (held === undefined || typeof held === 'number') {
         return Response.json({ message: 'Server Error' }, { status: held ?? 404 });
       }
-      return new Response(held as BodyInit, { status: 200, headers: { 'content-type': 'application/x-gzip' } });
+      return new Response(held as BodyInit, {
+        status: 200,
+        headers: { 'content-type': 'application/x-gzip' },
+      });
     }
     if (path === '/repos/SidCorp-co/forge-plugin/commits/HEAD') {
       asked.push('head');
