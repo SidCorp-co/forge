@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.863] - 2026-11-28
+
+Room agents hear a plain reason for a pause, never internal notes
+
+### Changed
+
+- **A room agent is handed no park text, raw note, sha or error code.** Parked issues read from their kind, notes are marked internal and stripped of keys, "Nobody" names no one, and VISION restores the master.
+
 ## [0.4.0-dev.862] - 2026-11-28
 
 Room agents hear only reviewed wording; release-gate waits read as places
