@@ -30,7 +30,6 @@ import { briefNews, coldBrief } from './brief-told.js';
 import { buildBaseOf, buildKeyOf } from './build.js';
 import { channelNews } from './channel-read.js';
 import { earlierReadNote } from './dated-reads.js';
-import { keptCasesNote } from './kept-cases.js';
 import {
   claimUndelivered,
   endBackOff,
@@ -44,6 +43,7 @@ import {
 import { grantsOf, supportConfigOf } from './grants.js';
 import { leftToBoxProcess } from './hand-off.js';
 import { injectWaiting, settleInjects } from './inject.js';
+import { keptCasesNote } from './kept-cases.js';
 import { endRoomLastResortWait, OFFLINE_GRACE_MS, tellLastResort } from './last-resort.js';
 import { answeredSince } from './one-voice.js';
 import { projectsInScope } from './ops-scope.js';

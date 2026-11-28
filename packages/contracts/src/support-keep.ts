@@ -33,7 +33,10 @@ export const supportKeepRequestSchema = z.strictObject({
 		.trim()
 		.min(1)
 		.max(100)
-		.regex(/^[a-z0-9][a-z0-9-]*$/, "a kebab-case topic, e.g. export-size-column")
+		.regex(
+			/^[a-z0-9][a-z0-9-]*$/,
+			"a kebab-case topic, e.g. export-size-column",
+		)
 		.describe(
 			"what it is about, kebab-case: kept as `case-<topic>`, and an existing one is rewritten",
 		),

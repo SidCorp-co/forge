@@ -58,6 +58,7 @@ import { mountTurnRecordRoutes } from './turn-record.js';
 
 export { ownerSignInCallbackRoutes } from './owner-routes.js';
 
+import { mountKeepSessionRoutes } from './keep-routes.js';
 import { mountLookSessionRoutes } from './look-routes.js';
 import { mountMasterAskRoutes } from './master-ask-routes.js';
 import { mountPromiseRoutes } from './promise-routes.js';
@@ -70,7 +71,6 @@ import { mountSecretLinkSessionRoutes } from './secret-link-routes.js';
 import { mountSecretPageRoutes } from './secret-page-routes.js';
 import { mountRedactRoute } from './secret-redact.js';
 import { act, SESSION_ONLY } from './session-door.js';
-import { mountKeepSessionRoutes } from './keep-routes.js';
 import { mountTermSessionRoutes } from './term-routes.js';
 import { supportTurnsOf } from './turns.js';
 

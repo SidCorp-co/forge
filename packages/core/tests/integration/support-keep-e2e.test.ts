@@ -118,9 +118,11 @@ describe('a room agent keeps what it learned and is handed it when a later turn 
     const slugs = (await kept()).map((r) => r.slug);
     expect(slugs).toContain('case-precedent-refund');
     expect(
-      (await rows<{ n: number }>(
-        sql`SELECT count(*)::int AS n FROM knowledge_entries WHERE project_id = ${w.projectId}::uuid AND slug LIKE 'precedent-%'`,
-      ))[0]?.n,
+      (
+        await rows<{ n: number }>(
+          sql`SELECT count(*)::int AS n FROM knowledge_entries WHERE project_id = ${w.projectId}::uuid AND slug LIKE 'precedent-%'`,
+        )
+      )[0]?.n,
     ).toBe(0);
   });
 });

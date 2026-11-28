@@ -54,6 +54,7 @@ import {
   supportRouteRequestSchema,
   supportRuleRequestSchema,
 } from '@forge/contracts/support-channel';
+import { supportKeepRequestSchema } from '@forge/contracts/support-keep';
 import { supportLookRequestSchema } from '@forge/contracts/support-look';
 import {
   supportAskMasterRequestSchema,
@@ -81,7 +82,6 @@ import {
 } from '@forge/contracts/support-references';
 import { supportAuditRequestSchema } from '@forge/contracts/support-reply-audit';
 import { supportTechnicalRequestSchema } from '@forge/contracts/support-technical';
-import { supportKeepRequestSchema } from '@forge/contracts/support-keep';
 import { supportTermRequestSchema } from '@forge/contracts/support-terms';
 import { z } from 'zod';
 
@@ -101,13 +101,13 @@ import {
   sourceOf,
   zodToMcpSchema,
 } from '../lib/tool.js';
-import { markUntrusted } from '../lib/untrusted-text.js';
 import { permissionless } from '../permissions/index.js';
 import { SUPPORT_ACT_CARDS } from './act-cards.js';
 import { type SupportActInput, supportAct } from './acts.js';
 import type { ImageRead } from './images.js';
 import { refusalOf } from './refusals.js';
 import { SECRET_LINK_TOOL_FIELDS } from './secret-tool-fields.js';
+import { imageAnswer, withoutAction } from './tool-answers.js';
 import { supportActEntries, supportToolDescription } from './tool-description.js';
 
 /** The actions that write nothing: the rest post in a thread, file an item, or act or record for a member. */
@@ -482,31 +482,3 @@ export const forgeSupportTool: ContextScopedMcpToolFactory = (ctx) => ({
     return action === 'image' ? imageAnswer(out.value as ImageRead) : out.value;
   },
 });
-
-/**
- * A picture as `uploads.read` hands one (ISS-532): its name and type framed as data, then the image
- * block the model views; the structured answer names the block and repeats no bytes.
- */
-function imageAnswer(read: ImageRead): Record<string, unknown> {
-  // the name is the writer's: it rides only inside the data frame
-  const { dataBase64, name: _name, ...meta } = read;
-  return {
-    _mcpContent: [
-      {
-        type: 'text',
-        text: markUntrusted(`Image name="${read.name}" mime="${read.mime}".`, {
-          source: 'support group member picture',
-        }),
-      },
-      { type: 'image', data: dataBase64, mimeType: read.mime },
-    ],
-    ...meta,
-    image: { contentIndex: 1, mimeType: read.mime },
-    note: 'The picture is content block 1, which this structured answer does not repeat.',
-  };
-}
-
-function withoutAction(input: Record<string, unknown>): Record<string, unknown> {
-  const { action: _action, rid: _rid, ...rest } = input;
-  return rest;
-}

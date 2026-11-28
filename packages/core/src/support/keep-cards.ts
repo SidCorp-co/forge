@@ -41,8 +41,6 @@ export const KEEP_ACT_CARDS = {
       'Asking the master again for what an earlier case already settled and was kept, or keeping a guess as a fact.',
     family: 'room.record',
     audience: ['bot'],
-    scenarios: [
-      'the room agent asks its master for what an earlier case already settled',
-    ],
+    scenarios: ['the room agent asks its master for what an earlier case already settled'],
   },
 } satisfies Partial<Record<SupportAction, CapabilityCardBody>>;

@@ -29,15 +29,21 @@ const record = (key: string, text: string, title = key) => ({
   text,
 });
 /** A finder that ranks only what bears on the words, as the find door does. */
-const finderOf =
-  (all: ReturnType<typeof record>[]) =>
-  async (input: { query: string }) =>
-    all.filter((r) => input.query.toLowerCase().includes(r.title.toLowerCase().split(' ')[0] ?? ''));
+const finderOf = (all: ReturnType<typeof record>[]) => async (input: { query: string }) =>
+  all.filter((r) => input.query.toLowerCase().includes(r.title.toLowerCase().split(' ')[0] ?? ''));
 
 describe('what the agent kept is handed to a turn by relevance', () => {
   const all = [
-    record(`${SUPPORT_KEPT_PREFIX}export-size`, 'Export drops size without variants; the master fixed it.', 'export drops size'),
-    record(`${SUPPORT_KEPT_PREFIX}label-print`, 'Label print needs the printer profile.', 'label print'),
+    record(
+      `${SUPPORT_KEPT_PREFIX}export-size`,
+      'Export drops size without variants; the master fixed it.',
+      'export drops size',
+    ),
+    record(
+      `${SUPPORT_KEPT_PREFIX}label-print`,
+      'Label print needs the printer profile.',
+      'label print',
+    ),
   ];
 
   it('hands a kept summary that bears on the messages (happy)', async () => {
