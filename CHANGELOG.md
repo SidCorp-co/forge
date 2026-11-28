@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.857] - 2026-11-28
+
+Room agents own each case with their master and speak as one voice
+
+### Changed
+
+- **A room agent now owns the case and speaks as the one voice.** It works a case with the master over several asks, and no reply names the master. The audit no longer asks that a master's check be named.
+
 ## [0.4.0-dev.856] - 2026-11-27
 
 A room agent opens an issue's attachments before saying a mockup is unreachable
