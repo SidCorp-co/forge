@@ -53,6 +53,7 @@ const SUPPORT_SESSION_ROUTES = {
   reference_cite: 'reference-citations',
   reference_propose: 'reference-proposals',
   term: 'terms',
+  keep: 'keeps',
   secret_link: 'secret-links',
   look: 'looks',
   react: 'reactions',

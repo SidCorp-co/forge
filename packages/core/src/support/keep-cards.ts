@@ -42,7 +42,7 @@ export const KEEP_ACT_CARDS = {
     family: 'room.record',
     audience: ['bot'],
     scenarios: [
-      'AdminHub’s room agent asks its master for what it was told before; its own reads fell from 8 a day to 0 or 1',
+      'the room agent asks its master for what an earlier case already settled',
     ],
   },
 } satisfies Partial<Record<SupportAction, CapabilityCardBody>>;
