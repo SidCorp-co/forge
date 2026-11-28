@@ -223,7 +223,13 @@ Grouped for recall. The **bold name** is the identifier — cite it, not the num
 12. **measured-together-never-apart** — a single operating number is a number that can be gamed.
     Driving interventions toward zero by no longer surfacing what needs one is `state-never-lies`
     wearing an improving metric. No number is read alone.
-13. **trust-gates-capability** — new capability ships only when the lifecycle it runs on is
+13. **one-voice-owns-the-case** — a person who asks for help knows one voice, the room's agent, and
+    nothing behind it: no master, no other team, no hand-off. That agent owns what the person
+    needs as a case, works it with the project's master and the owner until the problem and a
+    solution are both named, and only then answers, in its own words. What the owner decides in
+    discussion is kept as a way of working it applies to the same kind of case, so it
+    understands the project, its recurring problems and its people a little more each time.
+14. **trust-gates-capability** — new capability ships only when the lifecycle it runs on is
     trustworthy. Reach is earned by the kernel, not scheduled.
 
 ---
