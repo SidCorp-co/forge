@@ -18,12 +18,11 @@ import {
 } from '@forge/contracts/said';
 import { describe, expect, it } from 'vitest';
 import { notReadyOf } from './ops-release-holds.js';
-import { INTERNAL_RECORD, parkReasonOf, withoutReferences } from './room-read-words.js';
+import { INTERNAL_RECORD, withoutReferences } from './room-read-words.js';
 import {
   INTERNAL_WORDS,
   isInternalHand,
   NAMES_THE_HAND,
-  NEUTRAL_PARK,
   NEUTRAL_WAIT,
   NO_PERSON,
   ROOM_PLAIN,
@@ -380,22 +379,6 @@ describe('what a room read hands the agent (ISS-1483)', () => {
         vars: { sha: 'code' },
       } as SaidEntry),
     ).toBe(false);
-  });
-
-  it('hand a parked issue no park text, only its kind in plain terms', () => {
-    const written = 'the orchestrator runs it; their masters; builder read every path';
-    expect(parkReasonOf('master', written, null)).toBe(NEUTRAL_PARK);
-    expect(parkReasonOf('run', written, null)).toBe(NEUTRAL_PARK);
-    expect(parkReasonOf('issue', written, { key: 'ISS-12', title: 'Sign-in page' })).toBe(
-      'it is waiting for "Sign-in page" (ISS-12) to move on',
-    );
-    // a person's question is addressed to them and stays
-    expect(parkReasonOf('answer', 'Which tour do you want?', null)).toBe('Which tour do you want?');
-    expect(parkReasonOf('answer', null, null)).toBe(NEUTRAL_PARK);
-    for (const kind of ['master', 'judge', 'gate', 'machine', 'system', 'none', 'project']) {
-      const said = parkReasonOf(kind, written, null);
-      expect(NAMES_THE_HAND.test(said) || INTERNAL_WORDS.test(said), kind).toBe(false);
-    }
   });
 
   it('mark a note as an internal record and strip its handles', () => {

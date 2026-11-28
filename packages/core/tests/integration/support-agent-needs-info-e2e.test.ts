@@ -151,6 +151,20 @@ beforeAll(async () => {
     blockerKind: 'human',
     answer: { shape: 'free_text', needed: 'the logo file, as an SVG' },
   });
+  // an issue an agent parked: its question is minted from the park's own text, with no asking account
+  const agentPark = await createTestIssue(w.projectId, w.ownerId, 32, {
+    status: 'needs_info',
+    waitingKind: 'needs_decision',
+    createdAt: new Date(),
+  });
+  await askQuestion({
+    id: randomUUID(),
+    projectId: w.projectId,
+    issueId: agentPark.id,
+    prompt: AGENT_PARK_TEXT,
+    blockerKind: 'human',
+    answer: { shape: 'free_text', needed: `the master to quote ${AGENT_PARK_TEXT}` },
+  });
   await w.bindTarget({
     rids: [chat.rid],
     agent: {
@@ -164,6 +178,9 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(() => w.stop());
+
+const AGENT_PARK_TEXT =
+  'ISS-1428 refused PAT_PROJECT_OUTSIDE_FENCE at 9e174d4534ab: the orchestrator runs it, their masters';
 
 describe('ISS-877: a channel agent reads what a parked issue waits on, and from whom', () => {
   it('reads the open question, its options and the owner who owes it, in plain words', async () => {
@@ -208,6 +225,24 @@ describe('ISS-877: a channel agent reads what a parked issue waits on, and from 
         },
       ],
     });
+  });
+
+  it('hands the room no word of a question an agent parked with, only that an answer is owed', async () => {
+    const out = await readAll('2026-11-06');
+    const parked = issuesOf(out.home).find((r) => r.key.endsWith('-32'));
+    expect(parked?.waiting).toMatchObject({
+      questions: [{ asks: 'it is waiting on an answer', options: [], needed: null }],
+    });
+    const words = JSON.stringify(parked?.waiting);
+    for (const leak of [
+      'master',
+      'orchestrator',
+      'ISS-1428',
+      'PAT_PROJECT_OUTSIDE_FENCE',
+      '9e174d4534ab',
+    ]) {
+      expect(words, leak).not.toContain(leak);
+    }
   });
 
   it('reads every issue of a followed project, and only a waiting one carries what it waits on', async () => {

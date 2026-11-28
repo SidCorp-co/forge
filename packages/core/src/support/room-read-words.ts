@@ -4,32 +4,46 @@
 // handles a person cannot follow.
 
 import { releaseNoteReferences } from '@forge/contracts/content-language';
-import { NEUTRAL_PARK } from './room-voice.js';
+import { INTERNAL_WORDS, NAMES_THE_HAND, NEUTRAL_PARK } from './room-voice.js';
 
 /** The mark every internal record of the work carries in a room read, and the card line teaches the same. */
 export const INTERNAL_RECORD =
   'internal record: say what happened in your own words; never name who did it, and never quote a key, sha or code';
 
-/** The waits whose ask is a person's own: the question prompt is addressed to them and stays. */
+/** What a person's wait reads as: the ask is theirs, but its words were written by an agent, so only the fact of it is said. */
+export const NEUTRAL_ASK = 'it is waiting on an answer';
+
+/** What an open question's words read as in a room: none are handed on, and the person reads them in Forge. */
+export const QUESTION_WORDS_WITHHELD =
+  'its words are not sent here: say it is waiting on an answer, which the person reads on its page';
+
+/** The waits a person owes: what they owe is said, never the words an agent wrote asking it. */
 const PERSON_KINDS: ReadonlySet<string> = new Set(['you', 'person', 'admins', 'writers', 'answer']);
 
 /**
- * What a parked issue waits on, as a room hears it: the question where a person is asked, the other
- * issue by its title where it waits behind one, else one fixed sentence. A park's own text, written by
- * an agent, is never handed on.
+ * What a parked issue waits on, as a room hears it, from its KIND alone: that an answer is owed, the
+ * other issue by its title where it waits behind one, else one fixed sentence. Neither the park's own
+ * text nor the question minted from it is handed on, since an agent wrote both (a question's rows
+ * record no asker's agency, so no prompt can be told a person's own).
  */
-export function parkReasonOf(
-  kind: string,
-  threadPrompt: string | null,
-  behind: { key: string; title: string | null } | null,
-): string {
-  if (PERSON_KINDS.has(kind)) return threadPrompt ?? NEUTRAL_PARK;
-  if (kind === 'issue' && behind) {
-    return behind.title
-      ? `it is waiting for "${behind.title}" (${behind.key}) to move on`
-      : `it is waiting for ${behind.key} to move on`;
+export function parkReasonOf(kind: string, behind: { title: string | null } | null): string {
+  if (PERSON_KINDS.has(kind)) return NEUTRAL_ASK;
+  if (kind === 'issue') {
+    const title = behind?.title ? plainWords(behind.title, '') : '';
+    return title
+      ? `it is waiting for "${title}" to move on`
+      : 'it is waiting behind another issue to move on';
   }
   return NEUTRAL_PARK;
+}
+
+/**
+ * Words a person or an agent wrote, as a room hears them: stripped of handles, and replaced by
+ * `fallback` where they name an internal hand, so a label or a title cannot carry the master to a person.
+ */
+export function plainWords(text: string, fallback: string): string {
+  const clean = withoutReferences(text);
+  return NAMES_THE_HAND.test(clean) || INTERNAL_WORDS.test(clean) ? fallback : clean;
 }
 
 /**

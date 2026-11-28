@@ -9,10 +9,16 @@
 import { type SaidKey, say, sayEn } from '@forge/contracts/said';
 import { holdersWho, type WaitingOn } from '@forge/contracts/standing';
 import { isChoiceStep, type QuestionStep } from '../db/schema-questions.js';
-import { issueWaitsOf, listIssues, loadIssuePark } from '../issues/index.js';
+import { issueWaitsOf, listIssues } from '../issues/index.js';
+import { peopleOf } from '../lib/people.js';
 import { holderNames } from '../permissions/index.js';
 import { type OpenPersonQuestion, readOpenPersonQuestions } from '../questions/index.js';
-import { parkReasonOf } from './room-read-words.js';
+import {
+  NEUTRAL_ASK,
+  parkReasonOf,
+  plainWords,
+  QUESTION_WORDS_WITHHELD,
+} from './room-read-words.js';
 import { NO_PERSON, roomPerson, roomSay } from './room-voice.js';
 
 /** One option of an open question: the id `answer_question` takes, and what it says. */
@@ -26,16 +32,16 @@ interface WaitingOption {
 interface WaitingQuestion {
   /** The Forge question, which `ask_owner { forgeQuestion }` and `answer_question` name. */
   id: string;
-  /** The question in the asker's words; null where the round is marked sensitive. */
+  /** The question in a person's words where one asked it, else that an answer is owed; null where the round is marked sensitive. */
   asks: string | null;
   /** The choices, empty where it is answered in words. */
   options: WaitingOption[];
-  /** Answered in words: what would settle it. */
+  /** Answered in words, asked by a person: what would settle it; null where an agent asked. */
   needed: string | null;
-  /** Answered in words: the answer the asker recommends, where they gave one. */
+  /** Answered in words, asked by a person: the answer they recommend, where they gave one. */
   recommended: string | null;
   askedAt: string;
-  /** Why the question text is not here, where it is withheld. */
+  /** Why the question's words are not here, where they are withheld. */
   withheld?: string;
 }
 
@@ -47,34 +53,41 @@ export interface IssueWaiting {
   owes: string;
   /** The open questions it waits on; empty where the park asked only in its thread. */
   questions: WaitingQuestion[];
-  /**
-   * What it waits on in plain terms: the ask where a person is asked and no question row carries it, the
-   * other issue by title where it waits behind one, else one fixed sentence. Never the park's own text.
-   */
+  /** What it waits on from its kind: that an answer is owed, the other issue by title, else one fixed sentence. Never an agent's words. */
   reason: string | null;
 }
 
 const SENSITIVE =
   'the question is marked sensitive, so its words are never sent to a model; the person reads it in Forge';
 
-function questionOf(q: OpenPersonQuestion): WaitingQuestion {
+/**
+ * One open question, as a room hears it. Its words stay only where a PERSON asked it (the asking account's
+ * kind is `human`): a park's question is minted from the agent's own park text and an agent token's carries
+ * an agent's, so those are handed on as owed, with the choices' ids, and their words read in Forge.
+ */
+export function questionOf(q: OpenPersonQuestion, askedByPerson: boolean): WaitingQuestion {
   const step: QuestionStep = q.current;
   const choice = isChoiceStep(step);
+  const said = askedByPerson && !step.sensitive;
   return {
     id: q.id,
-    asks: step.sensitive ? null : step.prompt,
+    asks: step.sensitive ? null : said ? step.prompt : NEUTRAL_ASK,
     options:
       choice && !step.sensitive
         ? step.options.map((o) => ({
             option: o.id,
-            says: o.label,
+            says: said ? o.label : plainWords(o.label, 'an option, shown in Forge'),
             recommended: o.id === step.recommendedOptionId,
           }))
         : [],
-    needed: !choice && !step.sensitive ? step.needed : null,
-    recommended: !choice && !step.sensitive ? (step.recommended ?? null) : null,
+    needed: said && !choice ? step.needed : null,
+    recommended: said && !choice ? (step.recommended ?? null) : null,
     askedAt: q.at,
-    ...(step.sensitive ? { withheld: SENSITIVE } : {}),
+    ...(step.sensitive
+      ? { withheld: SENSITIVE }
+      : said
+        ? {}
+        : { withheld: QUESTION_WORDS_WITHHELD }),
   };
 }
 
@@ -106,7 +119,7 @@ async function behindOf(projectId: string, wait: WaitingOn) {
     { key: wait.ref },
     { sort: 'updatedAt:desc', limit: 1, offset: 0 },
   );
-  return { key: wait.ref, title: found.ok ? (found.rows[0]?.title ?? null) : null };
+  return { title: found.ok ? (found.rows[0]?.title ?? null) : null };
 }
 
 /**
@@ -123,6 +136,7 @@ export async function waitingOf(
     if (!q.issueId) continue;
     asked.set(q.issueId, [...(asked.get(q.issueId) ?? []), q]);
   }
+  const people = await peopleOf(open.map((q) => q.askedBy));
   const waiting = rows.filter((r) => r.status === 'needs_info' || asked.has(r.id));
   if (waiting.length === 0) return new Map();
   // no viewer: the read is the room's, so a person's wait names the people who owe it, never "You"
@@ -138,15 +152,12 @@ export async function waitingOf(
     waiting.map(async (r) => {
       const wait = standing.get(r.id)?.standing.waitingOn;
       if (!wait) return;
-      const park = await loadIssuePark(r.id);
       out.set(r.id, {
         ...owedBy(wait, writers),
-        questions: (asked.get(r.id) ?? []).map(questionOf),
-        reason: parkReasonOf(
-          wait.kind,
-          park?.threadQuestion?.prompt ?? null,
-          await behindOf(projectId, wait),
+        questions: (asked.get(r.id) ?? []).map((q) =>
+          questionOf(q, q.askedBy !== null && people.get(q.askedBy)?.kind === 'human'),
         ),
+        reason: parkReasonOf(wait.kind, await behindOf(projectId, wait)),
       });
     }),
   );

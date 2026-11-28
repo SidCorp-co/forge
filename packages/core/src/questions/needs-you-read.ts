@@ -88,6 +88,8 @@ export interface OpenPersonQuestion {
    * on an issue on that item (REQ-68 BC-4).
    */
   issueItem: { kind: 'requirement' | 'feedback'; key: string } | null;
+  /** The account that asked through a door of its own; null where the system asked (a park, a sweep). */
+  askedBy: string | null;
   /** The round being asked, as written; null only on a row with no steps, which the read refuses. */
   current: QuestionStep;
   /** The assistant's record for a round, or null; the round it was drafted for decides whether it stands. */
@@ -118,6 +120,7 @@ function openPersonRowsOf(projectIds: readonly string[]) {
         WHERE ${agentQuestions.about} ->> 'kind' = 'feedback'
           AND f.id = (${agentQuestions.about} ->> 'feedbackId')::uuid)`,
       about: agentQuestions.about,
+      askedBy: agentQuestions.askedBy,
       issueRequirement: sql<string | null>`(SELECT 'REQ-' || r.req_seq FROM issues i
         JOIN requirements r ON r.id = i.requirement_id WHERE i.id = "agent_questions"."issue_id")`,
       issueFeedback: sql<string | null>`(SELECT 'FB-' || f.fb_seq FROM feedback_route_issues ri
@@ -175,6 +178,7 @@ export async function readOpenPersonQuestions(projectId: string): Promise<OpenPe
       requirementId: r.requirementId,
       feedbackId: r.feedbackId,
       aboutFeedback: r.aboutFeedback,
+      askedBy: r.askedBy,
       subject: subjects[i] ?? null,
       issueItem: r.issueRequirement
         ? { kind: 'requirement', key: r.issueRequirement }
