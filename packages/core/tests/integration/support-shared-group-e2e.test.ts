@@ -39,6 +39,9 @@ const room = { mail: '', desk: '' };
 let deskSlug = '';
 let mailSlug = '';
 
+const codeOf = (res: { body: unknown }) =>
+  (res.body as { error?: { refusals?: { code: string }[] } }).error?.refusals?.[0]?.code;
+
 /** No turn runs on the box. */
 const idle = () => expect.poll(() => w.box.idle(), { timeout: 20_000 }).toBe(true);
 
@@ -169,21 +172,34 @@ describe('a group two projects share on one bot (ISS-1220)', () => {
     expect(got.desk?.handed).toBe(false);
   });
 
-  it('lets each project post into a thread the other recorded first', async () => {
+  // ISS-1467: a master never posts into a room its users read; each project's master reaches a thread
+  // the other recorded first by handing its own bot the facts (master-tells)
+  it('lets each project hand facts to a thread the other recorded first, and refuses a post there by name', async () => {
     const thread = await w.chat.say(w.chat.bob, 'the parcel left the depot yesterday');
     await settled(thread);
     for (const projectId of [w.projectId, mail]) {
-      const posted = await api(w.owner, 'POST', `/api/projects/${projectId}/support/master-posts`, {
-        text: projectId === mail ? 'Noted by the mail desk' : 'Noted by the service desk',
+      const told = await api(w.owner, 'POST', `/api/projects/${projectId}/support/master-tells`, {
+        facts: projectId === mail ? 'Noted by the mail desk' : 'Noted by the service desk',
         rid: chat.rid,
         thread,
       });
-      expect(posted.status, JSON.stringify(posted.body)).toBeLessThan(300);
+      expect(told.status, JSON.stringify(told.body)).toBeLessThan(300);
+      const posted = await api(w.owner, 'POST', `/api/projects/${projectId}/support/master-posts`, {
+        text: 'Noted by the desk',
+        rid: chat.rid,
+        thread,
+      });
+      expect([posted.status, codeOf(posted)], JSON.stringify(posted.body)).toEqual([
+        409,
+        'SUPPORT_MASTER_POST_USERS_ROOM',
+      ]);
     }
+    await idle();
   });
 
-  // ISS-1406: each project's master posts through its own room of the group, and the thread reads one voice
-  it("replaces the other project's agent answer with the mention-only project's master post", async () => {
+  // ISS-1406, ISS-1467: the mention-only project's master post cannot replace the other project's agent
+  // answer in a users' room: it is refused by name and the answer stands as the thread's one voice
+  it("refuses the mention-only project's master post and leaves the other project's agent answer standing", async () => {
     const thread = await w.chat.say(w.chat.bob, 'my parcel shows delivered but nothing came');
     await settled(thread);
     await repliedAfter(room.mail, thread);
@@ -194,12 +210,11 @@ describe('a group two projects share on one bot (ISS-1220)', () => {
       rid: chat.rid,
       thread,
     });
-    expect(posted.status, JSON.stringify(posted.body)).toBe(201);
-    // [ONE_VOICE_ROOM_ROW] before the fix: it stood beside mail's answer, recorded on mail's room
-    expect(lines().map((l) => l.text)).toEqual([
-      'The courier left it at the front desk; ask there today.',
+    expect([posted.status, codeOf(posted)], JSON.stringify(posted.body)).toEqual([
+      409,
+      'SUPPORT_MASTER_POST_USERS_ROOM',
     ]);
-    expect(posted.body).toMatchObject({ replaced: 'agent' });
+    expect(lines().map((l) => l.text)).toEqual([`Answered ${thread}`]);
   });
 
   // ISS-1243, sid-email thread zUTf: sid-desk had replied there once, so every later message of it

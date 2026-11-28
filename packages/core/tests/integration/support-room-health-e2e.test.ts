@@ -171,7 +171,9 @@ describe('REQ-75 r5: a room that cannot answer says why (BC-26)', () => {
     await w.settleWarm();
   });
 
-  it('tells no offline line to a thread a master answered within the grace window', async () => {
+  // ISS-1467: a master never posts into a room its users read, so the answer a waiting thread of this
+  // room holds is the room agent's reply; the master's post is refused by name and posts nothing
+  it('tells no offline line to a thread answered within the grace window, and refuses a master post there', async () => {
     await w.settleWarm();
     const seen: string[] = [];
     w.box.model = async (turn) => {
@@ -185,7 +187,16 @@ describe('REQ-75 r5: a room that cannot answer says why (BC-26)', () => {
       rid: w.chat.rid,
       thread,
     });
-    expect(posted.status, JSON.stringify(posted.body)).toBe(201);
+    const refused = (posted.body as { error?: { refusals?: { code: string }[] } }).error;
+    expect([posted.status, refused?.refusals?.[0]?.code], JSON.stringify(posted.body)).toEqual([
+      409,
+      'SUPPORT_MASTER_POST_USERS_ROOM',
+    ]);
+    expect((await w.chat.botLines()).filter((l) => l.tmid === thread)).toEqual([]);
+    // the room agent's reply recorded in the thread after the message, as an answer the session gave
+    await rows(sql`
+      INSERT INTO support_actions (room_id, project_id, thread, kind, actor_kind, external_id, input)
+      VALUES (${roomId}::uuid, ${w.projectId}::uuid, ${thread}, 'reply', 'session', 'answered-in-grace', '{"text": "Your import finished."}'::jsonb)`);
     await waited(thread, OFFLINE_GRACE_MS + 1_000);
     await ticks();
     expect(await offlineLinesIn(thread)).toEqual([]);
