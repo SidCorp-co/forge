@@ -17,7 +17,7 @@ import { projectInScope, projectsInScope, type ScopedProject } from './ops-scope
 import type { OpsOutcome } from './ops-types.js';
 import { waitingOf } from './ops-waiting.js';
 import { no } from './outcome.js';
-import { INTERNAL_RECORD, withoutReferences } from './room-read-words.js';
+import { INTERNAL_RECORD, titleWords, withoutReferences } from './room-read-words.js';
 import type { RoomRow } from './store.js';
 import { scrubbedForRoom } from './thread.js';
 
@@ -51,7 +51,13 @@ async function progressOf(room: RoomRow, projectId: string, issueId: string) {
   ]);
   const attachments = await Promise.all(
     (await readIssueAttachments(issueId, ATTACHMENT_CHARS)).map(async (a) =>
-      'text' in a ? { ...a, text: await scrubbedForRoom(room, a.text) } : a,
+      'text' in a
+        ? {
+            ...a,
+            name: titleWords(a.name, 'file'),
+            text: withoutReferences(await scrubbedForRoom(room, a.text)),
+          }
+        : { ...a, name: titleWords(a.name, 'file') },
     ),
   );
   return {
@@ -65,7 +71,7 @@ async function progressOf(room: RoomRow, projectId: string, issueId: string) {
     ),
     handoffs: await Promise.all(
       handoffs.map(async (h) => ({
-        step: h.step,
+        step: h.step ? titleWords(h.step, 'step') : h.step,
         at: h.createdAt.toISOString(),
         text: clipped(withoutReferences(await scrubbedForRoom(room, handoffText(h.payload)))),
       })),
@@ -79,9 +85,9 @@ export async function projectsRead(room: RoomRow) {
   return Promise.all(
     reach.map(async (p) => ({
       slug: p.slug,
-      name: p.name,
+      name: titleWords(p.name, 'project'),
       issuePrefix: p.issuePrefix,
-      runnersOnline: (await projectRunnerBuilds(p.id)).map((r) => r.name),
+      runnersOnline: (await projectRunnerBuilds(p.id)).map((r) => titleWords(r.name, 'runner')),
       masterResident: await projectHasLiveMaster(p.id),
     })),
   );
@@ -117,7 +123,7 @@ export async function issuesRead(
         const waiting = waits.get(r.id);
         return {
           key: keyOf(project.value, r.issSeq),
-          title: r.title,
+          title: titleWords(r.title, 'issue'),
           status: r.status,
           priority: r.priority,
           ...(waiting ? { waiting } : {}),
@@ -138,7 +144,7 @@ export async function releasesRead(room: RoomRow, slug: string): Promise<OpsOutc
       version: r.version,
       state: r.state,
       current: r.current,
-      name: r.name,
+      name: r.name ? titleWords(r.name, 'release') : r.name,
       issueCount: r.issueCount,
       // a release not yet shipped says what holds it, so a room is told whose act it waits on
       ...(holdsAnAct(r) ? { holds: await releaseHoldOf(project.value.id, r.version) } : {}),
@@ -166,7 +172,7 @@ export async function requirementsRead(room: RoomRow, slug: string): Promise<Ops
       total: rows.length,
       requirements: rows.slice(0, 30).map((r) => ({
         key: requirementKey(r.reqSeq),
-        title: r.title,
+        title: titleWords(r.title, 'requirement'),
         status: r.status,
       })),
     },

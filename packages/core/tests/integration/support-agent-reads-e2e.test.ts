@@ -9,10 +9,16 @@ vi.hoisted(() => {
 });
 
 import { randomUUID } from 'node:crypto';
+import { OPERATIONS_ACTION_GRANT } from '@forge/contracts/support-operations';
 import { db } from '../../src/db/client.js';
 import { getStorage } from '../../src/integrations/index.js';
 import { encryptJson } from '../../src/integrations/vault.js';
-import { createTestIssue, createTestRequirement, rows } from '../helpers/factories.js';
+import {
+  createTestFeedback,
+  createTestIssue,
+  createTestRequirement,
+  rows,
+} from '../helpers/factories.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
 import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 import { SupportWorld, type Turn } from '../helpers/support-world.js';
@@ -217,5 +223,70 @@ describe("an owner-mode channel agent reads its own project's tracker (FB-448)",
     );
     expect(JSON.stringify(out.move)).toContain('OPS_NOT_AN_OPERATIONS_ROOM');
     expect(JSON.stringify(out.move)).toContain('a channel agent writes through support.record');
+  });
+
+  // ISS-1483 (dev.864, ninth round): a room is handed no master, team, judge or handle through a TITLE
+  // or a name either. The guard is derived from the read acts: it enumerates every read the operations
+  // grant declares, so a new read act with no poisoned call below turns the first assertion red, and
+  // each call runs over rows whose every free-text field is poisoned.
+  it('hands no internal word or handle through any free-text field of any read act', async () => {
+    const WORDS = /\b(?:master|orchestrator|judge|steward|qa run)\b/i;
+    const HANDLES = /ISS-9999|9e174d4534ab|PAT_PROJECT_OUTSIDE_FENCE/;
+    const poison =
+      'the master, orchestrator, judge, steward, a qa run: ISS-9999 9e174d4534ab PAT_PROJECT_OUTSIDE_FENCE';
+    await db.execute(sql`UPDATE issues SET title = ${poison} WHERE project_id = ${w.projectId}`);
+    await db.execute(
+      sql`UPDATE requirements SET title = ${poison} WHERE project_id = ${w.projectId}`,
+    );
+    await db.execute(sql`UPDATE projects SET name = ${poison} WHERE id = ${w.projectId}::uuid`);
+    await db.execute(
+      sql`UPDATE comments SET body = ${poison} WHERE issue_id IN (SELECT id FROM issues WHERE project_id = ${w.projectId})`,
+    );
+    await db.execute(
+      sql`UPDATE issue_attachments SET name = ${`${poison}.html`} WHERE issue_id IN (SELECT id FROM issues WHERE project_id = ${w.projectId})`,
+    );
+    await createTestFeedback(w.projectId, w.ownerId, 3);
+    await db.execute(sql`UPDATE feedback SET title = ${poison} WHERE project_id = ${w.projectId}`);
+    const { fireDueChecks } = await import('../../src/support/index.js');
+    const calls: Record<string, (key: string) => Record<string, unknown>> = {
+      projects: () => ({ action: 'projects' }),
+      issues: (key) => ({ action: 'issues', project: slug, key }),
+      releases: () => ({ action: 'releases', project: slug }),
+      requirements: () => ({ action: 'requirements', project: slug }),
+      feedback: () => ({ action: 'feedback', project: slug }),
+    };
+    const reads = Object.entries(OPERATIONS_ACTION_GRANT)
+      .filter(([, grant]) => grant === 'read')
+      .map(([action]) => action)
+      .sort();
+    expect(Object.keys(calls).sort(), 'a read act with no poisoned call here').toEqual(reads);
+    const out: Record<string, unknown> = {};
+    await onCheckTurn(
+      () => fireDueChecks(new Date('2026-11-03T01:30:00Z')),
+      async (_t, act) => {
+        const list = await act({ action: 'issues', project: slug });
+        const key = (list.issues as { key: string }[])[0]?.key as string;
+        out.list = list;
+        for (const [action, call] of Object.entries(calls)) out[action] = await act(call(key));
+      },
+    );
+    // a note or an attachment's text is marked internal and stays in words, with its handles stripped
+    const withoutRecords = (v: unknown): unknown =>
+      Array.isArray(v)
+        ? v.map(withoutRecords)
+        : v && typeof v === 'object'
+          ? Object.fromEntries(
+              Object.entries(v as Record<string, unknown>)
+                .filter(([k]) => k !== 'text')
+                .map(([k, x]) => [k, withoutRecords(x)]),
+            )
+          : v;
+    for (const [read, body] of Object.entries(out)) {
+      expect(JSON.stringify(body), `${read} hands a handle`).not.toMatch(HANDLES);
+      expect(JSON.stringify(withoutRecords(body)), `${read} hands an internal word`).not.toMatch(
+        WORDS,
+      );
+    }
+    expect(JSON.stringify(out.issues)).toContain('an issue');
   });
 });

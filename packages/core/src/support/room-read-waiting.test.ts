@@ -92,10 +92,10 @@ describe('what a parked issue waits on, as a room reads it (ISS-1483)', () => {
       ),
       false,
     );
-    expect(choice.options.map((o) => o.says)).toEqual([
-      'an option, shown in Forge',
-      'Keep the sign-in page',
-    ]);
+    // an agent's choice labels are never handed on: each option reads by its place
+    expect(choice.options.map((o) => o.says)).toEqual(['option 1', 'option 2']);
+    expect(JSON.stringify(choice)).not.toMatch(NAMES_THE_HAND);
+    expect(JSON.stringify(choice)).not.toMatch(INTERNAL_WORDS);
     // a question a person asked is addressed to a person and stays as written
     const person = questionOf(
       row(step({ prompt: 'Which tour do you want?', needed: 'a file' }), 'u1'),

@@ -13,6 +13,7 @@
 import type { ReleaseDetail, ReleaseProof } from '@forge/contracts/releases';
 import { readRelease } from '../release-batch/index.js';
 import { heldStewardOf, releaseTakerOf } from '../steward/index.js';
+import { titleWords } from './room-read-words.js';
 import { NO_PERSON, roomPerson, roomSay, roomWaits } from './room-voice.js';
 
 /** What holds one release not yet shipped, in words the agent restates to a person. */
@@ -72,10 +73,10 @@ function approvalOf(r: ReleaseDetail): string {
   const decided = r.approval?.decision ? r.approval : null;
   if (decided?.decidedBy && decided.decidedAt) {
     const said = decided.decision === 'approved' ? 'approved' : 'returned';
-    return `${said} by ${decided.decidedBy.name} at ${decided.decidedAt}${decided.reason ? `: ${decided.reason}` : ''}`;
+    return `${said} by ${decided.decidedBy.name} at ${decided.decidedAt}${decided.reason ? `: ${titleWords(decided.reason, 'reason')}` : ''}`;
   }
   if (r.draftApproval) {
-    return `${r.draftApproval.decision} by ${r.draftApproval.decidedBy.name} at ${r.draftApproval.decidedAt}${r.draftApproval.reason ? `: ${r.draftApproval.reason}` : ''}`;
+    return `${r.draftApproval.decision} by ${r.draftApproval.decidedBy.name} at ${r.draftApproval.decidedAt}${r.draftApproval.reason ? `: ${titleWords(r.draftApproval.reason, 'reason')}` : ''}`;
   }
   const who =
     r.approvers.length > 0
@@ -102,7 +103,9 @@ export function notReadyOf(r: ReleaseDetail): ReleaseHold['notReady'] {
           .map((g) => roomSay(g.says.sentence)),
         ...(PROOF_WHY[issue.proof] ? [PROOF_WHY[issue.proof] as string] : []),
       ];
-      return why.length > 0 ? [{ issue: issue.key, title: issue.title, why: why.join('; ') }] : [];
+      return why.length > 0
+        ? [{ issue: issue.key, title: titleWords(issue.title, 'issue'), why: why.join('; ') }]
+        : [];
     }),
   );
 }

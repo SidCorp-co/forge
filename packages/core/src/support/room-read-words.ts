@@ -59,3 +59,25 @@ export function withoutReferences(text: string): string {
   }
   return out;
 }
+
+/** What each kind of record reads as in a room where its own title or name would name an internal hand. */
+const KIND_LABEL = {
+  issue: 'an issue',
+  requirement: 'a requirement',
+  release: 'a release',
+  feedback: 'a feedback item',
+  project: 'a project',
+  step: 'a step',
+  file: 'an attachment',
+  runner: 'a runner',
+  reason: 'a reason a person gave',
+} as const;
+
+/**
+ * A record's title or name as a room hears it: its handles stripped, and the kind's plain label
+ * where the words name a master, a team, a judge or the machinery. Every title and name a room read
+ * hands over goes through here (ISS-1483): an agent wrote them, and the agent repeats what it is handed.
+ */
+export function titleWords(text: string, kind: keyof typeof KIND_LABEL): string {
+  return plainWords(text, KIND_LABEL[kind]);
+}

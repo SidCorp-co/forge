@@ -25,6 +25,7 @@ import {
 } from '../release-batch/index.js';
 import { handOnRooms } from './dispatch.js';
 import { environmentNamed, promiseNote, untrackedWhy } from './promise-rules.js';
+import { titleWords } from './room-read-words.js';
 import { insertAction, roomById } from './store.js';
 import { threadConversation } from './thread-conversation.js';
 
@@ -79,7 +80,7 @@ export async function tellProjectPromises(
   for (const promise of open) {
     const issue = issueOf.get(promise.issueId);
     const facts = {
-      title: issue?.title ?? 'the work',
+      title: issue ? titleWords(issue.title, 'issue') : 'the work',
       key: shown.get(promise.issueId) ?? promise.issueId,
       environment: promise.environment,
       asker: promise.askerLabel ?? promise.askerKey,

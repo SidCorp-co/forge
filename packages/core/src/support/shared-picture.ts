@@ -11,6 +11,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { asksOfThread, type MasterAskView } from './master-ask.js';
 import { knownThread, type Outcome, threadUnknown } from './outcome.js';
+import { titleWords } from './room-read-words.js';
 import { roomWaits } from './room-voice.js';
 import { type RoomRow, roomsOfProject, threadMembers } from './store.js';
 import { TOP_LEVEL } from './thread.js';
@@ -180,9 +181,9 @@ export async function inFlightOf(room: RoomRow, thread: string): Promise<Outcome
     item.issues.push({
       key: r.issue,
       project: r.issue_project,
-      title: r.title,
+      title: titleWords(r.title, 'issue'),
       status: r.status,
-      step: r.step,
+      step: r.step ? titleWords(r.step, 'step') : null,
       eta: r.merged_at
         ? etaOf({ kind: 'landed' } as Forecast)
         : (etas.get(`${r.issue_project_id}:${r.iss_seq}`) ?? etaOf(null)),

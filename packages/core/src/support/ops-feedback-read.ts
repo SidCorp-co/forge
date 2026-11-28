@@ -12,6 +12,7 @@ import { linkedOf, phaseIn } from '../feedback/index.js';
 import { projectInScope } from './ops-scope.js';
 import type { OpsOutcome } from './ops-types.js';
 import { no } from './outcome.js';
+import { titleWords } from './room-read-words.js';
 import type { RoomRow } from './store.js';
 import { scrubbedForRoom } from './thread.js';
 
@@ -53,7 +54,7 @@ export async function feedbackRead(
       feedback: await Promise.all(
         rows.map(async (r) => ({
           key: feedbackKey(r.fbSeq),
-          title: await scrubbedForRoom(room, r.title),
+          title: titleWords(await scrubbedForRoom(room, r.title), 'feedback'),
           phase: phaseIn(r, linked),
           at: r.createdAt.toISOString(),
         })),

@@ -13,12 +13,7 @@ import { issueWaitsOf, listIssues } from '../issues/index.js';
 import { peopleOf } from '../lib/people.js';
 import { holderNames } from '../permissions/index.js';
 import { type OpenPersonQuestion, readOpenPersonQuestions } from '../questions/index.js';
-import {
-  NEUTRAL_ASK,
-  parkReasonOf,
-  plainWords,
-  QUESTION_WORDS_WITHHELD,
-} from './room-read-words.js';
+import { NEUTRAL_ASK, parkReasonOf, QUESTION_WORDS_WITHHELD } from './room-read-words.js';
 import { NO_PERSON, roomPerson, roomSay } from './room-voice.js';
 
 /** One option of an open question: the id `answer_question` takes, and what it says. */
@@ -74,9 +69,9 @@ export function questionOf(q: OpenPersonQuestion, askedByPerson: boolean): Waiti
     asks: step.sensitive ? null : said ? step.prompt : NEUTRAL_ASK,
     options:
       choice && !step.sensitive
-        ? step.options.map((o) => ({
+        ? step.options.map((o, i) => ({
             option: o.id,
-            says: said ? o.label : plainWords(o.label, 'an option, shown in Forge'),
+            says: said ? o.label : `option ${i + 1}`,
             recommended: o.id === step.recommendedOptionId,
           }))
         : [],
