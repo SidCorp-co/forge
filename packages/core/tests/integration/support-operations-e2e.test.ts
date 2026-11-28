@@ -163,13 +163,14 @@ afterAll(async () => {
 });
 
 async function rooms(): Promise<Record<string, unknown>[]> {
-  const all: Record<string, unknown>[] = [];
+  // a project's list also carries the shared operations rooms another project binds (ISS-1439), so one room reads once
+  const byId = new Map<string, Record<string, unknown>>();
   for (const id of Object.values(home)) {
     const got = await api(owner, 'GET', `/api/projects/${id}/support/rooms`);
     expect(got.status, JSON.stringify(got.body)).toBe(200);
-    all.push(...(got.body.rooms as Record<string, unknown>[]));
+    for (const r of got.body.rooms as Record<string, unknown>[]) byId.set(String(r.id), r);
   }
-  return all;
+  return [...byId.values()];
 }
 
 /** Every room's session warmed and resting resident, with no turn running on the box. */
