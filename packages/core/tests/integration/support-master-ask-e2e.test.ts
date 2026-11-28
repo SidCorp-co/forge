@@ -303,7 +303,7 @@ describe('ISS-1483: a room agent works a case with its master', () => {
       problem: 'the option set is missing from the mapping list',
     }));
     expect(first.out, JSON.stringify(first.out)).toMatchObject({ asked: true, round: 1 });
-    expect(String(first.out.next)).toContain('round 1 of this thread');
+    expect(String(first.out.next)).toContain('round 1 of this case');
     const one = String(first.out.ask);
     const partial = await api(
       w.owner,
