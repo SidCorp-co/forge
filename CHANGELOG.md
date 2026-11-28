@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.866] - 2026-11-28
+
+Rooms stop repeating internal titles in promises and reads
+
+### Changed
+
+- **A room is handed no internal role through support.promise or any other title it reads.** Promise replies, wait reminders, searches and briefs word every title and name, and a derived scan guards the support files.
+
 ## [0.4.0-dev.865] - 2026-11-28
 
 Room agents no longer hear titles or labels that name the master
