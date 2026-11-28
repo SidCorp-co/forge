@@ -102,7 +102,7 @@ beforeAll(() => {
       if (held === undefined || typeof held === 'number') {
         return Response.json({ message: 'Server Error' }, { status: held ?? 404 });
       }
-      return new Response(held as BodyInit, {
+      return new Response(held as NonNullable<ConstructorParameters<typeof Response>[0]>, {
         status: 200,
         headers: { 'content-type': 'application/x-gzip' },
       });
