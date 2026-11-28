@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.861] - 2026-11-28
+
+Room agents speak of what waits, never of an internal role acting
+
+### Changed
+
+- **A room agent no longer hears an internal role as the actor.** Release, issue and forecast waits reach a room worded as what waits, and the guard now reads said-keys, template expressions and role words.
+
 ## [0.4.0-dev.860] - 2026-11-28
 
 Room agents say what happened or what waits, never whose act it was
