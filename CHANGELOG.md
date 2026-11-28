@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.859] - 2026-11-28
+
+Room agents say what a wait is on and keep case summaries
+
+### Changed
+
+- **A room is told what is waiting, never whose act it is.** A release hold, a slot link and a note name no master, team or hand-off, only what waits and for how long; one guard renders every relayed string.
+- **A room agent keeps what it learns and is handed it by relevance.** support.keep writes a case summary as a `case-*` knowledge entry; a later turn that bears on it carries a short note. Precedents stay the owner's.
+
 ## [0.4.0-dev.858] - 2026-11-28
 
 Room agents own each case with their master and keep the owner's decisions as precedent
