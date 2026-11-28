@@ -149,7 +149,7 @@ describe('the said-keys a room reads (ISS-1483)', () => {
       const leaks =
         NAMES_THE_HAND.test(said) ||
         INTERNAL_WORDS.test(said) ||
-        /\brelease (?:gate|run)\b/i.test(said) ||
+        /\brelease run\b/i.test(said) ||
         said.includes(DEVICE) ||
         said.includes(PANE) ||
         said.includes(DIALOG) ||

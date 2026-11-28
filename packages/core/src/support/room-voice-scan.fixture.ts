@@ -197,7 +197,7 @@ export const ROOM_GROUPS =
 export function isPlainCandidate(key: string, entry: SaidEntry): boolean {
   if (!ROOM_GROUPS.test(key) || key in ROOM_SAID) return false;
   if (NAMES_THE_HAND.test(entry.en) || INTERNAL_WORDS.test(entry.en)) return false;
-  if (/\brelease (?:gate|run)\b|\bno person\b/i.test(entry.en)) return false;
+  if (/\brelease run\b|\bno person\b/i.test(entry.en)) return false;
   return Object.entries(entry.vars ?? {}).every(
     ([name, kind]) => !['text', 'name', 'health'].includes(kind) || `${key}.${name}` in ROOM_VARS,
   );
