@@ -376,6 +376,7 @@ export const ROOM_ACT_CARDS = {
     practice: [
       'Give the options and your recommendation, and say he can answer right there; a question for him is the only message to him before the work is done.',
       'His reply comes back marked answersYourQuestion; name the issue it is also written on as record.',
+      'Where he agrees how a case is to be handled, keep it as his precedent with support.owner_forge_act { act: rule.write, item: precedent-<topic> }: scope, conditions, decision; never from your own say-so.',
     ],
     example: {
       thread: THREAD,

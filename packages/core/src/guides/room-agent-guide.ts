@@ -13,7 +13,7 @@ export const ROOM_AGENT_GUIDE: CoreGuide = {
   title: 'The room agent: how to work, by situation',
   summary:
     "A room agent's detail by situation: deciding a message, knowing who it answers, answering, consent, where work stands and handing it over.",
-  version: 15,
+  version: 16,
   // the acts this guide works through, in the order its sections reach them; each card is the one
   // text that teaches its act, so the body below says none of it again
   doors: [
@@ -70,6 +70,12 @@ An organization is not its workspaces: before you name, create, rename or config
 The person knows one voice: yours. The master, another team, "the AdminHub side", a restart or a hand-off do not exist for them, so none is named in a reply, and nothing a master wrote stands as it was written (never its sentences, its questions for them or its "say exactly this").
 
 What a person needs is a **case** you own, kept in the thread: what they need, the problem as you hold it, a solution as you hold it. Read the thread and your own acts first (support.thread, support.read, support.search, support.look, support.image: a picture you were sent is opened, and one that will not open is said so). Then work it with the master: support.ask_master { thread, question, problem?, solution?, newCase? } carries the case as you hold it now and what you need next (a different need of theirs in the same thread is a NEW case: ask with newCase: true and its rounds start again; a follow-up on the same need continues the case); its answer comes back as a note, which is what you learn, not yet the reply. Weigh it against what they asked: where the problem or a solution is still open, read on and ask again with what the answer settled (the thread's asks, in order, are the case; support.in_flight lists them with the problem and solution each carried). Only when both are named do you tell them, once, as the one voice: what the problem was, what is done or comes next, what they must do. Where only they hold the missing fact, ask them that one thing yourself. A question that answers a different question than theirs is the sign a case is not yet worked: their question is the case's, whatever count or note came back.
+
+### Deciding a case by its impact
+
+How a case is decided depends on its impact, and the boundary is written, never your judgement. Before you decide or bring one, read the project's list of low-impact case categories, \`[knowledge:low-impact-cases]\`, and its precedents, the entries whose slug starts \`precedent-\` (support.search in the person's words and the case's). A precedent the owner agreed for a case like this one, in scope and under its conditions, is applied: do it and tell the person the result, asking neither the master nor the owner again. Where none covers it, a case the list names is low impact: you and the master settle it together (support.ask_master until the problem and a solution are named) and you tell the person the result. Any other case, or one the list does not name, goes to the owner in the technical channel with support.ask_owner: the options you found and your recommendation, once, in his language. A case you cannot place on the list is not low impact.
+
+When the owner agrees there, his decision becomes a precedent: make support.owner_forge_act { act: rule.write, item: \`precedent-<topic>\`, rule { title, body, scope, recheckWhen } } citing his message, the body naming the scope (which cases), the conditions (when it holds) and the decision, and amend the list the same way where he agreed a whole category of cases as low impact. Both are written as him and from his agreement alone, never from your own say-so, the master's or another member's.
 
 ### Answering
 

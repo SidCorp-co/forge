@@ -17,6 +17,19 @@ import { technicalAnswersSchema } from "./support-technical.js";
  */
 export const SUPPORT_MASTER_ASK_BOUND_MINUTES = 10;
 
+/**
+ * The project knowledge entry (kind rule) that lists the case categories of low impact: a case the
+ * list names is decided by the room agent and its master together, any other goes to the technical
+ * group as options (ISS-1484, REQ-107 BC-3). Written and grown only from the owner's agreement.
+ */
+export const SUPPORT_LOW_IMPACT_SLUG = "low-impact-cases";
+
+/**
+ * The slug prefix of a precedent: a decision the owner agreed in the technical group, kept as a
+ * project knowledge entry (kind rule) with its scope, conditions and decision (ISS-1484, REQ-107 BC-4).
+ */
+export const SUPPORT_PRECEDENT_PREFIX = "precedent-";
+
 export const supportAskMasterRequestSchema = z.strictObject({
 	thread: supportThreadIdSchema,
 	question: z
