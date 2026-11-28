@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.865] - 2026-11-28
+
+Room agents no longer hear titles or labels that name the master
+
+### Changed
+
+- **A room's reads hand no title or name that names the master.** Issue, requirement, release, feedback, project and step titles read as plain words or the kind's label, and an agent's choice labels read by place.
+
 ## [0.4.0-dev.864] - 2026-11-28
 
 Room agents hear what a paused issue waits for, never an agent's question
