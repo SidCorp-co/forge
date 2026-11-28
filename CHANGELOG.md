@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.858] - 2026-11-28
+
+Room agents own each case with their master and keep the owner's decisions as precedent
+
+### Changed
+
+- **Room agents own each case and speak as one voice.** An agent opens a new case for a new need, and a kept key's note never has it name the master or a team.
+- **A room agent decides a case by its impact.** One the project's `low-impact-cases` rule names is settled with its master; the rest go to the owner as options, and what he agrees is kept as a `precedent-*` rule both read.
+
 ## [0.4.0-dev.857] - 2026-11-28
 
 Room agents own each case with their master and speak as one voice
