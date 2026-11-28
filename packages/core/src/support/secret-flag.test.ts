@@ -50,6 +50,16 @@ describe('the note on a secret a member sent', () => {
     expect(said).not.toMatch(/curl|secret_link|write command/);
   });
 
+  // ISS-1483 judge dev.857: "<slug>'s master and its runs" in the note had the reply name the master
+  it('hands the agent no sentence naming a master, a team or a hand-off to say', () => {
+    const usable = { ...ENTRY, state: 'usable' as const };
+    for (const said of [note([usable], DOOR), note([ENTRY], DOOR)]) {
+      expect(said).toContain('never name a master, a team or a hand-off');
+      const told = said.replace('never name a master, a team or a hand-off', '');
+      expect(told).not.toMatch(/master and its runs|master reads|team|hand-?off/i);
+    }
+  });
+
   it('gives the slot the thread still owes where nothing was kept, and asks no deletion', () => {
     const said = note([], DOOR);
     expect(said).toContain('could not keep it');

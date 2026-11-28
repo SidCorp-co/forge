@@ -211,7 +211,7 @@ export const ROOM_ACT_CARDS = {
     situations: [
       {
         when: 'someone instructs or rules',
-        do: 'make the act with your own acts, or hand it to the master of the project it concerns with support.ask_master { thread, question, project }, saying what to do; react with support.react, then post ONE message when done',
+        do: 'make the act with your own acts, or hand it to the master of the project it concerns with support.ask_master { thread, question, project }, saying what to do (a new need of theirs in the thread: newCase: true); react with support.react, then post ONE message when done',
         watch:
           'never tell a thread what you or this room may not do, and never send anyone, the owner included, to a page, a setting or a button, the secret link aside',
       },

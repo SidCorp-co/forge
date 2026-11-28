@@ -89,7 +89,11 @@ async function caseNotesOf(askIds: readonly string[]): Promise<Map<string, CaseN
   return notes;
 }
 
-/** Which ask of its thread's case each of these is, from 1, in the order they were asked. */
+/**
+ * Which ask of its case each of these is, from 1, in the order they were asked. A case is a thread's
+ * asks from the latest one the agent opened as new (`opens_case`, its declaration: core guesses no
+ * relatedness), so an unrelated need later in a long thread starts again at round 1.
+ */
 async function roundsOf(askIds: readonly string[]): Promise<Map<string, number>> {
   const rounds = new Map<string, number>();
   if (askIds.length === 0) return rounds;
@@ -99,9 +103,13 @@ async function roundsOf(askIds: readonly string[]): Promise<Map<string, number>>
   );
   const rows = (await db.execute(sql`
     SELECT id, rn FROM (
-      SELECT id, row_number() OVER (PARTITION BY room_id, thread ORDER BY asked_at, id) AS rn
-        FROM support_master_asks
-       WHERE (room_id, thread) IN (SELECT room_id, thread FROM support_master_asks WHERE id IN (${ids}))
+      SELECT id, row_number() OVER (PARTITION BY room_id, thread, opened ORDER BY asked_at, id) AS rn
+        FROM (
+          SELECT id, room_id, thread, asked_at,
+                 count(*) FILTER (WHERE opens_case) OVER (PARTITION BY room_id, thread ORDER BY asked_at, id) AS opened
+            FROM support_master_asks
+           WHERE (room_id, thread) IN (SELECT room_id, thread FROM support_master_asks WHERE id IN (${ids}))
+        ) c
     ) t WHERE id IN (${ids})
   `)) as unknown as { id: string; rn: number | string }[];
   for (const r of rows) rounds.set(r.id, Number(r.rn));
@@ -171,6 +179,7 @@ export async function askMaster(
         sessionId: room.sessionId,
         turnId: turn ?? null,
         question: input.question,
+        opensCase: input.newCase === true,
       })
       .returning();
     if (!row) throw new Error('support: an ask of a master was not recorded');
@@ -194,6 +203,7 @@ export async function askMaster(
     input: {
       question: input.question,
       project: project.value.slug,
+      ...(input.newCase ? { newCase: true } : {}),
       ...(input.problem ? { problem: input.problem } : {}),
       ...(input.solution ? { solution: input.solution } : {}),
     },
@@ -206,7 +216,7 @@ export async function askMaster(
       ask: asked.id,
       project: project.value.slug,
       round,
-      next: `Nothing was posted. This is round ${round} of this thread's case. The ${project.value.slug} master is woken now and answers this before its other work; its answer is handed to you in this thread as a note from forge. It is what you learn of the case, not yet the reply: when it comes, weigh it, and ask again with the problem and the solution as you hold them until both are named; only then tell the person, once, as ONE message in your own voice. Meanwhile react to the asker's message with support.react and post nothing. Never say a master, a team or another side has it.`,
+      next: `Nothing was posted. This is round ${round} of this case${round === 1 ? '' : ' (a different need of theirs is a new case: ask with newCase: true)'}. The ${project.value.slug} master is woken now and answers this before its other work; its answer is handed to you in this thread as a note from forge. It is what you learn of the case, not yet the reply: when it comes, weigh it, and ask again with the problem and the solution as you hold them until both are named; only then tell the person, once, as ONE message in your own voice. Meanwhile react to the asker's message with support.react and post nothing. Never say a master, a team or another side has it.`,
     },
   };
 }

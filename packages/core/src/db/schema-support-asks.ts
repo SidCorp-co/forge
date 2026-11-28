@@ -2,7 +2,7 @@
 // kept apart only for size: a chat sender's temporary account, and a room agent's ask of a master.
 
 import { sql } from 'drizzle-orm';
-import { check, index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { boolean, check, index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { agentSessions } from './schema-agent-sessions.js';
 import { users } from './schema-auth.js';
 import { projects } from './schema-projects.js';
@@ -62,6 +62,8 @@ export const supportMasterAsks = pgTable(
     sessionId: uuid('session_id').references(() => agentSessions.id, { onDelete: 'set null' }),
     turnId: uuid('turn_id'),
     question: text('question').notNull(),
+    /** The agent declared a new need of the person begins with this ask: the case's rounds count from it (ISS-1483). */
+    opensCase: boolean('opens_case').notNull().default(false),
     askedAt: timestamp('asked_at', { withTimezone: true }).notNull().defaultNow(),
     answer: text('answer'),
     answeredAt: timestamp('answered_at', { withTimezone: true }),

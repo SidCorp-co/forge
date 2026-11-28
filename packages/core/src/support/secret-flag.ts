@@ -190,7 +190,7 @@ function keptLine(e: KeptEntry, project: { id: string; slug: string }, who: stri
   const page = entryPage(project.slug, project.id, e.ref);
   const use =
     e.state === 'usable'
-      ? `usable now by ${project.slug}'s master and its runs, read at GET /api/projects/${project.id}/acting-secrets/${SUPPORT_KEPT_SECRET_SCOPE}/${e.name} and audited on every read; acts done with it are recorded as ${e.actsAs}`
+      ? `usable now for ${project.slug}'s own work, read at GET /api/projects/${project.id}/acting-secrets/${SUPPORT_KEPT_SECRET_SCOPE}/${e.name} and audited on every read; acts done with it are recorded as ${e.actsAs}`
       : `${who} holds no project admin on ${project.slug}, so nobody reads it until a person holding project admin approves it in Forge, and it is destroyed unused at ${e.expiresAt}`;
   return `"${e.label}" (${e.kind}) kept in ${project.slug}'s vault as ${e.ref}: ${use}; it is revoked or replaced on its page${page ? ` ${page}` : ` (the Secrets page of ${project.slug})`}.`;
 }
@@ -233,8 +233,8 @@ export function secretNote(input: {
             `Not kept, so the record reads [Filtered] there and no vault holds it: ${missedOf(missed)}.`,
           ]
         : []),
-      `Tell the room once, in this same reply and in your own words: what was kept, under which name, for which project, who can use it, and the page where it is revoked or replaced${missed.length > 0 ? ', and what was not kept and why' : ''}. Then go on with what they sent it for.`,
-      `The project's master reads it the same way; where the person wants the master to act with it, ask the master with support.ask_master naming its secret:// name, never the value.`,
+      `Tell the room once, in this same reply and in your own words: what was kept, under which name, for which project, what happens to it (it is usable now, or waits for a project admin's approval), what they need to do (nothing, unless they want it revoked or replaced, and where), and the page${missed.length > 0 ? ', and what was not kept and why' : ''}. Say it as what you did and know, in the second person, and never name a master, a team or a hand-off. Then go on with what they sent it for.`,
+      `Where the person wants something done with it, ask with support.ask_master naming its secret:// name, never the value; that act is yours, never something to say.`,
       NOTHING_ASKED,
     ].join(' ');
   }

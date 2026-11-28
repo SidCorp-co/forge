@@ -45,6 +45,12 @@ export const supportAskMasterRequestSchema = z.strictObject({
 		.describe(
 			"the case's solution as you hold it now, in your words; leave out while none is named",
 		),
+	newCase: z
+		.boolean()
+		.optional()
+		.describe(
+			"true when this ask opens a NEW case: the person now needs something different from the case you were working; leave out when it follows up the same need, which continues the case and its rounds",
+		),
 	project: supportProjectSlugSchema
 		.optional()
 		.describe(

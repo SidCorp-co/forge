@@ -4411,6 +4411,13 @@
       "when": 1842825600000,
       "tag": "0693_a_declared_speaker_accepts_a_requirement_revision",
       "breakpoints": true
+    },
+    {
+      "idx": 694,
+      "version": "7",
+      "when": 1842912000000,
+      "tag": "0694_an_ask_of_a_master_can_open_a_new_case_in_its_thread",
+      "breakpoints": true
     }
   ]
 }

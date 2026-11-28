@@ -185,8 +185,9 @@ async function readsAround(room: RoomRow, posted: Posted): Promise<TurnReads | u
 
 /**
  * The reads around a reply from what its turn did (ISS-1440): a master's answer handed in the turn is
- * kept whether or not the turn also read something, because his check covers a claim the turn's own
- * read did not reach ("the release says shipped" read, "it works" said as his).
+ * kept whether or not the turn also read something, because that check covers a claim the turn's own
+ * read did not reach ("the release says shipped" read, "it works"); the reply says it as a dated
+ * check of its own, never as the master's.
  */
 export function turnReadsOf(input: {
   reads: readonly { kind: string; tool: string | null }[];

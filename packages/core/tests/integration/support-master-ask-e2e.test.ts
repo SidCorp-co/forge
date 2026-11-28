@@ -256,6 +256,43 @@ describe('ISS-1243: a room agent asks its master in its turn', () => {
 });
 
 describe('ISS-1483: a room agent works a case with its master', () => {
+  // judge dev.857 c2: a new need in a long thread read as round 30 of an old case; the agent declares
+  // the opening, core guesses nothing
+  it('counts rounds from the latest ask the agent opened as a new case', async () => {
+    const first = await sessionDoes('Một nhu cầu', (t) => ({
+      action: 'ask_master',
+      thread: t,
+      question: 'Why is the first thing failing?',
+    }));
+    expect(first.out).toMatchObject({ round: 1 });
+    const follow = await sessionDoes(
+      'Vẫn vậy',
+      (t) => ({ action: 'ask_master', thread: t, question: 'Is it the same cause?' }),
+      first.thread,
+    );
+    expect(follow.out).toMatchObject({ round: 2 });
+    const other = await sessionDoes(
+      'Một việc khác hẳn',
+      (t) => ({
+        action: 'ask_master',
+        thread: t,
+        question: 'A different need: can the report be exported?',
+        newCase: true,
+      }),
+      first.thread,
+    );
+    expect(other.out).toMatchObject({ round: 1 });
+    const after = await sessionDoes(
+      'Và nữa',
+      (t) => ({ action: 'ask_master', thread: t, question: 'Which format?' }),
+      first.thread,
+    );
+    expect(after.out).toMatchObject({ round: 2 });
+    const all = await asksOf('all');
+    const asks = (all.body as { asks: Body[] }).asks.filter((a) => a.thread === first.thread);
+    expect(asks.map((a) => a.round).sort()).toEqual([1, 1, 2, 2]);
+  });
+
   // ISS-1483 (owner, 2026-11-28): the agent owns a case and asks again until the problem and a solution
   // are both named; the thread's asks in order are the case, each carrying what the agent held of it
   it("keeps a thread's asks as one case: problem and solution as held, the round, and an answer that is not yet the reply", async () => {
